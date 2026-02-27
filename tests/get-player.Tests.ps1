@@ -162,3 +162,79 @@ Describe 'Get-Player' {
         $CragHack.PRFWebhook | Should -BeNullOrEmpty
     }
 }
+
+Describe 'Get-Player — player with many characters' {
+    BeforeAll {
+        $script:Entities = Get-Entity -Path (Join-Path $script:FixturesRoot 'entities-many-characters.md')
+        $script:Players = Get-Player -File (Join-Path $script:FixturesRoot 'Gracze-many-characters.md') -Entities $script:Entities
+    }
+
+    It 'parses player with five characters' {
+        $Solmyr = $script:Players | Where-Object { $_.Name -eq 'Solmyr' }
+        $Solmyr.Characters.Count | Should -Be 5
+    }
+
+    It 'all characters are active (bolded)' {
+        $Solmyr = $script:Players | Where-Object { $_.Name -eq 'Solmyr' }
+        $ActiveCount = ($Solmyr.Characters | Where-Object { $_.IsActive }).Count
+        $ActiveCount | Should -Be 5
+    }
+
+    It 'parses aliases for all characters' {
+        $Solmyr = $script:Players | Where-Object { $_.Name -eq 'Solmyr' }
+        foreach ($Char in $Solmyr.Characters) {
+            $Char.Aliases.Count | Should -BeGreaterOrEqual 1
+        }
+    }
+
+    It 'Names index contains all character names and aliases' {
+        $Solmyr = $script:Players | Where-Object { $_.Name -eq 'Solmyr' }
+        $Solmyr.Names | Should -Contain 'Bohater Pierwszy'
+        $Solmyr.Names | Should -Contain 'B1'
+        $Solmyr.Names | Should -Contain 'Bohater Piąty'
+        $Solmyr.Names | Should -Contain 'B5'
+    }
+
+    It 'parses PU with nadmiar for last character' {
+        $Solmyr = $script:Players | Where-Object { $_.Name -eq 'Solmyr' }
+        $Last = $Solmyr.Characters | Where-Object { $_.Name -eq 'Bohater Piąty' }
+        $Last.PUExceeded | Should -Be 2.5
+    }
+}
+
+Describe 'Get-Player — player with no characters' {
+    BeforeAll {
+        $script:Players = Get-Player -File (Join-Path $script:FixturesRoot 'Gracze-no-characters.md') -Entities @()
+    }
+
+    It 'parses player with zero characters' {
+        $Sandro = $script:Players | Where-Object { $_.Name -eq 'Sandro' }
+        $Sandro | Should -Not -BeNullOrEmpty
+        $Sandro.Characters.Count | Should -Be 0
+    }
+
+    It 'parses PRFWebhook for player without characters' {
+        $Sandro = $script:Players | Where-Object { $_.Name -eq 'Sandro' }
+        $Sandro.PRFWebhook | Should -Be 'https://discord.com/api/webhooks/333/sandro-token'
+    }
+}
+
+Describe 'Get-Player — BRAK PU values' {
+    BeforeAll {
+        $script:Players = Get-Player -File (Join-Path $script:FixturesRoot 'Gracze-brak-pu.md') -Entities @()
+    }
+
+    It 'parses all PU values as BRAK/null' {
+        $CragHack = $script:Players | Where-Object { $_.Name -eq 'Crag Hack' }
+        $Dracon = $CragHack.Characters | Where-Object { $_.Name -eq 'Dracon' }
+        $Dracon.PUExceeded | Should -BeNullOrEmpty
+        $Dracon.PUSum | Should -BeNullOrEmpty
+        $Dracon.PUTaken | Should -BeNullOrEmpty
+    }
+
+    It 'PUStart is still parsed even when others are BRAK' {
+        $CragHack = $script:Players | Where-Object { $_.Name -eq 'Crag Hack' }
+        $Dracon = $CragHack.Characters | Where-Object { $_.Name -eq 'Dracon' }
+        $Dracon.PUStart | Should -Be 20
+    }
+}

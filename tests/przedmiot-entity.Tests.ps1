@@ -71,19 +71,11 @@ Describe 'Resolve-EntityTarget for Przedmiot' {
 
     It 'finds existing Przedmiot entity without creating duplicate' {
         $EntFile = Join-Path $script:TempRoot 'przedmiot-existing.md'
-        Write-TestFile -Path $EntFile -Content @'
-## Gracz
-
-## Postać (Gracz)
-
-## Przedmiot
-
-* Existing Item
-    - @należy_do: SomeChar
-'@
+        $FixtureSrc = Join-Path $PSScriptRoot 'fixtures/entities-przedmiot-existing.md'
+        [System.IO.File]::Copy($FixtureSrc, $EntFile, $true)
 
         $Target = Resolve-EntityTarget -FilePath $EntFile `
-            -EntityType 'Przedmiot' -EntityName 'Existing Item'
+            -EntityType 'Przedmiot' -EntityName 'Istniejący Przedmiot'
 
         $Target.Created | Should -Be $false
         $Target.BulletIdx | Should -BeGreaterOrEqual 0

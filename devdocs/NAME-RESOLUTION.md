@@ -8,6 +8,8 @@
 
 This document covers the name resolution subsystem: `Get-NameIndex` (index construction), `Resolve-Name` (multi-stage lookup), and their supporting data structures (BK-tree, stem index, priority/ambiguity system).
 
+**Shared dependency**: `string-helpers.ps1` provides `Get-LevenshteinDistance`, dot-sourced by `resolve-name.ps1`, `get-nameindex.ps1`, and `get-namedlocationreport.ps1`.
+
 **Not covered**: How name resolution is consumed by `Get-Session`, `Get-EntityState`, or `Resolve-Narrator` — see [SESSIONS.md](SESSIONS.md) and [ENTITIES.md](ENTITIES.md).
 
 ---
@@ -155,7 +157,7 @@ Built lazily — only if at least 1 token key exists. `Search-BKTree` handles a 
 | `Resolve-Name` | 4-stage lookup pipeline |
 | `Get-DeclensionStem` | Strips Polish case suffixes |
 | `Get-StemAlternationCandidates` | Reverses Polish consonant mutations |
-| `Get-LevenshteinDistance` | Two-row matrix edit distance |
+| `Get-LevenshteinDistance` | Two-row matrix edit distance (from `string-helpers.ps1`) |
 | `Test-TypeFilter` | Nested closure capturing `-OwnerType` filter |
 
 ### 5.2 Parameters

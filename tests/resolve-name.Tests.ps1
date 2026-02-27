@@ -160,4 +160,48 @@ Describe 'Resolve-Name' {
         $Cache.ContainsKey('Xeron') | Should -BeTrue
         $Cache.ContainsKey('Xeron|Lokacja') | Should -BeTrue
     }
+
+    It 'resolves entity name with Polish diacritics via exact match' {
+        # Build an index with diacritics names
+        $DiEntities = Get-Entity -Path (Join-Path $script:FixturesRoot 'entities-unicode-names.md')
+        $DiIdx = Get-NameIndex -Players @() -Entities $DiEntities
+        $Result = Resolve-Name -Query 'Śćiółka Żółwia' -Index $DiIdx.Index -StemIndex $DiIdx.StemIndex -BKTree $DiIdx.BKTree -Cache @{}
+        $Result | Should -Not -BeNullOrEmpty
+        $Result.Name | Should -Be 'Śćiółka Żółwia'
+    }
+
+    It 'resolves entity by alias with diacritics' {
+        $DiEntities = Get-Entity -Path (Join-Path $script:FixturesRoot 'entities-unicode-names.md')
+        $DiIdx = Get-NameIndex -Players @() -Entities $DiEntities
+        $Result = Resolve-Name -Query 'Źrebak Ćmy' -Index $DiIdx.Index -StemIndex $DiIdx.StemIndex -BKTree $DiIdx.BKTree -Cache @{}
+        $Result | Should -Not -BeNullOrEmpty
+        $Result.Name | Should -Be 'Śćiółka Żółwia'
+    }
+
+    It 'resolves very short name (3 chars)' {
+        $Result = Resolve-Name -Query 'Kyr' -Index $script:NameIdx.Index -StemIndex $script:NameIdx.StemIndex -BKTree $script:NameIdx.BKTree -Cache @{}
+        $Result | Should -Not -BeNullOrEmpty
+    }
+
+    It 'returns null for empty query string' {
+        $Result = Resolve-Name -Query '' -Index $script:NameIdx.Index -StemIndex $script:NameIdx.StemIndex -BKTree $script:NameIdx.BKTree -Cache @{}
+        $Result | Should -BeNullOrEmpty
+    }
+
+    It 'resolves fuzzy match with BK-tree for minor typo' {
+        $Result = Resolve-Name -Query 'Xeron Demonlors' -Index $script:NameIdx.Index -StemIndex $script:NameIdx.StemIndex -BKTree $script:NameIdx.BKTree -Cache @{}
+        $Result | Should -Not -BeNullOrEmpty
+        $Result.Name | Should -Be 'Xeron Demonlord'
+    }
+
+    It 'resolves fuzzy match with missing letter' {
+        $Result = Resolve-Name -Query 'Xeron Demonlor' -Index $script:NameIdx.Index -StemIndex $script:NameIdx.StemIndex -BKTree $script:NameIdx.BKTree -Cache @{}
+        $Result | Should -Not -BeNullOrEmpty
+        $Result.Name | Should -Be 'Xeron Demonlord'
+    }
+
+    It 'does not resolve completely unrelated string' {
+        $Result = Resolve-Name -Query 'ZupełnieInneImię12345' -Index $script:NameIdx.Index -StemIndex $script:NameIdx.StemIndex -BKTree $script:NameIdx.BKTree -Cache @{}
+        $Result | Should -BeNullOrEmpty
+    }
 }

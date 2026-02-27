@@ -110,6 +110,166 @@ Plain URL: https://example.com/no-header
             $Result.Sections[0].Content | Should -Match 'First line\.'
             $Result.Sections[0].Content | Should -Match 'One bullet'
         }
+
+        It 'handles deeply nested headers (h1 through h5)' {
+            $FilePath = Join-Path $script:TempRoot 'deep-headers.md'
+            $Content = @'
+# Level 1
+## Level 2
+### Level 3
+#### Level 4
+##### Level 5
+Some content.
+'@
+            [System.IO.File]::WriteAllText($FilePath, $Content, [System.Text.UTF8Encoding]::new($false))
+
+            $Result = & $script:ParserPath $FilePath
+            $Result.Headers.Count | Should -Be 5
+            $Result.Headers[4].Level | Should -Be 5
+            $Result.Headers[4].Text | Should -Be 'Level 5'
+            $Result.Headers[4].ParentHeader.Text | Should -Be 'Level 4'
+        }
+
+        It 'handles header with Polish diacritics' {
+            $FilePath = Join-Path $script:TempRoot 'unicode-headers.md'
+            $Content = @'
+# Główna Sekcja
+## Żółwie Ćwiartki
+Treść z ąęćłńóśźż.
+'@
+            [System.IO.File]::WriteAllText($FilePath, $Content, [System.Text.UTF8Encoding]::new($false))
+
+            $Result = & $script:ParserPath $FilePath
+            $Result.Headers.Count | Should -Be 2
+            $Result.Headers[0].Text | Should -Be 'Główna Sekcja'
+            $Result.Headers[1].Text | Should -Be 'Żółwie Ćwiartki'
+        }
+
+        It 'handles multiple code fences without picking up false headers' {
+            $FilePath = Join-Path $script:TempRoot 'multi-fence.md'
+            $Content = @'
+# Real Header
+```
+## Fake Header 1
+```
+Some text.
+```markdown
+## Fake Header 2
+```
+## Real Header 2
+'@
+            [System.IO.File]::WriteAllText($FilePath, $Content, [System.Text.UTF8Encoding]::new($false))
+
+            $Result = & $script:ParserPath $FilePath
+            $RealHeaders = $Result.Headers | ForEach-Object { $_.Text }
+            $RealHeaders | Should -Contain 'Real Header'
+            $RealHeaders | Should -Contain 'Real Header 2'
+            $RealHeaders | Should -Not -Contain 'Fake Header 1'
+            $RealHeaders | Should -Not -Contain 'Fake Header 2'
+        }
+
+        It 'handles file with only headers and no content' {
+            $FilePath = Join-Path $script:TempRoot 'only-headers.md'
+            $Content = @'
+# First
+## Second
+### Third
+'@
+            [System.IO.File]::WriteAllText($FilePath, $Content, [System.Text.UTF8Encoding]::new($false))
+
+            $Result = & $script:ParserPath $FilePath
+            $Result.Headers.Count | Should -Be 3
+            $Result.Lists.Count | Should -Be 0
+            $Result.Links.Count | Should -Be 0
+        }
+
+        It 'handles deeply nested list items (4 levels)' {
+            $FilePath = Join-Path $script:TempRoot 'deep-lists.md'
+            $Content = @'
+# Tasks
+- Level 0
+   - Level 1
+      - Level 2
+         - Level 3
+'@
+            [System.IO.File]::WriteAllText($FilePath, $Content, [System.Text.UTF8Encoding]::new($false))
+
+            $Result = & $script:ParserPath $FilePath
+            $Result.Lists.Count | Should -Be 4
+            $Result.Lists[3].Indent | Should -BeGreaterThan $Result.Lists[2].Indent
+        }
+
+        It 'handles multiple links on the same line' {
+            $FilePath = Join-Path $script:TempRoot 'multi-link.md'
+            $Content = @'
+# Links
+[A](https://example.com/a) text [B](https://example.com/b) and https://example.com/c
+'@
+            [System.IO.File]::WriteAllText($FilePath, $Content, [System.Text.UTF8Encoding]::new($false))
+
+            $Result = & $script:ParserPath $FilePath
+            $LinkUrls = $Result.Links | ForEach-Object { $_.Url }
+            $LinkUrls | Should -Contain 'https://example.com/a'
+            $LinkUrls | Should -Contain 'https://example.com/b'
+            $LinkUrls | Should -Contain 'https://example.com/c'
+        }
+
+        It 'handles sibling headers at same level (no nesting)' {
+            $FilePath = Join-Path $script:TempRoot 'siblings.md'
+            $Content = @'
+## Sekcja A
+Content A
+## Sekcja B
+Content B
+## Sekcja C
+Content C
+'@
+            [System.IO.File]::WriteAllText($FilePath, $Content, [System.Text.UTF8Encoding]::new($false))
+
+            $Result = & $script:ParserPath $FilePath
+            $Result.Headers.Count | Should -Be 3
+            $Result.Sections.Count | Should -Be 3
+            foreach ($hdr in $Result.Headers) {
+                $hdr.ParentHeader | Should -BeNullOrEmpty
+            }
+        }
+
+        It 'content before first header goes into root section' {
+            $FilePath = Join-Path $script:TempRoot 'pre-header.md'
+            $Content = @'
+Intro text before any header.
+# First Header
+Content after.
+'@
+            [System.IO.File]::WriteAllText($FilePath, $Content, [System.Text.UTF8Encoding]::new($false))
+
+            $Result = & $script:ParserPath $FilePath
+            $RootSection = $Result.Sections | Where-Object { $null -eq $_.Header }
+            $RootSection | Should -Not -BeNullOrEmpty
+            $RootSection.Content | Should -Match 'Intro text'
+        }
+
+        It 'handles blank lines between sections' {
+            $FilePath = Join-Path $script:TempRoot 'blank-lines.md'
+            $Content = @"
+# Header One
+
+
+Some content after blank lines.
+
+
+## Header Two
+
+
+More content.
+
+"@
+            [System.IO.File]::WriteAllText($FilePath, $Content, [System.Text.UTF8Encoding]::new($false))
+
+            $Result = & $script:ParserPath $FilePath
+            $Result.Headers.Count | Should -Be 2
+            $Result.Sections.Count | Should -Be 2
+        }
     }
 }
 

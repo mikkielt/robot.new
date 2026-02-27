@@ -83,17 +83,8 @@ Describe 'Currency entity creation via Resolve-EntityTarget' {
 Describe 'Currency @ilość tag update via Set-EntityTag' {
     It 'updates @ilość value on existing currency entity' {
         $EntFile = Join-Path $script:TempRoot 'currency-update.md'
-        Write-TestFile -Path $EntFile -Content @'
-## Gracz
-
-## Postać (Gracz)
-
-## Przedmiot
-
-* Korony Elanckie
-    - @ilość: 50
-    - @należy_do: Erdamon
-'@
+        $FixtureSrc = Join-Path $PSScriptRoot 'fixtures/entities-currency-update.md'
+        [System.IO.File]::Copy($FixtureSrc, $EntFile, $true)
 
         $Target = Resolve-EntityTarget -FilePath $EntFile `
             -EntityType 'Przedmiot' -EntityName 'Korony Elanckie'

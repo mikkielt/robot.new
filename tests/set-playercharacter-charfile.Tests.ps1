@@ -21,33 +21,10 @@ BeforeAll {
         [System.IO.File]::WriteAllText($Path, $Content, [System.Text.UTF8Encoding]::new($false))
     }
 
-    $script:CharFileTemplate = @'
-**Karta Postaci:** https://example.com/sheet
-
-**Tematy zastrzeżone:**
-Brak.
-
-**Stan:**
-Zdrowy.
-
-**Przedmioty specjalne:**
-Brak.
-
-**Reputacja:**
-- Pozytywna:
-- Neutralna: Deyja, Erathia
-- Negatywna:
-
-**Dodatkowe informacje:**
-- Brak.
-
-**Opisane sesje:**
-
-[[_TOC_]]
-
-### 2025-01-15, Test session, Narrator
-Content...
-'@
+    $script:CharFileTemplate = [System.IO.File]::ReadAllText(
+        (Join-Path $PSScriptRoot 'fixtures/charfile-set-pc.md'),
+        [System.Text.UTF8Encoding]::new($false)
+    )
 }
 
 AfterAll {
@@ -120,8 +97,8 @@ Describe 'Write-CharacterFileSection' {
             Write-CharacterFileSection -Lines $Lines -SectionName 'Dodatkowe informacje' -NewContent @('- New info entry.')
 
             $Content = [string]::Join("`n", $Lines)
-            $Content | Should -Match '### 2025-01-15, Test session, Narrator'
-            $Content | Should -Match 'Content\.\.\.'
+            $Content | Should -Match '### 2025-01-15, Sesja testowa, Solmyr'
+            $Content | Should -Match 'Treść sesji\.\.\.'
         }
     }
 

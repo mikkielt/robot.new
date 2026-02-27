@@ -269,3 +269,142 @@ Describe 'ConvertTo-SessionMetadata' {
         }
     }
 }
+
+Describe 'ConvertTo-Gen4MetadataBlock — edge cases' {
+    It 'renders single Lokacja item' {
+        $Result = ConvertTo-Gen4MetadataBlock -Tag 'Lokacje' -Items @('Steadwick') -NL $script:NL
+        $Lines = $Result -split "`n"
+        $Lines.Count | Should -Be 2
+        $Lines[0] | Should -Be '- @Lokacje:'
+        $Lines[1] | Should -Be '    - Steadwick'
+    }
+
+    It 'renders many Lokacja items (5)' {
+        $Items = @('Erathia', 'Steadwick', 'Tatalia', 'Nighon', 'Eeofol')
+        $Result = ConvertTo-Gen4MetadataBlock -Tag 'Lokacje' -Items $Items -NL $script:NL
+        $Lines = $Result -split "`n"
+        $Lines.Count | Should -Be 6
+        $Lines[5] | Should -Be '    - Eeofol'
+    }
+
+    It 'renders Lokacja with Polish diacritics' {
+        $Items = @('Królestwo Żółwi', 'Świątynia Ćwierci')
+        $Result = ConvertTo-Gen4MetadataBlock -Tag 'Lokacje' -Items $Items -NL $script:NL
+        $Lines = $Result -split "`n"
+        $Lines[1] | Should -Be '    - Królestwo Żółwi'
+        $Lines[2] | Should -Be '    - Świątynia Ćwierci'
+    }
+
+    It 'renders PU with zero value' {
+        $Items = @([PSCustomObject]@{ Character = 'Biedak'; Value = 0 })
+        $Result = ConvertTo-Gen4MetadataBlock -Tag 'PU' -Items $Items -NL $script:NL
+        $Lines = $Result -split "`n"
+        $Lines[1] | Should -Be '    - Biedak: 0'
+    }
+
+    It 'renders PU with high decimal precision' {
+        $Items = @([PSCustomObject]@{ Character = 'Precyzyjny'; Value = 0.125 })
+        $Result = ConvertTo-Gen4MetadataBlock -Tag 'PU' -Items $Items -NL $script:NL
+        $Lines = $Result -split "`n"
+        $Lines[1] | Should -Be '    - Precyzyjny: 0.125'
+    }
+
+    It 'renders Zmiany entity with no tags as empty entity block' {
+        $Items = @(
+            [PSCustomObject]@{
+                EntityName = 'NiepełnaEncja'
+                Tags = @()
+            }
+        )
+        $Result = ConvertTo-Gen4MetadataBlock -Tag 'Zmiany' -Items $Items -NL $script:NL
+        $Lines = $Result -split "`n"
+        $Lines[0] | Should -Be '- @Zmiany:'
+        $Lines[1] | Should -Be '    - NiepełnaEncja'
+    }
+
+    It 'renders Zmiany with multiple entities' {
+        $Items = @(
+            [PSCustomObject]@{
+                EntityName = 'Bohater Alfa'
+                Tags = @([PSCustomObject]@{ Tag = '@lokacja'; Value = 'Erathia' })
+            },
+            [PSCustomObject]@{
+                EntityName = 'Bohater Beta'
+                Tags = @([PSCustomObject]@{ Tag = '@status'; Value = 'Nieaktywny' })
+            },
+            [PSCustomObject]@{
+                EntityName = 'Bohater Gamma'
+                Tags = @(
+                    [PSCustomObject]@{ Tag = '@lokacja'; Value = 'Nighon' }
+                    [PSCustomObject]@{ Tag = '@grupa'; Value = 'Podziemni' }
+                )
+            }
+        )
+        $Result = ConvertTo-Gen4MetadataBlock -Tag 'Zmiany' -Items $Items -NL $script:NL
+        $Lines = $Result -split "`n"
+        $EntityLines = $Lines | Where-Object { $_ -match '^\s{4}-\s\S' }
+        $EntityLines.Count | Should -Be 3
+    }
+
+    It 'renders Intel with Polish diacritics in message' {
+        $Items = @(
+            [PSCustomObject]@{ RawTarget = 'Źródło'; Message = 'Wiadomość ze znakami ąęćłńóśźż' }
+        )
+        $Result = ConvertTo-Gen4MetadataBlock -Tag 'Intel' -Items $Items -NL $script:NL
+        $Lines = $Result -split "`n"
+        $Lines[1] | Should -Be '    - Źródło: Wiadomość ze znakami ąęćłńóśźż'
+    }
+
+    It 'renders multiple log URLs' {
+        $Items = @(
+            'https://example.com/log1',
+            'https://example.com/log2',
+            'https://example.com/log3',
+            'https://example.com/log4'
+        )
+        $Result = ConvertTo-Gen4MetadataBlock -Tag 'Logi' -Items $Items -NL $script:NL
+        $Lines = $Result -split "`n"
+        $Lines.Count | Should -Be 5
+        $Lines[4] | Should -Be '    - https://example.com/log4'
+    }
+}
+
+Describe 'ConvertTo-SessionMetadata — partial blocks' {
+    It 'renders only Zmiany and Intel when others are empty' {
+        $Changes = @([PSCustomObject]@{
+            EntityName = 'Xeron'
+            Tags = @([PSCustomObject]@{ Tag = '@status'; Value = 'Usunięty' })
+        })
+        $Intel = @([PSCustomObject]@{ RawTarget = 'Rion'; Message = 'Alert' })
+
+        $Result = ConvertTo-SessionMetadata `
+            -Locations $null `
+            -Logs $null `
+            -PU $null `
+            -Changes $Changes `
+            -Intel $Intel `
+            -NL $script:NL
+
+        $Result | Should -BeLike '*@Zmiany:*'
+        $Result | Should -BeLike '*@Intel:*'
+        $Result | Should -Not -BeLike '*@Lokacje:*'
+        $Result | Should -Not -BeLike '*@Logi:*'
+        $Result | Should -Not -BeLike '*@PU:*'
+    }
+
+    It 'renders only Logi when other blocks are null' {
+        $Logs = @('https://example.com/only-log')
+
+        $Result = ConvertTo-SessionMetadata `
+            -Locations $null `
+            -Logs $Logs `
+            -PU $null `
+            -Changes $null `
+            -Intel $null `
+            -NL $script:NL
+
+        $Result | Should -BeLike '*@Logi:*'
+        $Result | Should -Not -BeLike '*@Lokacje:*'
+        $Result | Should -Not -BeLike '*@PU:*'
+    }
+}

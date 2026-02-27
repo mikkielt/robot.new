@@ -9,143 +9,13 @@
 #>
 
 BeforeAll {
-    $script:ModuleRoot = Split-Path $PSScriptRoot -Parent
-    . "$script:ModuleRoot/charfile-helpers.ps1"
+    . "$PSScriptRoot/TestHelpers.ps1"
+    . (Join-Path $script:ModuleRoot 'charfile-helpers.ps1')
 
-    $script:TempRoot = Join-Path ([System.IO.Path]::GetTempPath()) ("robot-charfile-" + [System.Guid]::NewGuid().ToString('N'))
-    [void][System.IO.Directory]::CreateDirectory($script:TempRoot)
-
-    function script:Write-TestFile {
-        param([string]$Path, [string]$Content)
-        [System.IO.File]::WriteAllText($Path, $Content, [System.Text.UTF8Encoding]::new($false))
-    }
-
-    # Full character file fixture
-    $script:FullCharFile = Join-Path $script:TempRoot 'FullChar.md'
-    Write-TestFile -Path $script:FullCharFile -Content @'
-**Karta Postaci:** https://example.com/sheet
-
-**Tematy zastrzeżone:**
-- Amputacja kończyn. Nie pod względem gore, co impaktu na późniejsze życie.
-
-**Stan:**
-- Dużo blizn po strzałach, poza tym zdrowy.
-
-**Przedmioty specjalne:**
-- Magiczny miecz - ostrze ze srebra
-- Tarcza ognia - z rubinowym wgłębieniem
-
-**Reputacja:**
-- Pozytywna:
-    - Erathia (pomógł w obronie)
-    - Steadwick
-- Neutralna: Deyja, Mythar, Enroth
-- Negatywna:
-    - Nighon: zabiła Thant
-    - Nithal
-
-**Dodatkowe informacje:**
-- Ma bliznę na lewym policzku.
-- Członek organizacji AV.
-
-**Opisane sesje:**
-
-[[_TOC_]]
-
-### 2025-01-15, Testowa sesja, Narrator
-Treść sesji...
-
-### 2025-02-20, Druga sesja, InnyNarrator
-Inna treść...
-'@
-
-    # Template/empty character file fixture
-    $script:EmptyCharFile = Join-Path $script:TempRoot 'EmptyChar.md'
-    Write-TestFile -Path $script:EmptyCharFile -Content @'
-**Karta Postaci:** <TU_WKLEJAMY_LINK>
-
-**Tematy zastrzeżone:**
-brak
-
-**Stan:**
-Zdrowy.
-
-**Przedmioty specjalne:**
-Brak.
-
-**Reputacja:**
-- Pozytywna:
-- Neutralna: Deyja, Erathia, Mythar, Mirvenis-Adur, Thuzal, Nithal, Werbin, NH, Steadwick, Enroth
-- Negatywna:
-
-**Dodatkowe informacje:**
-- Brak.
-
-**Opisane sesje:**
-
-[[_TOC_]]
-'@
-
-    # Angle-bracket URL fixture
-    $script:AngleBracketFile = Join-Path $script:TempRoot 'AngleBracket.md'
-    Write-TestFile -Path $script:AngleBracketFile -Content @'
-**Karta Postaci:** <https://docs.google.com/document/d/abc123>
-
-**Tematy zastrzeżone:**
-Brak.
-
-**Stan:**
-Zdrowy.
-
-**Przedmioty specjalne:**
-Brak.
-
-**Reputacja:**
-- Pozytywna: -
-- Neutralna: Deyja
-- Negatywna: -
-
-**Dodatkowe informacje:**
-Brak.
-
-**Opisane sesje**
-
-[[_TOC_]]
-'@
-
-    # Multi-line Stan fixture (Harume-style)
-    $script:MultiLineStanFile = Join-Path $script:TempRoot 'MultiLineStan.md'
-    Write-TestFile -Path $script:MultiLineStanFile -Content @'
-**Karta Postaci:** https://example.com/sheet
-
-**Tematy zastrzeżone:**
-Brak.
-
-**Stan:**
-- Zginęła podczas potyczki.
-Modlesius walnął ją piorunem i tyle pamięta. Ukradł jej 1/3 duszy.
-
-**Przedmioty specjalne:**
-Brak.
-
-**Reputacja:**
-- Pozytywna:
-- Neutralna: Deyja
-- Negatywna:
-
-**Dodatkowe informacje:**
-- Brak.
-
-**Opisane sesje:**
-
-[[_TOC_]]
-'@
-}
-
-AfterAll {
-    if ($script:TempRoot -and [System.IO.Directory]::Exists($script:TempRoot)) {
-        [System.IO.Directory]::Delete($script:TempRoot, $true)
-    }
+    $script:FullCharFile = Join-Path $script:FixturesRoot 'charfile-full.md'
+    $script:EmptyCharFile = Join-Path $script:FixturesRoot 'charfile-empty.md'
+    $script:AngleBracketFile = Join-Path $script:FixturesRoot 'charfile-anglebracket.md'
+    $script:MultiLineStanFile = Join-Path $script:FixturesRoot 'charfile-multilinestan.md'
 }
 
 Describe 'Read-CharacterFile' {
@@ -155,28 +25,28 @@ Describe 'Read-CharacterFile' {
         }
 
         It 'parses CharacterSheet URL' {
-            $script:Result.CharacterSheet | Should -Be 'https://example.com/sheet'
+            $script:Result.CharacterSheet | Should -Be 'https://example.com/xeron-sheet'
         }
 
         It 'parses RestrictedTopics' {
-            $script:Result.RestrictedTopics | Should -BeLike '*Amputacja*'
+            $script:Result.RestrictedTopics | Should -BeLike '*Tortury*'
         }
 
         It 'parses Condition' {
-            $script:Result.Condition | Should -BeLike '*blizn*'
+            $script:Result.Condition | Should -BeLike '*Blizny*'
         }
 
         It 'parses SpecialItems' {
             $script:Result.SpecialItems.Count | Should -Be 2
-            $script:Result.SpecialItems[0] | Should -BeLike '*Magiczny miecz*'
-            $script:Result.SpecialItems[1] | Should -BeLike '*Tarcza ognia*'
+            $script:Result.SpecialItems[0] | Should -BeLike '*Miecz Piekielny*'
+            $script:Result.SpecialItems[1] | Should -BeLike '*Tarcza Demoniczna*'
         }
 
         It 'parses Reputation.Positive' {
             $script:Result.Reputation.Positive.Count | Should -Be 2
-            $script:Result.Reputation.Positive[0].Location | Should -Be 'Erathia'
-            $script:Result.Reputation.Positive[0].Detail | Should -BeLike '*obronie*'
-            $script:Result.Reputation.Positive[1].Location | Should -Be 'Steadwick'
+            $script:Result.Reputation.Positive[0].Location | Should -Be 'Eeofol'
+            $script:Result.Reputation.Positive[0].Detail | Should -BeLike '*Kreegany*'
+            $script:Result.Reputation.Positive[1].Location | Should -Be 'Nighon'
         }
 
         It 'parses Reputation.Neutral inline' {
@@ -186,8 +56,8 @@ Describe 'Read-CharacterFile' {
 
         It 'parses Reputation.Negative with detail' {
             $script:Result.Reputation.Negative.Count | Should -Be 2
-            $script:Result.Reputation.Negative[0].Location | Should -Be 'Nighon'
-            $script:Result.Reputation.Negative[0].Detail | Should -BeLike '*Thant*'
+            $script:Result.Reputation.Negative[0].Location | Should -Be 'AvLee'
+            $script:Result.Reputation.Negative[0].Detail | Should -BeLike '*las elfów*'
         }
 
         It 'parses AdditionalNotes' {
@@ -197,8 +67,8 @@ Describe 'Read-CharacterFile' {
 
         It 'parses DescribedSessions' {
             $script:Result.DescribedSessions.Count | Should -Be 2
-            $script:Result.DescribedSessions[0].Title | Should -BeLike '*Testowa sesja*'
-            $script:Result.DescribedSessions[0].Narrator | Should -Be 'Narrator'
+            $script:Result.DescribedSessions[0].Title | Should -BeLike '*Bitwa o Eeofol*'
+            $script:Result.DescribedSessions[0].Narrator | Should -Be 'Solmyr'
             $script:Result.DescribedSessions[0].Date | Should -Be ([datetime]::ParseExact('2025-01-15', 'yyyy-MM-dd', $null))
         }
     }
@@ -228,7 +98,7 @@ Describe 'Read-CharacterFile' {
     Context 'Angle-bracket URL' {
         It 'strips angle brackets from CharacterSheet URL' {
             $Result = Read-CharacterFile -Path $script:AngleBracketFile
-            $Result.CharacterSheet | Should -Be 'https://docs.google.com/document/d/abc123'
+            $Result.CharacterSheet | Should -Be 'https://docs.google.com/document/d/kyrre-ranger-sheet'
         }
 
         It 'handles dash-only reputation tiers' {
@@ -241,14 +111,14 @@ Describe 'Read-CharacterFile' {
     Context 'Multi-line Stan' {
         It 'joins multi-line condition text' {
             $Result = Read-CharacterFile -Path $script:MultiLineStanFile
-            $Result.Condition | Should -BeLike '*Zginęła*'
-            $Result.Condition | Should -BeLike '*duszy*'
+            $Result.Condition | Should -BeLike '*Pokonany*'
+            $Result.Condition | Should -BeLike '*nekromancji*'
         }
     }
 
     Context 'Non-existent file' {
         It 'returns null for missing file' {
-            $Result = Read-CharacterFile -Path (Join-Path $script:TempRoot 'nonexistent.md')
+            $Result = Read-CharacterFile -Path (Join-Path $script:FixturesRoot 'nonexistent-charfile-xyz.md')
             $Result | Should -BeNullOrEmpty
         }
     }
@@ -322,5 +192,96 @@ Describe 'Format-ReputationSection' {
         $Result[0] | Should -Be '- Pozytywna: '
         $Result[1] | Should -Be '- Neutralna: '
         $Result[2] | Should -Be '- Negatywna: '
+    }
+}
+
+Describe 'Read-CharacterFile — rich character file' {
+    BeforeAll {
+        $script:Result = Read-CharacterFile -Path (Join-Path $script:FixturesRoot 'charfile-rich.md')
+    }
+
+    It 'parses multiple restricted topics' {
+        $script:Result.RestrictedTopics | Should -BeLike '*Nekromancja*'
+        $script:Result.RestrictedTopics | Should -BeLike '*Tortury*'
+    }
+
+    It 'parses five special items' {
+        $script:Result.SpecialItems.Count | Should -Be 5
+    }
+
+    It 'parses three positive reputation entries' {
+        $script:Result.Reputation.Positive.Count | Should -Be 3
+    }
+
+    It 'parses five neutral reputation entries inline' {
+        $script:Result.Reputation.Neutral.Count | Should -Be 5
+    }
+
+    It 'parses two negative reputation entries with details' {
+        $script:Result.Reputation.Negative.Count | Should -Be 2
+        $script:Result.Reputation.Negative[0].Detail | Should -BeLike '*spalił las*'
+    }
+
+    It 'parses three additional notes' {
+        $script:Result.AdditionalNotes.Count | Should -Be 3
+    }
+
+    It 'parses five described sessions' {
+        $script:Result.DescribedSessions.Count | Should -Be 5
+    }
+
+    It 'parses described sessions with different narrators' {
+        $Narrators = $script:Result.DescribedSessions | ForEach-Object { $_.Narrator } | Sort-Object -Unique
+        $Narrators.Count | Should -BeGreaterOrEqual 2
+    }
+}
+
+Describe 'Read-CharacterFile — unicode content' {
+    BeforeAll {
+        $script:Result = Read-CharacterFile -Path (Join-Path $script:FixturesRoot 'charfile-unicode.md')
+    }
+
+    It 'parses restricted topics with diacritics' {
+        $script:Result.RestrictedTopics | Should -BeLike '*Śmierć*'
+    }
+
+    It 'parses condition with diacritics and multi-line' {
+        $script:Result.Condition | Should -BeLike '*Złamana noga*'
+        $script:Result.Condition | Should -BeLike '*żeber*'
+    }
+
+    It 'parses special items with diacritics' {
+        $script:Result.SpecialItems.Count | Should -Be 2
+        $script:Result.SpecialItems[0] | Should -BeLike '*Różdżka*'
+    }
+
+    It 'parses reputation with location diacritics' {
+        $script:Result.Reputation.Positive[0].Location | Should -Be 'Łąka Ościennych'
+    }
+}
+
+Describe 'Read-CharacterFile — missing sections' {
+    BeforeAll {
+        $script:Result = Read-CharacterFile -Path (Join-Path $script:FixturesRoot 'charfile-missing-sections.md')
+    }
+
+    It 'parses file with missing SpecialItems section' {
+        $script:Result | Should -Not -BeNullOrEmpty
+    }
+
+    It 'parses CharacterSheet URL even without other sections' {
+        $script:Result.CharacterSheet | Should -Be 'https://example.com/missing-sections'
+    }
+}
+
+Describe 'Read-CharacterFile — empty reputation tiers' {
+    BeforeAll {
+        $script:Result = Read-CharacterFile -Path (Join-Path $script:FixturesRoot 'charfile-empty-reputation.md')
+    }
+
+    It 'handles all empty reputation tiers' {
+        $script:Result.Reputation.Positive.Count | Should -Be 0
+        $script:Result.Reputation.Neutral.Count | Should -Be 0
+        $script:Result.Reputation.Negative.Count | Should -Be 0
     }
 }

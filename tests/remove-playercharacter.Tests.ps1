@@ -35,19 +35,8 @@ AfterAll {
 Describe 'Remove-PlayerCharacter' {
     BeforeEach {
         $script:EntFile = Join-Path $script:TempRoot 'entities.md'
-        Write-TestFile -Path $script:EntFile -Content @'
-## Gracz
-
-* Kilgor
-
-## Postać (Gracz)
-
-* Erdamon
-    - @należy_do: Kilgor
-    - @pu_startowe: 20
-
-## Przedmiot
-'@
+        $FixtureSrc = Join-Path $PSScriptRoot 'fixtures/entities-remove-pc.md'
+        [System.IO.File]::Copy($FixtureSrc, $script:EntFile, $true)
     }
 
     It 'sets @status: Usunięty on the character entity' {

@@ -112,3 +112,128 @@ Describe 'Test-CurrencyReconciliation with @Transfer' {
         $Result | Should -Not -BeNullOrEmpty
     }
 }
+
+Describe 'Test-CurrencyReconciliation — edge cases' {
+    It 'handles zero balance entity without warnings' {
+        $TestEntities = @(
+            [PSCustomObject]@{
+                Name            = 'Korony Zerowe'
+                Type            = 'Przedmiot'
+                Owner           = 'Biedak'
+                Status          = 'Aktywny'
+                Quantity        = '0'
+                QuantityHistory = [System.Collections.Generic.List[object]]::new()
+                GenericNames    = [System.Collections.Generic.List[string]]@('Korony Elanckie')
+            }
+        )
+
+        $Result = Test-CurrencyReconciliation -Entities $TestEntities -Sessions @()
+        $NegWarnings = $Result.Warnings | Where-Object { $_.Check -eq 'NegativeBalance' }
+        $NegWarnings | Should -BeNullOrEmpty
+    }
+
+    It 'handles very large balance without warnings' {
+        $TestEntities = @(
+            [PSCustomObject]@{
+                Name            = 'Korony Bogacza'
+                Type            = 'Przedmiot'
+                Owner           = 'Kupiec Bogaty'
+                Status          = 'Aktywny'
+                Quantity        = '999999'
+                QuantityHistory = [System.Collections.Generic.List[object]]::new()
+                GenericNames    = [System.Collections.Generic.List[string]]@('Korony Elanckie')
+            }
+        )
+
+        $Result = Test-CurrencyReconciliation -Entities $TestEntities -Sessions @()
+        $NegWarnings = $Result.Warnings | Where-Object { $_.Check -eq 'NegativeBalance' }
+        $NegWarnings | Should -BeNullOrEmpty
+    }
+
+    It 'detects multiple negative balances' {
+        $TestEntities = @(
+            [PSCustomObject]@{
+                Name            = 'Korony Dłużnika A'
+                Type            = 'Przedmiot'
+                Owner           = 'Dłużnik A'
+                Status          = 'Aktywny'
+                Quantity        = '-50'
+                QuantityHistory = [System.Collections.Generic.List[object]]::new()
+                GenericNames    = [System.Collections.Generic.List[string]]@('Korony Elanckie')
+            },
+            [PSCustomObject]@{
+                Name            = 'Talary Dłużnika B'
+                Type            = 'Przedmiot'
+                Owner           = 'Dłużnik B'
+                Status          = 'Aktywny'
+                Quantity        = '-200'
+                QuantityHistory = [System.Collections.Generic.List[object]]::new()
+                GenericNames    = [System.Collections.Generic.List[string]]@('Talary Hirońskie')
+            }
+        )
+
+        $Result = Test-CurrencyReconciliation -Entities $TestEntities -Sessions @()
+        $NegWarnings = $Result.Warnings | Where-Object { $_.Check -eq 'NegativeBalance' }
+        $NegWarnings.Count | Should -Be 2
+    }
+
+    It 'handles empty entities list' {
+        $Result = Test-CurrencyReconciliation -Entities @() -Sessions @()
+        $Result | Should -Not -BeNullOrEmpty
+        $Result.EntityCount | Should -Be 0
+    }
+
+    It 'detects orphaned currency from Usunięty owner' {
+        $TestEntities = @(
+            [PSCustomObject]@{
+                Name            = 'Korony Umarłego'
+                Type            = 'Przedmiot'
+                Owner           = 'Martwy Rycerz'
+                Status          = 'Aktywny'
+                Quantity        = '500'
+                QuantityHistory = [System.Collections.Generic.List[object]]::new()
+                GenericNames    = [System.Collections.Generic.List[string]]@('Korony Elanckie')
+            },
+            [PSCustomObject]@{
+                Name            = 'Martwy Rycerz'
+                Type            = 'NPC'
+                Owner           = $null
+                Status          = 'Usunięty'
+                Quantity        = $null
+                QuantityHistory = [System.Collections.Generic.List[object]]::new()
+                GenericNames    = [System.Collections.Generic.List[string]]::new()
+            }
+        )
+
+        $Result = Test-CurrencyReconciliation -Entities $TestEntities -Sessions @()
+        $OrphanWarnings = $Result.Warnings | Where-Object { $_.Check -eq 'OrphanedCurrency' }
+        $OrphanWarnings | Should -Not -BeNullOrEmpty
+    }
+
+    It 'does not flag currency owned by Aktywny NPC as orphaned' {
+        $TestEntities = @(
+            [PSCustomObject]@{
+                Name            = 'Korony Żywego'
+                Type            = 'Przedmiot'
+                Owner           = 'Żywy Rycerz'
+                Status          = 'Aktywny'
+                Quantity        = '100'
+                QuantityHistory = [System.Collections.Generic.List[object]]::new()
+                GenericNames    = [System.Collections.Generic.List[string]]@('Korony Elanckie')
+            },
+            [PSCustomObject]@{
+                Name            = 'Żywy Rycerz'
+                Type            = 'NPC'
+                Owner           = $null
+                Status          = 'Aktywny'
+                Quantity        = $null
+                QuantityHistory = [System.Collections.Generic.List[object]]::new()
+                GenericNames    = [System.Collections.Generic.List[string]]::new()
+            }
+        )
+
+        $Result = Test-CurrencyReconciliation -Entities $TestEntities -Sessions @()
+        $OrphanWarnings = $Result.Warnings | Where-Object { $_.Check -eq 'OrphanedCurrency' }
+        $OrphanWarnings | Should -BeNullOrEmpty
+    }
+}

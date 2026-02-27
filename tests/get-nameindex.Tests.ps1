@@ -113,4 +113,83 @@ Describe 'Add-BKTreeNode and Search-BKTree' {
         $Results = Search-BKTree -Tree $Tree -Query 'Xxxxx' -Threshold 1
         ($Results | Where-Object { $_.Key -eq 'Aaaaa' }) | Should -BeNullOrEmpty
     }
+
+    It 'BK-tree handles single node tree' {
+        $Tree = @{ Key = 'Xeron'; Children = @{} }
+        $Results = Search-BKTree -Tree $Tree -Query 'Xeron' -Threshold 0
+        $Results.Count | Should -Be 1
+        $Results[0].Key | Should -Be 'Xeron'
+    }
+
+    It 'BK-tree returns empty for threshold 0 non-exact match' {
+        $Tree = @{ Key = 'Xeron'; Children = @{} }
+        $Results = Search-BKTree -Tree $Tree -Query 'Xeroni' -Threshold 0
+        $Results.Count | Should -Be 0
+    }
+
+    It 'BK-tree handles multiple insertions at same distance' {
+        $Tree = @{ Key = 'Aaa'; Children = @{} }
+        Add-BKTreeNode -Node $Tree -Key 'Bbb'
+        Add-BKTreeNode -Node $Tree -Key 'Ccc'
+        Add-BKTreeNode -Node $Tree -Key 'Ddd'
+        $Results = Search-BKTree -Tree $Tree -Query 'Aab' -Threshold 1
+        $ResultKeys = $Results | ForEach-Object { $_.Key }
+        $ResultKeys | Should -Contain 'Aaa'
+    }
+}
+
+Describe 'Get-NameIndex — many aliases entity' {
+    BeforeAll {
+        $script:ManyAliasEntities = Get-Entity -Path (Join-Path $script:FixturesRoot 'entities-many-aliases.md')
+        $script:ManyAliasIdx = Get-NameIndex -Players @() -Entities $script:ManyAliasEntities
+    }
+
+    It 'indexes all aliases from entity with six aliases' {
+        $script:ManyAliasIdx.Index.ContainsKey('Mistrz Szpiegów') | Should -BeTrue
+        $script:ManyAliasIdx.Index.ContainsKey('Cień Nighonu') | Should -BeTrue
+    }
+
+    It 'expired alias is still indexed' {
+        # Aliases with temporal validity are still in the entities file
+        $script:ManyAliasIdx.Index.ContainsKey('Szpieg Tunnelów') | Should -BeTrue
+    }
+}
+
+Describe 'Get-NameIndex — duplicate names across types' {
+    BeforeAll {
+        $script:DupEntities = Get-Entity -Path (Join-Path $script:FixturesRoot 'entities-duplicate-names.md')
+        $script:DupIdx = Get-NameIndex -Players @() -Entities $script:DupEntities
+    }
+
+    It 'indexes duplicate name (Złoty Smok appears as NPC and Lokacja and Organizacja)' {
+        $Entry = $script:DupIdx.Index['Złoty Smok']
+        $Entry | Should -Not -BeNullOrEmpty
+    }
+
+    It 'marks duplicate-name entry as ambiguous' {
+        $Entry = $script:DupIdx.Index['Złoty Smok']
+        $Entry.Ambiguous | Should -BeTrue
+    }
+}
+
+Describe 'Get-NameIndex — unicode names indexing' {
+    BeforeAll {
+        $script:UniEntities = Get-Entity -Path (Join-Path $script:FixturesRoot 'entities-unicode-names.md')
+        $script:UniIdx = Get-NameIndex -Players @() -Entities $script:UniEntities
+    }
+
+    It 'indexes names with Polish diacritics' {
+        $script:UniIdx.Index.ContainsKey('Śćiółka Żółwia') | Should -BeTrue
+        $script:UniIdx.Index.ContainsKey('Łącznik Ńewski') | Should -BeTrue
+    }
+
+    It 'case-insensitive lookup works with diacritics' {
+        $script:UniIdx.Index.ContainsKey('śćiółka żółwia') | Should -BeTrue
+    }
+
+    It 'BK-tree includes diacritic names' {
+        $Results = Search-BKTree -Tree $script:UniIdx.BKTree -Query 'Śćiółka Żółwia' -Threshold 0
+        $ResultKeys = $Results | ForEach-Object { $_.Key }
+        $ResultKeys | Should -Contain 'śćiółka żółwia'
+    }
 }

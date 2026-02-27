@@ -788,3 +788,237 @@ Describe 'Get-SessionMentions' {
         $Result[0].Name | Should -Be 'Xeron'
     }
 }
+
+Describe 'Get-Session — empty body sessions' {
+    BeforeAll {
+        $script:Sessions = Get-Session -File (Join-Path $script:FixturesRoot 'sessions-empty-body.md')
+    }
+
+    It 'parses session with metadata but no body text' {
+        $script:Sessions.Count | Should -Be 1
+    }
+
+    It 'has locations despite empty body' {
+        $script:Sessions[0].Locations | Should -Contain 'Erathia'
+    }
+
+    It 'has PU despite empty body' {
+        $script:Sessions[0].PU.Count | Should -Be 1
+        $script:Sessions[0].PU[0].Character | Should -Be 'Xeron Demonlord'
+    }
+}
+
+Describe 'Get-Session — no metadata sessions' {
+    BeforeAll {
+        $script:Sessions = Get-Session -File (Join-Path $script:FixturesRoot 'sessions-no-metadata.md')
+    }
+
+    It 'parses session without any metadata blocks' {
+        $script:Sessions.Count | Should -Be 1
+    }
+
+    It 'has empty locations list' {
+        $script:Sessions[0].Locations.Count | Should -Be 0
+    }
+
+    It 'has empty PU list' {
+        $script:Sessions[0].PU.Count | Should -Be 0
+    }
+
+    It 'preserves body content' {
+        $script:Sessions[0].Content | Should -BeLike '*przygodach w Eeofol*'
+    }
+}
+
+Describe 'Get-Session — Gen4 full metadata' {
+    BeforeAll {
+        $script:Sessions = Get-Session -File (Join-Path $script:FixturesRoot 'sessions-gen4-full.md')
+    }
+
+    It 'parses session with all Gen4 metadata blocks' {
+        $script:Sessions.Count | Should -Be 1
+    }
+
+    It 'parses multiple locations' {
+        $script:Sessions[0].Locations.Count | Should -Be 3
+        $script:Sessions[0].Locations | Should -Contain 'Erathia'
+        $script:Sessions[0].Locations | Should -Contain 'Ratusz Erathii'
+        $script:Sessions[0].Locations | Should -Contain 'Steadwick'
+    }
+
+    It 'parses PU for three characters' {
+        $script:Sessions[0].PU.Count | Should -Be 3
+    }
+
+    It 'parses multiple log URLs' {
+        $script:Sessions[0].LogUrls.Count | Should -Be 2
+    }
+
+    It 'parses @Zmiany with multiple entities' {
+        $script:Sessions[0].Changes | Should -Not -BeNullOrEmpty
+        $script:Sessions[0].Changes.Count | Should -BeGreaterOrEqual 3
+    }
+
+    It 'parses @Intel metadata' {
+        $script:Sessions[0].Intel | Should -Not -BeNullOrEmpty
+        $script:Sessions[0].Intel.Count | Should -BeGreaterOrEqual 3
+    }
+
+    It 'identifies Gen4 format' {
+        $script:Sessions[0].Format | Should -Be 'Gen4'
+    }
+}
+
+Describe 'Get-Session — date range sessions' {
+    BeforeAll {
+        $script:Sessions = Get-Session -File (Join-Path $script:FixturesRoot 'sessions-date-range.md')
+    }
+
+    It 'parses two date range sessions' {
+        $script:Sessions.Count | Should -Be 2
+    }
+
+    It 'parses date start for first session' {
+        $script:Sessions[0].Date | Should -Be ([datetime]::new(2024, 6, 15))
+    }
+
+    It 'parses date end for first session' {
+        $script:Sessions[0].DateEnd | Should -Be ([datetime]::new(2024, 6, 17))
+    }
+
+    It 'parses date range for second session' {
+        $script:Sessions[1].Date | Should -Be ([datetime]::new(2024, 7, 1))
+        $script:Sessions[1].DateEnd | Should -Be ([datetime]::new(2024, 7, 5))
+    }
+}
+
+Describe 'Get-Session — co-narrator sessions' {
+    BeforeAll {
+        $script:Sessions = Get-Session -File (Join-Path $script:FixturesRoot 'sessions-co-narrator.md')
+    }
+
+    It 'parses sessions with co-narrators' {
+        $script:Sessions.Count | Should -Be 2
+    }
+
+    It 'detects narrator from co-narrator header' {
+        $script:Sessions[0].Narrator | Should -Not -BeNullOrEmpty
+    }
+}
+
+Describe 'Get-Session — unicode session content' {
+    BeforeAll {
+        $script:Sessions = Get-Session -File (Join-Path $script:FixturesRoot 'sessions-unicode.md')
+    }
+
+    It 'parses sessions with Polish diacritics in titles' {
+        $script:Sessions.Count | Should -Be 2
+    }
+
+    It 'preserves diacritics in location names' {
+        $script:Sessions[0].Locations | Should -Contain 'Łąka Ościennych'
+    }
+
+    It 'preserves diacritics in body content' {
+        $script:Sessions[0].Content | Should -BeLike '*Śćiółka*'
+    }
+}
+
+Describe 'Get-Session — many sessions in one file' {
+    BeforeAll {
+        $script:Sessions = Get-Session -File (Join-Path $script:FixturesRoot 'sessions-many.md')
+    }
+
+    It 'parses all five sessions' {
+        $script:Sessions.Count | Should -Be 5
+    }
+
+    It 'sessions are in chronological order' {
+        for ($i = 1; $i -lt $script:Sessions.Count; $i++) {
+            $script:Sessions[$i].Date | Should -BeGreaterOrEqual $script:Sessions[$i - 1].Date
+        }
+    }
+
+    It 'each session has correct narrator' {
+        $script:Sessions[0].Narrator | Should -Be 'Solmyr'
+        $script:Sessions[1].Narrator | Should -Be 'Crag Hack'
+        $script:Sessions[2].Narrator | Should -Be 'Solmyr'
+    }
+
+    It 'fifth session has PU for three characters' {
+        $script:Sessions[4].PU.Count | Should -Be 3
+    }
+}
+
+Describe 'Get-Session — Gen2 multi-location italic' {
+    BeforeAll {
+        $script:Sessions = Get-Session -File (Join-Path $script:FixturesRoot 'sessions-gen2-multi-loc.md')
+    }
+
+    It 'parses Gen2 sessions with italic location lines' {
+        $script:Sessions.Count | Should -Be 2
+    }
+
+    It 'extracts multiple locations from italic line' {
+        $S = $script:Sessions | Where-Object { $_.Content -like '*Dracon podróżował*' }
+        $S | Should -Not -BeNullOrEmpty
+        $S.Locations.Count | Should -BeGreaterOrEqual 2
+    }
+
+    It 'identifies Gen2 format' {
+        $script:Sessions[0].Format | Should -Be 'Gen2'
+    }
+}
+
+Describe 'Get-Session — deep Zmiany' {
+    BeforeAll {
+        $script:Sessions = Get-Session -File (Join-Path $script:FixturesRoot 'sessions-deep-zmiany.md')
+    }
+
+    It 'parses session with many entity changes' {
+        $script:Sessions.Count | Should -Be 1
+        $script:Sessions[0].Changes.Count | Should -BeGreaterOrEqual 4
+    }
+
+    It 'parses @lokacja change in Zmiany' {
+        $OrrinChanges = $script:Sessions[0].Changes | Where-Object { $_.EntityName -eq 'Kupiec Orrin' }
+        $OrrinChanges | Should -Not -BeNullOrEmpty
+    }
+
+    It 'parses @status change in Zmiany' {
+        $ThantChanges = $script:Sessions[0].Changes | Where-Object { $_.EntityName -eq 'Thant' }
+        $ThantChanges | Should -Not -BeNullOrEmpty
+    }
+}
+
+Describe 'Get-Session — multi-Transfer' {
+    BeforeAll {
+        $script:Sessions = Get-Session -File (Join-Path $script:FixturesRoot 'sessions-multi-transfer.md')
+    }
+
+    It 'parses session with multiple @Transfer directives' {
+        $script:Sessions.Count | Should -Be 1
+        $script:Sessions[0].Transfers.Count | Should -Be 3
+    }
+
+    It 'parses first transfer correctly' {
+        $T = $script:Sessions[0].Transfers[0]
+        $T.Amount | Should -Be 20
+        $T.Source | Should -Be 'Dawca'
+        $T.Destination | Should -Be 'Odbiorca'
+    }
+
+    It 'parses second transfer correctly' {
+        $T = $script:Sessions[0].Transfers[1]
+        $T.Amount | Should -Be 15
+        $T.Source | Should -Be 'Dawca'
+        $T.Destination | Should -Be 'Trzeci'
+    }
+
+    It 'parses third transfer correctly' {
+        $T = $script:Sessions[0].Transfers[2]
+        $T.Amount | Should -Be 5
+        $T.Source | Should -Be 'Odbiorca'
+        $T.Destination | Should -Be 'Trzeci'
+    }
+}

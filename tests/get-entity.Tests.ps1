@@ -435,32 +435,273 @@ Describe 'Get-Entity with single file path' {
 
 Describe 'Get-Entity @drzwi and @typ parsing' {
     BeforeAll {
-        $script:TempDir = New-TestTempDir
-        $Content = @"
-## Lokacja
-
-* TestRoom
-    - @drzwi: MainHall (2024-01:)
-    - @typ: Dungeon (2024-01:)
-"@
-        $Path = Join-Path $script:TempDir 'ent-drzwi-typ.md'
-        [System.IO.File]::WriteAllText($Path, $Content)
-        $script:Entities = Get-Entity -Path $Path
-    }
-
-    AfterAll {
-        Remove-TestTempDir $script:TempDir
+        $script:Entities = Get-Entity -Path (Join-Path $script:FixturesRoot 'entities-drzwi-typ.md')
     }
 
     It 'parses @drzwi into DoorHistory' {
-        $Room = $script:Entities | Where-Object { $_.Name -eq 'TestRoom' }
+        $Room = $script:Entities | Where-Object { $_.Name -eq 'Komnata Prób' }
         $Room.DoorHistory.Count | Should -BeGreaterThan 0
-        $Room.DoorHistory[0].Location | Should -Be 'MainHall'
+        $Room.DoorHistory[0].Location | Should -Be 'Wielka Sala'
     }
 
     It 'parses @typ into TypeHistory' {
-        $Room = $script:Entities | Where-Object { $_.Name -eq 'TestRoom' }
+        $Room = $script:Entities | Where-Object { $_.Name -eq 'Komnata Prób' }
         $Room.TypeHistory.Count | Should -BeGreaterThan 0
-        $Room.TypeHistory[0].Type | Should -Be 'Dungeon'
+        $Room.TypeHistory[0].Type | Should -Be 'Loch'
+    }
+}
+
+Describe 'Get-Entity — unicode entity names' {
+    BeforeAll {
+        $script:Entities = Get-Entity -Path (Join-Path $script:FixturesRoot 'entities-unicode-names.md')
+    }
+
+    It 'parses entity with Polish diacritics in name' {
+        $E = $script:Entities | Where-Object { $_.Name -eq 'Śćiółka Żółwia' }
+        $E | Should -Not -BeNullOrEmpty
+        $E.Type | Should -Be 'NPC'
+    }
+
+    It 'parses alias with Polish diacritics' {
+        $E = $script:Entities | Where-Object { $_.Name -eq 'Śćiółka Żółwia' }
+        $E.Names | Should -Contain 'Źrebak Ćmy'
+    }
+
+    It 'parses location with Polish diacritics' {
+        $E = $script:Entities | Where-Object { $_.Name -eq 'Śćiółka Żółwia' }
+        $E.Location | Should -Be 'Łąka Ościennych'
+    }
+
+    It 'parses info with diacritics' {
+        $E = $script:Entities | Where-Object { $_.Name -eq 'Śćiółka Żółwia' }
+        $E.Overrides.ContainsKey('info') | Should -BeTrue
+    }
+
+    It 'parses all entities from unicode file' {
+        $script:Entities.Count | Should -Be 4
+    }
+}
+
+Describe 'Get-Entity — empty entity sections' {
+    BeforeAll {
+        $script:Entities = Get-Entity -Path (Join-Path $script:FixturesRoot 'entities-empty-sections.md')
+    }
+
+    It 'parses entities with no tags' {
+        $script:Entities.Count | Should -Be 3
+    }
+
+    It 'entities without tags default to Aktywny' {
+        foreach ($E in $script:Entities) {
+            $E.Status | Should -Be 'Aktywny'
+        }
+    }
+
+    It 'entities without tags have empty location history' {
+        foreach ($E in $script:Entities) {
+            $E.LocationHistory.Count | Should -Be 0
+        }
+    }
+}
+
+Describe 'Get-Entity — many aliases' {
+    BeforeAll {
+        $script:Entities = Get-Entity -Path (Join-Path $script:FixturesRoot 'entities-many-aliases.md')
+    }
+
+    It 'parses entity with many aliases' {
+        $E = $script:Entities | Where-Object { $_.Name -eq 'NPC z Aliasami' }
+        $E | Should -Not -BeNullOrEmpty
+        $E.Aliases.Count | Should -Be 6
+    }
+
+    It 'includes expired aliases in Names set' {
+        $E = $script:Entities | Where-Object { $_.Name -eq 'NPC z Aliasami' }
+        $E.Names | Should -Contain 'Stare Imię'
+    }
+
+    It 'includes current aliases in Names set' {
+        $E = $script:Entities | Where-Object { $_.Name -eq 'NPC z Aliasami' }
+        $E.Names | Should -Contain 'Alias Pierwszy'
+        $E.Names | Should -Contain 'Alias Piąty'
+    }
+
+    It 'filters aliases by ActiveOn date' {
+        $Entities = Get-Entity -Path (Join-Path $script:FixturesRoot 'entities-many-aliases.md') -ActiveOn ([datetime]::ParseExact('2023-12-15', 'yyyy-MM-dd', $null))
+        $E = $Entities | Where-Object { $_.Name -eq 'NPC z Aliasami' }
+        $E | Should -Not -BeNullOrEmpty
+    }
+}
+
+Describe 'Get-Entity — deep nested locations' {
+    BeforeAll {
+        $script:Entities = Get-Entity -Path (Join-Path $script:FixturesRoot 'entities-deep-locations.md')
+    }
+
+    It 'parses all locations from deep hierarchy' {
+        $script:Entities.Count | Should -Be 7
+    }
+
+    It 'builds 3-level deep CN for Ratusz Steadwicku' {
+        $E = $script:Entities | Where-Object { $_.Name -eq 'Ratusz Steadwicku' }
+        $E.CN | Should -BeLike 'Lokacja/Kontynent Antagarich/Królestwo Erathii/Miasto Steadwick/Ratusz Steadwicku'
+    }
+
+    It 'builds 3-level deep CN for Wieża Obserwacyjna' {
+        $E = $script:Entities | Where-Object { $_.Name -eq 'Wieża Obserwacyjna' }
+        $E.CN | Should -BeLike 'Lokacja/Kontynent Antagarich/Królestwo Erathii/Twierdza Gryfów/Wieża Obserwacyjna'
+    }
+
+    It 'parses @zawiera for mid-level locations' {
+        $E = $script:Entities | Where-Object { $_.Name -eq 'Miasto Steadwick' }
+        $E.Contains | Should -Contain 'Ratusz Steadwicku'
+        $E.Contains | Should -Contain 'Koszary Królewskie'
+    }
+
+    It 'builds top-level CN for root location' {
+        $E = $script:Entities | Where-Object { $_.Name -eq 'Kontynent Antagarich' }
+        $E.CN | Should -Be 'Lokacja/Kontynent Antagarich'
+    }
+}
+
+Describe 'Get-Entity — many groups' {
+    BeforeAll {
+        $script:Entities = Get-Entity -Path (Join-Path $script:FixturesRoot 'entities-many-groups.md')
+    }
+
+    It 'parses NPC with four group memberships' {
+        $E = $script:Entities | Where-Object { $_.Name -eq 'NPC z Wieloma Grupami' }
+        $E.GroupHistory.Count | Should -Be 4
+    }
+
+    It 'includes expired group in history' {
+        $E = $script:Entities | Where-Object { $_.Name -eq 'NPC z Wieloma Grupami' }
+        $Groups = $E.GroupHistory | ForEach-Object { $_.Group }
+        $Groups | Should -Contain 'Gildia Wojowników'
+    }
+
+    It 'includes all active groups' {
+        $E = $script:Entities | Where-Object { $_.Name -eq 'NPC z Wieloma Grupami' }
+        $Groups = $E.GroupHistory | ForEach-Object { $_.Group }
+        $Groups | Should -Contain 'Zakon Gryfów'
+        $Groups | Should -Contain 'Rada Starszych'
+        $Groups | Should -Contain 'Straż Nocna'
+    }
+
+    It 'parses organization aliases' {
+        $E = $script:Entities | Where-Object { $_.Name -eq 'Gildia Wojowników' }
+        $E.Names | Should -Contain 'Gildia'
+    }
+}
+
+Describe 'Get-Entity — duplicate names across types' {
+    BeforeAll {
+        $script:Entities = Get-Entity -Path (Join-Path $script:FixturesRoot 'entities-duplicate-names.md')
+    }
+
+    It 'parses all entities with same name but different types' {
+        $Dupes = $script:Entities | Where-Object { $_.Name -eq 'NPC Duplikat' }
+        $Dupes.Count | Should -Be 3
+    }
+
+    It 'assigns correct type to each entity' {
+        $Types = ($script:Entities | Where-Object { $_.Name -eq 'NPC Duplikat' }).Type
+        $Types | Should -Contain 'NPC'
+        $Types | Should -Contain 'Lokacja'
+        $Types | Should -Contain 'Organizacja'
+    }
+}
+
+Describe 'Get-Entity — multiline info' {
+    BeforeAll {
+        $script:Entities = Get-Entity -Path (Join-Path $script:FixturesRoot 'entities-multiline-info.md')
+    }
+
+    It 'parses multi-line @info via nested bullets' {
+        $E = $script:Entities | Where-Object { $_.Name -eq 'NPC z Info Wieloliniowe' }
+        $E.Overrides.ContainsKey('info') | Should -BeTrue
+        $InfoText = $E.Overrides['info'] -join ' '
+        $InfoText | Should -BeLike '*Pierwszy akapit*'
+        $InfoText | Should -BeLike '*Trzecia linia*'
+    }
+
+    It 'parses single-line @info' {
+        $E = $script:Entities | Where-Object { $_.Name -eq 'NPC z Info Jednolinijkowe' }
+        $E.Overrides.ContainsKey('info') | Should -BeTrue
+    }
+}
+
+Describe 'Get-Entity — currency edge cases' {
+    BeforeAll {
+        $script:Entities = Get-Entity -Path (Join-Path $script:FixturesRoot 'entities-currency-edge.md')
+    }
+
+    It 'parses very large @ilość value' {
+        $E = $script:Entities | Where-Object { $_.Name -eq 'Korony Bogatego Kupca' }
+        $E.Quantity | Should -Be '999999'
+    }
+
+    It 'parses zero @ilość value' {
+        $E = $script:Entities | Where-Object { $_.Name -eq 'Talary Zerowe' }
+        $E.Quantity | Should -Be '0'
+    }
+
+    It 'parses negative @ilość value' {
+        $E = $script:Entities | Where-Object { $_.Name -eq 'Korony Zadłużonego' }
+        $E.Quantity | Should -Be '-100'
+    }
+
+    It 'parses entity with multiple @ilość temporal values' {
+        $E = $script:Entities | Where-Object { $_.Name -eq 'Kogi Mieszane' }
+        $E.QuantityHistory.Count | Should -Be 3
+        $E.Quantity | Should -Be '75'
+    }
+
+    It 'resolves @generyczne_nazwy for all currency entities' {
+        $E = $script:Entities | Where-Object { $_.Name -eq 'Korony Bogatego Kupca' }
+        $E.GenericNames | Should -Contain 'Korony Elanckie'
+    }
+}
+
+Describe 'Get-Entity — BRAK PU values' {
+    BeforeAll {
+        $script:Entities = Get-Entity -Path (Join-Path $script:FixturesRoot 'entities-brak-pu.md')
+    }
+
+    It 'parses character with all BRAK PU overrides' {
+        $E = $script:Entities | Where-Object { $_.Name -eq 'Postać BRAK' }
+        $E | Should -Not -BeNullOrEmpty
+        $E.Overrides['pu_startowe'] | Should -Contain 'BRAK'
+        $E.Overrides['pu_suma'] | Should -Contain 'BRAK'
+        $E.Overrides['pu_zdobyte'] | Should -Contain 'BRAK'
+        $E.Overrides['pu_nadmiar'] | Should -Contain 'BRAK'
+    }
+}
+
+Describe 'Get-Entity — many characters per player' {
+    BeforeAll {
+        $script:Entities = Get-Entity -Path (Join-Path $script:FixturesRoot 'entities-many-characters.md')
+    }
+
+    It 'parses five character entities' {
+        $Characters = $script:Entities | Where-Object { $_.Type -eq 'Postać (Gracz)' }
+        $Characters.Count | Should -Be 5
+    }
+
+    It 'all characters belong to same player' {
+        $Characters = $script:Entities | Where-Object { $_.Type -eq 'Postać (Gracz)' }
+        foreach ($C in $Characters) {
+            $C.Owner | Should -Be 'Solmyr'
+        }
+    }
+
+    It 'parses PU nadmiar for last character' {
+        $E = $script:Entities | Where-Object { $_.Name -eq 'Bohater Piąty' }
+        $E.Overrides['pu_nadmiar'] | Should -Contain '2.5'
+    }
+
+    It 'character with zero PU zdobyte has correct value' {
+        $E = $script:Entities | Where-Object { $_.Name -eq 'Bohater Czwarty' }
+        $E.Overrides['pu_zdobyte'] | Should -Contain '0'
     }
 }
