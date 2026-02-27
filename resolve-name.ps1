@@ -7,10 +7,11 @@
     .DESCRIPTION
     This file contains the Resolve-Name function and its supporting helpers:
 
+    Dot-sources string-helpers.ps1 for Get-LevenshteinDistance.
+
     Helpers:
     - Get-DeclensionStem:            strips Polish noun declension suffixes from a query
     - Get-StemAlternationCandidates:  reverses Polish consonant mutations to produce base-form candidates
-    - Get-LevenshteinDistance:        computes edit distance between two strings (two-row matrix)
 
     Module-level data:
     - $DeclensionSuffixes:  ordered list of Polish noun suffixes (longest-first to prevent partial stripping)
@@ -31,6 +32,9 @@
     session notes. The suffix ordering is critical: longest suffixes must be tried first to
     prevent partial stripping (e.g. "-owi" before "-i", "-ami" before "-i").
 #>
+
+# Dot-source shared helpers
+. "$PSScriptRoot/string-helpers.ps1"
 
 # Polish noun suffixes ordered longest-first to prevent partial stripping
 # (e.g. "-owi" must be tried before "-i", "-ami" before "-i")
@@ -92,44 +96,6 @@ function Get-StemAlternationCandidates {
         }
     }
     return $Candidates
-}
-
-# Helper: Levenshtein distance (two-row matrix)
-function Get-LevenshteinDistance {
-    param([string]$Source, [string]$Target)
-
-    $SourceLower = $Source.ToLowerInvariant()
-    $TargetLower = $Target.ToLowerInvariant()
-
-    $SourceLength = $SourceLower.Length
-    $TargetLength = $TargetLower.Length
-
-    if ($SourceLength -eq 0) { return $TargetLength }
-    if ($TargetLength -eq 0) { return $SourceLength }
-
-    $PreviousRow = [int[]]::new($TargetLength + 1)
-    $CurrentRow  = [int[]]::new($TargetLength + 1)
-
-    for ($J = 0; $J -le $TargetLength; $J++) { $PreviousRow[$J] = $J }
-
-    for ($I = 1; $I -le $SourceLength; $I++) {
-        $CurrentRow[0] = $I
-
-        for ($J = 1; $J -le $TargetLength; $J++) {
-            $Cost = if ($SourceLower[$I - 1] -eq $TargetLower[$J - 1]) { 0 } else { 1 }
-
-            $CurrentRow[$J] = [Math]::Min(
-                [Math]::Min($CurrentRow[$J - 1] + 1, $PreviousRow[$J] + 1),
-                $PreviousRow[$J - 1] + $Cost
-            )
-        }
-
-        $TempRow     = $PreviousRow
-        $PreviousRow = $CurrentRow
-        $CurrentRow  = $TempRow
-    }
-
-    return $PreviousRow[$TargetLength]
 }
 
 function Resolve-Name {

@@ -29,6 +29,9 @@
     - BKTree:    BK-tree root node for O(log N) fuzzy matching (stage 3)
 #>
 
+# Dot-source shared helpers
+. "$PSScriptRoot/string-helpers.ps1"
+
 # Helper: insert a key into a BK-tree node
 # BK-trees partition strings by edit distance, enabling O(log N) Levenshtein lookups.
 # Each node stores a key and children keyed by distance.
