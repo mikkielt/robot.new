@@ -78,3 +78,19 @@
 * Miecz Armagedonu
     - @należy_do: Xeron Demonlord (2024-06:)
     - @status: Aktywny (2024-06:)
+
+* Korony Elanckie
+    - @należy_do: Xeron Demonlord (2024-06:)
+    - @ilość: 50 (2024-06:)
+    - @status: Aktywny (2024-06:)
+
+* Talary Hirońskie
+    - @lokacja: Erathia (2025-01:)
+    - @ilość: 200 (2025-01:)
+    - @status: Aktywny (2025-01:)
+
+* Kogi Skeltvorskie
+    - @należy_do: Kyrre (2024-08:)
+    - @ilość: 1500 (2024-08:)
+    - @ilość: 800 (2025-02:)
+    - @status: Aktywny (2024-08:)

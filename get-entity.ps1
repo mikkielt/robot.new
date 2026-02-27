@@ -385,6 +385,7 @@ function Get-Entity {
             $GroupHistory    = [System.Collections.Generic.List[object]]::new()
             $ContainsList    = [System.Collections.Generic.List[string]]::new()
             $StatusHistory   = [System.Collections.Generic.List[object]]::new()
+            $QuantityHistory = [System.Collections.Generic.List[object]]::new()
             $Overrides       = @{}
 
             # Iterate child bullets belonging to this entity via lookup
@@ -461,6 +462,14 @@ function Get-Entity {
                             ValidTo   = $Parsed.ValidTo
                         })
                     }
+                    '@ilość' {
+                        $Parsed = ConvertFrom-ValidityString -InputText $Value
+                        $QuantityHistory.Add([PSCustomObject]@{
+                            Quantity  = $Parsed.Text
+                            ValidFrom = $Parsed.ValidFrom
+                            ValidTo   = $Parsed.ValidTo
+                        })
+                    }
                     '@alias' {
                         $Parsed = ConvertFrom-ValidityString -InputText $EffectiveValue
                         if (Test-TemporalActivity -Item $Parsed -ActiveOn $ActiveOn) {
@@ -498,6 +507,7 @@ function Get-Entity {
             $ActiveGroups   = Get-AllActiveValues   -History $GroupHistory    -PropertyName 'Group'     -ActiveOn $ActiveOn
             $ActiveStatus   = Get-LastActiveValue  -History $StatusHistory   -PropertyName 'Status'    -ActiveOn $ActiveOn
             if (-not $ActiveStatus) { $ActiveStatus = 'Aktywny' }
+            $ActiveQuantity = Get-LastActiveValue  -History $QuantityHistory -PropertyName 'Quantity'  -ActiveOn $ActiveOn
 
             # Merge or create entity
             if ($EntityMap.ContainsKey($EntityName)) {
@@ -522,6 +532,7 @@ function Get-Entity {
                 $Existing.LocationHistory.AddRange($LocationHistory)
                 $Existing.DoorHistory.AddRange($DoorHistory)
                 $Existing.StatusHistory.AddRange($StatusHistory)
+                $Existing.QuantityHistory.AddRange($QuantityHistory)
                 $Existing.Contains.AddRange($ContainsList)
 
                 # Recompute active scalar properties from merged histories
@@ -541,6 +552,9 @@ function Get-Entity {
 
                 $MergedStatus = Get-LastActiveValue -History $Existing.StatusHistory -PropertyName 'Status' -ActiveOn $ActiveOn
                 if ($MergedStatus) { $Existing.Status = $MergedStatus }
+
+                $MergedQuantity = Get-LastActiveValue -History $Existing.QuantityHistory -PropertyName 'Quantity' -ActiveOn $ActiveOn
+                if ($MergedQuantity) { $Existing.Quantity = $MergedQuantity }
             }
             else {
                 # First occurrence — create new entity object
@@ -562,6 +576,8 @@ function Get-Entity {
                     DoorHistory     = $DoorHistory
                     Status          = $ActiveStatus
                     StatusHistory   = $StatusHistory
+                    Quantity        = $ActiveQuantity
+                    QuantityHistory = $QuantityHistory
                     Contains        = $ContainsList
                 }
                 $EntityMap[$EntityName] = $Entity

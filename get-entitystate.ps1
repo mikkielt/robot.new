@@ -185,6 +185,16 @@ function Get-EntityState {
                             ValidTo   = $Parsed.ValidTo
                         })
                     }
+                    '@ilość' {
+                        if (-not $TargetEntity.QuantityHistory) {
+                            $TargetEntity.QuantityHistory = [System.Collections.Generic.List[object]]::new()
+                        }
+                        $TargetEntity.QuantityHistory.Add([PSCustomObject]@{
+                            Quantity  = $Parsed.Text
+                            ValidFrom = $Parsed.ValidFrom
+                            ValidTo   = $Parsed.ValidTo
+                        })
+                    }
                     default {
                         # Generic override (e.g. @pu_startowe, @info, @trigger)
                         $PropName = $TagEntry.Tag.Substring(1)  # strip leading '@'
@@ -220,6 +230,7 @@ function Get-EntityState {
         if ($Entity.OwnerHistory.Count -gt 0)    { $Entity.OwnerHistory.Sort($DateComparer) }
         if ($Entity.GroupHistory.Count -gt 0)    { $Entity.GroupHistory.Sort($DateComparer) }
         if ($Entity.StatusHistory -and $Entity.StatusHistory.Count -gt 0) { $Entity.StatusHistory.Sort($DateComparer) }
+        if ($Entity.QuantityHistory -and $Entity.QuantityHistory.Count -gt 0) { $Entity.QuantityHistory.Sort($DateComparer) }
 
         # Recompute active scalar/array values from merged + sorted histories
         $Entity.Location = Get-LastActiveValue  -History $Entity.LocationHistory -PropertyName 'Location'  -ActiveOn $ActiveOn
@@ -233,6 +244,11 @@ function Get-EntityState {
         if ($Entity.StatusHistory -and $Entity.StatusHistory.Count -gt 0) {
             $MergedStatus = Get-LastActiveValue -History $Entity.StatusHistory -PropertyName 'Status' -ActiveOn $ActiveOn
             if ($MergedStatus) { $Entity.Status = $MergedStatus }
+        }
+
+        if ($Entity.QuantityHistory -and $Entity.QuantityHistory.Count -gt 0) {
+            $MergedQuantity = Get-LastActiveValue -History $Entity.QuantityHistory -PropertyName 'Quantity' -ActiveOn $ActiveOn
+            if ($MergedQuantity) { $Entity.Quantity = $MergedQuantity }
         }
     }
 
