@@ -319,4 +319,5 @@ Fixtures: `entities.md`, `entities-100-ent.md`, `entities-200-ent.md`, `sessions
 - [CHARFILE.md](CHARFILE.md) — Character file format (Layer 1 of three-layer merge)
 - [SESSIONS.md](SESSIONS.md) — Session Zmiany extraction
 - [NAME-RESOLUTION.md](NAME-RESOLUTION.md) — Name resolution used by `Get-EntityState`
+- [CURRENCY.md](CURRENCY.md) — Currency tracking system (denominations, @Transfer, reconciliation)
 - [MIGRATION.md](MIGRATION.md) — §1 Data Model Transition

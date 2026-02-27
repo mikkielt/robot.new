@@ -259,6 +259,7 @@ function Get-SessionListMetadata {
     $PU           = [System.Collections.Generic.List[object]]::new()
     $Changes      = [System.Collections.Generic.List[object]]::new()
     $Intel        = [System.Collections.Generic.List[object]]::new()
+    $Transfers    = [System.Collections.Generic.List[object]]::new()
 
     foreach ($ListItem in $SectionLists) {
         $ItemText  = $ListItem.Text
@@ -353,13 +354,50 @@ function Get-SessionListMetadata {
             }
         }
 
+        # Transfer: currency convenience shorthand
+        # Format: "- @Transfer: {amount} {denomination}, {source} -> {destination}"
+        if ($MatchText.StartsWith('transfer') -and $MatchText.Length -gt 8 -and ($MatchText[8] -eq ':' -or $MatchText[8] -eq ' ')) {
+            $TransferValue = $ItemText
+            $TColonIdx = $TransferValue.IndexOf(':')
+            if ($TColonIdx -ge 0) {
+                $TransferBody = $TransferValue.Substring($TColonIdx + 1).Trim()
+                # Parse: "{amount} {denomination}, {source} -> {destination}"
+                $ArrowIdx = $TransferBody.IndexOf('->')
+                $CommaIdx = $TransferBody.IndexOf(',')
+                if ($ArrowIdx -gt 0 -and $CommaIdx -gt 0 -and $CommaIdx -lt $ArrowIdx) {
+                    $AmountDenom = $TransferBody.Substring(0, $CommaIdx).Trim()
+                    $Source = $TransferBody.Substring($CommaIdx + 1, $ArrowIdx - $CommaIdx - 1).Trim()
+                    $Destination = $TransferBody.Substring($ArrowIdx + 2).Trim()
+
+                    # Split amount and denomination from "{amount} {denomination}"
+                    $SpaceIdx = $AmountDenom.IndexOf(' ')
+                    if ($SpaceIdx -gt 0) {
+                        $AmountStr = $AmountDenom.Substring(0, $SpaceIdx).Trim()
+                        $DenomStr = $AmountDenom.Substring($SpaceIdx + 1).Trim()
+                        [int]$TransferAmount = 0
+                        if ([int]::TryParse($AmountStr, [ref]$TransferAmount) -and $TransferAmount -gt 0 `
+                            -and -not [string]::IsNullOrWhiteSpace($Source) `
+                            -and -not [string]::IsNullOrWhiteSpace($Destination)) {
+                            $Transfers.Add([PSCustomObject]@{
+                                Amount       = $TransferAmount
+                                Denomination = $DenomStr
+                                Source       = $Source
+                                Destination  = $Destination
+                            })
+                        }
+                    }
+                }
+            }
+        }
+
     }
 
     return @{
-        Logs    = $Logs
-        PU      = $PU
-        Changes = $Changes
-        Intel   = $Intel
+        Logs      = $Logs
+        PU        = $PU
+        Changes   = $Changes
+        Intel     = $Intel
+        Transfers = $Transfers
     }
 }
 
@@ -448,6 +486,7 @@ function Merge-SessionGroup {
     $MergedPU           = [System.Collections.Generic.List[object]]::new()
     $PUSet              = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
     $MergedChanges      = [System.Collections.Generic.List[object]]::new()
+    $MergedTransfers    = [System.Collections.Generic.List[object]]::new()
     $MergedMentions     = [System.Collections.Generic.Dictionary[string, object]]::new([System.StringComparer]::OrdinalIgnoreCase)
     $MergedIntel        = [System.Collections.Generic.List[object]]::new()
     $IntelSet           = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::Ordinal)
@@ -467,6 +506,9 @@ function Merge-SessionGroup {
         }
         if ($S.Changes) {
             foreach ($C in $S.Changes) { $MergedChanges.Add($C) }
+        }
+        if ($S.Transfers) {
+            foreach ($T in $S.Transfers) { $MergedTransfers.Add($T) }
         }
         if ($S.Mentions) {
             foreach ($M in $S.Mentions) {
@@ -512,6 +554,7 @@ function Merge-SessionGroup {
         DuplicateCount = $Count
         Content        = $MergedContent
         Changes        = $MergedChanges.ToArray()
+        Transfers      = $MergedTransfers.ToArray()
         Mentions       = [object[]]$MergedMentions.Values
         Intel          = $MergedIntel.ToArray()
     }
@@ -1171,6 +1214,7 @@ function Get-Session {
             $Logs    = $ListMeta.Logs
             $PU      = $ListMeta.PU
             $Changes = $ListMeta.Changes
+            $Transfers = $ListMeta.Transfers
 
             # Plain text log fallback (Gen 1/2)
             if ($Logs.Count -eq 0) {
@@ -1210,6 +1254,7 @@ function Get-Session {
             $LogsV = if ($Logs) { @($Logs) } else { @() }
             $PUV = if ($PU) { @($PU) } else { @() }
             $ChangesV = if ($Changes -and $Changes.Count -gt 0) { @($Changes) } else { @() }
+            $TransfersV = if ($Transfers -and $Transfers.Count -gt 0) { @($Transfers) } else { @() }
 
             $SessionProps = [ordered]@{
                 FilePath       = $FilePath
@@ -1227,6 +1272,7 @@ function Get-Session {
                 DuplicateCount = 1
                 Content        = if ($IncludeContent) { $Section.Content } else { $null }
                 Changes        = $ChangesV
+                Transfers      = $TransfersV
                 Mentions       = $MentionsV
                 Intel          = $IntelV
             }

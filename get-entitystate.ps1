@@ -1,7 +1,7 @@
 <#
     .SYNOPSIS
-    Merges entity file data with session-based overrides (Zmiany) to produce a
-    unified, chronologically resolved entity state.
+    Merges entity file data with session-based overrides (Zmiany) and @Transfer
+    directives to produce a unified, chronologically resolved entity state.
 
     .DESCRIPTION
     This file contains Get-EntityState — the second pass in the two-pass entity
@@ -14,6 +14,10 @@
     that contains a - Zmiany: block, it resolves entity names via the full name
     resolution pipeline (exact match, declension stripping, stem alternation,
     Levenshtein fuzzy matching) and applies @tag overrides to the matching entity objects.
+
+    @Transfer directives (e.g. "- @Transfer: 100 koron, Solmyr -> Sandro") are
+    expanded into symmetric @ilość deltas on the source and destination currency
+    entities, found by matching @generyczne_nazwy (denomination) + @należy_do (owner).
 
     Override priority: most-recent-dated entry wins regardless of source (entity file
     or session Zmiany). This is achieved by appending session overrides to history lists
@@ -72,10 +76,12 @@ function Get-EntityState {
     # Track which entities were modified to recompute their active values
     $ModifiedEntities = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
 
-    # Filter to sessions with Zmiany and sort chronologically
+    # Filter to sessions with Zmiany or Transfers and sort chronologically
     $SessionsWithChanges = [System.Collections.Generic.List[object]]::new()
     foreach ($Session in $Sessions) {
-        if ($Session.Changes -and $Session.Changes.Count -gt 0 -and $null -ne $Session.Date) {
+        $HasChanges = $Session.Changes -and $Session.Changes.Count -gt 0
+        $HasTransfers = $Session.PSObject.Properties['Transfers'] -and $Session.Transfers -and $Session.Transfers.Count -gt 0
+        if (($HasChanges -or $HasTransfers) -and $null -ne $Session.Date) {
             $SessionsWithChanges.Add($Session)
         }
     }
@@ -226,6 +232,67 @@ function Get-EntityState {
                         }
                         $TargetEntity.Overrides[$PropName].Add($Parsed.Text)
                     }
+                }
+            }
+        }
+
+        # Expand @Transfer directives into symmetric @ilość deltas
+        if ($Session.PSObject.Properties['Transfers'] -and $Session.Transfers -and $Session.Transfers.Count -gt 0) {
+            . "$PSScriptRoot/currency-helpers.ps1"
+
+            foreach ($Transfer in $Session.Transfers) {
+                $ResolvedDenom = Resolve-CurrencyDenomination -Name $Transfer.Denomination
+                if (-not $ResolvedDenom) {
+                    [System.Console]::Error.WriteLine("[WARN Get-EntityState] Unknown denomination '$($Transfer.Denomination)' in @Transfer in session '$($Session.Header)'")
+                    continue
+                }
+
+                # Find source currency entity
+                $SourceEntity = Find-CurrencyEntity -Entities $Entities -Denomination $Transfer.Denomination -OwnerName $Transfer.Source
+                if (-not $SourceEntity) {
+                    [System.Console]::Error.WriteLine("[WARN Get-EntityState] No currency entity for '$($Transfer.Source)' ($($ResolvedDenom.Name)) in @Transfer in session '$($Session.Header)' — assuming 0 balance")
+                }
+
+                # Find destination currency entity
+                $DestEntity = Find-CurrencyEntity -Entities $Entities -Denomination $Transfer.Denomination -OwnerName $Transfer.Destination
+                if (-not $DestEntity) {
+                    [System.Console]::Error.WriteLine("[WARN Get-EntityState] No currency entity for '$($Transfer.Destination)' ($($ResolvedDenom.Name)) in @Transfer in session '$($Session.Header)' — assuming 0 balance")
+                }
+
+                # Apply -N to source
+                if ($SourceEntity) {
+                    if (-not $SourceEntity.QuantityHistory) {
+                        $SourceEntity.QuantityHistory = [System.Collections.Generic.List[object]]::new()
+                    }
+                    $CurrentSrcQty = 0
+                    $LastSrcQty = Get-LastActiveValue -History $SourceEntity.QuantityHistory -PropertyName 'Quantity' -ActiveOn $Session.Date
+                    if ($LastSrcQty -and $LastSrcQty -match '^\-?\d+$') {
+                        $CurrentSrcQty = [int]$LastSrcQty
+                    }
+                    $SourceEntity.QuantityHistory.Add([PSCustomObject]@{
+                        Quantity  = [string]($CurrentSrcQty - $Transfer.Amount)
+                        ValidFrom = $Session.Date
+                        ValidTo   = $null
+                    })
+                    [void]$ModifiedEntities.Add($SourceEntity.Name)
+                }
+
+                # Apply +N to destination
+                if ($DestEntity) {
+                    if (-not $DestEntity.QuantityHistory) {
+                        $DestEntity.QuantityHistory = [System.Collections.Generic.List[object]]::new()
+                    }
+                    $CurrentDstQty = 0
+                    $LastDstQty = Get-LastActiveValue -History $DestEntity.QuantityHistory -PropertyName 'Quantity' -ActiveOn $Session.Date
+                    if ($LastDstQty -and $LastDstQty -match '^\-?\d+$') {
+                        $CurrentDstQty = [int]$LastDstQty
+                    }
+                    $DestEntity.QuantityHistory.Add([PSCustomObject]@{
+                        Quantity  = [string]($CurrentDstQty + $Transfer.Amount)
+                        ValidFrom = $Session.Date
+                        ValidTo   = $null
+                    })
+                    [void]$ModifiedEntities.Add($DestEntity.Name)
                 }
             }
         }

@@ -267,3 +267,513 @@ Describe 'Get-Session — IncludeContent' {
         $Sessions[0].Content | Should -BeNullOrEmpty
     }
 }
+
+Describe 'Resolve-EntityWebhook' {
+    It 'returns entity prfwebhook override when present' {
+        $Entity = [PSCustomObject]@{
+            Name      = 'Xeron'
+            Type      = 'Postać (Gracz)'
+            Owner     = 'Kilgor'
+            Overrides = @{ 'prfwebhook' = @('https://discord.com/api/webhooks/111/abc') }
+        }
+        $Result = Resolve-EntityWebhook -Entity $Entity -Players @()
+        $Result | Should -Be 'https://discord.com/api/webhooks/111/abc'
+    }
+
+    It 'uses last value when multiple prfwebhook overrides exist' {
+        $Entity = [PSCustomObject]@{
+            Name      = 'Xeron'
+            Type      = 'Postać (Gracz)'
+            Owner     = 'Kilgor'
+            Overrides = @{ 'prfwebhook' = @('https://discord.com/api/webhooks/111/old', 'https://discord.com/api/webhooks/222/new') }
+        }
+        $Result = Resolve-EntityWebhook -Entity $Entity -Players @()
+        $Result | Should -Be 'https://discord.com/api/webhooks/222/new'
+    }
+
+    It 'falls back to owning player webhook for character entities' {
+        $Entity = [PSCustomObject]@{
+            Name      = 'Xeron'
+            Type      = 'Postać (Gracz)'
+            Owner     = 'Kilgor'
+            Overrides = @{}
+        }
+        $Players = @(
+            [PSCustomObject]@{ Name = 'Kilgor'; PRFWebhook = 'https://discord.com/api/webhooks/333/player' }
+        )
+        $Result = Resolve-EntityWebhook -Entity $Entity -Players $Players
+        $Result | Should -Be 'https://discord.com/api/webhooks/333/player'
+    }
+
+    It 'uses entity Name as player name for Gracz type' {
+        $Entity = [PSCustomObject]@{
+            Name      = 'Kilgor'
+            Type      = 'Gracz'
+            Owner     = $null
+            Overrides = @{}
+        }
+        $Players = @(
+            [PSCustomObject]@{ Name = 'Kilgor'; PRFWebhook = 'https://discord.com/api/webhooks/444/gracz' }
+        )
+        $Result = Resolve-EntityWebhook -Entity $Entity -Players $Players
+        $Result | Should -Be 'https://discord.com/api/webhooks/444/gracz'
+    }
+
+    It 'returns null when no webhook can be resolved' {
+        $Entity = [PSCustomObject]@{
+            Name      = 'Dragon'
+            Type      = 'NPC'
+            Owner     = $null
+            Overrides = @{}
+        }
+        $Result = Resolve-EntityWebhook -Entity $Entity -Players @()
+        $Result | Should -BeNullOrEmpty
+    }
+
+    It 'returns PRFWebhook from Player object directly' {
+        $Entity = [PSCustomObject]@{
+            Name       = 'Kilgor'
+            Type       = 'Player'
+            PRFWebhook = 'https://discord.com/api/webhooks/555/direct'
+            Overrides  = @{}
+        }
+        $Result = Resolve-EntityWebhook -Entity $Entity -Players @()
+        $Result | Should -Be 'https://discord.com/api/webhooks/555/direct'
+    }
+
+    It 'ignores prfwebhook override that is not a valid Discord URL' {
+        $Entity = [PSCustomObject]@{
+            Name      = 'Xeron'
+            Type      = 'Postać (Gracz)'
+            Owner     = 'Kilgor'
+            Overrides = @{ 'prfwebhook' = @('not-a-webhook-url') }
+        }
+        $Players = @(
+            [PSCustomObject]@{ Name = 'Kilgor'; PRFWebhook = 'https://discord.com/api/webhooks/666/fallback' }
+        )
+        $Result = Resolve-EntityWebhook -Entity $Entity -Players $Players
+        $Result | Should -Be 'https://discord.com/api/webhooks/666/fallback'
+    }
+}
+
+Describe 'Test-LocationMatch' {
+    It 'returns true for exact match' {
+        $Set = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+        [void]$Set.Add('Erathia')
+        Test-LocationMatch -LocationValue 'Erathia' -LocationSet $Set | Should -BeTrue
+    }
+
+    It 'returns false when no match' {
+        $Set = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+        [void]$Set.Add('Erathia')
+        Test-LocationMatch -LocationValue 'Enroth' -LocationSet $Set | Should -BeFalse
+    }
+
+    It 'matches slash-separated path segments' {
+        $Set = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+        [void]$Set.Add('Ratusz Ithan')
+        Test-LocationMatch -LocationValue 'Ithan/Ratusz Ithan' -LocationSet $Set | Should -BeTrue
+    }
+
+    It 'matches first segment of slash path' {
+        $Set = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+        [void]$Set.Add('Ithan')
+        Test-LocationMatch -LocationValue 'Ithan/Ratusz Ithan' -LocationSet $Set | Should -BeTrue
+    }
+
+    It 'returns false for slash path with no matching segments' {
+        $Set = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+        [void]$Set.Add('Enroth')
+        Test-LocationMatch -LocationValue 'Ithan/Ratusz Ithan' -LocationSet $Set | Should -BeFalse
+    }
+}
+
+Describe 'Get-SessionLocations' {
+    BeforeAll {
+        $script:LocItalicRegex = [regex]::new('\*Lokalizacj[ae]?:\s*(.+?)\*')
+    }
+
+    It 'extracts locations from Gen2 italic format' {
+        $Locations = Get-SessionLocations -Format 'Gen2' `
+            -FirstNonEmptyLine '*Lokalizacja: Erathia, Steadwick*' `
+            -SectionLists @() `
+            -LocItalicRegex $script:LocItalicRegex `
+            -Index $null
+        $Locations | Should -Contain 'Erathia'
+        $Locations | Should -Contain 'Steadwick'
+    }
+
+    It 'extracts locations from Gen3 tag-based fallback' {
+        $ParentItem = [PSCustomObject]@{ Indent = 0; Text = 'Lokalizacje:'; ParentListItem = $null }
+        $ChildItem = [PSCustomObject]@{ Indent = 1; Text = 'Erathia'; ParentListItem = $ParentItem }
+        $SectionLists = @($ParentItem, $ChildItem)
+        $Locations = Get-SessionLocations -Format 'Gen3' `
+            -FirstNonEmptyLine '' `
+            -SectionLists $SectionLists `
+            -LocItalicRegex $script:LocItalicRegex `
+            -Index $null
+        $Locations | Should -Contain 'Erathia'
+    }
+
+    It 'extracts locations from Gen4 @Lokacje tag' {
+        $ParentItem = [PSCustomObject]@{ Indent = 0; Text = '@Lokacje:'; ParentListItem = $null }
+        $ChildItem1 = [PSCustomObject]@{ Indent = 1; Text = 'Steadwick'; ParentListItem = $ParentItem }
+        $ChildItem2 = [PSCustomObject]@{ Indent = 1; Text = 'Erathia'; ParentListItem = $ParentItem }
+        $SectionLists = @($ParentItem, $ChildItem1, $ChildItem2)
+        $Locations = Get-SessionLocations -Format 'Gen4' `
+            -FirstNonEmptyLine '' `
+            -SectionLists $SectionLists `
+            -LocItalicRegex $script:LocItalicRegex `
+            -Index $null
+        $Locations | Should -Contain 'Steadwick'
+        $Locations | Should -Contain 'Erathia'
+    }
+
+    It 'extracts inline comma-separated locations from tag fallback' {
+        $ParentItem = [PSCustomObject]@{ Indent = 0; Text = 'Lokalizacje: Erathia, Steadwick'; ParentListItem = $null }
+        $SectionLists = @($ParentItem)
+        $Locations = Get-SessionLocations -Format 'Gen3' `
+            -FirstNonEmptyLine '' `
+            -SectionLists $SectionLists `
+            -LocItalicRegex $script:LocItalicRegex `
+            -Index $null
+        $Locations | Should -Contain 'Erathia'
+        $Locations | Should -Contain 'Steadwick'
+    }
+
+    It 'returns empty list for Gen1 format' {
+        $Locations = Get-SessionLocations -Format 'Gen1' `
+            -FirstNonEmptyLine 'Some text' `
+            -SectionLists @() `
+            -LocItalicRegex $script:LocItalicRegex `
+            -Index $null
+        $Locations.Count | Should -Be 0
+    }
+
+    It 'uses entity resolution strategy when Index available' {
+        $Index = [System.Collections.Generic.Dictionary[string, object]]::new([System.StringComparer]::OrdinalIgnoreCase)
+        $Index['Erathia'] = [PSCustomObject]@{
+            Owner     = [PSCustomObject]@{ Name = 'Erathia'; Type = 'Lokacja' }
+            OwnerType = 'Lokacja'
+            Ambiguous = $false
+        }
+        $ParentItem = [PSCustomObject]@{ Indent = 0; Text = 'Punkty:'; ParentListItem = $null }
+        $ChildItem = [PSCustomObject]@{ Indent = 1; Text = 'Erathia'; ParentListItem = $ParentItem }
+        $SectionLists = @($ParentItem, $ChildItem)
+        $Locations = Get-SessionLocations -Format 'Gen3' `
+            -FirstNonEmptyLine '' `
+            -SectionLists $SectionLists `
+            -LocItalicRegex $script:LocItalicRegex `
+            -Index $Index
+        $Locations | Should -Contain 'Erathia'
+    }
+}
+
+Describe 'Resolve-IntelTargets' {
+    BeforeAll {
+        . (Join-Path $script:ModuleRoot 'get-entity.ps1')
+        $script:Index = [System.Collections.Generic.Dictionary[string, object]]::new([System.StringComparer]::OrdinalIgnoreCase)
+        $script:StemIndex = [System.Collections.Generic.Dictionary[string, System.Collections.Generic.List[string]]]::new([System.StringComparer]::OrdinalIgnoreCase)
+
+        $script:EntityXeron = [PSCustomObject]@{
+            Name            = 'Xeron'
+            Type            = 'Postać (Gracz)'
+            Owner           = 'Kilgor'
+            Names           = @('Xeron')
+            GroupHistory    = @()
+            LocationHistory = @()
+            Overrides       = @{ 'prfwebhook' = @('https://discord.com/api/webhooks/100/xe') }
+        }
+        $script:EntityDragon = [PSCustomObject]@{
+            Name            = 'Dragon'
+            Type            = 'NPC'
+            Owner           = $null
+            Names           = @('Dragon')
+            GroupHistory    = @()
+            LocationHistory = @()
+            Overrides       = @{}
+        }
+
+        $script:Index['Xeron'] = [PSCustomObject]@{ Owner = $script:EntityXeron; OwnerType = 'Postać (Gracz)'; Ambiguous = $false }
+        $script:Index['Dragon'] = [PSCustomObject]@{ Owner = $script:EntityDragon; OwnerType = 'NPC'; Ambiguous = $false }
+    }
+
+    It 'resolves Direct intel target' {
+        $Intel = [System.Collections.Generic.List[object]]::new()
+        $Intel.Add([PSCustomObject]@{ RawTarget = 'Xeron'; Message = 'Secret info' })
+
+        $Result = Resolve-IntelTargets -RawIntel $Intel -SessionDate ([datetime]::new(2024, 6, 15)) `
+            -Entities @($script:EntityXeron, $script:EntityDragon) `
+            -Index $script:Index -StemIndex $script:StemIndex `
+            -Players @() -ResolveCache @{}
+
+        $Result.Count | Should -Be 1
+        $Result[0].Directive | Should -Be 'Direct'
+        $Result[0].Recipients.Count | Should -Be 1
+        $Result[0].Recipients[0].Name | Should -Be 'Xeron'
+    }
+
+    It 'resolves comma-separated Direct targets' {
+        $Intel = [System.Collections.Generic.List[object]]::new()
+        $Intel.Add([PSCustomObject]@{ RawTarget = 'Xeron, Dragon'; Message = 'Multi info' })
+
+        $Result = Resolve-IntelTargets -RawIntel $Intel -SessionDate ([datetime]::new(2024, 6, 15)) `
+            -Entities @($script:EntityXeron, $script:EntityDragon) `
+            -Index $script:Index -StemIndex $script:StemIndex `
+            -Players @() -ResolveCache @{}
+
+        $Result[0].Directive | Should -Be 'Direct'
+        $Result[0].Recipients.Count | Should -Be 2
+    }
+
+    It 'handles Grupa/ directive with group members' {
+        $Guild = [PSCustomObject]@{
+            Name            = 'Gwardia'
+            Type            = 'Grupa'
+            Owner           = $null
+            Names           = @('Gwardia')
+            GroupHistory    = @()
+            LocationHistory = @()
+            Overrides       = @{}
+        }
+        $Member = [PSCustomObject]@{
+            Name            = 'Xeron'
+            Type            = 'Postać (Gracz)'
+            Owner           = 'Kilgor'
+            Names           = @('Xeron')
+            GroupHistory    = @(
+                [PSCustomObject]@{ Group = 'Gwardia'; StartDate = [datetime]::new(2024, 1, 1); EndDate = $null }
+            )
+            LocationHistory = @()
+            Overrides       = @{}
+        }
+
+        $Idx = [System.Collections.Generic.Dictionary[string, object]]::new([System.StringComparer]::OrdinalIgnoreCase)
+        $Idx['Gwardia'] = [PSCustomObject]@{ Owner = $Guild; OwnerType = 'Grupa'; Ambiguous = $false }
+
+        $Intel = [System.Collections.Generic.List[object]]::new()
+        $Intel.Add([PSCustomObject]@{ RawTarget = 'Grupa/Gwardia'; Message = 'Guild intel' })
+
+        $Result = Resolve-IntelTargets -RawIntel $Intel -SessionDate ([datetime]::new(2024, 6, 15)) `
+            -Entities @($Guild, $Member) `
+            -Index $Idx -StemIndex $script:StemIndex `
+            -Players @() -ResolveCache @{}
+
+        $Result[0].Directive | Should -Be 'Grupa'
+        $Result[0].TargetName | Should -Be 'Gwardia'
+        $Result[0].Recipients.Count | Should -Be 2
+    }
+
+    It 'handles Lokacja/ directive with location tree' {
+        $CityEntity = [PSCustomObject]@{
+            Name            = 'Steadwick'
+            Type            = 'Lokacja'
+            Owner           = $null
+            Names           = @('Steadwick')
+            GroupHistory    = @()
+            LocationHistory = @()
+            Overrides       = @{}
+        }
+        $SublocEntity = [PSCustomObject]@{
+            Name            = 'Ratusz'
+            Type            = 'Lokacja'
+            Owner           = $null
+            Names           = @('Ratusz')
+            GroupHistory    = @()
+            LocationHistory = @(
+                [PSCustomObject]@{ Location = 'Steadwick'; StartDate = [datetime]::new(2024, 1, 1); EndDate = $null }
+            )
+            Overrides       = @{}
+        }
+        $ResidentEntity = [PSCustomObject]@{
+            Name            = 'Merchant'
+            Type            = 'NPC'
+            Owner           = $null
+            Names           = @('Merchant')
+            GroupHistory    = @()
+            LocationHistory = @(
+                [PSCustomObject]@{ Location = 'Steadwick'; StartDate = [datetime]::new(2024, 1, 1); EndDate = $null }
+            )
+            Overrides       = @{}
+        }
+
+        $Idx = [System.Collections.Generic.Dictionary[string, object]]::new([System.StringComparer]::OrdinalIgnoreCase)
+        $Idx['Steadwick'] = [PSCustomObject]@{ Owner = $CityEntity; OwnerType = 'Lokacja'; Ambiguous = $false }
+
+        $Intel = [System.Collections.Generic.List[object]]::new()
+        $Intel.Add([PSCustomObject]@{ RawTarget = 'Lokacja/Steadwick'; Message = 'Location intel' })
+
+        $Result = Resolve-IntelTargets -RawIntel $Intel -SessionDate ([datetime]::new(2024, 6, 15)) `
+            -Entities @($CityEntity, $SublocEntity, $ResidentEntity) `
+            -Index $Idx -StemIndex $script:StemIndex `
+            -Players @() -ResolveCache @{}
+
+        $Result[0].Directive | Should -Be 'Lokacja'
+        $Result[0].TargetName | Should -Be 'Steadwick'
+        # Should include: Steadwick (target), Ratusz (sublocation), Merchant (resident)
+        $Result[0].Recipients.Count | Should -Be 3
+    }
+
+    It 'warns and skips unresolved targets' {
+        $Intel = [System.Collections.Generic.List[object]]::new()
+        $Intel.Add([PSCustomObject]@{ RawTarget = 'NonExistent'; Message = 'Unknown' })
+
+        $EmptyIndex = [System.Collections.Generic.Dictionary[string, object]]::new([System.StringComparer]::OrdinalIgnoreCase)
+
+        $Result = Resolve-IntelTargets -RawIntel $Intel -SessionDate ([datetime]::new(2024, 6, 15)) `
+            -Entities @() `
+            -Index $EmptyIndex -StemIndex $script:StemIndex `
+            -Players @() -ResolveCache @{}
+
+        $Result[0].Recipients.Count | Should -Be 0
+    }
+}
+
+Describe 'Get-SessionMentions' {
+    BeforeAll {
+        $script:MentionIndex = [System.Collections.Generic.Dictionary[string, object]]::new([System.StringComparer]::OrdinalIgnoreCase)
+        $script:MentionStemIndex = [System.Collections.Generic.Dictionary[string, System.Collections.Generic.List[string]]]::new([System.StringComparer]::OrdinalIgnoreCase)
+
+        $script:MentionEntity = [PSCustomObject]@{ Name = 'Xeron'; Type = 'Postać (Gracz)' }
+        $script:MentionIndex['Xeron'] = [PSCustomObject]@{
+            Owner     = $script:MentionEntity
+            OwnerType = 'Postać (Gracz)'
+            Ambiguous = $false
+        }
+    }
+
+    It 'extracts entity mentions from paragraph text' {
+        $Content = "Xeron went to the market and bought supplies."
+        $Result = Get-SessionMentions -Content $Content `
+            -SectionLists @() `
+            -Format 'Gen3' `
+            -FirstNonEmptyLine '' `
+            -Index $script:MentionIndex `
+            -StemIndex $script:MentionStemIndex `
+            -ResolveCache @{}
+        $Result.Count | Should -Be 1
+        $Result[0].Name | Should -Be 'Xeron'
+    }
+
+    It 'excludes PU list items from mention scanning' {
+        $PUItem = [PSCustomObject]@{ Indent = 0; Text = 'PU:'; ParentListItem = $null }
+        $PUChild = [PSCustomObject]@{ Indent = 1; Text = 'Xeron: 0.3'; ParentListItem = $PUItem }
+
+        $Content = "Some other text without entities."
+        $Result = Get-SessionMentions -Content $Content `
+            -SectionLists @($PUItem, $PUChild) `
+            -Format 'Gen3' `
+            -FirstNonEmptyLine '' `
+            -Index $script:MentionIndex `
+            -StemIndex $script:MentionStemIndex `
+            -ResolveCache @{}
+
+        # Xeron should NOT appear since it's only in excluded PU list
+        $MentionNames = $Result | ForEach-Object { $_.Name }
+        $MentionNames | Should -Not -Contain 'Xeron'
+    }
+
+    It 'excludes Logi, Lokalizacje, Zmiany, Intel list items' {
+        $LogiItem = [PSCustomObject]@{ Indent = 0; Text = 'Logi:'; ParentListItem = $null }
+        $LocItem = [PSCustomObject]@{ Indent = 0; Text = 'Lokalizacje:'; ParentListItem = $null }
+        $ZmianyItem = [PSCustomObject]@{ Indent = 0; Text = 'Zmiany:'; ParentListItem = $null }
+        $IntelItem = [PSCustomObject]@{ Indent = 0; Text = 'Intel:'; ParentListItem = $null }
+
+        $Content = "Body text."
+        $Result = Get-SessionMentions -Content $Content `
+            -SectionLists @($LogiItem, $LocItem, $ZmianyItem, $IntelItem) `
+            -Format 'Gen3' `
+            -FirstNonEmptyLine '' `
+            -Index $script:MentionIndex `
+            -StemIndex $script:MentionStemIndex `
+            -ResolveCache @{}
+        # No entity mentions in body text
+        $Result.Count | Should -Be 0
+    }
+
+    It 'skips Gen2 italic location first line' {
+        $Content = "*Lokalizacja: Erathia*`nXeron walked around."
+        $Result = Get-SessionMentions -Content $Content `
+            -SectionLists @() `
+            -Format 'Gen2' `
+            -FirstNonEmptyLine '*Lokalizacja: Erathia*' `
+            -Index $script:MentionIndex `
+            -StemIndex $script:MentionStemIndex `
+            -ResolveCache @{}
+        $Result.Count | Should -Be 1
+        $Result[0].Name | Should -Be 'Xeron'
+    }
+
+    It 'extracts mentions from markdown links' {
+        $Content = "The hero [Xeron](http://wiki.example.com/Xeron) arrived."
+        $Result = Get-SessionMentions -Content $Content `
+            -SectionLists @() `
+            -Format 'Gen3' `
+            -FirstNonEmptyLine '' `
+            -Index $script:MentionIndex `
+            -StemIndex $script:MentionStemIndex `
+            -ResolveCache @{}
+        $Result.Count | Should -Be 1
+        $Result[0].Name | Should -Be 'Xeron'
+    }
+
+    It 'excludes children of excluded list items' {
+        $PUItem = [PSCustomObject]@{ Indent = 0; Text = 'PU:'; ParentListItem = $null }
+        $PUChild = [PSCustomObject]@{ Indent = 1; Text = 'Xeron: 0.3'; ParentListItem = $PUItem }
+        $PUGrandchild = [PSCustomObject]@{ Indent = 2; Text = 'bonus Xeron'; ParentListItem = $PUChild }
+
+        $Content = "No entities here."
+        $Result = Get-SessionMentions -Content $Content `
+            -SectionLists @($PUItem, $PUChild, $PUGrandchild) `
+            -Format 'Gen3' `
+            -FirstNonEmptyLine '' `
+            -Index $script:MentionIndex `
+            -StemIndex $script:MentionStemIndex `
+            -ResolveCache @{}
+        $MentionNames = $Result | ForEach-Object { $_.Name }
+        $MentionNames | Should -Not -Contain 'Xeron'
+    }
+
+    It 'includes non-excluded list items in scan' {
+        $OtherItem = [PSCustomObject]@{ Indent = 0; Text = 'Objaśnienia:'; ParentListItem = $null }
+        $OtherChild = [PSCustomObject]@{ Indent = 1; Text = 'Xeron got a reward'; ParentListItem = $OtherItem }
+
+        $Content = "Some body."
+        $Result = Get-SessionMentions -Content $Content `
+            -SectionLists @($OtherItem, $OtherChild) `
+            -Format 'Gen3' `
+            -FirstNonEmptyLine '' `
+            -Index $script:MentionIndex `
+            -StemIndex $script:MentionStemIndex `
+            -ResolveCache @{}
+        $MentionNames = $Result | ForEach-Object { $_.Name }
+        $MentionNames | Should -Contain 'Xeron'
+    }
+
+    It 'uses resolve cache to speed up repeated lookups' {
+        $Cache = @{}
+        $Content = "Xeron met Xeron again."
+        $Result = Get-SessionMentions -Content $Content `
+            -SectionLists @() `
+            -Format 'Gen3' `
+            -FirstNonEmptyLine '' `
+            -Index $script:MentionIndex `
+            -StemIndex $script:MentionStemIndex `
+            -ResolveCache $Cache
+        $Result.Count | Should -Be 1
+        $Cache.ContainsKey('Xeron') | Should -BeTrue
+    }
+
+    It 'skips Logi: plain text lines' {
+        $Content = "Logi: https://example.com/log`nXeron was present."
+        $Result = Get-SessionMentions -Content $Content `
+            -SectionLists @() `
+            -Format 'Gen1' `
+            -FirstNonEmptyLine 'Logi: https://example.com/log' `
+            -Index $script:MentionIndex `
+            -StemIndex $script:MentionStemIndex `
+            -ResolveCache @{}
+        $Result.Count | Should -Be 1
+        $Result[0].Name | Should -Be 'Xeron'
+    }
+}

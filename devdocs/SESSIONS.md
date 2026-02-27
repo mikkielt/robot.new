@@ -248,7 +248,7 @@ Optional `DateEnd` appended as `/dd` suffix (validated: same month/year, > Date)
 
 Delegates to `ConvertTo-SessionMetadata` which calls `ConvertTo-Gen4MetadataBlock` per field.
 
-**Canonical block order**: `@Lokacje` → `@Logi` → `@PU` → `@Zmiany` → `@Intel`
+**Canonical block order**: `@Lokacje` → `@Logi` → `@PU` → `@Zmiany` → `@Transfer` → `@Intel`
 
 Returns a string — does **not** write to disk.
 
@@ -271,6 +271,7 @@ Returns a string — does **not** write to disk.
 | `@Logi` | `    - URL` (4-space indent) |
 | `@PU` | `    - Character: Value` (decimal with `InvariantCulture`) |
 | `@Zmiany` | `    - EntityName` (4-space) → `        - @tag: value` (8-space) |
+| `@Transfer` | `    - @Transfer: {amount} {denomination}, {source} -> {destination}` |
 | `@Intel` | `    - RawTarget: Message` (4-space) |
 
 Returns `$null` if items are empty/null — caller must check before including in output.
@@ -311,6 +312,7 @@ Returns `$null` if items are empty/null — caller must check before including i
 | `DuplicateCount` | int | Number of duplicates found |
 | `Content` | string | Full section content (only with `-IncludeContent`) |
 | `Changes` | object[] | Entity state overrides from `- Zmiany:` block |
+| `Transfers` | object[] | Currency transfer directives from `- @Transfer:` lines (Amount, Denomination, Source, Destination) |
 | `Mentions` | object[] | Deduplicated array of mention objects (only with `-IncludeMentions`) |
 | `Intel` | object[] | Resolved `@Intel` entries with recipient webhooks |
 | `ParseError` | string | Error description (only with `-IncludeFailed`) |
@@ -397,5 +399,6 @@ Fixtures: `sessions-gen1.md`, `sessions-gen2.md`, `sessions-gen3.md`, `sessions-
 
 - [PU.md](PU.md) — PU computation from session data
 - [ENTITIES.md](ENTITIES.md) — Entity state merging from session Zmiany
+- [CURRENCY.md](CURRENCY.md) — Currency tracking system (@Transfer processing, reconciliation)
 - [PARSER.md](PARSER.md) — Underlying Markdown parser
 - [MIGRATION.md](MIGRATION.md) — §3 Session Format Transition

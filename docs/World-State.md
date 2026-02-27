@@ -48,75 +48,102 @@ An entity is any named element of the game world that the system tracks. Each en
 
 ## Currency
 
-### Overview
+### What This Covers
 
-Currency is a physical in-game item tracked as a Przedmiot entity. There are three denominations used in the Margonem world:
+Currency in the Nerthus world is tracked as physical items that characters can carry, drop, trade, or store. This section explains how currency is recorded, how transfers between characters work, and how coordinators can verify that nothing was lost or duplicated.
 
-| Denomination | Polish name | Tier |
+### The Three Denominations
+
+| Denomination | Tier | Common short forms |
 |---|---|---|
-| Korony Elanckie | Korona | Gold |
-| Talary Hirońskie | Talar | Silver |
-| Kogi Skeltvorskie | Kog | Copper |
+| Korony Elanckie | Gold | koron, korony |
+| Talary Hirońskie | Silver | talarów, talary |
+| Kogi Skeltvorskie | Copper | kogi, kog |
 
-### Exchange Rates
+**Exchange rates**: 100 Kog = 1 Talar, 100 Talarów = 1 Korona (so 1 Korona = 10 000 Kogi).
 
-| From | To | Rate |
-|---|---|---|
-| 100 Kogi Skeltvorskie | 1 Talar Hiroński | 100:1 |
-| 100 Talary Hirońskie | 1 Korona Elancka | 100:1 |
-| 10 000 Kogi Skeltvorskie | 1 Korona Elancka | 10000:1 |
+### How Currency Belongs to Someone
 
-### How Currency Is Tracked
+Every currency holding is recorded as a separate Przedmiot (item) in the entity store. The item name follows the convention **"{Denomination} {Owner}"** — for example, "Korony Xeron Demonlorda" or "Kogi Gildi Kupców".
 
-Each currency stack is a Przedmiot entity with:
+Each currency item specifies:
 
-- **Name** — the denomination (e.g., `Korony Elanckie`)
-- **`@ilość`** — the quantity of coins in the stack
-- **`@należy_do`** — the character who owns the currency (when carried)
-- **`@lokacja`** — the location where the currency is dropped (when not carried)
+- **Who owns it** — the character or organization that carries the coins
+- **Or where it is** — if the coins are dropped at a location instead of carried
+- **How many coins** — the current count
 
-Example in the entity store:
+Currency is either carried by someone or dropped somewhere — never both at the same time.
+
+### Recording Currency Changes in Sessions
+
+There are two ways to record that currency changed hands during a session.
+
+#### Option 1: Quick Transfer (recommended for simple moves)
+
+Use `@Transfer` when coins move from one character to another. Write it as a session-level entry:
 
 ```markdown
-## Przedmiot
+### 2025-06-01, Handel na rynku, Solmyr
 
-* Korony Elanckie
-    - @należy_do: Xeron Demonlord (2024-06:)
-    - @ilość: 50 (2024-06:)
-    - @status: Aktywny (2024-06:)
-
-* Talary Hirońskie
-    - @lokacja: Erathia (2025-01:)
-    - @ilość: 200 (2025-01:)
-    - @status: Aktywny (2025-01:)
+- @Transfer: 100 koron, Xeron Demonlord -> Kupiec Orrin
+- @Transfer: 50 talarów, Kupiec Orrin -> Kyrre
 ```
 
-### Currency Placement Rules
+The format is: `- @Transfer: {amount} {denomination}, {source} -> {destination}`
 
-A currency stack is either **carried** (has `@należy_do`) or **dropped** (has `@lokacja`):
+You can use colloquial denomination names ("koron", "talarów", "kogi") — the system recognizes them automatically. Multiple transfers per session are allowed.
 
-- **Carried currency**: Owned by a specific character. Only that character can use or transfer it.
-- **Dropped currency**: Located at a specific place. Any character with access to that location can pick it up.
+The system finds the right currency items for the source and destination and adjusts the counts automatically. If a character's currency item doesn't exist yet, the system will warn you — create the item first.
 
-When currency changes hands via a session, record the change in `@Zmiany`:
+#### Option 2: Manual Zmiany (for complex scenarios)
+
+When currency changes involve more than simple transfers (e.g., coins found as loot, destroyed, or split across stacks), record them manually in the Zmiany block:
 
 ```markdown
-- @Zmiany:
-    - Korony Elanckie
-        - @należy_do: Kyrre
-        - @ilość: 50
+- Zmiany:
+    - Korony Xeron Demonlorda
+        - @ilość: -20
+    - Korony Kupca Orrina
+        - @ilość: +20
 ```
 
-### Considerations and Potential Exploits
+Use `+N` to add coins and `-N` to subtract coins.
 
-| Risk | Description | Mitigation |
+### Currency Lifecycle
+
+| Status | What it means |
+|---|---|
+| **Aktywny** | Currency is in play. Balance is tracked and reported. |
+| **Nieaktywny** | Currency is out of play (lost account, confiscated, frozen). Balance is preserved but hidden from reports. Can be restored later. |
+| **Usunięty** | The entry was a mistake. Ignored everywhere. |
+
+### Checking Currency Holdings
+
+Coordinators can review currency across the world to see who holds what, filtered by owner or denomination. History of changes over time is also available.
+
+### Reconciliation — Catching Errors
+
+A monthly reconciliation check can flag problems automatically:
+
+- **Negative balance** — a character somehow has fewer than zero coins (likely a recording error)
+- **Stale balance** — someone has currency that hasn't changed in over 3 months (may need review)
+- **Orphaned currency** — currency assigned to a character who is no longer active
+- **Asymmetric transactions** — coins left a character but didn't arrive anywhere (or vice versa)
+- **Supply tracking** — total coins per denomination across the entire world, for detecting drift over time
+
+Reconciliation can run as a standalone check or as part of the monthly PU process.
+
+### Common Risks and How to Avoid Them
+
+| Risk | What can happen | How to prevent it |
 |---|---|---|
-| **Dual placement** | Currency having both `@należy_do` and `@lokacja` active simultaneously would duplicate it — it exists in a player's inventory AND at a location | When moving currency, always end the previous placement. Use temporal ranges: `@należy_do: OldOwner (2024-06:2025-01)` then `@lokacja: Erathia (2025-01:)` |
-| **Negative quantities** | Setting `@ilość` to a negative or zero value | Narrators and coordinators must ensure `@ilość` values are integers greater than zero |
-| **Phantom creation** | Creating currency entities without an in-game source | Only coordinators should create new currency entities; track provenance via session changes |
-| **Quantity mismatch** | Splitting or merging stacks without updating totals correctly | When splitting a stack, reduce the original `@ilość` and create a new entity for the split portion. Verify that the sum remains constant |
-| **Orphaned currency** | Currency with no `@należy_do` and no `@lokacja` — exists but is inaccessible | Coordinators should verify during review that every active currency entity has either an owner or a location. This is a manual convention, not an automated check |
-| **Multiple stacks** | Multiple entities of the same denomination for the same owner | Allowed (items can be stacked separately). Total wealth is the sum of all active stacks per denomination |
+| **Dual placement** | Currency recorded as both carried and dropped at the same time | When moving currency, always end the previous placement before starting the new one |
+| **Negative quantities** | More coins subtracted than available | Reconciliation flags this automatically |
+| **Phantom creation** | Currency created without an in-game source | Only coordinators should create new currency items |
+| **Quantity mismatch** | Splitting or merging stacks without correct totals | Verify the total stays constant; use @Transfer for simple moves |
+| **Orphaned currency** | Coins belonging to a deleted or inactive character | Reconciliation flags this automatically |
+| **Multiple stacks** | Same character has multiple entries for the same denomination | Allowed — total wealth is the sum of all stacks |
+| **Accuracy drift** | Physical items lost or transferred outside session scope | Monthly reconciliation + periodic baseline resets |
 
 ## How Entities Are Organized
 

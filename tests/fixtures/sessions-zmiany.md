@@ -22,8 +22,9 @@
 - Zmiany:
     - Xeron Demonlord
         - @stan: Zdrowy (2025-06:)
-    - Korony Elanckie
+    - Korony Xeron Demonlorda
         - @ilość: +25
     - Strażnik Bramy
         - @ilość: -1
         - @generyczne_nazwy: Ochroniarz
+- @Transfer: 10 koron, Xeron Demonlord -> Kupiec Orrin

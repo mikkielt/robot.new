@@ -70,10 +70,10 @@ Describe 'Get-EntityState' {
     }
 
     It 'applies @ilość addition delta from Zmiany' {
-        $Korony = $script:Enriched | Where-Object { $_.Name -eq 'Korony Elanckie' }
+        $Korony = $script:Enriched | Where-Object { $_.Name -eq 'Korony Xeron Demonlorda' }
         $Korony | Should -Not -BeNullOrEmpty
-        # Base: 50, session adds +25 → 75
-        $Korony.Quantity | Should -Be '75'
+        # Base: 50, session adds +25, transfer subtracts -10 → 65
+        $Korony.Quantity | Should -Be '65'
     }
 
     It 'applies @ilość subtraction delta from Zmiany' {
@@ -93,5 +93,28 @@ Describe 'Get-EntityState' {
         $Straznik = $script:Enriched | Where-Object { $_.Name -eq 'Strażnik Bramy' }
         $Straznik.GenericNames | Should -Contain 'Strażnik Miasta'
         $Straznik.GenericNames | Should -Contain 'Wartownik'
+    }
+
+    It 'applies @Transfer as symmetric quantity deltas' {
+        # @Transfer: 10 koron, Xeron Demonlord -> Kupiec Orrin
+        # Source (Korony Xeron Demonlorda): 50 base + 25 zmiany - 10 transfer = 65
+        $Source = $script:Enriched | Where-Object { $_.Name -eq 'Korony Xeron Demonlorda' }
+        $Source | Should -Not -BeNullOrEmpty
+        $Source.Quantity | Should -Be '65'
+
+        # Destination (Korony Kupca Orrina): 30 base + 10 transfer = 40
+        $Dest = $script:Enriched | Where-Object { $_.Name -eq 'Korony Kupca Orrina' }
+        $Dest | Should -Not -BeNullOrEmpty
+        $Dest.Quantity | Should -Be '40'
+    }
+
+    It 'parses @Transfer from session' {
+        $Sessions = Get-Session -File (Join-Path $script:FixturesRoot 'sessions-zmiany.md')
+        $WithTransfers = $Sessions | Where-Object { $_.Transfers -and $_.Transfers.Count -gt 0 }
+        $WithTransfers | Should -Not -BeNullOrEmpty
+        $Transfer = $WithTransfers[0].Transfers[0]
+        $Transfer.Amount | Should -Be 10
+        $Transfer.Source | Should -Be 'Xeron Demonlord'
+        $Transfer.Destination | Should -Be 'Kupiec Orrin'
     }
 }

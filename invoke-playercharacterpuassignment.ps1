@@ -64,7 +64,10 @@ function Invoke-PlayerCharacterPUAssignment {
         [switch]$SendToDiscord,
 
         [Parameter(HelpMessage = "Append processed session headers to pu-sessions.md history")]
-        [switch]$AppendToLog
+        [switch]$AppendToLog,
+
+        [Parameter(HelpMessage = "Run currency reconciliation checks after PU calculation")]
+        [switch]$ReconcileCurrency
     )
 
     $Config = Get-AdminConfig
@@ -376,6 +379,25 @@ function Invoke-PlayerCharacterPUAssignment {
                 Add-AdminHistoryEntry -Path $PUSessionsPath -Headers $NewHeaders.ToArray()
             }
         }
+    }
+
+    # Currency reconciliation (step 6.5)
+    $ReconciliationResult = $null
+    if ($ReconcileCurrency) {
+        $ReconciliationResult = Test-CurrencyReconciliation -Sessions @($Sessions)
+        if ($ReconciliationResult.WarningCount -gt 0) {
+            [System.Console]::Error.WriteLine("[INFO Invoke-PlayerCharacterPUAssignment] Currency reconciliation: $($ReconciliationResult.WarningCount) warning(s)")
+            foreach ($W in $ReconciliationResult.Warnings) {
+                [System.Console]::Error.WriteLine("  [$($W.Severity)] $($W.Check): $($W.Entity) — $($W.Detail)")
+            }
+        } else {
+            [System.Console]::Error.WriteLine("[INFO Invoke-PlayerCharacterPUAssignment] Currency reconciliation: no warnings")
+        }
+    }
+
+    # Return results with optional reconciliation
+    if ($ReconciliationResult) {
+        $AssignmentResults | Add-Member -NotePropertyName 'CurrencyReconciliation' -NotePropertyValue $ReconciliationResult -PassThru | Out-Null
     }
 
     return $AssignmentResults

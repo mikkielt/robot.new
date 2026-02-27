@@ -79,21 +79,30 @@
     - @należy_do: Xeron Demonlord (2024-06:)
     - @status: Aktywny (2024-06:)
 
-* Korony Elanckie
+* Korony Xeron Demonlorda
+    - @generyczne_nazwy: Korony Elanckie
     - @należy_do: Xeron Demonlord (2024-06:)
     - @ilość: 50 (2024-06:)
     - @status: Aktywny (2024-06:)
 
-* Talary Hirońskie
+* Talary Erathii
+    - @generyczne_nazwy: Talary Hirońskie
     - @lokacja: Erathia (2025-01:)
     - @ilość: 200 (2025-01:)
     - @status: Aktywny (2025-01:)
 
-* Kogi Skeltvorskie
+* Kogi Kyrre
+    - @generyczne_nazwy: Kogi Skeltvorskie
     - @należy_do: Kyrre (2024-08:)
     - @ilość: 1500 (2024-08:)
     - @ilość: 800 (2025-02:)
     - @status: Aktywny (2024-08:)
+
+* Korony Kupca Orrina
+    - @generyczne_nazwy: Korony Elanckie
+    - @należy_do: Kupiec Orrin (2024-06:)
+    - @ilość: 30 (2024-06:)
+    - @status: Aktywny (2024-06:)
 
 * Strażnik Bramy
     - @należy_do: Solmyr (2024-06:)
