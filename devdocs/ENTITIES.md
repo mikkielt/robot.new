@@ -84,6 +84,7 @@ Level-2 headers define entity type sections, mapped via `$TypeMap`:
 | `@należy_do` | Temporal | `Owner`, `OwnerHistory` | Ownership (entity → player) |
 | `@grupa` | Temporal | `Groups`, `GroupHistory` | Group/faction membership |
 | `@status` | Temporal | `Status`, `StatusHistory` | `Aktywny`/`Nieaktywny`/`Usunięty` |
+| `@ilość` | Temporal | `Quantity`, `QuantityHistory` | Item quantity (used for stackable items such as currency) |
 | `@zawiera` | Non-temporal | `Contains` | Child containment declaration |
 | Any other `@tag` | Temporal | `Overrides[tag]` | Generic key-value storage |
 
@@ -209,6 +210,8 @@ Characters with `Status = 'Usunięty'` are excluded unless `-IncludeDeleted`.
 | `GroupHistory` | `List[object]` | Full group history |
 | `Status` | string | Active status (`Aktywny` default) |
 | `StatusHistory` | `List[object]` | Status changes with validity ranges |
+| `Quantity` | string | Active quantity (for stackable items such as currency) |
+| `QuantityHistory` | `List[object]` | Quantity changes with validity ranges |
 | `Doors` | string[] | Active physical access connections |
 | `DoorHistory` | `List[object]` | Full door history |
 | `Contains` | `List[string]` | Child entity names |
@@ -292,6 +295,8 @@ Characters with `Status = 'Usunięty'` are excluded unless `-IncludeDeleted`.
 | `tests/get-playercharacter.Tests.ps1` | Flat projection, filters, pass-through entities |
 | `tests/get-playercharacter-state.Tests.ps1` | Three-layer merge, IncludeState, IncludeDeleted |
 | `tests/entity-status.Tests.ps1` | Status lifecycle, temporal status transitions |
+| `tests/przedmiot-entity.Tests.ps1` | Przedmiot type mappings, entity creation, duplicate detection |
+| `tests/currency-entity.Tests.ps1` | Currency entity creation, @ilość tag handling, quantity updates |
 
 Fixtures: `entities.md`, `entities-100-ent.md`, `entities-200-ent.md`, `sessions-zmiany.md`.
 

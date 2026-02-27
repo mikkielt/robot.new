@@ -46,6 +46,78 @@ An entity is any named element of the game world that the system tracks. Each en
 | **Postać (Gracz)** | A player character | Crag Hack, Gem |
 | **Przedmiot** | A notable item | Miecz Piekieł, Tarcza Krasnoludów |
 
+## Currency
+
+### Overview
+
+Currency is a physical in-game item tracked as a Przedmiot entity. There are three denominations used in the Margonem world:
+
+| Denomination | Polish name | Tier |
+|---|---|---|
+| Korony Elanckie | Korona | Gold |
+| Talary Hirońskie | Talar | Silver |
+| Kogi Skeltvorskie | Kog | Copper |
+
+### Exchange Rates
+
+| From | To | Rate |
+|---|---|---|
+| 100 Kogi Skeltvorskie | 1 Talar Hiroński | 100:1 |
+| 100 Talary Hirońskie | 1 Korona Elancka | 100:1 |
+| 10 000 Kogi Skeltvorskie | 1 Korona Elancka | 10000:1 |
+
+### How Currency Is Tracked
+
+Each currency stack is a Przedmiot entity with:
+
+- **Name** — the denomination (e.g., `Korony Elanckie`)
+- **`@ilość`** — the quantity of coins in the stack
+- **`@należy_do`** — the character who owns the currency (when carried)
+- **`@lokacja`** — the location where the currency is dropped (when not carried)
+
+Example in the entity store:
+
+```markdown
+## Przedmiot
+
+* Korony Elanckie
+    - @należy_do: Xeron Demonlord (2024-06:)
+    - @ilość: 50 (2024-06:)
+    - @status: Aktywny (2024-06:)
+
+* Talary Hirońskie
+    - @lokacja: Erathia (2025-01:)
+    - @ilość: 200 (2025-01:)
+    - @status: Aktywny (2025-01:)
+```
+
+### Currency Placement Rules
+
+A currency stack is either **carried** (has `@należy_do`) or **dropped** (has `@lokacja`):
+
+- **Carried currency**: Owned by a specific character. Only that character can use or transfer it.
+- **Dropped currency**: Located at a specific place. Any character with access to that location can pick it up.
+
+When currency changes hands via a session, record the change in `@Zmiany`:
+
+```markdown
+- @Zmiany:
+    - Korony Elanckie
+        - @należy_do: Kyrre
+        - @ilość: 50
+```
+
+### Considerations and Potential Exploits
+
+| Risk | Description | Mitigation |
+|---|---|---|
+| **Dual placement** | Currency having both `@należy_do` and `@lokacja` active simultaneously would duplicate it — it exists in a player's inventory AND at a location | When moving currency, always end the previous placement. Use temporal ranges: `@należy_do: OldOwner (2024-06:2025-01)` then `@lokacja: Erathia (2025-01:)` |
+| **Negative quantities** | Setting `@ilość` to a negative or zero value | Narrators must ensure `@ilość` values are positive integers |
+| **Phantom creation** | Creating currency entities without an in-game source | Only coordinators should create new currency entities; track provenance via session changes |
+| **Quantity mismatch** | Splitting or merging stacks without updating totals correctly | When splitting a stack, reduce the original `@ilość` and create a new entity for the split portion. Verify that the sum remains constant |
+| **Orphaned currency** | Currency with no `@należy_do` and no `@lokacja` — exists but is inaccessible | Ensure every active currency entity has either an owner or a location |
+| **Multiple stacks** | Multiple entities of the same denomination for the same owner | Allowed (items can be stacked separately). Total wealth is the sum of all active stacks per denomination |
+
 ## How Entities Are Organized
 
 ### The Entity Store

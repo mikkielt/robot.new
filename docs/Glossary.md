@@ -28,4 +28,9 @@ This glossary maps English terms used in documentation to their Polish counterpa
 | History Log | Dziennik historii | The record proving what was processed, when, and by which operation. |
 | Trigger | Wyzwalacz (trigger) | A topic marker used to route relevant notifications to the right person. |
 | Intel | Intel (informacja operacyjna) | Targeted in-world information sent to selected recipients. |
+| Currency | Waluta | A physical in-game item representing money, tracked as a Przedmiot with a quantity (`@ilość`). |
+| Quantity | Ilość | The amount of a stackable item, such as coins in a currency stack. |
+| Korona (Gold) | Korona Elancka | The highest-value currency denomination. 1 Korona = 100 Talarów. |
+| Talar (Silver) | Talar Hiroński | A mid-value currency denomination. 1 Talar = 100 Kogów. |
+| Kog (Copper) | Kog Skeltvorski | The lowest-value currency denomination. |
 
