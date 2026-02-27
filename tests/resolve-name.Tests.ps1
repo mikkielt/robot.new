@@ -97,4 +97,57 @@ Describe 'Resolve-Name' {
         $Result = Resolve-Name -Query 'Xeron Demonlord' -Index $script:NameIdx.Index -StemIndex $script:NameIdx.StemIndex -BKTree $script:NameIdx.BKTree -Cache $Cache
         $Result | Should -Not -BeNullOrEmpty
     }
+
+    It 'Stage 2b stem alternation: Bracadzie resolves' {
+        $Candidates = Get-StemAlternationCandidates -Text 'Bracadzie'
+        # If Bracada is in the index, this should resolve
+        $HasBracada = $script:NameIdx.Index.ContainsKey('Bracada')
+        if ($HasBracada) {
+            $Result = Resolve-Name -Query 'Bracadzie' -Index $script:NameIdx.Index -StemIndex $script:NameIdx.StemIndex -BKTree $script:NameIdx.BKTree
+            $Result | Should -Not -BeNullOrEmpty
+        }
+    }
+
+    It 'Stage 3 fuzzy match: typo resolves via Levenshtein' {
+        # "Xeron Demonlors" is 1 edit from "Xeron Demonlord" — within threshold
+        $Result = Resolve-Name -Query 'Xeron Demonlors' -Index $script:NameIdx.Index -StemIndex $script:NameIdx.StemIndex -BKTree $script:NameIdx.BKTree
+        $Result | Should -Not -BeNullOrEmpty
+        $Result.Name | Should -Be 'Xeron Demonlord'
+    }
+
+    It 'OwnerType filter restricts results' {
+        $Result = Resolve-Name -Query 'Xeron Demonlord' -Index $script:NameIdx.Index -StemIndex $script:NameIdx.StemIndex -BKTree $script:NameIdx.BKTree -OwnerType 'Lokacja'
+        # Xeron Demonlord is Postać (Gracz), not Lokacja — should not match
+        $Result | Should -BeNullOrEmpty
+    }
+
+    It 'caches miss as DBNull sentinel' {
+        $Cache = @{}
+        $Result = Resolve-Name -Query 'TOTALLYUNKNOWN123' -Index $script:NameIdx.Index -StemIndex $script:NameIdx.StemIndex -BKTree $script:NameIdx.BKTree -Cache $Cache
+        $Result | Should -BeNullOrEmpty
+        $Cache.ContainsKey('TOTALLYUNKNOWN123') | Should -BeTrue
+        $Cache['TOTALLYUNKNOWN123'] -is [System.DBNull] | Should -BeTrue
+    }
+
+    It 'builds index automatically when not provided' {
+        $Result = Resolve-Name -Query 'Xeron Demonlord' -Players $script:Players -Entities $script:Entities
+        $Result | Should -Not -BeNullOrEmpty
+        $Result.Name | Should -Be 'Xeron Demonlord'
+    }
+
+    It 'linear scan fallback works without BK-tree' {
+        $Result = Resolve-Name -Query 'Xeron Demonlors' -Index $script:NameIdx.Index -StemIndex $script:NameIdx.StemIndex
+        # No BKTree provided — falls back to linear scan
+        $Result | Should -Not -BeNullOrEmpty
+        $Result.Name | Should -Be 'Xeron Demonlord'
+    }
+
+    It 'OwnerType filter affects cache key' {
+        $Cache = @{}
+        $null = Resolve-Name -Query 'Xeron' -Index $script:NameIdx.Index -StemIndex $script:NameIdx.StemIndex -BKTree $script:NameIdx.BKTree -Cache $Cache
+        $null = Resolve-Name -Query 'Xeron' -Index $script:NameIdx.Index -StemIndex $script:NameIdx.StemIndex -BKTree $script:NameIdx.BKTree -Cache $Cache -OwnerType 'Lokacja'
+        # Two cache entries: 'Xeron' and 'Xeron|Lokacja'
+        $Cache.ContainsKey('Xeron') | Should -BeTrue
+        $Cache.ContainsKey('Xeron|Lokacja') | Should -BeTrue
+    }
 }

@@ -86,3 +86,60 @@ Describe 'Get-PlayerCharacter' {
         $Xeron.Player.Name | Should -Be 'Solmyr'
     }
 }
+
+Describe 'Get-PlayerCharacter — IncludeState' {
+    BeforeAll {
+        . (Join-Path $script:ModuleRoot 'charfile-helpers.ps1')
+        $script:Entities = Get-Entity -Path $script:FixturesRoot
+        $script:StateChars = Get-PlayerCharacter -IncludeState -Entities $script:Entities
+    }
+
+    It 'returns status when IncludeState is set' {
+        $Xeron = $script:StateChars | Where-Object { $_.Name -eq 'Xeron Demonlord' }
+        $Xeron.Status | Should -Not -BeNullOrEmpty
+    }
+
+    It 'defaults to Aktywny status when no entity status set' {
+        $Xeron = $script:StateChars | Where-Object { $_.Name -eq 'Xeron Demonlord' }
+        $Xeron.Status | Should -Be 'Aktywny'
+    }
+
+    It 'returns CharacterSheet when IncludeState is set' {
+        $Xeron = $script:StateChars | Where-Object { $_.Name -eq 'Xeron Demonlord' }
+        # CharacterSheet may be null if no file exists, but the field should exist
+        $Xeron.PSObject.Properties.Name | Should -Contain 'CharacterSheet'
+    }
+
+    It 'returns Condition when IncludeState is set' {
+        $Xeron = $script:StateChars | Where-Object { $_.Name -eq 'Xeron Demonlord' }
+        $Xeron.PSObject.Properties.Name | Should -Contain 'Condition'
+    }
+
+    It 'returns Reputation when IncludeState is set' {
+        $Xeron = $script:StateChars | Where-Object { $_.Name -eq 'Xeron Demonlord' }
+        $Xeron.PSObject.Properties.Name | Should -Contain 'Reputation'
+    }
+
+    It 'returns DescribedSessions when IncludeState is set' {
+        $Xeron = $script:StateChars | Where-Object { $_.Name -eq 'Xeron Demonlord' }
+        $Xeron.PSObject.Properties.Name | Should -Contain 'DescribedSessions'
+    }
+}
+
+Describe 'Get-PlayerCharacter — CharacterName filter' {
+    It 'filters by single CharacterName' {
+        $Result = Get-PlayerCharacter -CharacterName 'Dracon'
+        $Result.Count | Should -Be 1
+        $Result[0].Name | Should -Be 'Dracon'
+    }
+
+    It 'filters by multiple CharacterNames' {
+        $Result = Get-PlayerCharacter -CharacterName @('Xeron Demonlord', 'Dracon')
+        $Result.Count | Should -Be 2
+    }
+
+    It 'returns empty when CharacterName does not match' {
+        $Result = Get-PlayerCharacter -CharacterName 'NonExistentCharacter'
+        $Result.Count | Should -Be 0
+    }
+}

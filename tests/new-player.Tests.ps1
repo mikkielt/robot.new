@@ -5,6 +5,7 @@ BeforeAll {
     . (Join-Path $script:ModuleRoot 'get-entity.ps1')
     . (Join-Path $script:ModuleRoot 'get-player.ps1')
     . (Join-Path $script:ModuleRoot 'get-newplayercharacterpucount.ps1')
+    . (Join-Path $script:ModuleRoot 'new-playercharacter.ps1')
     . (Join-Path $script:ModuleRoot 'new-player.ps1')
 }
 
@@ -93,5 +94,89 @@ Describe 'New-Player' {
         $Content = [System.IO.File]::ReadAllText($Path)
         $Content | Should -BeLike '*@trigger: violence*'
         $Content | Should -BeLike '*@trigger: darkness*'
+    }
+
+    It 'creates character when CharacterName is provided' {
+        $Path = Copy-FixtureToTemp -FixtureName 'minimal-entity.md' -DestName 'ent-np-withchar.md'
+        Mock Get-AdminConfig { return @{
+            RepoRoot = $script:TempRoot
+            ModuleRoot = $script:ModuleRoot
+            EntitiesFile = $Path
+            CharactersDir = (Join-Path $script:TempRoot 'Postaci' 'Gracze')
+            TemplatesDir = (Join-Path $script:FixturesRoot 'templates')
+        }}
+
+        $Result = New-Player -Name 'CharPlayer' -CharacterName 'TestHero' -EntitiesFile $Path
+        $Result.PlayerName | Should -Be 'CharPlayer'
+        $Result.CharacterName | Should -Be 'TestHero'
+    }
+
+    It 'creates character with CharacterSheetUrl parameter' {
+        $Path = Copy-FixtureToTemp -FixtureName 'minimal-entity.md' -DestName 'ent-np-sheet.md'
+        Mock Get-AdminConfig { return @{
+            RepoRoot = $script:TempRoot
+            ModuleRoot = $script:ModuleRoot
+            EntitiesFile = $Path
+            CharactersDir = (Join-Path $script:TempRoot 'Postaci' 'Gracze')
+            TemplatesDir = (Join-Path $script:FixturesRoot 'templates')
+        }}
+
+        $Result = New-Player -Name 'SheetPlayer' -CharacterName 'SheetHero' `
+            -CharacterSheetUrl 'https://example.com/sheet' -EntitiesFile $Path
+        $Result.CharacterName | Should -Be 'SheetHero'
+        $Content = [System.IO.File]::ReadAllText($Path)
+        $Content | Should -BeLike '*SheetHero*'
+    }
+
+    It 'creates character with InitialPUStart' {
+        $Path = Copy-FixtureToTemp -FixtureName 'minimal-entity.md' -DestName 'ent-np-pu.md'
+        Mock Get-AdminConfig { return @{
+            RepoRoot = $script:TempRoot
+            ModuleRoot = $script:ModuleRoot
+            EntitiesFile = $Path
+            CharactersDir = (Join-Path $script:TempRoot 'Postaci' 'Gracze')
+            TemplatesDir = (Join-Path $script:FixturesRoot 'templates')
+        }}
+
+        $Result = New-Player -Name 'PUPlayer' -CharacterName 'PUHero' `
+            -InitialPUStart 15 -EntitiesFile $Path
+        $Result.CharacterName | Should -Be 'PUHero'
+        $Content = [System.IO.File]::ReadAllText($Path)
+        $Content | Should -BeLike '*@pu_startowe: 15*'
+    }
+
+    It 'creates character with NoCharacterFile flag' {
+        $Path = Copy-FixtureToTemp -FixtureName 'minimal-entity.md' -DestName 'ent-np-nofile.md'
+        Mock Get-AdminConfig { return @{
+            RepoRoot = $script:TempRoot
+            ModuleRoot = $script:ModuleRoot
+            EntitiesFile = $Path
+            CharactersDir = (Join-Path $script:TempRoot 'Postaci' 'Gracze')
+            TemplatesDir = (Join-Path $script:FixturesRoot 'templates')
+        }}
+
+        $Result = New-Player -Name 'NoFilePlayer' -CharacterName 'NoFileHero' `
+            -NoCharacterFile -EntitiesFile $Path
+        $Result.CharacterName | Should -Be 'NoFileHero'
+        # Character file should not be created
+        $CharFile = Join-Path $script:TempRoot 'Postaci' 'Gracze' 'NoFileHero.md'
+        [System.IO.File]::Exists($CharFile) | Should -BeFalse
+    }
+
+    It 'uses config EntitiesFile when not passed as parameter' {
+        $Path = Copy-FixtureToTemp -FixtureName 'minimal-entity.md' -DestName 'ent-np-configpath.md'
+        Mock Get-AdminConfig { return @{
+            RepoRoot = $script:TempRoot
+            ModuleRoot = $script:ModuleRoot
+            EntitiesFile = $Path
+            CharactersDir = (Join-Path $script:TempRoot 'Postaci' 'Gracze')
+            TemplatesDir = (Join-Path $script:FixturesRoot 'templates')
+        }}
+
+        # Don't pass -EntitiesFile; should use config
+        $Result = New-Player -Name 'ConfigPathPlayer'
+        $Result.PlayerName | Should -Be 'ConfigPathPlayer'
+        $Content = [System.IO.File]::ReadAllText($Path)
+        $Content | Should -BeLike '*ConfigPathPlayer*'
     }
 }

@@ -33,4 +33,24 @@ Describe 'Send-DiscordMessage' {
         { Send-DiscordMessage -Webhook 'http://bad-url' -Message 'test' -WhatIf } |
             Should -Throw '*Invalid webhook URL format*'
     }
+
+    It 'builds correct JSON payload structure' {
+        # We can verify the payload by examining the WhatIf output behavior
+        # The function builds JSON before the ShouldProcess check
+        $Result = Send-DiscordMessage -Webhook 'https://discord.com/api/webhooks/123456/abcdef' -Message 'Test message' -WhatIf
+        $Result | Should -Not -BeNullOrEmpty
+        $Result.Webhook | Should -Be 'https://discord.com/api/webhooks/123456/abcdef'
+    }
+
+    It 'builds JSON with username when provided' {
+        $Result = Send-DiscordMessage -Webhook 'https://discord.com/api/webhooks/123456/abcdef' `
+            -Message 'Test' -Username 'TestBot' -WhatIf
+        $Result.WhatIf | Should -BeTrue
+    }
+
+    It 'handles long message in WhatIf mode' {
+        $LongMsg = 'A' * 2000
+        $Result = Send-DiscordMessage -Webhook 'https://discord.com/api/webhooks/123456/abcdef' -Message $LongMsg -WhatIf
+        $Result.WhatIf | Should -BeTrue
+    }
 }

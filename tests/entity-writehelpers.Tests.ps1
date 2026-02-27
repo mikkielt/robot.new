@@ -170,3 +170,293 @@ Describe 'Write-EntityFile and Read-EntityFile' {
         $Read.Lines[2] | Should -Be '* Entity'
     }
 }
+
+Describe 'ConvertTo-EntitiesFromPlayers' {
+    BeforeAll {
+        $script:TempDir = New-TestTempDir
+    }
+    AfterAll {
+        Remove-TestTempDir
+    }
+
+    It 'generates Gracz and Postać (Gracz) sections' {
+        $Players = @(
+            [PSCustomObject]@{
+                Name         = 'Kilgor'
+                MargonemID   = 'kilgor123'
+                PRFWebhook   = $null
+                Triggers     = @()
+                Characters   = @(
+                    [PSCustomObject]@{
+                        Name           = 'Xeron'
+                        Aliases        = @()
+                        PUStart        = $null
+                        PUExceeded     = $null
+                        PUSum          = 10
+                        PUTaken        = 5
+                        AdditionalInfo = @()
+                    }
+                )
+            }
+        )
+        $OutputPath = Join-Path $script:TempDir 'ent-from-players.md'
+        $Result = ConvertTo-EntitiesFromPlayers -OutputPath $OutputPath -Players $Players
+        $Result | Should -Be $OutputPath
+        $Content = [System.IO.File]::ReadAllText($OutputPath)
+        $Content | Should -BeLike '*## Gracz*'
+        $Content | Should -BeLike '*Kilgor*'
+        $Content | Should -BeLike '*@margonemid: kilgor123*'
+        $Content | Should -BeLike '*## Postać (Gracz)*'
+        $Content | Should -BeLike '*Xeron*'
+        $Content | Should -BeLike '*@należy_do: Kilgor*'
+        $Content | Should -BeLike '*@pu_suma: 10*'
+        $Content | Should -BeLike '*@pu_zdobyte: 5*'
+    }
+
+    It 'writes player PRFWebhook when present' {
+        $Players = @(
+            [PSCustomObject]@{
+                Name         = 'Kilgor'
+                MargonemID   = $null
+                PRFWebhook   = 'https://discord.com/api/webhooks/111/abc'
+                Triggers     = @()
+                Characters   = @()
+            }
+        )
+        $OutputPath = Join-Path $script:TempDir 'ent-webhook.md'
+        ConvertTo-EntitiesFromPlayers -OutputPath $OutputPath -Players $Players
+        $Content = [System.IO.File]::ReadAllText($OutputPath)
+        $Content | Should -BeLike '*@prfwebhook: https://discord.com/api/webhooks/111/abc*'
+    }
+
+    It 'writes triggers when present' {
+        $Players = @(
+            [PSCustomObject]@{
+                Name         = 'Kilgor'
+                MargonemID   = $null
+                PRFWebhook   = $null
+                Triggers     = @('trigger1', 'trigger2')
+                Characters   = @()
+            }
+        )
+        $OutputPath = Join-Path $script:TempDir 'ent-triggers.md'
+        ConvertTo-EntitiesFromPlayers -OutputPath $OutputPath -Players $Players
+        $Content = [System.IO.File]::ReadAllText($OutputPath)
+        $Content | Should -BeLike '*@trigger: trigger1*'
+        $Content | Should -BeLike '*@trigger: trigger2*'
+    }
+
+    It 'writes character aliases' {
+        $Players = @(
+            [PSCustomObject]@{
+                Name         = 'Kilgor'
+                MargonemID   = $null
+                PRFWebhook   = $null
+                Triggers     = @()
+                Characters   = @(
+                    [PSCustomObject]@{
+                        Name           = 'Xeron'
+                        Aliases        = @('Xe', 'Demon Lord')
+                        PUStart        = $null
+                        PUExceeded     = $null
+                        PUSum          = $null
+                        PUTaken        = $null
+                        AdditionalInfo = @()
+                    }
+                )
+            }
+        )
+        $OutputPath = Join-Path $script:TempDir 'ent-aliases.md'
+        ConvertTo-EntitiesFromPlayers -OutputPath $OutputPath -Players $Players
+        $Content = [System.IO.File]::ReadAllText($OutputPath)
+        $Content | Should -BeLike '*@alias: Xe*'
+        $Content | Should -BeLike '*@alias: Demon Lord*'
+    }
+
+    It 'writes PU start and exceeded values' {
+        $Players = @(
+            [PSCustomObject]@{
+                Name         = 'Kilgor'
+                MargonemID   = $null
+                PRFWebhook   = $null
+                Triggers     = @()
+                Characters   = @(
+                    [PSCustomObject]@{
+                        Name           = 'Xeron'
+                        Aliases        = @()
+                        PUStart        = 5
+                        PUExceeded     = 2
+                        PUSum          = $null
+                        PUTaken        = $null
+                        AdditionalInfo = @()
+                    }
+                )
+            }
+        )
+        $OutputPath = Join-Path $script:TempDir 'ent-pu.md'
+        ConvertTo-EntitiesFromPlayers -OutputPath $OutputPath -Players $Players
+        $Content = [System.IO.File]::ReadAllText($OutputPath)
+        $Content | Should -BeLike '*@pu_startowe: 5*'
+        $Content | Should -BeLike '*@pu_nadmiar: 2*'
+    }
+
+    It 'writes additional info' {
+        $Players = @(
+            [PSCustomObject]@{
+                Name         = 'Kilgor'
+                MargonemID   = $null
+                PRFWebhook   = $null
+                Triggers     = @()
+                Characters   = @(
+                    [PSCustomObject]@{
+                        Name           = 'Xeron'
+                        Aliases        = @()
+                        PUStart        = $null
+                        PUExceeded     = $null
+                        PUSum          = $null
+                        PUTaken        = $null
+                        AdditionalInfo = @('Note 1', 'Note 2')
+                    }
+                )
+            }
+        )
+        $OutputPath = Join-Path $script:TempDir 'ent-info.md'
+        ConvertTo-EntitiesFromPlayers -OutputPath $OutputPath -Players $Players
+        $Content = [System.IO.File]::ReadAllText($OutputPath)
+        $Content | Should -BeLike '*@info: Note 1*'
+        $Content | Should -BeLike '*@info: Note 2*'
+    }
+
+    It 'skips players with empty names' {
+        $Players = @(
+            [PSCustomObject]@{
+                Name         = ''
+                MargonemID   = $null
+                PRFWebhook   = $null
+                Triggers     = @()
+                Characters   = @()
+            }
+            [PSCustomObject]@{
+                Name         = 'Kilgor'
+                MargonemID   = $null
+                PRFWebhook   = $null
+                Triggers     = @()
+                Characters   = @()
+            }
+        )
+        $OutputPath = Join-Path $script:TempDir 'ent-skip-empty.md'
+        ConvertTo-EntitiesFromPlayers -OutputPath $OutputPath -Players $Players
+        $Content = [System.IO.File]::ReadAllText($OutputPath)
+        $Content | Should -BeLike '*Kilgor*'
+        # Only one "* " bullet under Gracz section
+        $Matches = [regex]::Matches($Content, '^\* \w', [System.Text.RegularExpressions.RegexOptions]::Multiline)
+        $Matches.Count | Should -Be 1
+    }
+
+    It 'does not write pu_nadmiar when value is 0' {
+        $Players = @(
+            [PSCustomObject]@{
+                Name         = 'Kilgor'
+                MargonemID   = $null
+                PRFWebhook   = $null
+                Triggers     = @()
+                Characters   = @(
+                    [PSCustomObject]@{
+                        Name           = 'Xeron'
+                        Aliases        = @()
+                        PUStart        = $null
+                        PUExceeded     = 0
+                        PUSum          = 10
+                        PUTaken        = $null
+                        AdditionalInfo = @()
+                    }
+                )
+            }
+        )
+        $OutputPath = Join-Path $script:TempDir 'ent-no-exceed.md'
+        ConvertTo-EntitiesFromPlayers -OutputPath $OutputPath -Players $Players
+        $Content = [System.IO.File]::ReadAllText($OutputPath)
+        $Content | Should -Not -BeLike '*@pu_nadmiar*'
+    }
+
+    It 'handles multiple players with multiple characters' {
+        $Players = @(
+            [PSCustomObject]@{
+                Name = 'Kilgor'; MargonemID = $null; PRFWebhook = $null; Triggers = @()
+                Characters = @(
+                    [PSCustomObject]@{ Name = 'Xeron'; Aliases = @(); PUStart = $null; PUExceeded = $null; PUSum = 10; PUTaken = 5; AdditionalInfo = @() }
+                    [PSCustomObject]@{ Name = 'Erdamon'; Aliases = @(); PUStart = $null; PUExceeded = $null; PUSum = 8; PUTaken = 3; AdditionalInfo = @() }
+                )
+            }
+            [PSCustomObject]@{
+                Name = 'Solmyr'; MargonemID = $null; PRFWebhook = $null; Triggers = @()
+                Characters = @(
+                    [PSCustomObject]@{ Name = 'Dracon'; Aliases = @(); PUStart = $null; PUExceeded = $null; PUSum = 15; PUTaken = 7; AdditionalInfo = @() }
+                )
+            }
+        )
+        $OutputPath = Join-Path $script:TempDir 'ent-multi.md'
+        ConvertTo-EntitiesFromPlayers -OutputPath $OutputPath -Players $Players
+        $Content = [System.IO.File]::ReadAllText($OutputPath)
+        $Content | Should -BeLike '*Kilgor*'
+        $Content | Should -BeLike '*Solmyr*'
+        $Content | Should -BeLike '*Xeron*'
+        $Content | Should -BeLike '*Erdamon*'
+        $Content | Should -BeLike '*Dracon*'
+    }
+}
+
+Describe 'Resolve-EntityTarget — additional coverage' {
+    BeforeAll {
+        $script:TempDir = New-TestTempDir
+    }
+    AfterAll {
+        Remove-TestTempDir
+    }
+
+    It 'creates entity with initial tags' {
+        $Path = Copy-FixtureToTemp -FixtureName 'minimal-entity.md' -DestName 'ent-tags.md'
+        $Result = Resolve-EntityTarget -FilePath $Path -EntityType 'Gracz' -EntityName 'NewPlayer' `
+            -InitialTags @{ 'status' = 'Aktywny' }
+        $Result.Created | Should -BeTrue
+        $Content = $Result.Lines -join "`n"
+        $Content | Should -BeLike '*NewPlayer*'
+        $Content | Should -BeLike '*@status: Aktywny*'
+    }
+
+    It 'creates file when it does not exist' {
+        $Path = Join-Path $script:TempDir 'new-entity-file.md'
+        $Result = Resolve-EntityTarget -FilePath $Path -EntityType 'Gracz' -EntityName 'TestPlayer'
+        $Result.Created | Should -BeTrue
+        [System.IO.File]::Exists($Path) | Should -BeTrue
+    }
+
+    It 'creates section when entity type does not exist in file' {
+        $Path = Join-Path $script:TempDir 'ent-nosection.md'
+        [System.IO.File]::WriteAllText($Path, "## Gracz`n`n* ExistingPlayer`n")
+        $Result = Resolve-EntityTarget -FilePath $Path -EntityType 'Przedmiot' -EntityName 'NewItem'
+        $Result.Created | Should -BeTrue
+        $Content = $Result.Lines -join "`n"
+        $Content | Should -BeLike '*## Przedmiot*'
+        $Content | Should -BeLike '*NewItem*'
+    }
+
+    It 'inserts blank line before entity when previous line is not blank' {
+        $Path = Join-Path $script:TempDir 'ent-noblank.md'
+        [System.IO.File]::WriteAllText($Path, "## Gracz`n* ExistingPlayer`n    - @status: Aktywny")
+        $Result = Resolve-EntityTarget -FilePath $Path -EntityType 'Gracz' -EntityName 'AnotherPlayer' `
+            -InitialTags ([ordered]@{ 'status' = 'Aktywny' })
+        $Result.Created | Should -BeTrue
+        $Content = $Result.Lines -join "`n"
+        $Content | Should -BeLike '*AnotherPlayer*'
+    }
+
+    It 'uses unknown type as header text when not in TypeToHeader mapping' {
+        $Path = Join-Path $script:TempDir 'ent-unknowntype.md'
+        [System.IO.File]::WriteAllText($Path, "## Gracz`n`n")
+        $Result = Resolve-EntityTarget -FilePath $Path -EntityType 'CustomType' -EntityName 'CustomEntity'
+        $Result.Created | Should -BeTrue
+        $Content = $Result.Lines -join "`n"
+        $Content | Should -BeLike '*## CustomType*'
+    }
+}

@@ -68,4 +68,93 @@ Describe 'New-PlayerCharacter' {
         $Content = [System.IO.File]::ReadAllText($Path)
         $Content | Should -BeLike '*BrandNewPlayer*'
     }
+
+    It 'creates character file from template when NoCharacterFile is not set' {
+        $Path = Copy-FixtureToTemp -FixtureName 'minimal-entity.md' -DestName 'ent-withfile.md'
+        Copy-FixtureToTemp -FixtureName 'templates/player-character-file.md.template' -DestName 'templates/player-character-file.md.template'
+        $CharsDir = Join-Path $script:TempRoot 'Postaci' 'Gracze'
+        Mock Get-AdminConfig { return @{
+            RepoRoot = $script:TempRoot
+            ModuleRoot = $script:ModuleRoot
+            EntitiesFile = $Path
+            CharactersDir = $CharsDir
+            TemplatesDir = (Join-Path $script:TempRoot 'templates')
+        }}
+
+        New-PlayerCharacter -PlayerName 'Kilgor' -CharacterName 'FileHero' -InitialPUStart 20 -EntitiesFile $Path -CharacterSheetUrl 'https://example.com/sheet'
+        $CharFile = Join-Path $CharsDir 'FileHero.md'
+        [System.IO.File]::Exists($CharFile) | Should -BeTrue
+        $FileContent = [System.IO.File]::ReadAllText($CharFile)
+        $FileContent | Should -BeLike '*https://example.com/sheet*'
+    }
+
+    It 'defaults PU to 20 when Get-NewPlayerCharacterPUCount fails' {
+        $Path = Copy-FixtureToTemp -FixtureName 'minimal-entity.md' -DestName 'ent-defaultpu.md'
+        Mock Get-AdminConfig { return @{
+            RepoRoot = $script:TempRoot
+            ModuleRoot = $script:ModuleRoot
+            EntitiesFile = $Path
+            CharactersDir = (Join-Path $script:TempRoot 'Postaci' 'Gracze')
+            TemplatesDir = (Join-Path $script:FixturesRoot 'templates')
+        }}
+        Mock Get-NewPlayerCharacterPUCount { throw 'Not available' }
+
+        $Result = New-PlayerCharacter -PlayerName 'Kilgor' -CharacterName 'DefaultPUChar' -EntitiesFile $Path -NoCharacterFile
+        $Result.PUStart | Should -Be 20
+    }
+
+    It 'applies initial Condition to character file' {
+        $Path = Copy-FixtureToTemp -FixtureName 'minimal-entity.md' -DestName 'ent-cond.md'
+        Copy-FixtureToTemp -FixtureName 'templates/player-character-file.md.template' -DestName 'templates/player-character-file.md.template'
+        $CharsDir = Join-Path $script:TempRoot 'Postaci' 'Gracze'
+        Mock Get-AdminConfig { return @{
+            RepoRoot = $script:TempRoot
+            ModuleRoot = $script:ModuleRoot
+            EntitiesFile = $Path
+            CharactersDir = $CharsDir
+            TemplatesDir = (Join-Path $script:TempRoot 'templates')
+        }}
+
+        New-PlayerCharacter -PlayerName 'Kilgor' -CharacterName 'CondChar' -InitialPUStart 20 -EntitiesFile $Path -Condition 'Ranny.'
+        $CharFile = Join-Path $CharsDir 'CondChar.md'
+        $FileContent = [System.IO.File]::ReadAllText($CharFile)
+        $FileContent | Should -BeLike '*Ranny.*'
+    }
+
+    It 'applies initial SpecialItems to character file' {
+        $Path = Copy-FixtureToTemp -FixtureName 'minimal-entity.md' -DestName 'ent-items.md'
+        Copy-FixtureToTemp -FixtureName 'templates/player-character-file.md.template' -DestName 'templates/player-character-file.md.template'
+        $CharsDir = Join-Path $script:TempRoot 'Postaci' 'Gracze'
+        Mock Get-AdminConfig { return @{
+            RepoRoot = $script:TempRoot
+            ModuleRoot = $script:ModuleRoot
+            EntitiesFile = $Path
+            CharactersDir = $CharsDir
+            TemplatesDir = (Join-Path $script:TempRoot 'templates')
+        }}
+
+        New-PlayerCharacter -PlayerName 'Kilgor' -CharacterName 'ItemChar' -InitialPUStart 20 -EntitiesFile $Path -SpecialItems @('Magic Sword', 'Shield')
+        $CharFile = Join-Path $CharsDir 'ItemChar.md'
+        $FileContent = [System.IO.File]::ReadAllText($CharFile)
+        $FileContent | Should -BeLike '*Magic Sword*'
+        $FileContent | Should -BeLike '*Shield*'
+    }
+
+    It 'applies initial AdditionalNotes to character file' {
+        $Path = Copy-FixtureToTemp -FixtureName 'minimal-entity.md' -DestName 'ent-notes.md'
+        Copy-FixtureToTemp -FixtureName 'templates/player-character-file.md.template' -DestName 'templates/player-character-file.md.template'
+        $CharsDir = Join-Path $script:TempRoot 'Postaci' 'Gracze'
+        Mock Get-AdminConfig { return @{
+            RepoRoot = $script:TempRoot
+            ModuleRoot = $script:ModuleRoot
+            EntitiesFile = $Path
+            CharactersDir = $CharsDir
+            TemplatesDir = (Join-Path $script:TempRoot 'templates')
+        }}
+
+        New-PlayerCharacter -PlayerName 'Kilgor' -CharacterName 'NoteChar' -InitialPUStart 20 -EntitiesFile $Path -AdditionalNotes @('Special note')
+        $CharFile = Join-Path $CharsDir 'NoteChar.md'
+        $FileContent = [System.IO.File]::ReadAllText($CharFile)
+        $FileContent | Should -BeLike '*Special note*'
+    }
 }

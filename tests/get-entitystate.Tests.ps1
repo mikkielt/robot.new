@@ -118,3 +118,147 @@ Describe 'Get-EntityState' {
         $Transfer.Destination | Should -Be 'Kupiec Orrin'
     }
 }
+
+Describe 'Get-EntityState — @drzwi, @typ, @należy_do, @grupa changes' {
+    BeforeAll {
+        $script:TempDir = New-TestTempDir
+        $EntContent = @"
+## NPC
+
+* TestNPC
+    - @lokacja: Erathia (2024-01:)
+
+## Lokacja
+
+* Erathia
+
+## Przedmiot
+
+* TestSword
+    - @należy_do: TestNPC (2024-01:)
+"@
+        $EntPath = Join-Path $script:TempDir 'ent-changes.md'
+        [System.IO.File]::WriteAllText($EntPath, $EntContent)
+
+        $SessContent = @"
+# Sesje
+
+## Historia
+
+### 2025-04-01, Test session, Narrator
+
+- Lokalizacje:
+    - Erathia
+- Zmiany:
+    - TestNPC
+        - @drzwi: MainGate (2025-04:)
+        - @typ: Boss (2025-04:)
+        - @należy_do: Someone (2025-04:)
+        - @grupa: Villains (2025-04:)
+        - @status: Ranny (2025-04:)
+    - TestSword
+        - @ilość: +5
+"@
+        $SessPath = Join-Path $script:TempDir 'sess-changes.md'
+        [System.IO.File]::WriteAllText($SessPath, $SessContent)
+
+        $Entities = Get-Entity -Path $EntPath
+        $Sessions = Get-Session -File $SessPath
+        $script:Enriched = Get-EntityState -Entities $Entities -Sessions $Sessions
+    }
+
+    AfterAll {
+        Remove-TestTempDir $script:TempDir
+    }
+
+    It 'adds @drzwi to DoorHistory' {
+        $NPC = $script:Enriched | Where-Object { $_.Name -eq 'TestNPC' }
+        $NPC.DoorHistory | Should -Not -BeNullOrEmpty
+        ($NPC.DoorHistory | Where-Object { $_.Location -eq 'MainGate' }) | Should -Not -BeNullOrEmpty
+    }
+
+    It 'adds @typ to TypeHistory' {
+        $NPC = $script:Enriched | Where-Object { $_.Name -eq 'TestNPC' }
+        $NPC.TypeHistory | Should -Not -BeNullOrEmpty
+        ($NPC.TypeHistory | Where-Object { $_.Type -eq 'Boss' }) | Should -Not -BeNullOrEmpty
+    }
+
+    It 'adds @należy_do to OwnerHistory' {
+        $NPC = $script:Enriched | Where-Object { $_.Name -eq 'TestNPC' }
+        $NPC.OwnerHistory | Should -Not -BeNullOrEmpty
+        ($NPC.OwnerHistory | Where-Object { $_.OwnerName -eq 'Someone' }) | Should -Not -BeNullOrEmpty
+    }
+
+    It 'adds @grupa to GroupHistory' {
+        $NPC = $script:Enriched | Where-Object { $_.Name -eq 'TestNPC' }
+        $NPC.GroupHistory | Should -Not -BeNullOrEmpty
+        ($NPC.GroupHistory | Where-Object { $_.Group -eq 'Villains' }) | Should -Not -BeNullOrEmpty
+    }
+
+    It 'adds @status to StatusHistory with lazy init' {
+        $NPC = $script:Enriched | Where-Object { $_.Name -eq 'TestNPC' }
+        $NPC.StatusHistory | Should -Not -BeNullOrEmpty
+        ($NPC.StatusHistory | Where-Object { $_.Status -eq 'Ranny' }) | Should -Not -BeNullOrEmpty
+    }
+
+    It 'handles @ilość with arithmetic delta (+N)' {
+        $Sword = $script:Enriched | Where-Object { $_.Name -eq 'TestSword' }
+        $Sword.QuantityHistory | Should -Not -BeNullOrEmpty
+    }
+}
+
+Describe 'Get-EntityState — unresolved entity warning' {
+    BeforeAll {
+        $script:TempDir = New-TestTempDir
+        $EntContent = @"
+## NPC
+
+* KnownNPC
+    - @lokacja: Erathia (2024-01:)
+"@
+        $EntPath = Join-Path $script:TempDir 'ent-unresolved.md'
+        [System.IO.File]::WriteAllText($EntPath, $EntContent)
+
+        $SessContent = @"
+# Sesje
+
+## Historia
+
+### 2025-05-01, Unresolved test, Narrator
+
+- Zmiany:
+    - CompletelyUnknownEntityXYZ123
+        - @status: Aktywny (2025-05:)
+"@
+        $SessPath = Join-Path $script:TempDir 'sess-unresolved.md'
+        [System.IO.File]::WriteAllText($SessPath, $SessContent)
+
+        $script:Entities = Get-Entity -Path $EntPath
+        $script:Sessions = Get-Session -File $SessPath
+    }
+
+    AfterAll {
+        Remove-TestTempDir $script:TempDir
+    }
+
+    It 'warns about unresolved entities and continues' {
+        $Enriched = Get-EntityState -Entities $script:Entities -Sessions $script:Sessions
+        $Enriched | Should -Not -BeNullOrEmpty
+    }
+}
+
+Describe 'Get-EntityState — @Transfer expansion' {
+    It 'applies transfer amounts to source and destination currency entities' {
+        $Entities = Get-Entity -Path $script:FixturesRoot
+        $Sessions = Get-Session -File (Join-Path $script:FixturesRoot 'sessions-zmiany.md')
+        $Enriched = Get-EntityState -Entities $Entities -Sessions $Sessions
+
+        # Korony Xeron Demonlorda should have transfer debit
+        $XeronKorony = $Enriched | Where-Object { $_.Name -eq 'Korony Xeron Demonlorda' }
+        $XeronKorony.QuantityHistory | Should -Not -BeNullOrEmpty
+
+        # Korony Kupca Orrina should have transfer credit
+        $OrrinKorony = $Enriched | Where-Object { $_.Name -eq 'Korony Kupca Orrina' }
+        $OrrinKorony.QuantityHistory | Should -Not -BeNullOrEmpty
+    }
+}

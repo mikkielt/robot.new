@@ -24,6 +24,7 @@ Describe 'robot.psm1 - module loader' {
                 'Get-Session',
                 'Get-NameIndex',
                 'Get-NewPlayerCharacterPUCount',
+                'Get-CurrencyReport',
                 'New-Player',
                 'New-PlayerCharacter',
                 'New-Session',
@@ -35,7 +36,8 @@ Describe 'robot.psm1 - module loader' {
                 'Set-Session',
                 'Send-DiscordMessage',
                 'Invoke-PlayerCharacterPUAssignment',
-                'Test-PlayerCharacterPUAssignment'
+                'Test-PlayerCharacterPUAssignment',
+                'Test-CurrencyReconciliation'
             )
 
             $Actual = Get-Command -Module robot | Select-Object -ExpandProperty Name

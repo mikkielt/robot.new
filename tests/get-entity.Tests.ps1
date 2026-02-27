@@ -303,3 +303,152 @@ Describe 'Get-Entity' {
         $Orrin.GenericNames.Count | Should -Be 0
     }
 }
+
+Describe 'Get-NestedBulletText' {
+    BeforeAll {
+        $script:BulletParent = [PSCustomObject]@{ Text = 'Parent' }
+        $script:ParentId = [System.Runtime.CompilerServices.RuntimeHelpers]::GetHashCode($script:BulletParent)
+    }
+
+    It 'returns null when parent has no children' {
+        $ChildrenOf = @{}
+        $Result = Get-NestedBulletText -ParentBullet $script:BulletParent -ChildrenOf $ChildrenOf -ActiveOn $null
+        $Result | Should -BeNullOrEmpty
+    }
+
+    It 'returns null when children list is empty' {
+        $ChildrenOf = @{ $script:ParentId = @() }
+        $Result = Get-NestedBulletText -ParentBullet $script:BulletParent -ChildrenOf $ChildrenOf -ActiveOn $null
+        $Result | Should -BeNullOrEmpty
+    }
+
+    It 'returns joined text for active children without temporal filter' {
+        $Children = @(
+            [PSCustomObject]@{ Text = 'Child1' },
+            [PSCustomObject]@{ Text = 'Child2' }
+        )
+        $ChildrenOf = @{ $script:ParentId = $Children }
+        $Result = Get-NestedBulletText -ParentBullet $script:BulletParent -ChildrenOf $ChildrenOf -ActiveOn $null
+        $Result | Should -Be "Child1`nChild2"
+    }
+
+    It 'filters children by temporal activity' {
+        $Children = @(
+            [PSCustomObject]@{ Text = 'Active (2024-01:)' },
+            [PSCustomObject]@{ Text = 'Expired (:2023-06)' }
+        )
+        $ChildrenOf = @{ $script:ParentId = $Children }
+        $Result = Get-NestedBulletText -ParentBullet $script:BulletParent -ChildrenOf $ChildrenOf -ActiveOn ([datetime]::new(2025, 1, 1))
+        $Result | Should -Be 'Active'
+    }
+
+    It 'returns null when all children are temporally inactive' {
+        $Children = @(
+            [PSCustomObject]@{ Text = 'Gone (:2020-01)' }
+        )
+        $ChildrenOf = @{ $script:ParentId = $Children }
+        $Result = Get-NestedBulletText -ParentBullet $script:BulletParent -ChildrenOf $ChildrenOf -ActiveOn ([datetime]::new(2025, 1, 1))
+        $Result | Should -BeNullOrEmpty
+    }
+}
+
+Describe 'Resolve-EntityCN' {
+    BeforeAll {
+        $script:Entities = Get-Entity -Path $script:FixturesRoot
+        $script:EntityByName = @{}
+        foreach ($E in $script:Entities) {
+            foreach ($N in $E.Names) {
+                $script:EntityByName[$N] = $E
+            }
+        }
+    }
+
+    It 'returns Lokacja/Parent/Child for nested location' {
+        $Erathia = $script:EntityByName['Erathia']
+        $Ratusz = $script:EntityByName['Ratusz Erathii']
+        $Visited = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+        $Result = Resolve-EntityCN -Entity $Ratusz -Visited $Visited -EntityByName $script:EntityByName -ActiveOn $null -CNCache @{}
+        $Result | Should -BeLike 'Lokacja/Enroth/Erathia/Ratusz Erathii'
+    }
+
+    It 'returns flat CN for non-location entity' {
+        $Orrin = $script:EntityByName['Kupiec Orrin']
+        $Visited = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+        $Result = Resolve-EntityCN -Entity $Orrin -Visited $Visited -EntityByName $script:EntityByName -ActiveOn $null -CNCache @{}
+        $Result | Should -Be 'NPC/Kupiec Orrin'
+    }
+
+    It 'returns Lokacja/Name for top-level location without parent' {
+        $Enroth = $script:EntityByName['Enroth']
+        $Visited = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+        $Result = Resolve-EntityCN -Entity $Enroth -Visited $Visited -EntityByName $script:EntityByName -ActiveOn $null -CNCache @{}
+        $Result | Should -Be 'Lokacja/Enroth'
+    }
+
+    It 'uses CNCache for repeated lookups' {
+        $Cache = @{}
+        $Erathia = $script:EntityByName['Erathia']
+        $V1 = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+        $R1 = Resolve-EntityCN -Entity $Erathia -Visited $V1 -EntityByName $script:EntityByName -ActiveOn $null -CNCache $Cache
+        $Cache.ContainsKey('Erathia') | Should -BeTrue
+        $V2 = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+        $R2 = Resolve-EntityCN -Entity $Erathia -Visited $V2 -EntityByName $script:EntityByName -ActiveOn $null -CNCache $Cache
+        $R2 | Should -Be $R1
+    }
+
+    It 'handles parent not in entity registry' {
+        $Orphan = [PSCustomObject]@{
+            Name            = 'TestOrphan'
+            Type            = 'Lokacja'
+            Names           = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+            LocationHistory = [System.Collections.Generic.List[object]]::new()
+            Doors           = [System.Collections.Generic.List[object]]::new()
+        }
+        [void]$Orphan.Names.Add('TestOrphan')
+        $Orphan.LocationHistory.Add([PSCustomObject]@{ Location = 'UnknownParent'; ValidFrom = $null; ValidTo = $null })
+        $Visited = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+        $Result = Resolve-EntityCN -Entity $Orphan -Visited $Visited -EntityByName $script:EntityByName -ActiveOn $null -CNCache @{}
+        $Result | Should -Be 'Lokacja/UnknownParent/TestOrphan'
+    }
+}
+
+Describe 'Get-Entity with single file path' {
+    It 'loads entities when given a direct file path' {
+        $FilePath = Join-Path $script:FixturesRoot 'entities.md'
+        $Result = Get-Entity -Path $FilePath
+        $Result | Should -Not -BeNullOrEmpty
+        $Result.Count | Should -BeGreaterThan 0
+    }
+}
+
+Describe 'Get-Entity @drzwi and @typ parsing' {
+    BeforeAll {
+        $script:TempDir = New-TestTempDir
+        $Content = @"
+## Lokacja
+
+* TestRoom
+    - @drzwi: MainHall (2024-01:)
+    - @typ: Dungeon (2024-01:)
+"@
+        $Path = Join-Path $script:TempDir 'ent-drzwi-typ.md'
+        [System.IO.File]::WriteAllText($Path, $Content)
+        $script:Entities = Get-Entity -Path $Path
+    }
+
+    AfterAll {
+        Remove-TestTempDir $script:TempDir
+    }
+
+    It 'parses @drzwi into DoorHistory' {
+        $Room = $script:Entities | Where-Object { $_.Name -eq 'TestRoom' }
+        $Room.DoorHistory.Count | Should -BeGreaterThan 0
+        $Room.DoorHistory[0].Location | Should -Be 'MainHall'
+    }
+
+    It 'parses @typ into TypeHistory' {
+        $Room = $script:Entities | Where-Object { $_.Name -eq 'TestRoom' }
+        $Room.TypeHistory.Count | Should -BeGreaterThan 0
+        $Room.TypeHistory[0].Type | Should -Be 'Dungeon'
+    }
+}
