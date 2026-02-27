@@ -2,14 +2,14 @@ BeforeAll {
     . "$PSScriptRoot/TestHelpers.ps1"
     Import-RobotModule
     Mock Get-RepoRoot { return $script:FixturesRoot }
-    Import-RobotHelpers 'admin-state.ps1'
+    . (Join-Path $script:ModuleRoot 'admin-state.ps1')
 }
 
 Describe 'Get-AdminHistoryEntries' {
     It 'reads processed session headers from state file' {
         $Path = Join-Path $script:FixturesRoot 'pu-sessions.md'
         $Result = Get-AdminHistoryEntries -Path $Path
-        $Result | Should -BeOfType [System.Collections.Generic.HashSet[string]]
+        $Result.GetType().Name | Should -BeLike 'HashSet*'
         $Result.Count | Should -BeGreaterThan 0
     }
 

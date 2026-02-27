@@ -4,7 +4,7 @@ BeforeAll {
     Mock Get-RepoRoot { return $script:FixturesRoot }
     . (Join-Path $script:ModuleRoot 'get-entity.ps1')
     . (Join-Path $script:ModuleRoot 'get-player.ps1')
-    Import-RobotHelpers 'entity-writehelpers.ps1'
+    . (Join-Path $script:ModuleRoot 'entity-writehelpers.ps1')
 }
 
 Describe 'Find-EntitySection' {
@@ -82,14 +82,14 @@ Describe 'Set-EntityTag' {
     }
 
     It 'adds a new tag when it does not exist' {
-        $Lines = [System.Collections.Generic.List[string]]::new(@('## Gracz', '', '* Kilgor'))
+        $Lines = [System.Collections.Generic.List[string]]::new([string[]]@('## Gracz', '', '* Kilgor'))
         $ChildEnd = Set-EntityTag -Lines $Lines -BulletIdx 2 -ChildrenStart 3 -ChildrenEnd 3 -TagName 'margonemid' -Value '12345'
         $ChildEnd | Should -Be 4
         $Lines[3] | Should -BeLike '*@margonemid: 12345*'
     }
 
     It 'updates existing tag' {
-        $Lines = [System.Collections.Generic.List[string]]::new(@('## Gracz', '', '* Kilgor', '    - @margonemid: 12345'))
+        $Lines = [System.Collections.Generic.List[string]]::new([string[]]@('## Gracz', '', '* Kilgor', '    - @margonemid: 12345'))
         $ChildEnd = Set-EntityTag -Lines $Lines -BulletIdx 2 -ChildrenStart 3 -ChildrenEnd 4 -TagName 'margonemid' -Value '99999'
         $Lines[3] | Should -BeLike '*@margonemid: 99999*'
     }
@@ -97,7 +97,7 @@ Describe 'Set-EntityTag' {
 
 Describe 'New-EntityBullet' {
     It 'creates entity bullet with tags' {
-        $Lines = [System.Collections.Generic.List[string]]::new(@('## Gracz', ''))
+        $Lines = [System.Collections.Generic.List[string]]::new([string[]]@('## Gracz', ''))
         $End = New-EntityBullet -Lines $Lines -SectionEnd 2 -EntityName 'NewPlayer' -Tags @{ 'margonemid' = '111' }
         $Lines | Should -Contain '* NewPlayer'
         ($Lines -match '@margonemid: 111') | Should -Not -BeNullOrEmpty
@@ -163,7 +163,7 @@ Describe 'Write-EntityFile and Read-EntityFile' {
 
     It 'round-trips content through write and read' {
         $Path = Join-Path $script:TempDir 'roundtrip.md'
-        $Lines = [System.Collections.Generic.List[string]]::new(@('## Test', '', '* Entity', '    - @tag: value'))
+        $Lines = [System.Collections.Generic.List[string]]::new([string[]]@('## Test', '', '* Entity', '    - @tag: value'))
         Write-EntityFile -Path $Path -Lines $Lines
         $Read = Read-EntityFile -Path $Path
         $Read.Lines.Count | Should -Be 4

@@ -37,7 +37,7 @@ Describe 'Merge-ScalarProperty' {
     It 'override with date wins over undated character file value' {
         $Entity = [PSCustomObject]@{
             Overrides = @{
-                'stan' = [System.Collections.Generic.List[string]]::new(@('Ranny (2025-06:)'))
+                'stan' = [System.Collections.Generic.List[string]]::new([string[]]@('Ranny (2025-06:)'))
             }
         }
         $Result = Merge-ScalarProperty -CharFileValue 'Zdrowy.' -Entity $Entity -OverrideKey 'stan' -ActiveOn $null
@@ -47,7 +47,7 @@ Describe 'Merge-ScalarProperty' {
     It 'respects ActiveOn for temporal filtering' {
         $Entity = [PSCustomObject]@{
             Overrides = @{
-                'stan' = [System.Collections.Generic.List[string]]::new(@('Ranny (2025-06:2025-12)'))
+                'stan' = [System.Collections.Generic.List[string]]::new([string[]]@('Ranny (2025-06:2025-12)'))
             }
         }
         # Query before override range — should fall back to char file value
@@ -77,7 +77,7 @@ Describe 'Merge-MultiValuedProperty' {
     It 'combines character file and override values' {
         $Entity = [PSCustomObject]@{
             Overrides = @{
-                'przedmiot_specjalny' = [System.Collections.Generic.List[string]]::new(@('New Item (2025-06:)'))
+                'przedmiot_specjalny' = [System.Collections.Generic.List[string]]::new([string[]]@('New Item (2025-06:)'))
             }
         }
         $Result = Merge-MultiValuedProperty -CharFileValues @('Existing Item') -Entity $Entity -OverrideKey 'przedmiot_specjalny' -ActiveOn $null
@@ -104,7 +104,7 @@ Describe 'Merge-ReputationTier' {
         )
         $Entity = [PSCustomObject]@{
             Overrides = @{
-                'reputacja_pozytywna' = [System.Collections.Generic.List[string]]::new(@('Steadwick (2025-06:)'))
+                'reputacja_pozytywna' = [System.Collections.Generic.List[string]]::new([string[]]@('Steadwick (2025-06:)'))
             }
         }
         $Result = Merge-ReputationTier -CharFileTier $CharTier -Entity $Entity -OverrideKey 'reputacja_pozytywna' -ActiveOn $null

@@ -10,7 +10,7 @@ BeforeAll {
 
 Describe 'Get-NameIndex' {
     BeforeAll {
-        $script:Entities = Get-Entity
+        $script:Entities = Get-Entity -Path $script:FixturesRoot
         $script:Players = Get-Player -Entities $script:Entities
         $script:NameIdx = Get-NameIndex -Players $script:Players -Entities $script:Entities
     }

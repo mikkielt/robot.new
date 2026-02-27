@@ -169,8 +169,10 @@ function Get-Player {
                     $PUParts = $PURaw.Split(",").ForEach({ $_.Trim() })
 
                     foreach ($PUPart in $PUParts) {
-                        $PartKey = $PUPart.Split(":")[0].Trim()
-                        $PartValue = $PUPart.Split(":")[1].Trim()
+                        $SplitParts = $PUPart.Split(":")
+                        $PartKey = $SplitParts[0].Trim()
+                        if ($SplitParts.Length -lt 2) { continue }
+                        $PartValue = $SplitParts[1].Trim()
 
                         $PropertyName = $PUInfoMap[$PartKey]
                         if (-not $PropertyName) { continue }
@@ -179,7 +181,10 @@ function Get-Player {
                         $Character.$PropertyName = if ($PartValue -eq "BRAK") {
                             $null
                         } else {
-                            try { [math]::Round([decimal]$PartValue, 2) } catch { $null }
+                            try {
+                                $NormalizedValue = $PartValue.Replace(",", ".")
+                                [math]::Round([decimal]::Parse($NormalizedValue, [System.Globalization.CultureInfo]::InvariantCulture), 2)
+                            } catch { $null }
                         }
                     }
 
@@ -219,10 +224,9 @@ function Get-Player {
     if (-not $Entities) {
         $Entities = Get-Entity
     }
-    # We only care about entities that are explicitly Players, Player Characters, or have an Owner
+    # We only care about entities that are explicitly Players or Player Characters
     $OverrideEntities = $Entities.Where({
         $_.Type -in @('Gracz', 'Postać (Gracz)') -or
-        $null -ne $_.Owner -or
         $_.TypeHistory.Where({ $_.Type -in @('Gracz', 'Postać (Gracz)') }).Count -gt 0
     })
 

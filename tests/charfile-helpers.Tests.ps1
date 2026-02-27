@@ -262,7 +262,7 @@ Describe 'Find-CharacterSection' {
 
 Describe 'Write-CharacterFileSection' {
     It 'replaces section content in-place' {
-        $Lines = [System.Collections.Generic.List[string]]::new(@(
+        $Lines = [System.Collections.Generic.List[string]]::new([string[]]@(
             '**Stan:**'
             'Zdrowy.'
             ''
@@ -275,7 +275,7 @@ Describe 'Write-CharacterFileSection' {
     }
 
     It 'updates inline value when specified' {
-        $Lines = [System.Collections.Generic.List[string]]::new(@(
+        $Lines = [System.Collections.Generic.List[string]]::new([string[]]@(
             '**Karta Postaci:** https://old.url'
             ''
             '**Stan:**'

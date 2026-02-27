@@ -24,7 +24,7 @@ $ModuleRoot = $PSScriptRoot
 $FunctionFiles = [System.IO.Directory]::GetFiles($ModuleRoot, '*.ps1', [System.IO.SearchOption]::AllDirectories)
 
 # Verb-Noun pattern regex for exported functions (case-insensitive)
-$VerbNounPattern = [regex]::new('^(Get|Set|New|Remove|Resolve|Test|Invoke)-\w+$', [System.Text.RegularExpressions.RegexOptions]::IgnoreCase)
+$VerbNounPattern = [regex]::new('^(Get|Set|New|Remove|Resolve|Test|Invoke|Send)-\w+$', [System.Text.RegularExpressions.RegexOptions]::IgnoreCase)
 
 $ExportedFunctions = [System.Collections.Generic.List[string]]::new()
 

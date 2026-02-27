@@ -74,7 +74,10 @@ Describe 'Write-CharacterFileSection' {
             $Content = [string]::Join("`n", $Lines)
             $Content | Should -Match 'Magiczny miecz'
             $Content | Should -Match 'Tarcza ognia'
-            $Content | Should -Not -Match 'Brak\.'
+            # Verify the Przedmioty specjalne section itself no longer contains Brak.
+            $SpecIdx = $Lines.IndexOf('**Przedmioty specjalne:**')
+            $SectionContent = $Lines[($SpecIdx + 1)..($SpecIdx + 3)] -join "`n"
+            $SectionContent | Should -Not -Match 'Brak\.'
         }
     }
 

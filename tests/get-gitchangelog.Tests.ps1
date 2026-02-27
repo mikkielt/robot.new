@@ -20,7 +20,6 @@ Describe 'ConvertFrom-CommitLine' {
         $Result.AuthorEmail | Should -Be 'author@example.com'
         $Result.CommitDate | Should -BeOfType [datetime]
         $Result.CommitDate.Year | Should -Be 2024
-        $Result.Files | Should -Not -BeNullOrEmpty
         $Result.Files.Count | Should -Be 0
     }
 

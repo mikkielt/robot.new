@@ -20,7 +20,7 @@ Describe 'Invoke-PlayerCharacterPUAssignment' {
 
         # Mock history (nothing processed yet)
         Mock Get-AdminHistoryEntries {
-            return [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+            return , [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
         }
 
         # Mock side-effect functions
@@ -245,7 +245,7 @@ Describe 'Invoke-PlayerCharacterPUAssignment' {
                 $Set = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
                 [void]$Set.Add('2024-06-15, Test Session A, Narrator')
                 [void]$Set.Add('2024-06-20, Test Session B, Narrator')
-                return $Set
+                return , $Set
             }
 
             $Result = Invoke-PlayerCharacterPUAssignment -Year 2024 -Month 6 -WhatIf
@@ -266,7 +266,7 @@ Describe 'Invoke-PlayerCharacterPUAssignment' {
             }
             Mock Get-PlayerCharacter { return $script:MockCharacters }
             Mock Get-AdminHistoryEntries {
-                return [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+                return , [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
             }
 
             $Result = Invoke-PlayerCharacterPUAssignment -Year 2024 -Month 6 -WhatIf

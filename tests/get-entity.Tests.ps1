@@ -161,7 +161,7 @@ Describe 'Resolve-EntityCN' {
 
 Describe 'Get-Entity' {
     BeforeAll {
-        $script:Entities = Get-Entity
+        $script:Entities = Get-Entity -Path $script:FixturesRoot
     }
 
     It 'parses all entities from fixtures' {
@@ -275,8 +275,14 @@ Describe 'Get-Entity' {
     }
 
     It 'returns empty list for empty directory' {
-        $Result = Get-Entity -Path ([System.IO.Path]::GetTempPath())
-        $Result.Count | Should -Be 0
+        $EmptyDir = Join-Path ([System.IO.Path]::GetTempPath()) ("robot-empty-" + [System.Guid]::NewGuid().ToString('N'))
+        [System.IO.Directory]::CreateDirectory($EmptyDir) | Out-Null
+        try {
+            $Result = Get-Entity -Path $EmptyDir
+            $Result.Count | Should -Be 0
+        } finally {
+            [System.IO.Directory]::Delete($EmptyDir, $true)
+        }
     }
 
     It 'parses @generyczne_nazwy into GenericNames list' {

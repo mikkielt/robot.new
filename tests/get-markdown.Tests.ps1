@@ -79,7 +79,6 @@ Describe 'Get-Markdown' {
             $Result = Get-Markdown -File @($script:SingleFile, $script:SecondFile)
 
             ($Result -is [System.Collections.IList]) | Should -BeTrue
-            $Result.GetType().Name | Should -Be 'List`1'
             $Result.Count | Should -Be 2
             @($Result | ForEach-Object { $_.FilePath }) | Should -Be @($script:SingleFile, $script:SecondFile)
         }

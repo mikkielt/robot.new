@@ -2,6 +2,7 @@ BeforeAll {
     . "$PSScriptRoot/TestHelpers.ps1"
     Import-RobotModule
     Mock Get-RepoRoot { return $script:FixturesRoot }
+    . (Join-Path $script:ModuleRoot 'get-nameindex.ps1')
     . (Join-Path $script:ModuleRoot 'resolve-name.ps1')
 }
 

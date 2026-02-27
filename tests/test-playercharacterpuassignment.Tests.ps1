@@ -2,6 +2,7 @@ BeforeAll {
     . "$PSScriptRoot/TestHelpers.ps1"
     Import-RobotModule
     Mock Get-RepoRoot { return $script:FixturesRoot }
+    . (Join-Path $script:ModuleRoot 'invoke-playercharacterpuassignment.ps1')
     . (Join-Path $script:ModuleRoot 'test-playercharacterpuassignment.ps1')
 }
 
@@ -57,7 +58,7 @@ Describe 'Test-PlayerCharacterPUAssignment' {
                 })
             }
             Mock Get-AdminHistoryEntries {
-                return [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+                return , [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
             }
         }
 
@@ -92,7 +93,7 @@ Describe 'Test-PlayerCharacterPUAssignment' {
                 })
             }
             Mock Get-AdminHistoryEntries {
-                return [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+                return , [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
             }
         }
 
@@ -118,7 +119,7 @@ Describe 'Test-PlayerCharacterPUAssignment' {
                 })
             }
             Mock Get-AdminHistoryEntries {
-                return [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+                return , [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
             }
         }
 
@@ -146,7 +147,7 @@ Describe 'Test-PlayerCharacterPUAssignment' {
                 })
             }
             Mock Get-AdminHistoryEntries {
-                return [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+                return , [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
             }
         }
 
@@ -182,7 +183,7 @@ Describe 'Test-PlayerCharacterPUAssignment' {
                 )
             }
             Mock Get-AdminHistoryEntries {
-                return [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+                return , [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
             }
         }
 
@@ -222,7 +223,7 @@ Describe 'Test-PlayerCharacterPUAssignment' {
                 $Set = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
                 [void]$Set.Add('2024-06-15, Known Session, Narrator')
                 [void]$Set.Add('2024-03-10, Deleted Session, OldNarrator')
-                return $Set
+                return , $Set
             }
         }
 
@@ -248,7 +249,7 @@ Describe 'Test-PlayerCharacterPUAssignment' {
                 })
             }
             Mock Get-AdminHistoryEntries {
-                return [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+                return , [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
             }
         }
 

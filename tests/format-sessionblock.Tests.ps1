@@ -2,7 +2,7 @@ BeforeAll {
     . "$PSScriptRoot/TestHelpers.ps1"
     Import-RobotModule
     Mock Get-RepoRoot { return $script:FixturesRoot }
-    Import-RobotHelpers 'format-sessionblock.ps1'
+    . (Join-Path $script:ModuleRoot 'format-sessionblock.ps1')
 
     $script:NL = "`n"
 }

@@ -31,7 +31,7 @@ function Get-Markdown {
         Parses Markdown files into structured objects with headers, sections, lists, and links.
     #>
 
-    [CmdletBinding()] param(
+    [CmdletBinding(DefaultParameterSetName = "Directory")] param(
         [Parameter(ParameterSetName = "File", HelpMessage = "Path(s) to Markdown file(s) to parse")] [ValidateScript({
             # Validate each file in the array exists
             $FilePaths = if ($_ -is [array]) { $_ } else { @($_) }
@@ -46,8 +46,13 @@ function Get-Markdown {
             if (-not [System.IO.Directory]::Exists($_)) { throw "Directory not found: $_" }
             return $true
         })]
-        [string]$Directory = (Get-RepoRoot)
+        [string]$Directory
     )
+
+    # Default directory to repo root if no parameters provided
+    if ($PSCmdlet.ParameterSetName -eq "Directory" -and -not $PSBoundParameters.ContainsKey('Directory')) {
+        $Directory = Get-RepoRoot
+    }
 
     # Collect all files to process based on parameter set
     $FilesToProcess = [System.Collections.Generic.List[string]]::new()

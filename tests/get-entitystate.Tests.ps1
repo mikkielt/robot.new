@@ -13,7 +13,7 @@ BeforeAll {
 
 Describe 'Get-EntityState' {
     BeforeAll {
-        $script:Entities = Get-Entity
+        $script:Entities = Get-Entity -Path $script:FixturesRoot
         $script:Sessions = Get-Session -File (Join-Path $script:FixturesRoot 'sessions-zmiany.md')
         $script:Enriched = Get-EntityState -Entities $script:Entities -Sessions $script:Sessions
     }

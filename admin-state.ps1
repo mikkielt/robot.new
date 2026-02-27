@@ -39,7 +39,7 @@ function Get-AdminHistoryEntries {
     $Result = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
 
     if (-not [System.IO.File]::Exists($Path)) {
-        return $Result
+        return , $Result
     }
 
     $UTF8NoBOM = [System.Text.UTF8Encoding]::new($false)
@@ -59,7 +59,7 @@ function Get-AdminHistoryEntries {
         }
     }
 
-    return $Result
+    return , $Result
 }
 
 # Appends new processed session headers to a state file with a timestamp line.
@@ -70,6 +70,7 @@ function Add-AdminHistoryEntry {
         [string]$Path,
 
         [Parameter(Mandatory, HelpMessage = "Session header strings to append")]
+        [AllowEmptyCollection()]
         [string[]]$Headers
     )
 

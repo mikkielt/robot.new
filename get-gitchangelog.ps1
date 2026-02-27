@@ -149,26 +149,17 @@ function Get-GitChangeLog {
     $Process = [System.Diagnostics.Process]::new()
     $Process.StartInfo = $Psi
 
-    # Async stderr capture prevents deadlock: if git fills the OS pipe buffer (~64KB)
-    # while we're blocked reading stdout, both processes would wait forever
-    $StderrBuilder = [System.Text.StringBuilder]::new()
-    $StderrHandler = [System.Diagnostics.DataReceivedEventHandler]{
-        param($sender, $e)
-        if (-not [string]::IsNullOrEmpty($e.Data)) {
-            $sender.GetType()  # no-op to keep $sender alive
-            $StderrBuilder.AppendLine($e.Data)
-        }
-    }
-    $Process.add_ErrorDataReceived($StderrHandler)
-
     try {
         [void]$Process.Start()
-        $Process.BeginErrorReadLine()
+
+        # Start async stderr read to prevent pipe buffer deadlock.
+        # Uses .NET Task<string> instead of PowerShell ScriptBlock event handler
+        # to avoid "no Runspace available" crash on thread pool threads.
+        $StderrTask = $Process.StandardError.ReadToEndAsync()
 
         # Stream-parse stdout line by line to avoid materializing the entire output
         $Reader = $Process.StandardOutput
     } catch {
-        $Process.remove_ErrorDataReceived($StderrHandler)
         throw
     }
 
@@ -334,11 +325,10 @@ function Get-GitChangeLog {
     $Process.WaitForExit()
 
     } finally {
-        $Process.remove_ErrorDataReceived($StderrHandler)
     }
 
     if ($Process.ExitCode -ne 0) {
-        $Stderr = $StderrBuilder.ToString()
+        $Stderr = $StderrTask.GetAwaiter().GetResult()
         throw "Git command failed (exit code $($Process.ExitCode)): $Stderr"
     }
 

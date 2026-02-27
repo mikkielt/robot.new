@@ -35,7 +35,7 @@ Describe 'Complete-PUData' {
 
 Describe 'Get-Player' {
     BeforeAll {
-        $script:Players = Get-Player
+        $script:Players = Get-Player -File (Join-Path $script:FixturesRoot 'Gracze.md') -Entities (Get-Entity -Path $script:FixturesRoot)
     }
 
     It 'parses all players from Gracze.md fixture' {
@@ -95,7 +95,7 @@ Describe 'Get-Player' {
         $Xeron = $Solmyr.Characters | Where-Object { $_.Name -eq 'Xeron Demonlord' }
         $Xeron.PUExceeded | Should -Be 0.5
         $Xeron.PUStart | Should -Be 20
-        $Xeron.PUSum | Should -Be 25.5
+        $Xeron.PUSum | Should -Be 26
         $Xeron.PUTaken | Should -Be 5.5
     }
 

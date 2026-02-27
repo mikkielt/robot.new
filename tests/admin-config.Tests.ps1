@@ -2,7 +2,7 @@ BeforeAll {
     . "$PSScriptRoot/TestHelpers.ps1"
     Import-RobotModule
     Mock Get-RepoRoot { return $script:FixturesRoot }
-    Import-RobotHelpers 'admin-config.ps1'
+    . (Join-Path $script:ModuleRoot 'admin-config.ps1')
 }
 
 Describe 'Resolve-ConfigValue' {
@@ -23,17 +23,17 @@ Describe 'Resolve-ConfigValue' {
 
     It 'returns config file value when explicit and env are empty' {
         $Config = @{ TestKey = 'FromConfig' }
-        $Result = Resolve-ConfigValue -ExplicitValue '' -EnvVarName 'NERTHUS_NONEXISTENT_VAR' -ConfigKey 'TestKey' -Config $Config
+        $Result = Resolve-ConfigValue -ExplicitValue '' -EnvVarName 'NERTHUS_NONEXISTENT_VAR' -ConfigKey 'TestKey' -LocalConfig $Config
         $Result | Should -Be 'FromConfig'
     }
 
     It 'returns null when all sources are empty' {
-        $Result = Resolve-ConfigValue -ExplicitValue '' -EnvVarName 'NERTHUS_NONEXISTENT_VAR' -ConfigKey 'missing' -Config @{}
+        $Result = Resolve-ConfigValue -ExplicitValue '' -EnvVarName 'NERTHUS_NONEXISTENT_VAR' -ConfigKey 'missing' -LocalConfig @{}
         $Result | Should -BeNullOrEmpty
     }
 
     It 'treats whitespace-only values as absent' {
-        $Result = Resolve-ConfigValue -ExplicitValue '   ' -EnvVarName 'NERTHUS_NONEXISTENT_VAR' -ConfigKey 'missing' -Config @{}
+        $Result = Resolve-ConfigValue -ExplicitValue '   ' -EnvVarName 'NERTHUS_NONEXISTENT_VAR' -ConfigKey 'missing' -LocalConfig @{}
         $Result | Should -BeNullOrEmpty
     }
 }
@@ -49,7 +49,7 @@ Describe 'Get-AdminConfig' {
 
 Describe 'Get-AdminTemplate' {
     It 'loads template and performs placeholder substitution' {
-        $Result = Get-AdminTemplate -TemplateName 'player-entry.md.template' `
+        $Result = Get-AdminTemplate -Name 'player-entry.md.template' `
             -Variables @{ CharacterName = 'TestChar'; PlayerName = 'Kilgor'; PUStart = '20' } `
             -TemplatesDir (Join-Path $script:FixturesRoot 'templates')
         $Result | Should -BeLike '*TestChar*'
@@ -58,12 +58,12 @@ Describe 'Get-AdminTemplate' {
     }
 
     It 'throws for missing template file' {
-        { Get-AdminTemplate -TemplateName 'nonexistent.template' -TemplatesDir (Join-Path $script:FixturesRoot 'templates') } |
+        { Get-AdminTemplate -Name 'nonexistent.template' -TemplatesDir (Join-Path $script:FixturesRoot 'templates') } |
             Should -Throw '*not found*'
     }
 
     It 'leaves unmatched placeholders in output' {
-        $Result = Get-AdminTemplate -TemplateName 'player-character-file.md.template' `
+        $Result = Get-AdminTemplate -Name 'player-character-file.md.template' `
             -Variables @{ CharacterSheetUrl = 'https://test.com' } `
             -TemplatesDir (Join-Path $script:FixturesRoot 'templates')
         $Result | Should -BeLike '*https://test.com*'

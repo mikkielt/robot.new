@@ -9,7 +9,7 @@ BeforeAll {
 
 Describe 'Get-NewPlayerCharacterPUCount' {
     BeforeAll {
-        $script:Players = Get-Player
+        $script:Players = Get-Player -Entities (Get-Entity -Path $script:FixturesRoot)
     }
 
     It 'computes PU for Solmyr based on existing characters' {
@@ -35,7 +35,7 @@ Describe 'Get-NewPlayerCharacterPUCount' {
 
     It 'excludes characters with PUStart = 0 or null' {
         $Result = Get-NewPlayerCharacterPUCount -PlayerName 'Solmyr' -Players $script:Players
-        $Result.ExcludedCharacters | Should -BeOfType [System.Collections.Generic.List[string]]
+        $Result.ExcludedCharacters.GetType().Name | Should -Be 'List`1'
     }
 
     It 'throws for non-existent player' {

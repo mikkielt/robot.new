@@ -208,13 +208,13 @@ function Invoke-PlayerCharacterPUAssignment {
             $UnresolvedCharacters.Add([PSCustomObject]@{
                 CharacterName = $CharName
                 SessionCount  = $Entry.Value.Count
-                Sessions      = @($Entry.Value.ForEach({ $_.Session.Header }))
+                Sessions      = @($Entry.Value | ForEach-Object { $_.Session.Header })
             })
         }
     }
 
     if ($UnresolvedCharacters.Count -gt 0) {
-        $Names = ($UnresolvedCharacters.ForEach({ $_.CharacterName })) -join "', '"
+        $Names = ($UnresolvedCharacters | ForEach-Object { $_.CharacterName }) -join "', '"
         $ErrorRecord = [System.Management.Automation.ErrorRecord]::new(
             [System.InvalidOperationException]::new("Unresolved character name(s) in PU entries: '$Names'. Fix data before running PU assignment."),
             'UnresolvedPUCharacters',
@@ -309,7 +309,7 @@ function Invoke-PlayerCharacterPUAssignment {
             NewPUSum            = $NewPUSum
             NewPUTaken          = $NewPUTaken
             SessionCount        = $PUEntries.Count
-            Sessions            = @($PUEntries.ForEach({ $_.Session.Header }))
+            Sessions            = @($PUEntries | ForEach-Object { $_.Session.Header })
             Message             = $MsgSB.ToString()
             Resolved            = $true
         })
@@ -353,7 +353,7 @@ function Invoke-PlayerCharacterPUAssignment {
                 continue
             }
 
-            $FullMessage = ($Items.ForEach({ $_.Message })) -join "`n`n"
+            $FullMessage = ($Items | ForEach-Object { $_.Message }) -join "`n`n"
 
             if ($PSCmdlet.ShouldProcess($PName, "Send-DiscordMessage: PU notification")) {
                 try {
