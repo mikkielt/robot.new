@@ -101,7 +101,7 @@ foreach ($Name in $NamesToResolve) {
 | Discord | `Send-DiscordMessage` |
 
 ### Shared Helpers (dot-sourced, non-exported)
-`entity-writehelpers.ps1`, `charfile-helpers.ps1`, `admin-config.ps1`, `admin-state.ps1`, `format-sessionblock.ps1`
+`entity-writehelpers.ps1`, `charfile-helpers.ps1`, `admin-config.ps1`, `admin-state.ps1`, `format-sessionblock.ps1`, `string-helpers.ps1`
 
 ### Templates
 `templates/player-character-file.md.template`, `templates/player-entry.md.template`
