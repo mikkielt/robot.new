@@ -112,10 +112,10 @@ When currency changes hands via a session, record the change in `@Zmiany`:
 | Risk | Description | Mitigation |
 |---|---|---|
 | **Dual placement** | Currency having both `@należy_do` and `@lokacja` active simultaneously would duplicate it — it exists in a player's inventory AND at a location | When moving currency, always end the previous placement. Use temporal ranges: `@należy_do: OldOwner (2024-06:2025-01)` then `@lokacja: Erathia (2025-01:)` |
-| **Negative quantities** | Setting `@ilość` to a negative or zero value | Narrators must ensure `@ilość` values are positive integers |
+| **Negative quantities** | Setting `@ilość` to a negative or zero value | Narrators and coordinators must ensure `@ilość` values are integers greater than zero |
 | **Phantom creation** | Creating currency entities without an in-game source | Only coordinators should create new currency entities; track provenance via session changes |
 | **Quantity mismatch** | Splitting or merging stacks without updating totals correctly | When splitting a stack, reduce the original `@ilość` and create a new entity for the split portion. Verify that the sum remains constant |
-| **Orphaned currency** | Currency with no `@należy_do` and no `@lokacja` — exists but is inaccessible | Ensure every active currency entity has either an owner or a location |
+| **Orphaned currency** | Currency with no `@należy_do` and no `@lokacja` — exists but is inaccessible | Coordinators should verify during review that every active currency entity has either an owner or a location. This is a manual convention, not an automated check |
 | **Multiple stacks** | Multiple entities of the same denomination for the same owner | Allowed (items can be stacked separately). Total wealth is the sum of all active stacks per denomination |
 
 ## How Entities Are Organized
