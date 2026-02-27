@@ -84,8 +84,9 @@ Level-2 headers define entity type sections, mapped via `$TypeMap`:
 | `@należy_do` | Temporal | `Owner`, `OwnerHistory` | Ownership (entity → player) |
 | `@grupa` | Temporal | `Groups`, `GroupHistory` | Group/faction membership |
 | `@status` | Temporal | `Status`, `StatusHistory` | `Aktywny`/`Nieaktywny`/`Usunięty` |
-| `@ilość` | Temporal | `Quantity`, `QuantityHistory` | Item quantity (used for stackable items such as currency) |
+| `@ilość` | Temporal | `Quantity`, `QuantityHistory` | Item quantity (used for stackable items such as currency). Accepts integer values. In Zmiany blocks, supports `+N`/`-N` delta syntax to add/subtract from current quantity. |
 | `@zawiera` | Non-temporal | `Contains` | Child containment declaration |
+| `@generyczne_nazwy` | Non-temporal | `GenericNames`, `Names` | Comma-delimited generic names for the entity (e.g. "Strażnik Miasta, Wartownik"). Added to `Names` for resolution. |
 | Any other `@tag` | Temporal | `Overrides[tag]` | Generic key-value storage |
 
 ### 3.5 Temporal Validity Ranges
@@ -153,7 +154,16 @@ For each entity name in Zmiany blocks:
 
 Tags in `- Zmiany:` without explicit temporal ranges receive the session date as `ValidFrom` (open-ended). Tags with explicit `(YYYY-MM:YYYY-MM)` ranges use those instead.
 
-### 4.4 Override Application
+### 4.4 `@ilość` Arithmetic Deltas
+
+In Zmiany blocks, `@ilość` supports delta syntax:
+- `@ilość: +25` → adds 25 to the current quantity
+- `@ilość: -3` → subtracts 3 from the current quantity
+- `@ilość: 100` → sets absolute value (backward compatible)
+
+When a `+N` or `-N` pattern is detected, the system looks up the last active quantity value and computes the new absolute value. If no prior quantity exists, the base is treated as 0. The computed absolute value is stored in `QuantityHistory` so downstream code is unaffected.
+
+### 4.5 Override Application
 
 For each resolved entity change:
 - Append to appropriate history list (`LocationHistory`, `GroupHistory`, `StatusHistory`, `Overrides[tag]`, etc.)
@@ -165,7 +175,7 @@ After all sessions processed, for each modified entity:
 1. Sort all history lists by `ValidFrom` (custom comparer: `$null` sorts first → always-active entries stable at start)
 2. Recompute active values via `Get-LastActiveValue` / `Get-AllActiveValues`
 
-### 4.6 Parameters
+### 4.7 Parameters
 
 | Parameter | Type | Description |
 |---|---|---|
@@ -212,6 +222,7 @@ Characters with `Status = 'Usunięty'` are excluded unless `-IncludeDeleted`.
 | `StatusHistory` | `List[object]` | Status changes with validity ranges |
 | `Quantity` | string | Active quantity (for stackable items such as currency) |
 | `QuantityHistory` | `List[object]` | Quantity changes with validity ranges |
+| `GenericNames` | `List[string]` | Generic names for the entity (from `@generyczne_nazwy`) |
 | `Doors` | string[] | Active physical access connections |
 | `DoorHistory` | `List[object]` | Full door history |
 | `Contains` | `List[string]` | Child entity names |

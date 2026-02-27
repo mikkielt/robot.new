@@ -68,4 +68,30 @@ Describe 'Get-EntityState' {
         $Enroth | Should -Not -BeNullOrEmpty
         $Enroth.Type | Should -Be 'Lokacja'
     }
+
+    It 'applies @ilość addition delta from Zmiany' {
+        $Korony = $script:Enriched | Where-Object { $_.Name -eq 'Korony Elanckie' }
+        $Korony | Should -Not -BeNullOrEmpty
+        # Base: 50, session adds +25 → 75
+        $Korony.Quantity | Should -Be '75'
+    }
+
+    It 'applies @ilość subtraction delta from Zmiany' {
+        $Straznik = $script:Enriched | Where-Object { $_.Name -eq 'Strażnik Bramy' }
+        $Straznik | Should -Not -BeNullOrEmpty
+        # Base: 3, session subtracts -1 → 2
+        $Straznik.Quantity | Should -Be '2'
+    }
+
+    It 'applies @generyczne_nazwy from Zmiany session' {
+        $Straznik = $script:Enriched | Where-Object { $_.Name -eq 'Strażnik Bramy' }
+        $Straznik.GenericNames | Should -Contain 'Ochroniarz'
+        $Straznik.Names | Should -Contain 'Ochroniarz'
+    }
+
+    It 'preserves original @generyczne_nazwy after Zmiany merge' {
+        $Straznik = $script:Enriched | Where-Object { $_.Name -eq 'Strażnik Bramy' }
+        $Straznik.GenericNames | Should -Contain 'Strażnik Miasta'
+        $Straznik.GenericNames | Should -Contain 'Wartownik'
+    }
 }

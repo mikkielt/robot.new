@@ -189,11 +189,34 @@ function Get-EntityState {
                         if (-not $TargetEntity.QuantityHistory) {
                             $TargetEntity.QuantityHistory = [System.Collections.Generic.List[object]]::new()
                         }
+                        $QtyText = $Parsed.Text
+                        # Arithmetic delta: +N or -N modifies current quantity
+                        if ($QtyText -match '^[+-]\d+$') {
+                            $Delta = [int]$QtyText
+                            $CurrentQty = 0
+                            $LastQty = Get-LastActiveValue -History $TargetEntity.QuantityHistory -PropertyName 'Quantity' -ActiveOn $Parsed.ValidFrom
+                            if ($LastQty -and $LastQty -match '^\d+$') {
+                                $CurrentQty = [int]$LastQty
+                            }
+                            $QtyText = [string]($CurrentQty + $Delta)
+                        }
                         $TargetEntity.QuantityHistory.Add([PSCustomObject]@{
-                            Quantity  = $Parsed.Text
+                            Quantity  = $QtyText
                             ValidFrom = $Parsed.ValidFrom
                             ValidTo   = $Parsed.ValidTo
                         })
+                    }
+                    '@generyczne_nazwy' {
+                        if (-not $TargetEntity.GenericNames) {
+                            $TargetEntity.GenericNames = [System.Collections.Generic.List[string]]::new()
+                        }
+                        foreach ($GN in $Parsed.Text.Split(',')) {
+                            $Trimmed = $GN.Trim()
+                            if ($Trimmed.Length -gt 0) {
+                                $TargetEntity.GenericNames.Add($Trimmed)
+                                [void]$TargetEntity.Names.Add($Trimmed)
+                            }
+                        }
                     }
                     default {
                         # Generic override (e.g. @pu_startowe, @info, @trigger)

@@ -94,3 +94,9 @@
     - @ilość: 1500 (2024-08:)
     - @ilość: 800 (2025-02:)
     - @status: Aktywny (2024-08:)
+
+* Strażnik Bramy
+    - @należy_do: Solmyr (2024-06:)
+    - @ilość: 3 (2024-06:)
+    - @generyczne_nazwy: Strażnik Miasta, Wartownik
+    - @status: Aktywny (2024-06:)

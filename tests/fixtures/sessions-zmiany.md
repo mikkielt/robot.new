@@ -22,3 +22,8 @@
 - Zmiany:
     - Xeron Demonlord
         - @stan: Zdrowy (2025-06:)
+    - Korony Elanckie
+        - @ilość: +25
+    - Strażnik Bramy
+        - @ilość: -1
+        - @generyczne_nazwy: Ochroniarz

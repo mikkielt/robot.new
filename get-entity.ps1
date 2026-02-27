@@ -386,6 +386,7 @@ function Get-Entity {
             $ContainsList    = [System.Collections.Generic.List[string]]::new()
             $StatusHistory   = [System.Collections.Generic.List[object]]::new()
             $QuantityHistory = [System.Collections.Generic.List[object]]::new()
+            $GenericNames    = [System.Collections.Generic.List[string]]::new()
             $Overrides       = @{}
 
             # Iterate child bullets belonging to this entity via lookup
@@ -481,6 +482,15 @@ function Get-Entity {
                             $Names.Add($Parsed.Text)
                         }
                     }
+                    '@generyczne_nazwy' {
+                        foreach ($GN in $Value.Split(',')) {
+                            $Trimmed = $GN.Trim()
+                            if ($Trimmed.Length -gt 0) {
+                                $GenericNames.Add($Trimmed)
+                                $Names.Add($Trimmed)
+                            }
+                        }
+                    }
                     default {
                         # Any unrecognised @tag → generic override (e.g. @pu_startowe, @info, @trigger)
                         $Parsed = ConvertFrom-ValidityString -InputText $EffectiveValue
@@ -533,6 +543,8 @@ function Get-Entity {
                 $Existing.DoorHistory.AddRange($DoorHistory)
                 $Existing.StatusHistory.AddRange($StatusHistory)
                 $Existing.QuantityHistory.AddRange($QuantityHistory)
+                $Existing.GenericNames.AddRange($GenericNames)
+                foreach ($gn in $GenericNames) { [void]$Existing.Names.Add($gn) }
                 $Existing.Contains.AddRange($ContainsList)
 
                 # Recompute active scalar properties from merged histories
@@ -578,6 +590,7 @@ function Get-Entity {
                     StatusHistory   = $StatusHistory
                     Quantity        = $ActiveQuantity
                     QuantityHistory = $QuantityHistory
+                    GenericNames    = $GenericNames
                     Contains        = $ContainsList
                 }
                 $EntityMap[$EntityName] = $Entity

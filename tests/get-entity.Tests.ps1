@@ -278,4 +278,22 @@ Describe 'Get-Entity' {
         $Result = Get-Entity -Path ([System.IO.Path]::GetTempPath())
         $Result.Count | Should -Be 0
     }
+
+    It 'parses @generyczne_nazwy into GenericNames list' {
+        $Straznik = $script:Entities | Where-Object { $_.Name -eq 'Strażnik Bramy' }
+        $Straznik | Should -Not -BeNullOrEmpty
+        $Straznik.GenericNames | Should -Contain 'Strażnik Miasta'
+        $Straznik.GenericNames | Should -Contain 'Wartownik'
+    }
+
+    It 'adds @generyczne_nazwy values to Names for resolution' {
+        $Straznik = $script:Entities | Where-Object { $_.Name -eq 'Strażnik Bramy' }
+        $Straznik.Names | Should -Contain 'Strażnik Miasta'
+        $Straznik.Names | Should -Contain 'Wartownik'
+    }
+
+    It 'initializes GenericNames as empty list when no tag present' {
+        $Orrin = $script:Entities | Where-Object { $_.Name -eq 'Kupiec Orrin' }
+        $Orrin.GenericNames.Count | Should -Be 0
+    }
 }
