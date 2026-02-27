@@ -292,6 +292,78 @@ Returns `$null` if items are empty/null — caller must check before including i
 | Newline style (CRLF vs LF) | Detected and preserved on round-trip |
 | Preserved blocks during upgrade | `Objaśnienia`, `Efekty`, etc. written back unchanged |
 
+### Session Object (`Get-Session`)
+
+| Property | Type | Description |
+|---|---|---|
+| `FilePath` | string | Source file path |
+| `FilePaths` | string[] | All source files (after dedup merge) |
+| `Header` | string | Raw header text |
+| `Date` | datetime | Session date |
+| `DateEnd` | datetime | End date (for multi-day sessions) |
+| `Title` | string | Session title (header minus date and narrator) |
+| `Narrator` | object | Narrator info (see Narrator Subproperties below) |
+| `Locations` | string[] | Session locations |
+| `Logs` | string[] | Session log URLs |
+| `PU` | object[] | PU awards (Character + Value) |
+| `Format` | string | Detected format generation: Gen1, Gen2, Gen3, Gen4 |
+| `IsMerged` | bool | Whether this session was deduplicated |
+| `DuplicateCount` | int | Number of duplicates found |
+| `Content` | string | Full section content (only with `-IncludeContent`) |
+| `Changes` | object[] | Entity state overrides from `- Zmiany:` block |
+| `Mentions` | object[] | Deduplicated array of mention objects (only with `-IncludeMentions`) |
+| `Intel` | object[] | Resolved `@Intel` entries with recipient webhooks |
+| `ParseError` | string | Error description (only with `-IncludeFailed`) |
+
+### Narrator Subproperties (`Session.Narrator`)
+
+| Property | Type | Description |
+|---|---|---|
+| `Narrators` | object[] | Array of narrator objects (Name, Player, Confidence) |
+| `IsCouncil` | bool | Whether this is a "Rada" (council) session |
+| `Confidence` | string | Overall resolution confidence: High, Medium, None |
+| `RawText` | string | Raw narrator text from header |
+
+### Mention Object (`Session.Mentions`)
+
+| Property | Type | Description |
+|---|---|---|
+| `Name` | string | Entity's canonical display name (nominative form) |
+| `Type` | string | Entity type: `Player`, `NPC`, `Organizacja`, `Lokacja`, `Gracz`, `Postać (Gracz)` |
+| `Owner` | object | Reference to the resolved owner object (Player or Entity) |
+
+### Intel Object (`Session.Intel`)
+
+| Property | Type | Description |
+|---|---|---|
+| `RawTarget` | string | Original target string from Markdown (e.g. `Grupa/Nocarze`, `Rion`) |
+| `Message` | string | Intel message text |
+| `Directive` | string | Parsed directive: `Grupa`, `Lokacja`, or `Direct` |
+| `TargetName` | string | Resolved target name (after stripping prefix) |
+| `Recipients` | object[] | Array of recipient objects with resolved webhooks |
+
+### Recipient Object (`Intel.Recipients`)
+
+| Property | Type | Description |
+|---|---|---|
+| `Name` | string | Recipient entity's canonical name |
+| `Type` | string | Entity type |
+| `Webhook` | string | Discord webhook URL, or `$null` if entity has no webhook |
+
+### Change Object (`Session.Changes`)
+
+| Property | Type | Description |
+|---|---|---|
+| `EntityName` | string | Raw entity name from the Zmiany block |
+| `Tags` | object[] | Array of tag objects (Tag + Value) |
+
+### Change Tag Object (`Change.Tags`)
+
+| Property | Type | Description |
+|---|---|---|
+| `Tag` | string | Lowercase `@tag` name (e.g. `@lokacja`, `@grupa`) |
+| `Value` | string | Raw value string (may include temporal range) |
+
 ---
 
 ## 12. Precompiled Regex Patterns

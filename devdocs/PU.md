@@ -211,9 +211,9 @@ Both values are rounded to 2 decimal places via `[math]::Round`.
 
 ### 5.5 Worked Example
 
-Character Korm has: `PUSum = 45.00`, `PUTaken = 25.00`, `PUStart = 20.00`, `PUExceeded = 1.50`
+Character Crag Hack has: `PUSum = 45.00`, `PUTaken = 25.00`, `PUStart = 20.00`, `PUExceeded = 1.50`
 
-Sessions in the batch award Korm: 0.3 + 0.5 + 0.2 = 1.0 PU
+Sessions in the batch award Crag Hack: 0.3 + 0.5 + 0.2 = 1.0 PU
 
 ```
 BasePU              = 1 + 1.0 = 2.0
@@ -228,9 +228,9 @@ NewPUTaken          = 25.00 + 3.50 = 28.50
 
 ### 5.6 Overflow Example
 
-Character Velrose has: `PUSum = 80.00`, `PUTaken = 60.00`, `PUStart = 20.00`, `PUExceeded = 0.00`
+Character Gem has: `PUSum = 80.00`, `PUTaken = 60.00`, `PUStart = 20.00`, `PUExceeded = 0.00`
 
-Sessions award Velrose: 2.0 + 1.5 + 1.0 + 0.5 = 5.0 PU
+Sessions award Gem: 2.0 + 1.5 + 1.0 + 0.5 = 5.0 PU
 
 ```
 BasePU              = 1 + 5.0 = 6.0
@@ -243,7 +243,7 @@ NewPUSum            = 80.00 + 5.00 = 85.00
 NewPUTaken          = 60.00 + 5.00 = 65.00
 ```
 
-Next month, Velrose has `PUExceeded = 1.00` to draw from.
+Next month, Gem has `PUExceeded = 1.00` to draw from.
 
 ---
 

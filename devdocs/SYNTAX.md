@@ -390,9 +390,9 @@ Level-2 headers define entity type sections:
 Top-level bullet items declare entities:
 
 ```markdown
-* Kupiec Roan
+* Sandro
 * Nocturnus Oris Custodia
-* Ithan
+* Erathia
 ```
 
 ### @Tag Metadata
@@ -400,11 +400,11 @@ Top-level bullet items declare entities:
 Nested bullets with `@tag: value` syntax attach metadata to entities:
 
 ```markdown
-* Kupiec Roan
-    - @alias: Roan
-    - @lokacja: Ithan (2021-01:2024-06)
-    - @lokacja: Torneg (2024-07:)
-    - @grupa: Gildia Kupców (2021-01:)
+* Sandro
+    - @alias: Mroczny Mag
+    - @lokacja: Erathia (2021-01:2024-06)
+    - @lokacja: Bracada (2024-07:)
+    - @grupa: Bractwo Miecza (2021-01:)
 ```
 
 ### Temporal Validity Ranges
@@ -412,9 +412,9 @@ Nested bullets with `@tag: value` syntax attach metadata to entities:
 Values support optional `(YYYY-MM:YYYY-MM)` or `(YYYY-MM:)` or `(:YYYY-MM)` suffixes for time-scoping:
 
 ```markdown
-- @alias: Handlarz z Ithan (2023-01:2024-06)   # active Jan 2023 – Jun 2024
-- @lokacja: Torneg (2024-07:)                   # active from Jul 2024 onward
-- @alias: Burmistrz Ithan (:2024-03)            # active until Mar 2024
+- @alias: Lich z Deyji (2023-01:2024-06)   # active Jan 2023 – Jun 2024
+- @lokacja: Bracada (2024-07:)                   # active from Jul 2024 onward
+- @alias: Władca Deyji (:2024-03)            # active until Mar 2024
 ```
 
 Partial dates are supported: `YYYY` (full year), `YYYY-MM` (full month), `YYYY-MM-DD` (exact day).
@@ -437,10 +437,10 @@ Partial dates are supported: `YYYY` (full year), `YYYY-MM` (full month), `YYYY-M
 Some tags accept nested bullets for multi-line content:
 
 ```markdown
-* Kapitan Redcliff
+* Lord Haart
     - @info:
-        - Były dowódca straży miejskiej
-        - Ma bliznę na lewym policzku
+        - Były rycerz, podniesiony jako Rycerz Śmierci
+        - Dowodzi legionem nieumarłych
 ```
 
 ---

@@ -47,8 +47,8 @@ Get-Entity ──┘                              │
 
 | Priority | Source | Examples |
 |---|---|---|
-| 1 | Full names and registered aliases | `"Korm Blackhand"`, `"Roan"` |
-| 2 | Individual word tokens (≥ `MinTokenLength`, default 3) | `"Korm"`, `"Blackhand"` |
+| 1 | Full names and registered aliases | `"Crag Hack"`, `"Sandro"` |
+| 2 | Individual word tokens (≥ `MinTokenLength`, default 3) | `"Crag"`, `"Hack"` |
 
 ### 3.3 Collision Resolution
 
@@ -198,7 +198,7 @@ IF stem in StemIndex:
             RETURN Owner
 ```
 
-**Examples**: `"Korma"` → stem `"Korm"` → resolves to Korm. `"Anwardem"` → stem `"Anward"`.
+**Examples**: `"Solmyra"` → stem `"Solmyr"` → resolves to Solmyr. `"Sandrem"` → stem `"Sandro"`.
 
 ### 5.5 Stage 2b — Stem Alternation Match
 
@@ -208,9 +208,9 @@ Handles Polish consonant mutations where the suffix replaces the stem ending. Ge
 
 | Inflected ending | Base form | Example |
 |---|---|---|
-| `-dzie` | `-da` | `Vandzie` → `Vanda` |
+| `-dzie` | `-da` | `Vidominie` → `Vidomina` |
 | `-ce` | `-ka` | `Żylce` → `Żylka` |
-| `-rze` | `-ra` | `Kormorze` → `Kormora` |
+| `-rze` | `-ra` | `Solmyrze` → `Solmyra` |
 | `-dze` | `-ga` | — |
 | `-ście` | `-sta` | — |
 | `-ni` | `-ń` | — |

@@ -87,13 +87,13 @@ For each character with PU entries in the batch:
 
 **Example — normal award with overflow supplement:**
 
-> Korm earned 1.0 PU across sessions this month. He has 1.50 overflow PU from previous months.
+> Crag Hack earned 1.0 PU across sessions this month. He has 1.50 overflow PU from previous months.
 >
 > Base PU = 1 + 1.0 = 2.0. Overflow supplements 1.50 (up to cap of 5). Granted PU = 3.50. Overflow remaining = 0.00.
 
 **Example — overflow generation:**
 
-> Velrose earned 5.0 PU across sessions. She has 0.00 overflow PU.
+> Gem earned 5.0 PU across sessions. She has 0.00 overflow PU.
 >
 > Base PU = 1 + 5.0 = 6.0. Exceeds cap by 1.0. Granted PU = 5.00. Overflow stored = 1.00 (available next month).
 
@@ -111,7 +111,7 @@ Each of these steps can be enabled independently, and the coordinator can previe
 
 Each player receives a single message containing all their characters' results:
 
-> Postać "Korm Blackhand" (Gracz "Achalen") otrzymuje 3.50 PU.
+> Postać "Crag Hack" (Gracz "Roland") otrzymuje 3.50 PU.
 > Aktualna suma PU tej Postaci: 48.50, wykorzystano PU nadmiarowe: 1.50
 
 If a player has multiple characters, each one appears as a separate paragraph. If a player has no webhook address, their notification is skipped (with a warning) but the PU is still applied.
