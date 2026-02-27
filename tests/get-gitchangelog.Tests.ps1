@@ -1,3 +1,13 @@
+<#
+    .SYNOPSIS
+    Pester tests for get-gitchangelog.ps1.
+
+    .DESCRIPTION
+    Tests for ConvertFrom-CommitLine and Get-GitChangeLog covering
+    commit header parsing, date handling, file change lists, NoPatch
+    mode, date range filtering, and patch content extraction.
+#>
+
 BeforeAll {
     . "$PSScriptRoot/TestHelpers.ps1"
     Import-RobotModule

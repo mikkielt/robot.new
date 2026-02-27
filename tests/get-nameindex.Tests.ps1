@@ -1,3 +1,14 @@
+<#
+    .SYNOPSIS
+    Pester tests for get-nameindex.ps1.
+
+    .DESCRIPTION
+    Tests for Get-NameIndex, Add-BKTreeNode, and Search-BKTree covering
+    index construction from players and entities, priority assignment,
+    case-insensitive lookup, stem indexing, BK-tree fuzzy search, and
+    Player vs Gracz entity disambiguation.
+#>
+
 BeforeAll {
     . "$PSScriptRoot/TestHelpers.ps1"
     Import-RobotModule

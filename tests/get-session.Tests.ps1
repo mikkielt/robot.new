@@ -1,3 +1,14 @@
+<#
+    .SYNOPSIS
+    Pester tests for get-session.ps1.
+
+    .DESCRIPTION
+    Tests for ConvertFrom-SessionHeader, ConvertFrom-SessionBody,
+    and Get-Session covering session parsing across Gen1-Gen4 formats,
+    date extraction, narrator detection, Zmiany/Obecni/Notatki handling,
+    multi-file loading, entity section processing, and changelog assembly.
+#>
+
 BeforeAll {
     . "$PSScriptRoot/TestHelpers.ps1"
     Import-RobotModule

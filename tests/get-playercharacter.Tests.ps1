@@ -1,3 +1,13 @@
+<#
+    .SYNOPSIS
+    Pester tests for get-playercharacter.ps1.
+
+    .DESCRIPTION
+    Tests for Get-PlayerCharacter covering character object construction
+    from entity + player data, session appearance merging, charfile data
+    integration, -Name filter, and full pipeline output validation.
+#>
+
 BeforeAll {
     . "$PSScriptRoot/TestHelpers.ps1"
     Import-RobotModule

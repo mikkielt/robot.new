@@ -1,3 +1,13 @@
+<#
+    .SYNOPSIS
+    Pester tests for set-player.ps1.
+
+    .DESCRIPTION
+    Tests for Set-Player covering player entity modification, field
+    updates (Discord, aliases, triggers), Gracze.md rewriting,
+    and error handling for non-existent players.
+#>
+
 BeforeAll {
     . "$PSScriptRoot/TestHelpers.ps1"
     Import-RobotModule

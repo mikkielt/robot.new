@@ -1,3 +1,14 @@
+<#
+    .SYNOPSIS
+    Pester tests for entity-writehelpers.ps1.
+
+    .DESCRIPTION
+    Tests for Find-EntitySection, Find-EntityBullet, Find-EntityTag,
+    Set-EntityTag, New-EntityBullet, Ensure-EntityFile, Resolve-EntityTarget,
+    Write-EntityFile, Read-EntityFile, and ConvertTo-EntitiesFromPlayers
+    covering entity file manipulation and player-to-entity conversion.
+#>
+
 BeforeAll {
     . "$PSScriptRoot/TestHelpers.ps1"
     Import-RobotModule

@@ -1,8 +1,18 @@
+<#
+    .SYNOPSIS
+    Pester tests for parse-markdownfile.ps1.
+
+    .DESCRIPTION
+    Tests for parse-markdownfile.ps1 script covering header parsing,
+    section extraction, list item processing, link detection, and
+    multi-level document structure handling.
+#>
+
 BeforeAll {
     $script:ModuleRoot = Split-Path $PSScriptRoot -Parent
     $script:ParserPath = Join-Path $script:ModuleRoot 'parse-markdownfile.ps1'
     $script:TempRoot = Join-Path ([System.IO.Path]::GetTempPath()) ("robot-parse-markdownfile-" + [System.Guid]::NewGuid().ToString('N'))
-    [System.IO.Directory]::CreateDirectory($script:TempRoot) | Out-Null
+    [void][System.IO.Directory]::CreateDirectory($script:TempRoot)
 }
 
 Describe 'parse-markdownfile.ps1' {
@@ -105,6 +115,6 @@ Plain URL: https://example.com/no-header
 
 AfterAll {
     if ([System.IO.Directory]::Exists($script:TempRoot)) {
-        Remove-Item -LiteralPath $script:TempRoot -Recurse -Force
+        [System.IO.Directory]::Delete($script:TempRoot, $true)
     }
 }

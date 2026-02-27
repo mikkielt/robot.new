@@ -1,3 +1,13 @@
+<#
+    .SYNOPSIS
+    Pester tests for new-playercharacter.ps1.
+
+    .DESCRIPTION
+    Tests for New-PlayerCharacter covering character entity creation,
+    charfile scaffolding, PU computation, player validation, existing
+    character detection, and file output correctness.
+#>
+
 BeforeAll {
     . "$PSScriptRoot/TestHelpers.ps1"
     Import-RobotModule

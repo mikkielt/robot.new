@@ -1,3 +1,13 @@
+<#
+    .SYNOPSIS
+    Pester tests for admin-config.ps1.
+
+    .DESCRIPTION
+    Tests for Resolve-ConfigValue, Get-AdminConfig, and Get-AdminTemplate
+    functions covering value resolution priority, template substitution,
+    and configuration loading.
+#>
+
 BeforeAll {
     . "$PSScriptRoot/TestHelpers.ps1"
     Import-RobotModule

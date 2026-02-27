@@ -1,3 +1,15 @@
+<#
+    .SYNOPSIS
+    Pester tests for get-entity.ps1.
+
+    .DESCRIPTION
+    Tests for ConvertFrom-ValidityString, Resolve-PartialDate,
+    Test-TemporalActivity, Get-LastActiveValue, Get-AllActiveValues,
+    Resolve-EntityCN, Get-Entity, and Get-NestedBulletText covering
+    entity parsing, temporal logic, CN resolution, and entity merging
+    across multiple entity files.
+#>
+
 BeforeAll {
     . "$PSScriptRoot/TestHelpers.ps1"
     Import-RobotModule
@@ -276,7 +288,7 @@ Describe 'Get-Entity' {
 
     It 'returns empty list for empty directory' {
         $EmptyDir = Join-Path ([System.IO.Path]::GetTempPath()) ("robot-empty-" + [System.Guid]::NewGuid().ToString('N'))
-        [System.IO.Directory]::CreateDirectory($EmptyDir) | Out-Null
+        [void][System.IO.Directory]::CreateDirectory($EmptyDir)
         try {
             $Result = Get-Entity -Path $EmptyDir
             $Result.Count | Should -Be 0

@@ -1,3 +1,13 @@
+<#
+    .SYNOPSIS
+    Pester tests for new-player.ps1.
+
+    .DESCRIPTION
+    Tests for New-Player covering player directory creation, Gracze.md
+    entry generation, existing player detection, entity creation,
+    PU defaults, and Discord ID formatting.
+#>
+
 BeforeAll {
     . "$PSScriptRoot/TestHelpers.ps1"
     Import-RobotModule

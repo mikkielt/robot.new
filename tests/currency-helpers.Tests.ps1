@@ -1,3 +1,14 @@
+<#
+    .SYNOPSIS
+    Pester tests for currency-helpers.ps1.
+
+    .DESCRIPTION
+    Tests for ConvertTo-CurrencyBaseUnit, ConvertFrom-CurrencyBaseUnit,
+    Resolve-CurrencyDenomination, Test-IsCurrencyEntity, and
+    Find-CurrencyEntity covering denomination resolution, unit conversion,
+    and currency entity lookup.
+#>
+
 BeforeAll {
     $script:ModuleRoot = Split-Path $PSScriptRoot -Parent
     . "$script:ModuleRoot/currency-helpers.ps1"

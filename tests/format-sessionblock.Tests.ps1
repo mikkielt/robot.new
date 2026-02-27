@@ -1,3 +1,13 @@
+<#
+    .SYNOPSIS
+    Pester tests for format-sessionblock.ps1.
+
+    .DESCRIPTION
+    Tests for ConvertTo-Gen4MetadataBlock and ConvertTo-SessionMetadata
+    covering Gen4 metadata block rendering for Lokacje, PU, Logi, Zmiany,
+    and Intel tags, canonical block ordering, and empty/null handling.
+#>
+
 BeforeAll {
     . "$PSScriptRoot/TestHelpers.ps1"
     Import-RobotModule

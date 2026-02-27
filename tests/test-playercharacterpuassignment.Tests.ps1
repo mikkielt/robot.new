@@ -1,3 +1,13 @@
+<#
+    .SYNOPSIS
+    Pester tests for test-playercharacterpuassignment.ps1.
+
+    .DESCRIPTION
+    Tests for Test-PlayerCharacterPUAssignment covering PU assignment
+    validation, expected vs actual PU comparison, discrepancy detection,
+    and assignment correctness reporting.
+#>
+
 BeforeAll {
     . "$PSScriptRoot/TestHelpers.ps1"
     Import-RobotModule

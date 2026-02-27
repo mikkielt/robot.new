@@ -1,3 +1,13 @@
+<#
+    .SYNOPSIS
+    Pester tests for resolve-name.ps1.
+
+    .DESCRIPTION
+    Tests for Get-DeclensionStem, Resolve-Name, and Resolve-NameFuzzy
+    covering Polish declension stem extraction, exact name resolution
+    with priority ordering, and BK-tree fuzzy matching fallback.
+#>
+
 BeforeAll {
     . "$PSScriptRoot/TestHelpers.ps1"
     Import-RobotModule

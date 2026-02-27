@@ -1,3 +1,12 @@
+<#
+    .SYNOPSIS
+    Pester tests for send-discordmessage.ps1.
+
+    .DESCRIPTION
+    Tests for Send-DiscordMessage covering webhook URL validation,
+    message payload construction, and Discord API integration.
+#>
+
 BeforeAll {
     . "$PSScriptRoot/TestHelpers.ps1"
     Import-RobotModule

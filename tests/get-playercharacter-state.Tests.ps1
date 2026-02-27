@@ -1,3 +1,14 @@
+<#
+    .SYNOPSIS
+    Pester tests for Get-PlayerCharacter state merge helpers.
+
+    .DESCRIPTION
+    Tests for Merge-PlayerCharacterState, Merge-CharacterFileData,
+    and Merge-SessionAppearances covering character file parsing,
+    session appearance aggregation, and state object construction
+    from entity + charfile + session sources.
+#>
+
 BeforeAll {
     $script:ModuleRoot = Split-Path $PSScriptRoot -Parent
 
@@ -9,7 +20,7 @@ BeforeAll {
     . "$script:ModuleRoot/Get-PlayerCharacter.ps1"
 
     $script:TempRoot = Join-Path ([System.IO.Path]::GetTempPath()) ("robot-gpc-state-" + [System.Guid]::NewGuid().ToString('N'))
-    [System.IO.Directory]::CreateDirectory($script:TempRoot) | Out-Null
+    [void][System.IO.Directory]::CreateDirectory($script:TempRoot)
 
     function script:Write-TestFile {
         param([string]$Path, [string]$Content)

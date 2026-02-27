@@ -1,3 +1,12 @@
+<#
+    .SYNOPSIS
+    Pester tests for get-reporoot.ps1.
+
+    .DESCRIPTION
+    Tests for Get-RepoRoot covering .git directory discovery, parent repo
+    traversal, and error when no repository is found.
+#>
+
 BeforeAll {
     $script:ModuleRoot = Split-Path $PSScriptRoot -Parent
     $script:ManifestPath = Join-Path $script:ModuleRoot 'robot.psd1'
@@ -53,13 +62,13 @@ Describe 'Get-RepoRoot' {
             $TempRoot = Join-Path ([System.IO.Path]::GetTempPath()) ("robot-get-reporoot-" + [System.Guid]::NewGuid().ToString('N'))
             $TempModule = Join-Path $TempRoot 'fake-module'
             try {
-                [System.IO.Directory]::CreateDirectory($TempModule) | Out-Null
+                [void][System.IO.Directory]::CreateDirectory($TempModule)
 
                 { Get-RepoRoot -ModuleRoot $TempModule } | Should -Throw '*No git repository found*'
             }
             finally {
                 if ([System.IO.Directory]::Exists($TempRoot)) {
-                    Remove-Item -LiteralPath $TempRoot -Recurse -Force
+                    [System.IO.Directory]::Delete($TempRoot, $true)
                 }
             }
         }

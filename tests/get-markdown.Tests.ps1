@@ -1,3 +1,14 @@
+<#
+    .SYNOPSIS
+    Pester tests for Get-Markdown.
+
+    .DESCRIPTION
+    Tests for Get-Markdown covering -File and -Directory parameter sets,
+    single vs multi-file output unwrapping, recursive directory scanning,
+    Get-RepoRoot default, error handling for missing paths, output shape
+    validation, and determinism across parallel/sequential execution.
+#>
+
 BeforeAll {
     $script:ModuleRoot = Split-Path $PSScriptRoot -Parent
     $script:ManifestPath = Join-Path $script:ModuleRoot 'robot.psd1'
@@ -9,7 +20,7 @@ BeforeAll {
     $script:ParallelRoot = Join-Path $script:TempRoot 'parallel'
 
     foreach ($Path in @($script:FileInputRoot, $script:DirScanRoot, $script:ParallelRoot)) {
-        [System.IO.Directory]::CreateDirectory($Path) | Out-Null
+        [void][System.IO.Directory]::CreateDirectory($Path)
     }
 
     function script:Write-TestFile {
@@ -20,7 +31,7 @@ BeforeAll {
 
         $Parent = Split-Path $Path -Parent
         if ($Parent -and -not [System.IO.Directory]::Exists($Parent)) {
-            [System.IO.Directory]::CreateDirectory($Parent) | Out-Null
+            [void][System.IO.Directory]::CreateDirectory($Parent)
         }
         [System.IO.File]::WriteAllText($Path, $Content, [System.Text.UTF8Encoding]::new($false))
     }
@@ -166,6 +177,6 @@ Describe 'Get-Markdown' {
 AfterAll {
     Remove-Module -Name robot -Force -ErrorAction SilentlyContinue
     if ([System.IO.Directory]::Exists($script:TempRoot)) {
-        Remove-Item -LiteralPath $script:TempRoot -Recurse -Force
+        [System.IO.Directory]::Delete($script:TempRoot, $true)
     }
 }

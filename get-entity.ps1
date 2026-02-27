@@ -263,20 +263,20 @@ function Get-Entity {
 
     # Discover all candidate files from supplied paths
     $FilesToProcess = [System.Collections.Generic.List[string]]::new()
-    foreach ($p in $Path) {
-        if ([System.IO.Directory]::Exists($p)) {
-            $BaseFile = [System.IO.Path]::Combine($p, "entities.md")
+    foreach ($InputPath in $Path) {
+        if ([System.IO.Directory]::Exists($InputPath)) {
+            $BaseFile = [System.IO.Path]::Combine($InputPath, "entities.md")
             if ([System.IO.File]::Exists($BaseFile)) { $FilesToProcess.Add($BaseFile) }
-            $FilesToProcess.AddRange([System.IO.Directory]::GetFiles($p, "*-*-ent.md", [System.IO.SearchOption]::AllDirectories))
+            $FilesToProcess.AddRange([System.IO.Directory]::GetFiles($InputPath, "*-*-ent.md", [System.IO.SearchOption]::AllDirectories))
         }
-        elseif ([System.IO.File]::Exists($p)) {
-            $FilesToProcess.Add($p)
+        elseif ([System.IO.File]::Exists($InputPath)) {
+            $FilesToProcess.Add($InputPath)
         }
     }
 
     # Deduplicate paths
     $UniqueSet = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
-    foreach ($f in $FilesToProcess) { [void]$UniqueSet.Add($f) }
+    foreach ($FileItem in $FilesToProcess) { [void]$UniqueSet.Add($FileItem) }
 
     # Build sortable entries with numeric keys extracted from filenames.
     # Processing order: highest key first → lowest key last.
@@ -311,7 +311,7 @@ function Get-Entity {
     $AllMarkdownResults = @(Get-Markdown -File ($EntityFilePaths.ToArray()))
 
     $MarkdownByPath = [System.Collections.Generic.Dictionary[string, object]]::new([System.StringComparer]::OrdinalIgnoreCase)
-    foreach ($md in $AllMarkdownResults) { $MarkdownByPath[$md.FilePath] = $md }
+    foreach ($MarkdownResult in $AllMarkdownResults) { $MarkdownByPath[$MarkdownResult.FilePath] = $MarkdownResult }
 
     # Iterate in sort order to preserve override primacy
     $AllSections = [System.Collections.Generic.List[object]]::new()
@@ -524,7 +524,7 @@ function Get-Entity {
                 # Entity already seen in a previously-processed file — merge data
                 $Existing = $EntityMap[$EntityName]
 
-                foreach ($n in $Names) { [void]$Existing.Names.Add($n) }
+                foreach ($NameEntry in $Names) { [void]$Existing.Names.Add($NameEntry) }
                 $Existing.Aliases.AddRange($Aliases)
 
                 # Merge override dictionaries
@@ -544,7 +544,7 @@ function Get-Entity {
                 $Existing.StatusHistory.AddRange($StatusHistory)
                 $Existing.QuantityHistory.AddRange($QuantityHistory)
                 $Existing.GenericNames.AddRange($GenericNames)
-                foreach ($gn in $GenericNames) { [void]$Existing.Names.Add($gn) }
+                foreach ($GN in $GenericNames) { [void]$Existing.Names.Add($GN) }
                 $Existing.Contains.AddRange($ContainsList)
 
                 # Recompute active scalar properties from merged histories
@@ -601,14 +601,14 @@ function Get-Entity {
 
     # Post-parse: resolve canonical names
     $EntityByName = @{}
-    foreach ($e in $Entities) {
-        $EntityByName[$e.Name] = $e
+    foreach ($Entity in $Entities) {
+        $EntityByName[$Entity.Name] = $Entity
     }
 
     $CNCache = @{}
-    foreach ($e in $Entities) {
+    foreach ($Entity in $Entities) {
         $Visited = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
-        $e.CN = Resolve-EntityCN -Entity $e -Visited $Visited -EntityByName $EntityByName -ActiveOn $ActiveOn -CNCache $CNCache
+        $Entity.CN = Resolve-EntityCN -Entity $Entity -Visited $Visited -EntityByName $EntityByName -ActiveOn $ActiveOn -CNCache $CNCache
     }
 
     return $Entities

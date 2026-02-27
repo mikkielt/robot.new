@@ -1,3 +1,13 @@
+<#
+    .SYNOPSIS
+    Pester tests for resolve-narrator.ps1.
+
+    .DESCRIPTION
+    Tests for Resolve-Narrator covering narrator name resolution
+    from session headers, player name matching, alias handling,
+    and fallback behavior for unrecognized narrator names.
+#>
+
 BeforeAll {
     . "$PSScriptRoot/TestHelpers.ps1"
     Import-RobotModule

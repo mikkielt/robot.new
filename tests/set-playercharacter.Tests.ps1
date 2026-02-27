@@ -1,3 +1,13 @@
+<#
+    .SYNOPSIS
+    Pester tests for set-playercharacter.ps1.
+
+    .DESCRIPTION
+    Tests for Set-PlayerCharacter covering entity tag updates (@lokacja,
+    @status, @PU), charfile integration, temp directory management,
+    admin config interaction, and multi-field modification scenarios.
+#>
+
 BeforeAll {
     . "$PSScriptRoot/TestHelpers.ps1"
     Import-RobotModule

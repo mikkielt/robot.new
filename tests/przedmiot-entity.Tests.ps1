@@ -1,9 +1,19 @@
+<#
+    .SYNOPSIS
+    Pester tests for Przedmiot entity handling.
+
+    .DESCRIPTION
+    Tests for Przedmiot-specific entity operations covering file creation,
+    tag writing (@ilość, @typ, @należy_do, @generyczne_nazwy), section
+    manipulation, and Write-EntityFile round-trip for Przedmiot entities.
+#>
+
 BeforeAll {
     $script:ModuleRoot = Split-Path $PSScriptRoot -Parent
     . "$script:ModuleRoot/entity-writehelpers.ps1"
 
     $script:TempRoot = Join-Path ([System.IO.Path]::GetTempPath()) ("robot-przedmiot-" + [System.Guid]::NewGuid().ToString('N'))
-    [System.IO.Directory]::CreateDirectory($script:TempRoot) | Out-Null
+    [void][System.IO.Directory]::CreateDirectory($script:TempRoot)
 
     function script:Write-TestFile {
         param([string]$Path, [string]$Content)

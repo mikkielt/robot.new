@@ -1,3 +1,14 @@
+<#
+    .SYNOPSIS
+    Pester tests for get-entitystate.ps1.
+
+    .DESCRIPTION
+    Tests for Get-EntityState covering @lokacja, @grupa, @alias, @drzwi,
+    @typ, @należy_do, @status, @ilość, @generyczne_nazwy overrides from
+    session Zmiany, @Transfer expansion, temporal sorting, CN recomputation,
+    and unresolved entity warnings.
+#>
+
 BeforeAll {
     . "$PSScriptRoot/TestHelpers.ps1"
     Import-RobotModule

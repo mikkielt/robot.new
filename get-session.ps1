@@ -1089,7 +1089,7 @@ function Get-Session {
 
     $AllMarkdownResults = @(Get-Markdown -File ($FilesToProcess.ToArray()))
     $MarkdownByPath = [System.Collections.Generic.Dictionary[string, object]]::new([System.StringComparer]::OrdinalIgnoreCase)
-    foreach ($md in $AllMarkdownResults) { $MarkdownByPath[$md.FilePath] = $md }
+    foreach ($MarkdownResult in $AllMarkdownResults) { $MarkdownByPath[$MarkdownResult.FilePath] = $MarkdownResult }
 
     # Main file processing loop
 

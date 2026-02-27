@@ -1,3 +1,13 @@
+<#
+    .SYNOPSIS
+    Pester tests for invoke-playercharacterpuassignment.ps1.
+
+    .DESCRIPTION
+    Tests for Invoke-PlayerCharacterPUAssignment covering PU distribution,
+    entity tag writing, config reading, character eligibility, and
+    assignment result validation.
+#>
+
 BeforeAll {
     . "$PSScriptRoot/TestHelpers.ps1"
     Import-RobotModule

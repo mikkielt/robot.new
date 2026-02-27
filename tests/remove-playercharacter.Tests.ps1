@@ -1,9 +1,19 @@
+<#
+    .SYNOPSIS
+    Pester tests for Remove-PlayerCharacter.ps1.
+
+    .DESCRIPTION
+    Tests for Remove-PlayerCharacter covering character entity removal,
+    file deletion, player entry cleanup, entity tag updates, and
+    edge cases for missing/non-existent characters.
+#>
+
 BeforeAll {
     $script:ModuleRoot = Split-Path $PSScriptRoot -Parent
     . "$script:ModuleRoot/entity-writehelpers.ps1"
 
     $script:TempRoot = Join-Path ([System.IO.Path]::GetTempPath()) ("robot-remove-pc-" + [System.Guid]::NewGuid().ToString('N'))
-    [System.IO.Directory]::CreateDirectory($script:TempRoot) | Out-Null
+    [void][System.IO.Directory]::CreateDirectory($script:TempRoot)
 
     function script:Write-TestFile {
         param([string]$Path, [string]$Content)

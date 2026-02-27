@@ -1,3 +1,13 @@
+<#
+    .SYNOPSIS
+    Pester tests for test-currencyreconciliation.ps1.
+
+    .DESCRIPTION
+    Tests for Test-CurrencyReconciliation covering currency balance
+    verification, transaction history validation, denomination mismatch
+    detection, and reconciliation report generation.
+#>
+
 BeforeAll {
     . "$PSScriptRoot/TestHelpers.ps1"
     Import-RobotModule

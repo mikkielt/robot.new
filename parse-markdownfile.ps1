@@ -68,20 +68,20 @@ foreach ($Line in $Lines) {
     }
 
     # Link extraction: Markdown-style first, then plain URLs from the leftover text
-    foreach ($m in $MdLinkPattern.Matches($TrimLine)) {
+    foreach ($LinkMatch in $MdLinkPattern.Matches($TrimLine)) {
         $Links.Add([PSCustomObject]@{
             Type = 'MarkdownLink'
-            Text = $m.Groups[1].Value
-            Url  = $m.Groups[2].Value
+            Text = $LinkMatch.Groups[1].Value
+            Url  = $LinkMatch.Groups[2].Value
         })
     }
     # Strip already-captured Markdown links before scanning for plain URLs
     # to avoid double-counting URLs that appear inside [text](url)
     $StrippedLine = $MdLinkPattern.Replace($TrimLine, '')
-    foreach ($m in $PlainUrlPattern.Matches($StrippedLine)) {
+    foreach ($UrlMatch in $PlainUrlPattern.Matches($StrippedLine)) {
         $Links.Add([PSCustomObject]@{
             Type = 'PlainUrl'
-            Url  = $m.Value
+            Url  = $UrlMatch.Value
         })
     }
 

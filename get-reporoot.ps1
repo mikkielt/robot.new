@@ -20,8 +20,8 @@ function Get-RepoRoot {
         .SYNOPSIS
         Finds the root directory of the lore repository containing this module.
     #>
-    param(
-        # Override the module directory for testing. Defaults to $script:ModuleRoot set at import time.
+    [CmdletBinding()] param(
+        [Parameter(HelpMessage = "Override the module directory for testing. Defaults to `$script:ModuleRoot set at import time.")]
         [string]$ModuleRoot
     )
 

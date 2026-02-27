@@ -1,3 +1,13 @@
+<#
+    .SYNOPSIS
+    Pester tests for set-session.ps1.
+
+    .DESCRIPTION
+    Tests for Find-SessionInFile and Set-Session covering session
+    lookup by header text, content replacement, multi-file session
+    updates, and Gen3/Gen4 format compatibility.
+#>
+
 BeforeAll {
     . "$PSScriptRoot/TestHelpers.ps1"
     Import-RobotModule

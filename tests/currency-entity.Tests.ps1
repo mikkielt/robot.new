@@ -1,9 +1,19 @@
+<#
+    .SYNOPSIS
+    Pester tests for currency entity creation and tag updates.
+
+    .DESCRIPTION
+    Tests for currency Przedmiot entities via Resolve-EntityTarget and
+    Set-EntityTag, covering creation with @ilość/@należy_do/@lokacja tags
+    and in-place @ilość value updates.
+#>
+
 BeforeAll {
     $script:ModuleRoot = Split-Path $PSScriptRoot -Parent
     . "$script:ModuleRoot/entity-writehelpers.ps1"
 
     $script:TempRoot = Join-Path ([System.IO.Path]::GetTempPath()) ("robot-currency-" + [System.Guid]::NewGuid().ToString('N'))
-    [System.IO.Directory]::CreateDirectory($script:TempRoot) | Out-Null
+    [void][System.IO.Directory]::CreateDirectory($script:TempRoot)
 
     function script:Write-TestFile {
         param([string]$Path, [string]$Content)

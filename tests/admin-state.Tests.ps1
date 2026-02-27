@@ -1,3 +1,13 @@
+<#
+    .SYNOPSIS
+    Pester tests for admin-state.ps1.
+
+    .DESCRIPTION
+    Tests for Get-AdminHistoryEntries and Add-AdminHistoryEntry functions
+    covering state file reading, header normalization, entry appending,
+    and chronological sorting.
+#>
+
 BeforeAll {
     . "$PSScriptRoot/TestHelpers.ps1"
     Import-RobotModule

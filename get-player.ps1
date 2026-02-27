@@ -239,9 +239,9 @@ function Get-Player {
 
         # Find the player in our roster (case-insensitive)
         $TargetPlayer = $null
-        foreach ($p in $Players) {
-            if ([string]::Equals($p.Name, $TargetPlayerName, [System.StringComparison]::OrdinalIgnoreCase)) {
-                $TargetPlayer = $p
+        foreach ($ExistingPlayer in $Players) {
+            if ([string]::Equals($ExistingPlayer.Name, $TargetPlayerName, [System.StringComparison]::OrdinalIgnoreCase)) {
+                $TargetPlayer = $ExistingPlayer
                 break
             }
         }
@@ -282,9 +282,9 @@ function Get-Player {
         # Apply Character-level Overrides (if the entity IS a character/NPC owned by the player)
         # Find or create character stub
         $TargetChar = $null
-        foreach ($c in $TargetPlayer.Characters) {
-            if ([string]::Equals($c.Name, $Entity.Name, [System.StringComparison]::OrdinalIgnoreCase)) {
-                $TargetChar = $c
+        foreach ($ExistingChar in $TargetPlayer.Characters) {
+            if ([string]::Equals($ExistingChar.Name, $Entity.Name, [System.StringComparison]::OrdinalIgnoreCase)) {
+                $TargetChar = $ExistingChar
                 break
             }
         }

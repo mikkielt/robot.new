@@ -1,3 +1,13 @@
+<#
+    .SYNOPSIS
+    Pester tests for get-currencyreport.ps1.
+
+    .DESCRIPTION
+    Tests for Get-CurrencyReport covering currency entity filtering,
+    denomination and owner filters, base unit conversion, history
+    inclusion, and report structure validation.
+#>
+
 BeforeAll {
     . "$PSScriptRoot/TestHelpers.ps1"
     Import-RobotModule

@@ -1,3 +1,14 @@
+<#
+    .SYNOPSIS
+    Pester tests for get-player.ps1.
+
+    .DESCRIPTION
+    Tests for Complete-PUData and Get-Player covering PU derivation,
+    player parsing from Gracze.md, character metadata (active state,
+    aliases, path, PU values), trigger handling, Names index construction,
+    -Name filter, and entity override application for Gracz/Postać.
+#>
+
 BeforeAll {
     . "$PSScriptRoot/TestHelpers.ps1"
     Import-RobotModule

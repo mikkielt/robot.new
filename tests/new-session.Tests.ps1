@@ -1,3 +1,13 @@
+<#
+    .SYNOPSIS
+    Pester tests for new-session.ps1.
+
+    .DESCRIPTION
+    Tests for New-Session covering Gen4 session block generation with
+    header, metadata, narrator, Obecni, Zmiany sections, and session
+    number sequencing.
+#>
+
 BeforeAll {
     . "$PSScriptRoot/TestHelpers.ps1"
     Import-RobotModule

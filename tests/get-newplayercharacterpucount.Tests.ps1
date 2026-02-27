@@ -1,3 +1,13 @@
+<#
+    .SYNOPSIS
+    Pester tests for get-newplayercharacterpucount.ps1.
+
+    .DESCRIPTION
+    Tests for Get-NewPlayerCharacterPUCount covering PU computation
+    formula, character inclusion/exclusion, BRAK PU handling, zero
+    characters edge case, and non-existent player errors.
+#>
+
 BeforeAll {
     . "$PSScriptRoot/TestHelpers.ps1"
     Import-RobotModule

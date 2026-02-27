@@ -1,9 +1,19 @@
+<#
+    .SYNOPSIS
+    Pester tests for @status tag parsing in Get-Entity.
+
+    .DESCRIPTION
+    Tests for @status tag handling covering basic parsing (Aktywny,
+    Nieaktywny, Usunięty), default status, temporal transitions,
+    and Przedmiot entity type support.
+#>
+
 BeforeAll {
     $script:ModuleRoot = Split-Path $PSScriptRoot -Parent
     . "$script:ModuleRoot/get-entity.ps1"
 
     $script:TempRoot = Join-Path ([System.IO.Path]::GetTempPath()) ("robot-status-" + [System.Guid]::NewGuid().ToString('N'))
-    [System.IO.Directory]::CreateDirectory($script:TempRoot) | Out-Null
+    [void][System.IO.Directory]::CreateDirectory($script:TempRoot)
 
     function script:Write-TestFile {
         param([string]$Path, [string]$Content)

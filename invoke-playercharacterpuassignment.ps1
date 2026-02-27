@@ -118,7 +118,7 @@ function Invoke-PlayerCharacterPUAssignment {
                 $FileSessions = Get-Session -File $FilePath -MinDate $MinDate -MaxDate $MaxDate
                 if ($FileSessions) {
                     if ($FileSessions -is [System.Collections.IEnumerable] -and $FileSessions -isnot [string]) {
-                        foreach ($S in $FileSessions) { $SessionResults.Add($S) }
+                        foreach ($SessionItem in $FileSessions) { $SessionResults.Add($SessionItem) }
                     } else {
                         $SessionResults.Add($FileSessions)
                     }
@@ -387,8 +387,8 @@ function Invoke-PlayerCharacterPUAssignment {
         $ReconciliationResult = Test-CurrencyReconciliation -Sessions @($Sessions)
         if ($ReconciliationResult.WarningCount -gt 0) {
             [System.Console]::Error.WriteLine("[INFO Invoke-PlayerCharacterPUAssignment] Currency reconciliation: $($ReconciliationResult.WarningCount) warning(s)")
-            foreach ($W in $ReconciliationResult.Warnings) {
-                [System.Console]::Error.WriteLine("  [$($W.Severity)] $($W.Check): $($W.Entity) — $($W.Detail)")
+            foreach ($Warning in $ReconciliationResult.Warnings) {
+                [System.Console]::Error.WriteLine("  [$($Warning.Severity)] $($Warning.Check): $($Warning.Entity) — $($Warning.Detail)")
             }
         } else {
             [System.Console]::Error.WriteLine("[INFO Invoke-PlayerCharacterPUAssignment] Currency reconciliation: no warnings")

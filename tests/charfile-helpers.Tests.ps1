@@ -1,9 +1,19 @@
+<#
+    .SYNOPSIS
+    Pester tests for charfile-helpers.ps1.
+
+    .DESCRIPTION
+    Tests for Read-CharacterFile, Find-CharacterSection,
+    Write-CharacterFileSection, and Format-ReputationSection covering
+    character file parsing, section manipulation, and reputation rendering.
+#>
+
 BeforeAll {
     $script:ModuleRoot = Split-Path $PSScriptRoot -Parent
     . "$script:ModuleRoot/charfile-helpers.ps1"
 
     $script:TempRoot = Join-Path ([System.IO.Path]::GetTempPath()) ("robot-charfile-" + [System.Guid]::NewGuid().ToString('N'))
-    [System.IO.Directory]::CreateDirectory($script:TempRoot) | Out-Null
+    [void][System.IO.Directory]::CreateDirectory($script:TempRoot)
 
     function script:Write-TestFile {
         param([string]$Path, [string]$Content)

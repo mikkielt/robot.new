@@ -25,7 +25,7 @@ function New-TestTempDir {
         [System.IO.Directory]::Delete($script:TempRoot, $true)
     }
     $script:TempRoot = Join-Path ([System.IO.Path]::GetTempPath()) ("robot-test-" + [System.Guid]::NewGuid().ToString('N'))
-    [System.IO.Directory]::CreateDirectory($script:TempRoot) | Out-Null
+    [void][System.IO.Directory]::CreateDirectory($script:TempRoot)
     return $script:TempRoot
 }
 
@@ -61,7 +61,7 @@ function Copy-FixtureToTemp {
     # Ensure parent directory exists
     $DstDir = [System.IO.Path]::GetDirectoryName($Dst)
     if (-not [System.IO.Directory]::Exists($DstDir)) {
-        [System.IO.Directory]::CreateDirectory($DstDir) | Out-Null
+        [void][System.IO.Directory]::CreateDirectory($DstDir)
     }
 
     [System.IO.File]::Copy($Src, $Dst, $true)
