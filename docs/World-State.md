@@ -9,10 +9,11 @@ This guide explains how the repository tracks the state of the game world - NPCs
 **What is included:**
 
 - What entities are and how they are organized
+- How coordinators manage entities (create, update, remove)
 - How session changes (Zmiany) update entity data
 - How temporal scoping works (things that change over time)
+- How currency is tracked, transferred, and managed — including out-of-game reserves
 - How to understand the current and historical state of entities
-- What the entity store contains
 
 **What is excluded:**
 
@@ -49,38 +50,25 @@ An entity is any named element of the game world that the system tracks. Each en
 
 ## Managing Entities
 
-### Creating Entities
+### Adding New Entities
 
-Coordinators can create new world entities (NPCs, organizations, locations, items) when they first appear in the game:
+When a new NPC, organization, location, or item first appears in the game world, the coordinator registers it in the entity store. Each entity gets a type, a name, and optional starting properties (such as initial location or group membership).
 
-```powershell
-New-Entity -Type NPC -Name "Lord Haart" -Tags @{ lokacja = "Erathia"; grupa = "Nekromanci" }
-New-Entity -Type Organizacja -Name "Bractwo Miecza"
-New-Entity -Type Lokacja -Name "Zamek Steadwick" -Tags @{ lokacja = "Erathia" }
-```
-
-Player and character entities (`Gracz`, `Postać`) are managed through specialized commands — see [Players.md](Players.md).
+Player and character entities are managed through the player registration process — see [Players.md](Players.md).
 
 ### Updating Entities
 
-Entity properties can be updated at any time. Changes are time-stamped for historical tracking:
+The coordinator can update any entity's properties at any time. Each update is time-stamped, so the system preserves a full history of what changed and when. This is separate from session changes — coordinators use this for administrative corrections or out-of-session updates.
 
-```powershell
-Set-Entity -Name "Lord Haart" -Tags @{ lokacja = "Bracada" } -ValidFrom "2026-02"
-Set-Entity -Name "Bractwo Miecza" -Tags @{ status = "Nieaktywny" } -ValidFrom "2026-03"
-```
-
-When the entity type is ambiguous (same name in different sections), use `-Type` to disambiguate.
+When two entities share the same name across different types, the coordinator specifies the type to disambiguate.
 
 ### Removing Entities
 
-Entities are soft-deleted — marked as removed but preserved for historical accuracy:
+Entities are never physically deleted. Instead, the coordinator marks them as removed ("Usunięty") with an effective date. Removed entities:
 
-```powershell
-Remove-Entity -Name "Lord Haart" -ValidFrom "2026-02"
-```
-
-Removed entities stop appearing in standard queries but remain available for historical lookups.
+- Stop appearing in standard queries and reports
+- Remain available for historical lookups
+- Can be restored later if the removal was a mistake
 
 ## Currency
 
@@ -155,73 +143,35 @@ Use `+N` to add coins and `-N` to subtract coins.
 
 ### Checking Currency Holdings
 
-Coordinators can review currency across the world to see who holds what, filtered by owner or denomination:
+The coordinator can review currency across the world at any time. Holdings can be filtered by owner (who has the coins) or by denomination (which type of coin). Deleted or inactive entries are hidden by default but can be included when needed for auditing.
 
-```powershell
-# See all currency for a specific character
-Get-CurrencyEntity -Owner "Erdamon"
+### Managing Currency Holdings
 
-# See all holdings of a specific denomination
-Get-CurrencyEntity -Denomination "Korony"
+The coordinator can directly create, adjust, or remove currency holdings outside of sessions:
 
-# Include deleted/inactive entries
-Get-CurrencyEntity -IncludeInactive
-```
+- **Creating** a new currency holding for a character or organization — the system auto-generates the entity name from the denomination and owner (e.g., "Korony Erdamon")
+- **Adjusting** a holding's quantity, either to a specific value or by adding/subtracting a delta
+- **Transferring** ownership to a different character or organization
+- **Dropping** currency at a location instead of carried by someone
+- **Removing** a holding — soft-delete with a warning if the balance is not zero
 
-### Managing Currency Entities
-
-Coordinators can create, update, and remove currency holdings directly:
-
-```powershell
-# Create a new currency holding
-New-CurrencyEntity -Denomination "Korony" -Owner "Erdamon" -Amount 500
-
-# Adjust quantity (delta)
-Set-CurrencyEntity -Name "Korony Erdamon" -AmountDelta +100 -ValidFrom "2026-02"
-
-# Transfer ownership
-Set-CurrencyEntity -Name "Korony Erdamon" -Owner "Kupiec Orrin" -ValidFrom "2026-02"
-
-# Soft-delete a currency entity (warns if balance > 0)
-Remove-CurrencyEntity -Name "Korony Erdamon" -ValidFrom "2026-02"
-```
+These actions are time-stamped and preserved in history, just like session changes.
 
 ### Out-of-Game Currency: The Treasury
 
-Not all currency is in active gameplay. Coordinators maintain a reserve pool (the "treasury") and distribute budgets to narrators before sessions. Narrators then award currency to player characters during sessions.
+Not all currency is in active gameplay. Coordinators maintain a reserve pool and distribute budgets to narrators before sessions. Narrators then award currency to player characters during gameplay.
 
-This supply chain is modeled using an **Organizacja** entity as the treasury:
+This out-of-game supply chain is modeled using an **organization** entity as the treasury (e.g., "Skarbiec Koordynatorów"). The coordinator creates currency holdings owned by the treasury, then distributes portions to narrators as needed.
 
-```powershell
-# One-time setup: create the treasury organization
-New-Entity -Type Organizacja -Name "Skarbiec Koordynatorów"
+**The distribution flow works like this:**
 
-# Mint initial currency supply into the treasury
-New-CurrencyEntity -Denomination Korony -Owner "Skarbiec Koordynatorów" -Amount 10000
-New-CurrencyEntity -Denomination Talary -Owner "Skarbiec Koordynatorów" -Amount 50000
-```
+1. **Coordinator creates the treasury** — a one-time setup. An Organizacja entity represents the currency reserve, with initial currency holdings for each denomination.
 
-**Distribution flow:**
+2. **Coordinator distributes to narrator** — before a session, the coordinator subtracts from the treasury's balance and adds to a narrator's budget. This happens outside any game session and is tracked through the entity history.
 
-1. **Coordinator → Narrator** (out-of-game, before sessions):
+3. **Narrator awards to player character** — during the session, the narrator records a `@Transfer` in the standard session format. The system handles the balance adjustments automatically.
 
-```powershell
-# Create narrator's budget entity
-New-CurrencyEntity -Denomination Korony -Owner "Narrator Dracon" -Amount 0
-
-# Distribute from treasury
-Set-CurrencyEntity -Name "Korony Skarbiec Koordynatorów" -AmountDelta -500 -ValidFrom "2026-02"
-Set-CurrencyEntity -Name "Korony Narrator Dracon" -AmountDelta +500 -ValidFrom "2026-02"
-```
-
-2. **Narrator → Player Character** (in-game, during sessions):
-
-```markdown
-### 2026-02-15, Nagroda za misję, Dracon
-- @Transfer: 100 koron, Narrator Dracon -> Erdamon
-```
-
-The total currency supply across all holders (treasury + narrators + player characters) should remain constant. Monthly reconciliation detects any supply drift.
+The total currency supply across all holders — treasury, narrators, and player characters — should remain constant over time. Monthly reconciliation detects any supply drift, which may indicate a recording error or forgotten adjustment.
 
 ### Reconciliation - Catching Errors
 
