@@ -6,31 +6,37 @@
 
 ## 1. Scope
 
-This document covers the currency tracking subsystem: denomination constants, conversion utilities, currency entity identification, reporting (`Get-CurrencyReport`), reconciliation (`Test-CurrencyReconciliation`), the `@Transfer` session directive, and PU workflow integration.
+This document covers the currency tracking subsystem: denomination constants, conversion utilities, currency entity identification, CRUD commands (`New-CurrencyEntity`, `Set-CurrencyEntity`, `Get-CurrencyEntity`, `Remove-CurrencyEntity`), reporting (`Get-CurrencyReport`), reconciliation (`Test-CurrencyReconciliation`), the `@Transfer` session directive, PU workflow integration, and out-of-game currency management patterns.
 
-**Not covered**: General entity parsing - see [ENTITIES.md](ENTITIES.md). Entity write operations - see [ENTITY-WRITES.md](ENTITY-WRITES.md).
+**Not covered**: General entity parsing - see [ENTITIES.md](ENTITIES.md). Generic entity write operations - see [ENTITY-WRITES.md](ENTITY-WRITES.md).
 
 ---
 
 ## 2. Architecture Overview
 
 ```
-private/currency-helpers.ps1          Denomination constants, conversion, identification
-    ├── $CurrencyDenominations     Canonical denomination definitions
+private/currency-helpers.ps1         Denomination constants, conversion, identification
+    ├── $CurrencyDenominations       Canonical denomination definitions
     ├── ConvertTo-CurrencyBaseUnit   Amount -> Kogi conversion
     ├── ConvertFrom-CurrencyBaseUnit Kogi -> denomination breakdown
     ├── Resolve-CurrencyDenomination Stem/colloquial -> canonical denomination
     ├── Test-IsCurrencyEntity        Check if entity is currency
     └── Find-CurrencyEntity          Find currency entity by denomination + owner
 
-public/reporting/get-currencyreport.ps1        Reporting command
-    └── Get-CurrencyReport           Filtered currency holdings report
+public/currency/                     Currency entity CRUD
+    ├── New-CurrencyEntity           Create currency entity (denomination-validated, auto-named)
+    ├── Set-CurrencyEntity           Update quantity (absolute/delta), owner, location
+    ├── Get-CurrencyEntity           Filtered currency entity query with balance
+    └── Remove-CurrencyEntity        Soft-delete with non-zero balance warning
 
-public/reporting/test-currencyreconciliation.ps1  Validation checks
-    └── Test-CurrencyReconciliation  5-check reconciliation report
+public/reporting/get-currencyreport.ps1 Reporting command
+    └── Get-CurrencyReport              Filtered currency holdings report
 
-public/session/get-session.ps1               @Transfer parsing (session-level directive)
-public/get-entitystate.ps1           @Transfer expansion (symmetric quantity deltas)
+public/reporting/test-currencyreconciliation.ps1    Validation checks
+    └── Test-CurrencyReconciliation                 5-check reconciliation report
+
+public/session/get-session.ps1                          @Transfer parsing (session-level directive)
+public/get-entitystate.ps1                              @Transfer expansion (symmetric quantity deltas)
 public/workflow/invoke-playercharacterpuassignment.ps1  -ReconcileCurrency integration
 ```
 
@@ -91,7 +97,7 @@ Currency entities are `Przedmiot` entities with `@generyczne_nazwy` set to a can
 Converts a denomination amount to Kogi (base unit):
 
 ```powershell
-ConvertTo-CurrencyBaseUnit -Amount 3 -Denomination 'Korony Elanckie'  # 30000
+ConvertTo-CurrencyBaseUnit -Amount 3 -Denomination 'Korony Elanckie'   # 30000
 ConvertTo-CurrencyBaseUnit -Amount 50 -Denomination 'talarów'          # 5000
 ConvertTo-CurrencyBaseUnit -Amount 250 -Denomination 'kogi'            # 250
 ```
@@ -268,7 +274,82 @@ Step 7+: Side effects (UpdatePlayerCharacters, SendToDiscord, AppendToLog)
 
 ---
 
-## 10. Testing
+## 10. Currency Entity CRUD (`public/currency/`)
+
+Four dedicated commands for managing currency entities. These wrap the generic entity primitives (`entity-writehelpers.ps1`) with denomination validation, auto-naming, and balance management. See [ENTITY-WRITES.md](ENTITY-WRITES.md) §6 for the full specification.
+
+| Command | Purpose |
+|---|---|
+| `New-CurrencyEntity` | Creates a `Przedmiot` entity with validated denomination, auto-generated name `"{DenomShort} {Owner}"`, and `currency-entity.md.template` |
+| `Set-CurrencyEntity` | Updates `@ilość` (absolute or delta arithmetic), `@należy_do` (owner transfer), `@lokacja` (dropped currency). Mutual exclusion: `Amount`/`AmountDelta`, `Owner`/`Location` |
+| `Get-CurrencyEntity` | Read-only query with filtering by owner, denomination, name. Returns enriched objects with balance, tier, denomination metadata |
+| `Remove-CurrencyEntity` | Soft-delete via `@status: Usunięty`. Warns on non-zero balance |
+
+All mutating commands support `-WhatIf` / `-Confirm`. Remove has `ConfirmImpact = 'High'`.
+
+---
+
+## 11. Out-of-Game Currency Management
+
+### 11.1 Problem
+
+Not all currency is in active gameplay. Coordinators maintain a reserve pool (the "treasury") and distribute budgets to narrators before sessions. Narrators then award currency to player characters during sessions. This supply chain exists outside the normal `@Transfer` / `@Zmiany` session flow.
+
+### 11.2 Modeling with Organizacja Entities
+
+Out-of-game currency reserves are modeled as currency entities owned by an `Organizacja` entity representing the treasury:
+
+```powershell
+# One-time setup: create the treasury organization
+New-Entity -Type Organizacja -Name "Skarbiec Koordynatorów"
+
+# Mint initial currency supply
+New-CurrencyEntity -Denomination Korony -Owner "Skarbiec Koordynatorów" -Amount 10000
+New-CurrencyEntity -Denomination Talary -Owner "Skarbiec Koordynatorów" -Amount 50000
+New-CurrencyEntity -Denomination Kogi   -Owner "Skarbiec Koordynatorów" -Amount 100000
+```
+
+### 11.3 Distribution Flow
+
+```
+Skarbiec Koordynatorów (Organizacja)    ← total supply origin
+        │
+        │  Set-CurrencyEntity -AmountDelta (admin distribution)
+        ▼
+Narrator's currency entity              ← session budget
+        │
+        │  @Transfer in session (standard gameplay flow)
+        ▼
+Player Character currency entity        ← in-game holdings
+```
+
+**Coordinator → Narrator distribution** (out-of-game, administrative):
+
+```powershell
+# Create narrator's budget entity if it doesn't exist
+New-CurrencyEntity -Denomination Korony -Owner "Narrator Dracon" -Amount 0
+
+# Distribute from treasury
+Set-CurrencyEntity -Name "Korony Skarbiec Koordynatorów" -AmountDelta -500 -ValidFrom "2026-02"
+Set-CurrencyEntity -Name "Korony Narrator Dracon" -AmountDelta +500 -ValidFrom "2026-02"
+```
+
+**Narrator → Player Character** (in-game, during session):
+
+```markdown
+### 2026-02-15, Nagroda za misję, Dracon
+- @Transfer: 100 koron, Narrator Dracon -> Erdamon
+```
+
+### 11.4 Reconciliation
+
+`Test-CurrencyReconciliation` supply tracking includes treasury and narrator holdings in the total. This is correct — the total supply should be conserved across all holders (treasury + narrators + player characters). Supply drift indicates minting or loss errors.
+
+**Note**: Paired `Set-CurrencyEntity` calls for admin distributions are not automatically linked. If one side is forgotten, `Test-CurrencyReconciliation` detects the supply drift at the next monthly reconciliation run.
+
+---
+
+## 12. Testing
 
 | Test file | Coverage |
 |---|---|
@@ -277,10 +358,14 @@ Step 7+: Side effects (UpdatePlayerCharacters, SendToDiscord, AppendToLog)
 | `tests/test-currencyreconciliation.Tests.ps1` | Negative balance, orphaned currency, supply tracking, @Transfer symmetry |
 | `tests/get-entitystate.Tests.ps1` | @Transfer expansion (symmetric deltas), @Transfer session parsing |
 | `tests/currency-entity.Tests.ps1` | Currency entity creation, @ilość tag handling |
+| `tests/new-currencyentity.Tests.ps1` | Denomination validation, auto-naming, duplicate detection, template rendering |
+| `tests/set-currencyentity.Tests.ps1` | Absolute/delta quantity, owner/location update, mutual exclusion |
+| `tests/get-currencyentity.Tests.ps1` | Filtering, denomination resolution, balance, inactive exclusion |
+| `tests/remove-currencyentity.Tests.ps1` | Soft-delete, non-zero balance warning |
 
 ---
 
-## 11. Related Documents
+## 13. Related Documents
 
 - [ENTITIES.md](ENTITIES.md) - Entity system (tags, temporal scoping, multi-file merge)
 - [ENTITY-WRITES.md](ENTITY-WRITES.md) - Write operations on entity files

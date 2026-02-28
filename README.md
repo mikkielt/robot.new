@@ -55,6 +55,25 @@ Set-PlayerCharacter -PlayerName "Solmyr" -CharacterName "Solmyr" `
 # Soft-delete a character
 Remove-PlayerCharacter -PlayerName "Solmyr" -CharacterName "OldChar"
 
+# Create a generic entity (NPC, Organizacja, Lokacja, Przedmiot)
+New-Entity -Type NPC -Name "Lord Haart" -Tags @{ lokacja = "Erathia"; grupa = "Nekromanci" }
+
+# Update an entity's tags
+Set-Entity -Name "Lord Haart" -Tags @{ status = "Nieaktywny" } -ValidFrom "2026-02"
+
+# Soft-delete an entity
+Remove-Entity -Name "Lord Haart" -ValidFrom "2026-02"
+
+# Create a currency entity (denomination-validated, auto-named)
+New-CurrencyEntity -Denomination "Korony" -Owner "Erdamon" -Amount 500
+
+# Adjust currency quantity (delta)
+Set-CurrencyEntity -Name "Korony Erdamon" -AmountDelta +100 -ValidFrom "2026-02"
+
+# Query currency holdings
+Get-CurrencyEntity -Owner "Erdamon"
+Get-CurrencyEntity -Denomination "Korony"
+
 # Generate a new session in Gen4 format (returns string)
 $SessionText = New-Session -Date (Get-Date "2025-06-15") -Title "Ucieczka z Erathii" `
     -Narrator "Dracon" -Locations @("Erathia", "Steadwick")
@@ -96,6 +115,8 @@ foreach ($Name in $NamesToResolve) {
 .robot.new/
 ├── public/          # Exported Verb-Noun functions (auto-discovered by robot.psm1)
 │   ├── player/      # Player & character CRUD
+│   ├── entity/      # Generic entity CRUD (NPC, Organizacja, Lokacja, Przedmiot)
+│   ├── currency/    # Currency entity CRUD (denomination-aware)
 │   ├── session/     # Session lifecycle & git history
 │   ├── resolve/     # Name resolution
 │   ├── workflow/    # PU assignment pipeline & Discord
@@ -103,17 +124,19 @@ foreach ($Name in $NamesToResolve) {
 ├── private/         # Shared helpers, dot-sourced on demand (not exported)
 ├── tests/           # Pester test suite
 │   └── fixtures/    # Test data files
-├── templates/       # Markdown templates for player/character creation
+├── templates/       # Markdown/text templates for entity creation, notifications, scaffolding
 ├── docs/            # Documentation for narrators, coordinators, players
 └── devdocs/         # Technical documentation for developers
 ```
 
-### Exported Functions (`public/`, 25)
+### Exported Functions (`public/`, 32)
 
 | Category | Subdirectory | Functions |
 |---|---|---|
 | Core data | `public/` | `Get-Markdown`, `Get-Entity`, `Get-EntityState`, `Get-NameIndex`, `Get-RepoRoot` |
 | Player & character | `public/player/` | `Get-Player`, `Get-PlayerCharacter`, `Get-NewPlayerCharacterPUCount`, `New-Player`, `New-PlayerCharacter`, `Set-Player`, `Set-PlayerCharacter`, `Remove-PlayerCharacter` |
+| Entity CRUD | `public/entity/` | `New-Entity`, `Set-Entity`, `Remove-Entity` |
+| Currency CRUD | `public/currency/` | `New-CurrencyEntity`, `Set-CurrencyEntity`, `Get-CurrencyEntity`, `Remove-CurrencyEntity` |
 | Session | `public/session/` | `Get-Session`, `Get-GitChangeLog`, `New-Session`, `Set-Session` |
 | Name resolution | `public/resolve/` | `Resolve-Name`, `Resolve-Narrator` |
 | Workflow | `public/workflow/` | `Invoke-PlayerCharacterPUAssignment`, `Send-DiscordMessage` |
@@ -123,7 +146,7 @@ foreach ($Name in $NamesToResolve) {
 `entity-writehelpers.ps1`, `charfile-helpers.ps1`, `admin-config.ps1`, `admin-state.ps1`, `format-sessionblock.ps1`, `string-helpers.ps1`, `currency-helpers.ps1`, `parse-markdownfile.ps1`
 
 ### Templates
-`templates/player-character-file.md.template`, `templates/player-entry.md.template`
+`templates/player-character-file.md.template`, `templates/player-entry.md.template`, `templates/entities-skeleton.md.template`, `templates/currency-entity.md.template`, `templates/pu-notification-base.txt.template`, `templates/pu-notification-overflow.txt.template`, `templates/pu-notification-remaining.txt.template`, `templates/pu-sessions-header.md.template`
 
 ## Testing
 

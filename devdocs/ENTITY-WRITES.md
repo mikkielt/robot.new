@@ -6,9 +6,9 @@
 
 ## 1. Scope
 
-This document covers the entity write subsystem: `private/entity-writehelpers.ps1` (low-level line-array manipulation primitives) and all mutating commands (`Set-Player`, `Set-PlayerCharacter`, `New-Player`, `New-PlayerCharacter`, `Remove-PlayerCharacter`).
+This document covers the entity write subsystem: `private/entity-writehelpers.ps1` (low-level line-array manipulation primitives) and all mutating commands: player/character-specific (`Set-Player`, `Set-PlayerCharacter`, `New-Player`, `New-PlayerCharacter`, `Remove-PlayerCharacter`), generic entity CRUD (`New-Entity`, `Set-Entity`, `Remove-Entity`), and currency entity CRUD (`New-CurrencyEntity`, `Set-CurrencyEntity`, `Remove-CurrencyEntity`).
 
-**Not covered**: Entity reading/parsing - see [ENTITIES.md](ENTITIES.md). Character file writing - see [CHARFILE.md](CHARFILE.md).
+**Not covered**: Entity reading/parsing - see [ENTITIES.md](ENTITIES.md). Character file writing - see [CHARFILE.md](CHARFILE.md). Currency query (`Get-CurrencyEntity`) and reporting - see [CURRENCY.md](CURRENCY.md).
 
 ---
 
@@ -16,13 +16,16 @@ This document covers the entity write subsystem: `private/entity-writehelpers.ps
 
 ```
 private/entity-writehelpers.ps1 (shared file manipulation)
-     ▲         ▲         ▲         ▲         ▲
-     │         │         │         │         │
-Set-Player  Set-Player  New-Player  New-Player  Remove-Player
-            Character              Character   Character
-     │         │         │         │         │
-     ▼         ▼         ▼         ▼         ▼
+     ▲         ▲         ▲         ▲         ▲         ▲         ▲         ▲
+     │         │         │         │         │         │         │         │
+Set-Player  Set-Player  New-Player  New-Player  Remove-Player  New-    Set-    Remove-
+            Character              Character   Character      Entity  Entity  Entity
+     │         │         │         │         │         │         │         │
+     ▼         ▼         ▼         ▼         ▼         ▼         ▼         ▼
   entities.md (write target, never Gracze.md)
+
+Currency CRUD (public/currency/) also uses entity-writehelpers.ps1 via the
+generic entity primitives + private/currency-helpers.ps1 for denomination logic.
 ```
 
 All mutating commands dot-source `private/entity-writehelpers.ps1` and operate on `List[string]` line arrays with in-place index manipulation.
@@ -40,6 +43,7 @@ All mutating commands dot-source `private/entity-writehelpers.ps1` and operate o
 | `Find-EntityTag` | Finds **last** occurrence of `- @tag: value` in children | `{ TagIdx, Tag, Value }` or `$null` |
 | `Set-EntityTag` | Upserts a tag line: replaces if found, inserts at children end | Updated `ChildrenEnd` index |
 | `New-EntityBullet` | Inserts `* EntityName` with sorted `@tag` children | - |
+| `ConvertFrom-EntityTemplate` | Parses a rendered template into `@{ Name; Tags }` for `New-EntityBullet` | `@{ Name; Tags }` |
 | `Resolve-EntityTarget` | High-level orchestrator: ensure file -> find/create section -> find/create bullet | `{ Lines, NL, BulletIdx, ChildrenStart, ChildrenEnd, FilePath, Created }` |
 | `Read-EntityFile` | Reads file into `List[string]` with newline detection | `{ Lines, NL }` |
 | `Write-EntityFile` | Writes `List[string]` back to file (UTF-8 no BOM) | - |
@@ -103,11 +107,17 @@ High-level orchestrator that ensures the entity exists, creating intermediate st
 
 **`Write-EntityFile`**: Rejoins lines with detected newline style, writes via `[System.IO.File]::WriteAllText()` with `UTF8Encoding(false)` (no BOM).
 
-**`Invoke-EnsureEntityFile`**: Creates `entities.md` with skeleton:
+**`Invoke-EnsureEntityFile`**: Creates `entities.md` with skeleton loaded from `entities-skeleton.md.template` (via `Get-AdminTemplate`). The template defines all 6 entity type sections:
 ```markdown
 ## Gracz
 
 ## Postać
+
+## NPC
+
+## Organizacja
+
+## Lokacja
 
 ## Przedmiot
 ```
@@ -196,7 +206,113 @@ Three precompiled regex patterns (`RegexOptions.Compiled`):
 
 ---
 
-## 5. Bootstrap Migration (`ConvertTo-EntitiesFromPlayers`)
+## 5. Generic Entity CRUD (`public/entity/`)
+
+These commands handle NPC, Organizacja, Lokacja, and Przedmiot entities. `Gracz` and `Postać` are excluded — they have specialized commands (§4) with domain-specific logic (PU, ownership, character files).
+
+### 5.1 `New-Entity`
+
+| Aspect | Detail |
+|---|---|
+| **Target** | `entities.md` under `## Type` section |
+| **Types** | `ValidateSet("NPC", "Organizacja", "Lokacja", "Przedmiot")` |
+| **Tags written** | Any `@tag` via `-Tags` hashtable |
+| **Creation** | Creates entity via `Resolve-EntityTarget` |
+| **Duplicate detection** | Throws if entity already exists in the target section |
+| **Temporal suffix** | Appends `(YYYY-MM:)` to tag values when `-ValidFrom` is provided |
+| **Dot-sources** | `private/entity-writehelpers.ps1`, `private/admin-config.ps1` |
+| **SupportsShouldProcess** | Yes (`-WhatIf`, `-Confirm`) |
+
+**Return object**: `{ Name, Type, EntitiesFile, Tags, Created }`
+
+### 5.2 `Set-Entity`
+
+| Aspect | Detail |
+|---|---|
+| **Target** | `entities.md` — searches all sections or scoped to `-Type` |
+| **Tags written** | Any `@tag` via `-Tags` hashtable, upsert via `Set-EntityTag` |
+| **Cross-section search** | When `-Type` not provided, scans all entity type sections for the named entity |
+| **Auto-creation** | Creates entity if not found (requires `-Type`) |
+| **Temporal suffix** | Appends `(YYYY-MM:)` to tag values when `-ValidFrom` is provided |
+| **Dot-sources** | `private/entity-writehelpers.ps1`, `private/admin-config.ps1` |
+| **SupportsShouldProcess** | Yes |
+
+### 5.3 `Remove-Entity`
+
+| Aspect | Detail |
+|---|---|
+| **Target** | `entities.md` — searches all sections or scoped to `-Type` |
+| **Operation** | Soft-delete: writes `@status: Usunięty (YYYY-MM:)` |
+| **`-ValidFrom`** | Defaults to current month |
+| **No physical deletion** | Entity bullet remains |
+| **ConfirmImpact** | `High` |
+| **Dot-sources** | `private/entity-writehelpers.ps1`, `private/admin-config.ps1` |
+| **SupportsShouldProcess** | Yes |
+
+---
+
+## 6. Currency Entity CRUD (`public/currency/`)
+
+Domain-specific commands for currency `Przedmiot` entities. These wrap the generic entity primitives with denomination validation, auto-naming, and balance management.
+
+See [CURRENCY.md](CURRENCY.md) for the full currency system specification (denominations, transfers, reconciliation, reporting).
+
+### 6.1 `New-CurrencyEntity`
+
+| Aspect | Detail |
+|---|---|
+| **Target** | `entities.md` `## Przedmiot` section |
+| **Auto-naming** | `"{DenomShort} {Owner}"` (e.g., `"Korony Erdamon"`) |
+| **Denomination** | Validated via `Resolve-CurrencyDenomination` (accepts canonical, short, or stem) |
+| **Template** | Uses `currency-entity.md.template` for initial structure |
+| **Duplicate detection** | Via `Find-CurrencyEntity` (denomination + owner) |
+| **Defaults** | `Amount = 0`, `ValidFrom = current month` |
+| **Dot-sources** | `private/entity-writehelpers.ps1`, `private/admin-config.ps1`, `private/currency-helpers.ps1` |
+| **SupportsShouldProcess** | Yes |
+
+**Return object**: `{ EntityName, Denomination, Owner, Amount, EntitiesFile }`
+
+### 6.2 `Set-CurrencyEntity`
+
+| Aspect | Detail |
+|---|---|
+| **Target** | `entities.md` `## Przedmiot` section |
+| **Quantity (absolute)** | `-Amount` sets `@ilość` directly |
+| **Quantity (delta)** | `-AmountDelta` reads current `@ilość`, computes new value, writes absolute |
+| **Mutual exclusion** | `Amount` and `AmountDelta` cannot be used together; `Owner` and `Location` cannot be used together |
+| **Owner transfer** | Writes `@należy_do` with temporal suffix |
+| **Location** | Writes `@lokacja` for dropped currency |
+| **Dot-sources** | `private/entity-writehelpers.ps1`, `private/admin-config.ps1`, `private/currency-helpers.ps1` |
+| **SupportsShouldProcess** | Yes |
+
+### 6.3 `Get-CurrencyEntity`
+
+| Aspect | Detail |
+|---|---|
+| **Operation** | Read-only query. Wraps `Get-Entity` + `Test-IsCurrencyEntity` |
+| **Filters** | `-Owner`, `-Denomination`, `-Name`, `-IncludeInactive` |
+| **Denomination resolution** | Via `Resolve-CurrencyDenomination` (stem matching supported) |
+| **Pre-fetched input** | `-Entities` parameter for reuse of loaded entity data |
+| **Excludes** | `Usunięty` entities by default |
+| **Dot-sources** | `private/currency-helpers.ps1` |
+
+**Return object**: `{ EntityName, Denomination, DenomShort, Tier, Owner, Location, Balance, Status }`
+
+### 6.4 `Remove-CurrencyEntity`
+
+| Aspect | Detail |
+|---|---|
+| **Target** | `entities.md` `## Przedmiot` section |
+| **Operation** | Soft-delete: writes `@status: Usunięty (YYYY-MM:)` |
+| **Non-zero balance** | Warns to stderr if balance > 0 |
+| **`-ValidFrom`** | Defaults to current month |
+| **ConfirmImpact** | `High` |
+| **Dot-sources** | `private/entity-writehelpers.ps1`, `private/admin-config.ps1`, `private/currency-helpers.ps1` |
+| **SupportsShouldProcess** | Yes |
+
+---
+
+## 7. Bootstrap Migration (`ConvertTo-EntitiesFromPlayers`)
 
 One-time function that generates a complete `entities.md` from `Get-Player` output:
 
@@ -208,7 +324,7 @@ One-time function that generates a complete `entities.md` from `Get-Player` outp
 
 ---
 
-## 6. Write Invariants
+## 8. Write Invariants
 
 1. **`Gracze.md` is never mutated** by any module command
 2. **All mutable state** persists in `entities.md` (and `*-NNN-ent.md`)
@@ -242,11 +358,11 @@ One-time function that generates a complete `entities.md` from `Get-Player` outp
 
 ---
 
-## 7. Testing
+## 9. Testing
 
 | Test file | Coverage |
 |---|---|
-| `tests/entity-writehelpers.Tests.ps1` | Find/Set/New primitives, file I/O, bootstrap |
+| `tests/entity-writehelpers.Tests.ps1` | Find/Set/New primitives, file I/O, bootstrap, `ConvertFrom-EntityTemplate` |
 | `tests/set-player.Tests.ps1` | Tag upsert, trigger replacement, webhook validation |
 | `tests/set-playercharacter.Tests.ps1` | Dual-target writes, PU derivation, alias handling |
 | `tests/set-playercharacter-charfile.Tests.ps1` | Character file property writes |
@@ -254,12 +370,20 @@ One-time function that generates a complete `entities.md` from `Get-Player` outp
 | `tests/new-playercharacter.Tests.ps1` | Creation, template rendering, PU start fallback |
 | `tests/remove-playercharacter.Tests.ps1` | Soft-delete, status writing |
 | `tests/przedmiot-entity.Tests.ps1` | Auto-creation of Przedmiot entities |
+| `tests/new-entity.Tests.ps1` | Generic creation, duplicate detection, tag writing, ValidFrom |
+| `tests/set-entity.Tests.ps1` | Tag upsert, auto-creation, cross-section search, temporal suffix |
+| `tests/remove-entity.Tests.ps1` | Soft-delete, status writing, ConfirmImpact |
+| `tests/new-currencyentity.Tests.ps1` | Denomination validation, auto-naming, duplicate detection, template |
+| `tests/set-currencyentity.Tests.ps1` | Absolute/delta quantity, owner/location, mutual exclusion |
+| `tests/get-currencyentity.Tests.ps1` | Filtering, denomination resolution, balance, inactive exclusion |
+| `tests/remove-currencyentity.Tests.ps1` | Soft-delete, non-zero balance warning |
 
 ---
 
-## 8. Related Documents
+## 10. Related Documents
 
 - [ENTITIES.md](ENTITIES.md) - Entity reading and state merging
+- [CURRENCY.md](CURRENCY.md) - Currency system (denominations, transfers, reconciliation, CRUD)
 - [CHARFILE.md](CHARFILE.md) - Character file format and write operations
 - [CONFIG-STATE.md](CONFIG-STATE.md) - Configuration resolution used by write commands
 - [MIGRATION.md](MIGRATION.md) - §2 Entity Write Operations

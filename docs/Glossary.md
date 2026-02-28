@@ -6,6 +6,7 @@ This glossary maps English terms used in documentation to their Polish counterpa
 |---|---|---|
 | Session | Sesja | One game event with a date, title, narrator, and outcomes. |
 | Session Header | Nagłówek sesji | The session title line used as the main reference for that session. |
+| Coordinator | koordynator | The person responsible for processing sessions, assigning PU, and managing the campaign's operational aspects. |
 | Narrator | Narrator (Mistrz Gry) | The person leading or moderating a session. |
 | Player | Gracz | A real person participating in the game. |
 | Player Character | Postać gracza | A character controlled by a player. |
@@ -33,4 +34,8 @@ This glossary maps English terms used in documentation to their Polish counterpa
 | Korona (Gold) | Korona Elancka | The highest-value currency denomination. 1 Korona = 100 Talarów. |
 | Talar (Silver) | Talar Hiroński | A mid-value currency denomination. 1 Talar = 100 Kogów. |
 | Kog (Copper) | Kog Skeltvorski | The lowest-value currency denomination. |
+| Template | Szablon | A configurable file skeleton used to generate entity entries, notifications, or data structures. Located in `.robot.new/templates/`. |
+| Data Manifest | Manifest danych | A `.robot-data.psd1` configuration file that tells the module where data files are located in the parent repository. Enables flexible file placement. |
+| Entity CRUD | Operacje CRUD na encjach | Commands for creating, reading, updating, and removing world entities (NPC, Organizacja, Lokacja, Przedmiot). |
+| Treasury | Skarbiec | An Organizacja entity representing the out-of-game currency reserve managed by coordinators. |
 

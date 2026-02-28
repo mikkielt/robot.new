@@ -83,12 +83,21 @@ tests/
 ├── get-entity.Tests.ps1            # Per-function tests
 ├── get-entitystate.Tests.ps1
 ├── get-session.Tests.ps1
+├── new-entity.Tests.ps1            # Generic entity CRUD
+├── set-entity.Tests.ps1
+├── remove-entity.Tests.ps1
+├── new-currencyentity.Tests.ps1    # Currency entity CRUD
+├── set-currencyentity.Tests.ps1
+├── get-currencyentity.Tests.ps1
+├── remove-currencyentity.Tests.ps1
 ├── ... (one per source file)
 └── fixtures/
     ├── Gracze.md                   # Player database fixture
     ├── entities.md                 # Entity registry fixture
     ├── entities-100-ent.md         # Override file (primacy 100)
     ├── entities-200-ent.md         # Override file (primacy 200)
+    ├── entities-generic-crud.md    # Generic CRUD test fixture (all 6 entity types)
+    ├── entities-currency-crud.md   # Currency CRUD test fixture (3 currency entities)
     ├── sessions-gen1.md            # Gen1 format sessions
     ├── sessions-gen2.md            # Gen2 format sessions
     ├── sessions-gen3.md            # Gen3 format sessions
@@ -101,7 +110,13 @@ tests/
     ├── local.config.psd1           # Config fixture
     └── templates/
         ├── player-character-file.md.template
-        └── player-entry.md.template
+        ├── player-entry.md.template
+        ├── entities-skeleton.md.template
+        ├── currency-entity.md.template
+        ├── pu-notification-base.txt.template
+        ├── pu-notification-overflow.txt.template
+        ├── pu-notification-remaining.txt.template
+        └── pu-sessions-header.md.template
 ```
 
 ---
@@ -263,6 +278,8 @@ $Lines | Should -Contain "    - @margonemid: 12345"
 | `entities.md` | NPCs, orgs, locations (with hierarchy), Gracz/Postać entries | `get-entity`, `get-entitystate` |
 | `entities-100-ent.md` | Override entries (primacy 100) | Multi-file merge, override primacy |
 | `entities-200-ent.md` | Override entries (primacy 200) | Multi-file merge |
+| `entities-generic-crud.md` | All 6 entity types populated | `new-entity`, `set-entity`, `remove-entity` |
+| `entities-currency-crud.md` | 3 currency entities with denominations | `new-currencyentity`, `set-currencyentity`, `remove-currencyentity` |
 | `sessions-gen{1,2,3,4}.md` | Session metadata in each format generation | `get-session`, format detection |
 | `sessions-duplicate.md` | Identical headers for deduplication | `Merge-SessionGroup` |
 | `sessions-zmiany.md` | Zmiany blocks with `@tag` overrides | `get-entitystate` |

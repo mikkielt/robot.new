@@ -30,8 +30,9 @@ This guide explains how the repository tracks the state of the game world - NPCs
 ### Coordinator
 
 - Maintains the entity registry (NPCs, organizations, locations)
+- Creates, updates, and removes entities using dedicated commands
 - Reviews diagnostic reports for unresolved entity names
-- Adds new entities when they first appear in the game world
+- Manages currency reserves and distributes budgets to narrators
 
 ## What Are Entities?
 
@@ -45,6 +46,41 @@ An entity is any named element of the game world that the system tracks. Each en
 | **Gracz** | A player (real person) | Roland, Catherine |
 | **Postać** | A player character | Crag Hack, Gem |
 | **Przedmiot** | A notable item | Miecz Piekieł, Tarcza Krasnoludów |
+
+## Managing Entities
+
+### Creating Entities
+
+Coordinators can create new world entities (NPCs, organizations, locations, items) when they first appear in the game:
+
+```powershell
+New-Entity -Type NPC -Name "Lord Haart" -Tags @{ lokacja = "Erathia"; grupa = "Nekromanci" }
+New-Entity -Type Organizacja -Name "Bractwo Miecza"
+New-Entity -Type Lokacja -Name "Zamek Steadwick" -Tags @{ lokacja = "Erathia" }
+```
+
+Player and character entities (`Gracz`, `Postać`) are managed through specialized commands — see [Players.md](Players.md).
+
+### Updating Entities
+
+Entity properties can be updated at any time. Changes are time-stamped for historical tracking:
+
+```powershell
+Set-Entity -Name "Lord Haart" -Tags @{ lokacja = "Bracada" } -ValidFrom "2026-02"
+Set-Entity -Name "Bractwo Miecza" -Tags @{ status = "Nieaktywny" } -ValidFrom "2026-03"
+```
+
+When the entity type is ambiguous (same name in different sections), use `-Type` to disambiguate.
+
+### Removing Entities
+
+Entities are soft-deleted — marked as removed but preserved for historical accuracy:
+
+```powershell
+Remove-Entity -Name "Lord Haart" -ValidFrom "2026-02"
+```
+
+Removed entities stop appearing in standard queries but remain available for historical lookups.
 
 ## Currency
 
@@ -119,7 +155,73 @@ Use `+N` to add coins and `-N` to subtract coins.
 
 ### Checking Currency Holdings
 
-Coordinators can review currency across the world to see who holds what, filtered by owner or denomination. History of changes over time is also available.
+Coordinators can review currency across the world to see who holds what, filtered by owner or denomination:
+
+```powershell
+# See all currency for a specific character
+Get-CurrencyEntity -Owner "Erdamon"
+
+# See all holdings of a specific denomination
+Get-CurrencyEntity -Denomination "Korony"
+
+# Include deleted/inactive entries
+Get-CurrencyEntity -IncludeInactive
+```
+
+### Managing Currency Entities
+
+Coordinators can create, update, and remove currency holdings directly:
+
+```powershell
+# Create a new currency holding
+New-CurrencyEntity -Denomination "Korony" -Owner "Erdamon" -Amount 500
+
+# Adjust quantity (delta)
+Set-CurrencyEntity -Name "Korony Erdamon" -AmountDelta +100 -ValidFrom "2026-02"
+
+# Transfer ownership
+Set-CurrencyEntity -Name "Korony Erdamon" -Owner "Kupiec Orrin" -ValidFrom "2026-02"
+
+# Soft-delete a currency entity (warns if balance > 0)
+Remove-CurrencyEntity -Name "Korony Erdamon" -ValidFrom "2026-02"
+```
+
+### Out-of-Game Currency: The Treasury
+
+Not all currency is in active gameplay. Coordinators maintain a reserve pool (the "treasury") and distribute budgets to narrators before sessions. Narrators then award currency to player characters during sessions.
+
+This supply chain is modeled using an **Organizacja** entity as the treasury:
+
+```powershell
+# One-time setup: create the treasury organization
+New-Entity -Type Organizacja -Name "Skarbiec Koordynatorów"
+
+# Mint initial currency supply into the treasury
+New-CurrencyEntity -Denomination Korony -Owner "Skarbiec Koordynatorów" -Amount 10000
+New-CurrencyEntity -Denomination Talary -Owner "Skarbiec Koordynatorów" -Amount 50000
+```
+
+**Distribution flow:**
+
+1. **Coordinator → Narrator** (out-of-game, before sessions):
+
+```powershell
+# Create narrator's budget entity
+New-CurrencyEntity -Denomination Korony -Owner "Narrator Dracon" -Amount 0
+
+# Distribute from treasury
+Set-CurrencyEntity -Name "Korony Skarbiec Koordynatorów" -AmountDelta -500 -ValidFrom "2026-02"
+Set-CurrencyEntity -Name "Korony Narrator Dracon" -AmountDelta +500 -ValidFrom "2026-02"
+```
+
+2. **Narrator → Player Character** (in-game, during sessions):
+
+```markdown
+### 2026-02-15, Nagroda za misję, Dracon
+- @Transfer: 100 koron, Narrator Dracon -> Erdamon
+```
+
+The total currency supply across all holders (treasury + narrators + player characters) should remain constant. Monthly reconciliation detects any supply drift.
 
 ### Reconciliation - Catching Errors
 

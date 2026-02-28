@@ -20,6 +20,16 @@ Traverses the directory tree upward from the current working directory to find t
 - Stops at filesystem root (`GetPathRoot()` check)
 - Throws if no `.git` directory found in any parent
 
+### 2.2 `Get-ParentRepoRoot`
+
+Companion function for submodule environments. Walks upward from `Get-RepoRoot` past the submodule `.git` boundary to find the enclosing parent repository root.
+
+- Starts from `Get-RepoRoot` result (the submodule root)
+- Moves one directory up to exit the submodule
+- Continues upward until a `.git` directory is found (the parent repo root)
+- Used by `Find-DataManifest` to determine the search ceiling for `.robot-data.psd1`
+- Not exported by the module (non Verb-Noun name); must be dot-sourced directly for testing
+
 ---
 
 ## 3. `Get-GitChangeLog`
@@ -169,7 +179,7 @@ On failure, the PU workflow falls back to full repository scan via `Get-Session`
 | Test file | Coverage |
 |---|---|
 | `tests/get-gitchangelog.Tests.ps1` | Commit parsing, file change types, rename detection, date filtering |
-| `tests/get-reporoot.Tests.ps1` | Directory traversal, error on missing `.git` |
+| `tests/get-reporoot.Tests.ps1` | Directory traversal, error on missing `.git`, `Get-ParentRepoRoot` submodule traversal |
 
 ---
 
