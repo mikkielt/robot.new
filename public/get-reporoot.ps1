@@ -49,6 +49,13 @@ function Get-RepoRoot {
         }
         $CurrentDir = [System.IO.Path]::GetDirectoryName($CurrentDir)
     }
+
+    # Fallback: the module directory itself may be the repo root (standalone checkout, e.g. CI)
+    $GitPath = [System.IO.Path]::Combine($ModuleRoot, ".git")
+    if ([System.IO.Directory]::Exists($GitPath) -or [System.IO.File]::Exists($GitPath)) {
+        return $ModuleRoot
+    }
+
     throw "No git repository found in any parent of the module directory '$ModuleRoot'."
 }
 

@@ -14,6 +14,14 @@ BeforeAll {
     Remove-Module -Name robot -Force -ErrorAction SilentlyContinue
     Import-Module $script:ManifestPath -Force -ErrorAction Stop
     . (Join-Path $script:ModuleRoot 'public' 'get-reporoot.ps1')
+
+    # Compute the expected repo root: parent if it has .git (submodule layout), otherwise module root itself (standalone/CI)
+    $ParentDir = [System.IO.Path]::GetFullPath((Split-Path $script:ModuleRoot -Parent)).TrimEnd('\', '/')
+    if ([System.IO.Directory]::Exists((Join-Path $ParentDir '.git'))) {
+        $script:ExpectedRepoRoot = $ParentDir
+    } else {
+        $script:ExpectedRepoRoot = [System.IO.Path]::GetFullPath($script:ModuleRoot).TrimEnd('\', '/')
+    }
 }
 
 Describe 'Get-RepoRoot' {
@@ -23,11 +31,9 @@ Describe 'Get-RepoRoot' {
             [System.IO.Directory]::Exists((Join-Path $RepoRoot '.git')) | Should -BeTrue
         }
 
-        It 'returns the parent repo root, not the module directory itself' {
+        It 'prefers the parent repo root when the module is nested inside a repository' {
             $RepoRoot = [System.IO.Path]::GetFullPath((Get-RepoRoot)).TrimEnd('\', '/')
-            $ExpectedRoot = [System.IO.Path]::GetFullPath((Split-Path $script:ModuleRoot -Parent)).TrimEnd('\', '/')
-
-            $RepoRoot | Should -Be $ExpectedRoot
+            $RepoRoot | Should -Be $script:ExpectedRepoRoot
         }
 
         It 'is independent of the process working directory' {
@@ -36,9 +42,7 @@ Describe 'Get-RepoRoot' {
                 [System.IO.Directory]::SetCurrentDirectory([System.IO.Path]::GetTempPath())
 
                 $RepoRoot = [System.IO.Path]::GetFullPath((Get-RepoRoot)).TrimEnd('\', '/')
-                $ExpectedRoot = [System.IO.Path]::GetFullPath((Split-Path $script:ModuleRoot -Parent)).TrimEnd('\', '/')
-
-                $RepoRoot | Should -Be $ExpectedRoot
+                $RepoRoot | Should -Be $script:ExpectedRepoRoot
             }
             finally {
                 [System.IO.Directory]::SetCurrentDirectory($OriginalCwd)
@@ -51,9 +55,7 @@ Describe 'Get-RepoRoot' {
                 Set-Location -Path 'Variable:\'
 
                 $RepoRoot = [System.IO.Path]::GetFullPath((Get-RepoRoot)).TrimEnd('\', '/')
-                $ExpectedRoot = [System.IO.Path]::GetFullPath((Split-Path $script:ModuleRoot -Parent)).TrimEnd('\', '/')
-
-                $RepoRoot | Should -Be $ExpectedRoot
+                $RepoRoot | Should -Be $script:ExpectedRepoRoot
             }
             finally {
                 Set-Location -Path $OriginalLocation.Path
@@ -77,9 +79,7 @@ Describe 'Get-RepoRoot' {
 
         It 'accepts an explicit -ModuleRoot override' {
             $RepoRoot = [System.IO.Path]::GetFullPath((Get-RepoRoot -ModuleRoot $script:ModuleRoot)).TrimEnd('\', '/')
-            $ExpectedRoot = [System.IO.Path]::GetFullPath((Split-Path $script:ModuleRoot -Parent)).TrimEnd('\', '/')
-
-            $RepoRoot | Should -Be $ExpectedRoot
+            $RepoRoot | Should -Be $script:ExpectedRepoRoot
         }
     }
 }
