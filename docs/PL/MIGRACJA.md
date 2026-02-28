@@ -4,7 +4,7 @@
 
 Ten dokument jest przeznaczony dla **wszystkich osób zaangażowanych w Nerthus**: graczy, narratorów i koordynatorów. Wyjaśnia co się zmienia, dlaczego, jak wpłynie to na codzienną pracę, i czego oczekujemy od poszczególnych ról.
 
-Szczegółowy przewodnik techniczny (z komendami i procedurami krok po kroku) znajduje się w osobnym dokumencie: [migr.md](migr.md).
+Szczegółowy przewodnik techniczny (z komendami i procedurami krok po kroku) znajduje się w osobnym dokumencie: [MIGRACJA-TECH.md](MIGRACJA-TECH.md).
 
 ---
 
