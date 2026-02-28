@@ -28,21 +28,10 @@ jobs:
           $config.CodeCoverage.OutputFormat = 'JaCoCo'
           $config.CodeCoverage.OutputPath = 'coverage.xml'
           $config.CodeCoverage.Path = @(
-            './get-*.ps1',
-            './set-*.ps1',
-            './new-*.ps1',
-            './resolve-*.ps1',
-            './invoke-*.ps1',
-            './test-*.ps1',
-            './send-*.ps1',
-            './Remove-PlayerCharacter.ps1',
-            './robot.psm1',
-            './admin-state.ps1',
-            './admin-config.ps1',
-            './charfile-helpers.ps1',
-            './entity-writehelpers.ps1',
-            './format-sessionblock.ps1',
-            './parse-markdownfile.ps1'
+            './public/*.ps1',
+            './public/**/*.ps1',
+            './private/*.ps1',
+            './robot.psm1'
           )
           $result = Invoke-Pester -Configuration $config
           exit $result.FailedCount
