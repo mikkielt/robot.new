@@ -10,7 +10,7 @@
 
 BeforeAll {
     $script:ModuleRoot = Split-Path $PSScriptRoot -Parent
-    . "$script:ModuleRoot/entity-writehelpers.ps1"
+    . "$script:ModuleRoot/private/entity-writehelpers.ps1"
 
     $script:TempRoot = Join-Path ([System.IO.Path]::GetTempPath()) ("robot-przedmiot-" + [System.Guid]::NewGuid().ToString('N'))
     [void][System.IO.Directory]::CreateDirectory($script:TempRoot)
@@ -38,17 +38,17 @@ Describe 'Przedmiot type mappings in entity-writehelpers' {
     }
 }
 
-Describe 'Ensure-EntityFile includes Przedmiot section' {
+Describe 'Invoke-EnsureEntityFile includes Przedmiot section' {
     It 'creates entities.md with ## Przedmiot section' {
         $EntFile = Join-Path $script:TempRoot 'new-entities.md'
         if ([System.IO.File]::Exists($EntFile)) { [System.IO.File]::Delete($EntFile) }
 
-        $Result = Ensure-EntityFile -Path $EntFile
+        $Result = Invoke-EnsureEntityFile -Path $EntFile
         $Content = [System.IO.File]::ReadAllText($Result, [System.Text.UTF8Encoding]::new($false))
 
         $Content | Should -Match '## Przedmiot'
         $Content | Should -Match '## Gracz'
-        $Content | Should -Match '## Postać \(Gracz\)'
+        $Content | Should -Match '## Postać'
     }
 }
 

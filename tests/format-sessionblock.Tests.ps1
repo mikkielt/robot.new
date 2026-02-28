@@ -12,7 +12,7 @@ BeforeAll {
     . "$PSScriptRoot/TestHelpers.ps1"
     Import-RobotModule
     Mock Get-RepoRoot { return $script:FixturesRoot }
-    . (Join-Path $script:ModuleRoot 'format-sessionblock.ps1')
+    . (Join-Path $script:ModuleRoot 'private' 'format-sessionblock.ps1')
 
     $script:NL = "`n"
 }
@@ -208,7 +208,7 @@ Describe 'ConvertTo-SessionMetadata' {
 
     Context 'Null blocks skipped' {
         It 'omits blocks when their source data is null/empty' {
-            # Arrange — only Lokacje and PU have data
+            # Arrange - only Lokacje and PU have data
             $Locations = @('Erathia')
             $PU = @([PSCustomObject]@{ Character = 'Solmyr'; Value = 1 })
 
@@ -261,7 +261,7 @@ Describe 'ConvertTo-SessionMetadata' {
                 -Intel $null `
                 -NL $script:NL
 
-            # Assert — two blocks separated by NL
+            # Assert - two blocks separated by NL
             $LocBlock = ConvertTo-Gen4MetadataBlock -Tag 'Lokacje' -Items $Locations -NL $script:NL
             $LogBlock = ConvertTo-Gen4MetadataBlock -Tag 'Logi' -Items $Logs -NL $script:NL
             $Expected = $LocBlock + $script:NL + $LogBlock
@@ -270,7 +270,7 @@ Describe 'ConvertTo-SessionMetadata' {
     }
 }
 
-Describe 'ConvertTo-Gen4MetadataBlock — edge cases' {
+Describe 'ConvertTo-Gen4MetadataBlock - edge cases' {
     It 'renders single Lokacja item' {
         $Result = ConvertTo-Gen4MetadataBlock -Tag 'Lokacje' -Items @('Steadwick') -NL $script:NL
         $Lines = $Result -split "`n"
@@ -369,7 +369,7 @@ Describe 'ConvertTo-Gen4MetadataBlock — edge cases' {
     }
 }
 
-Describe 'ConvertTo-SessionMetadata — partial blocks' {
+Describe 'ConvertTo-SessionMetadata - partial blocks' {
     It 'renders only Zmiany and Intel when others are empty' {
         $Changes = @([PSCustomObject]@{
             EntityName = 'Xeron'

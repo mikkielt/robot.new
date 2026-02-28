@@ -1,4 +1,4 @@
-# Git Integration — Technical Reference
+# Git Integration - Technical Reference
 
 **Status**: Reference documentation.
 
@@ -16,7 +16,7 @@ Traverses the directory tree upward from the current working directory to find t
 
 ### 2.1 Implementation Details
 
-- Uses `[System.IO.Directory]` and `[System.IO.Path]` (not PowerShell `$PWD`) for **RunspacePool independence** — `$PWD` is not available in worker threads
+- Uses `[System.IO.Directory]` and `[System.IO.Path]` (not PowerShell `$PWD`) for **RunspacePool independence** - `$PWD` is not available in worker threads
 - Stops at filesystem root (`GetPathRoot()` check)
 - Throws if no `.git` directory found in any parent
 
@@ -175,5 +175,5 @@ On failure, the PU workflow falls back to full repository scan via `Get-Session`
 
 ## 8. Related Documents
 
-- [PU.md](PU.md) — §3.2 Git Optimization in the PU pipeline
-- [MIGRATION.md](MIGRATION.md) — §11 Module Structure
+- [PU.md](PU.md) - §3.2 Git Optimization in the PU pipeline
+- [MIGRATION.md](MIGRATION.md) - §11 Module Structure

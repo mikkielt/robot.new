@@ -52,7 +52,7 @@ Run the diagnostic tool:
 
 ### 2. Session with Broken Date
 
-**Symptom:** A session is silently skipped during PU processing — no error, but the PU is not awarded.
+**Symptom:** A session is silently skipped during PU processing - no error, but the PU is not awarded.
 
 **Why it happens:** The session header date is not in the correct `YYYY-MM-DD` format.
 
@@ -63,12 +63,12 @@ Run the diagnostic tool:
 | `2025-6-15` | `2025-06-15` |
 | `15-06-2025` | `2025-06-15` |
 | `2025/06/15` | `2025-06-15` |
-| `2025-13-01` | (invalid month — must be 01–12) |
+| `2025-13-01` | (invalid month - must be 01–12) |
 | `June 15, 2025` | `2025-06-15` |
 
 **How to fix:**
 
-1. Run the diagnostic tool — it reports sessions with broken dates that contain PU data
+1. Run the diagnostic tool - it reports sessions with broken dates that contain PU data
 2. Find the session in the Markdown file
 3. Fix the date in the header to `YYYY-MM-DD` format
 4. Retry the PU assignment
@@ -185,7 +185,7 @@ Ask the coordinator:
 
 ## Related Documents
 
-- [PU.md](PU.md) — Monthly PU assignment process
-- [Sessions.md](Sessions.md) — Session recording guide
-- [Players.md](Players.md) — Player and character management
-- [Glossary](Glossary.md) — Term definitions
+- [PU.md](PU.md) - Monthly PU assignment process
+- [Sessions.md](Sessions.md) - Session recording guide
+- [Players.md](Players.md) - Player and character management
+- [Glossary](Glossary.md) - Term definitions

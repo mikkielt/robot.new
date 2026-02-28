@@ -4,7 +4,7 @@
     - @margonemid: 12345
     - @prfwebhook: https://discord.com/api/webhooks/111/solmyr-token
 
-## Postać (Gracz)
+## Postać
 
 * Bohater Pierwszy
     - @należy_do: Solmyr

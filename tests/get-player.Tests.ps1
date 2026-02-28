@@ -13,8 +13,8 @@ BeforeAll {
     . "$PSScriptRoot/TestHelpers.ps1"
     Import-RobotModule
     Mock Get-RepoRoot { return $script:FixturesRoot }
-    . (Join-Path $script:ModuleRoot 'get-entity.ps1')
-    . (Join-Path $script:ModuleRoot 'get-player.ps1')
+    . (Join-Path $script:ModuleRoot 'public' 'get-entity.ps1')
+    . (Join-Path $script:ModuleRoot 'public' 'get-player.ps1')
 }
 
 Describe 'Complete-PUData' {
@@ -145,12 +145,12 @@ Describe 'Get-Player' {
         $Result[0].Name | Should -Be 'Solmyr'
     }
 
-    It 'applies entity overrides for Gracz — PRFWebhook and MargonemID' {
+    It 'applies entity overrides for Gracz - PRFWebhook and MargonemID' {
         $Solmyr = $script:Players | Where-Object { $_.Name -eq 'Solmyr' }
         $Solmyr.PRFWebhook | Should -Not -BeNullOrEmpty
     }
 
-    It 'applies entity overrides for Postać (Gracz) — PU values from entities' {
+    It 'applies entity overrides for Postać - PU values from entities' {
         $Solmyr = $script:Players | Where-Object { $_.Name -eq 'Solmyr' }
         $Xeron = $Solmyr.Characters | Where-Object { $_.Name -eq 'Xeron Demonlord' }
         # entities-100-ent.md overrides pu_suma to 26
@@ -163,7 +163,7 @@ Describe 'Get-Player' {
     }
 }
 
-Describe 'Get-Player — player with many characters' {
+Describe 'Get-Player - player with many characters' {
     BeforeAll {
         $script:Entities = Get-Entity -Path (Join-Path $script:FixturesRoot 'entities-many-characters.md')
         $script:Players = Get-Player -File (Join-Path $script:FixturesRoot 'Gracze-many-characters.md') -Entities $script:Entities
@@ -202,7 +202,7 @@ Describe 'Get-Player — player with many characters' {
     }
 }
 
-Describe 'Get-Player — player with no characters' {
+Describe 'Get-Player - player with no characters' {
     BeforeAll {
         $script:Players = Get-Player -File (Join-Path $script:FixturesRoot 'Gracze-no-characters.md') -Entities @()
     }
@@ -219,7 +219,7 @@ Describe 'Get-Player — player with no characters' {
     }
 }
 
-Describe 'Get-Player — BRAK PU values' {
+Describe 'Get-Player - BRAK PU values' {
     BeforeAll {
         $script:Players = Get-Player -File (Join-Path $script:FixturesRoot 'Gracze-brak-pu.md') -Entities @()
     }

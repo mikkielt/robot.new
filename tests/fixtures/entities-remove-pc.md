@@ -3,7 +3,7 @@
 * Kilgor
     - @margonemid: 11111
 
-## Postać (Gracz)
+## Postać
 
 * Erdamon
     - @należy_do: Kilgor

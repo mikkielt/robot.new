@@ -12,16 +12,16 @@ BeforeAll {
     . "$PSScriptRoot/TestHelpers.ps1"
     Import-RobotModule
     Mock Get-RepoRoot { return $script:FixturesRoot }
-    . (Join-Path $script:ModuleRoot 'get-nameindex.ps1')
-    . (Join-Path $script:ModuleRoot 'resolve-name.ps1')
+    . (Join-Path $script:ModuleRoot 'public' 'get-nameindex.ps1')
+    . (Join-Path $script:ModuleRoot 'public' 'resolve-name.ps1')
 }
 
 Describe 'Get-DeclensionStem' {
-    It 'strips -owi suffix: Xeronowi → Xeron' {
+    It 'strips -owi suffix: Xeronowi -> Xeron' {
         Get-DeclensionStem -Text 'Xeronowi' | Should -Be 'Xeron'
     }
 
-    It 'strips -em suffix (longest first): Draconem → Dracon' {
+    It 'strips -em suffix (longest first): Draconem -> Dracon' {
         Get-DeclensionStem -Text 'Draconem' | Should -Be 'Dracon'
     }
 
@@ -35,7 +35,7 @@ Describe 'Get-DeclensionStem' {
 }
 
 Describe 'Get-StemAlternationCandidates' {
-    It 'Bracadzie → contains Bracada' {
+    It 'Bracadzie -> contains Bracada' {
         $Result = Get-StemAlternationCandidates -Text 'Bracadzie'
         $Result | Should -Contain 'Bracada'
     }
@@ -59,7 +59,7 @@ Describe 'Get-LevenshteinDistance' {
         Get-LevenshteinDistance -Source 'kitten' -Target 'sitting' | Should -Be 3
     }
 
-    It 'is case insensitive: ABC/abc → 0' {
+    It 'is case insensitive: ABC/abc -> 0' {
         Get-LevenshteinDistance -Source 'ABC' -Target 'abc' | Should -Be 0
     }
 
@@ -119,7 +119,7 @@ Describe 'Resolve-Name' {
     }
 
     It 'Stage 3 fuzzy match: typo resolves via Levenshtein' {
-        # "Xeron Demonlors" is 1 edit from "Xeron Demonlord" — within threshold
+        # "Xeron Demonlors" is 1 edit from "Xeron Demonlord" - within threshold
         $Result = Resolve-Name -Query 'Xeron Demonlors' -Index $script:NameIdx.Index -StemIndex $script:NameIdx.StemIndex -BKTree $script:NameIdx.BKTree
         $Result | Should -Not -BeNullOrEmpty
         $Result.Name | Should -Be 'Xeron Demonlord'
@@ -127,7 +127,7 @@ Describe 'Resolve-Name' {
 
     It 'OwnerType filter restricts results' {
         $Result = Resolve-Name -Query 'Xeron Demonlord' -Index $script:NameIdx.Index -StemIndex $script:NameIdx.StemIndex -BKTree $script:NameIdx.BKTree -OwnerType 'Lokacja'
-        # Xeron Demonlord is Postać (Gracz), not Lokacja — should not match
+        # Xeron Demonlord is Postać, not Lokacja - should not match
         $Result | Should -BeNullOrEmpty
     }
 
@@ -147,7 +147,7 @@ Describe 'Resolve-Name' {
 
     It 'linear scan fallback works without BK-tree' {
         $Result = Resolve-Name -Query 'Xeron Demonlors' -Index $script:NameIdx.Index -StemIndex $script:NameIdx.StemIndex
-        # No BKTree provided — falls back to linear scan
+        # No BKTree provided - falls back to linear scan
         $Result | Should -Not -BeNullOrEmpty
         $Result.Name | Should -Be 'Xeron Demonlord'
     }

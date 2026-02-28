@@ -4,7 +4,7 @@
 
     .DESCRIPTION
     Tests for Find-EntitySection, Find-EntityBullet, Find-EntityTag,
-    Set-EntityTag, New-EntityBullet, Ensure-EntityFile, Resolve-EntityTarget,
+    Set-EntityTag, New-EntityBullet, Invoke-EnsureEntityFile, Resolve-EntityTarget,
     Write-EntityFile, Read-EntityFile, and ConvertTo-EntitiesFromPlayers
     covering entity file manipulation and player-to-entity conversion.
 #>
@@ -13,9 +13,9 @@ BeforeAll {
     . "$PSScriptRoot/TestHelpers.ps1"
     Import-RobotModule
     Mock Get-RepoRoot { return $script:FixturesRoot }
-    . (Join-Path $script:ModuleRoot 'get-entity.ps1')
-    . (Join-Path $script:ModuleRoot 'get-player.ps1')
-    . (Join-Path $script:ModuleRoot 'entity-writehelpers.ps1')
+    . (Join-Path $script:ModuleRoot 'public' 'get-entity.ps1')
+    . (Join-Path $script:ModuleRoot 'public' 'get-player.ps1')
+    . (Join-Path $script:ModuleRoot 'private' 'entity-writehelpers.ps1')
 }
 
 Describe 'Find-EntitySection' {
@@ -27,9 +27,9 @@ Describe 'Find-EntitySection' {
         $Result.HeaderIdx | Should -BeGreaterOrEqual 0
     }
 
-    It 'finds Postać (Gracz) section' {
+    It 'finds Postać section' {
         $Lines = [System.IO.File]::ReadAllLines((Join-Path $script:FixturesRoot 'entities.md'))
-        $Result = Find-EntitySection -Lines $Lines -EntityType 'Postać (Gracz)'
+        $Result = Find-EntitySection -Lines $Lines -EntityType 'Postać'
         $Result | Should -Not -BeNullOrEmpty
     }
 
@@ -94,14 +94,14 @@ Describe 'Set-EntityTag' {
 
     It 'adds a new tag when it does not exist' {
         $Lines = [System.Collections.Generic.List[string]]::new([string[]]@('## Gracz', '', '* Kilgor'))
-        $ChildEnd = Set-EntityTag -Lines $Lines -BulletIdx 2 -ChildrenStart 3 -ChildrenEnd 3 -TagName 'margonemid' -Value '12345'
+        $ChildEnd = Set-EntityTag -Lines $Lines -ChildrenStart 3 -ChildrenEnd 3 -TagName 'margonemid' -Value '12345'
         $ChildEnd | Should -Be 4
         $Lines[3] | Should -BeLike '*@margonemid: 12345*'
     }
 
     It 'updates existing tag' {
         $Lines = [System.Collections.Generic.List[string]]::new([string[]]@('## Gracz', '', '* Kilgor', '    - @margonemid: 12345'))
-        $ChildEnd = Set-EntityTag -Lines $Lines -BulletIdx 2 -ChildrenStart 3 -ChildrenEnd 4 -TagName 'margonemid' -Value '99999'
+        $ChildEnd = Set-EntityTag -Lines $Lines -ChildrenStart 3 -ChildrenEnd 4 -TagName 'margonemid' -Value '99999'
         $Lines[3] | Should -BeLike '*@margonemid: 99999*'
     }
 }
@@ -115,7 +115,7 @@ Describe 'New-EntityBullet' {
     }
 }
 
-Describe 'Ensure-EntityFile' {
+Describe 'Invoke-EnsureEntityFile' {
     BeforeAll {
         $script:TempDir = New-TestTempDir
     }
@@ -125,18 +125,18 @@ Describe 'Ensure-EntityFile' {
 
     It 'creates file with standard sections if missing' {
         $Path = Join-Path $script:TempDir 'new-entities.md'
-        $Result = Ensure-EntityFile -Path $Path
+        $Result = Invoke-EnsureEntityFile -Path $Path
         $Result | Should -Be $Path
         [System.IO.File]::Exists($Path) | Should -BeTrue
         $Content = [System.IO.File]::ReadAllText($Path)
         $Content | Should -BeLike '*## Gracz*'
-        $Content | Should -BeLike '*## Postać (Gracz)*'
+        $Content | Should -BeLike '*## Postać*'
     }
 
     It 'returns existing file path without modification' {
         $Path = Copy-FixtureToTemp -FixtureName 'entities.md'
         $Before = [System.IO.File]::ReadAllText($Path)
-        $Result = Ensure-EntityFile -Path $Path
+        $Result = Invoke-EnsureEntityFile -Path $Path
         $After = [System.IO.File]::ReadAllText($Path)
         $After | Should -Be $Before
     }
@@ -190,7 +190,7 @@ Describe 'ConvertTo-EntitiesFromPlayers' {
         Remove-TestTempDir
     }
 
-    It 'generates Gracz and Postać (Gracz) sections' {
+    It 'generates Gracz and Postać sections' {
         $Players = @(
             [PSCustomObject]@{
                 Name         = 'Kilgor'
@@ -217,7 +217,7 @@ Describe 'ConvertTo-EntitiesFromPlayers' {
         $Content | Should -BeLike '*## Gracz*'
         $Content | Should -BeLike '*Kilgor*'
         $Content | Should -BeLike '*@margonemid: kilgor123*'
-        $Content | Should -BeLike '*## Postać (Gracz)*'
+        $Content | Should -BeLike '*## Postać*'
         $Content | Should -BeLike '*Xeron*'
         $Content | Should -BeLike '*@należy_do: Kilgor*'
         $Content | Should -BeLike '*@pu_suma: 10*'
@@ -417,7 +417,7 @@ Describe 'ConvertTo-EntitiesFromPlayers' {
     }
 }
 
-Describe 'Resolve-EntityTarget — additional coverage' {
+Describe 'Resolve-EntityTarget - additional coverage' {
     BeforeAll {
         $script:TempDir = New-TestTempDir
     }

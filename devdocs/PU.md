@@ -1,8 +1,8 @@
-# PU Assignment — Technical Specification
+# PU Assignment - Technical Specification
 
 **Status**: Normative specification. Implementations SHALL conform to this document.
 
-This specification defines the authoritative behavior of the monthly PU (Punkty Umiejętności / Player Units) assignment pipeline implemented in `invoke-playercharacterpuassignment.ps1`, the diagnostic tool in `test-playercharacterpuassignment.ps1`, and the new-character PU formula in `get-newplayercharacterpucount.ps1`. Where the rules document (`Nerthus/Mechanika/Tworzenie i Rozwój Postaci.md`) and this specification diverge, this specification takes precedence for implementation purposes. Divergences are documented explicitly in §9.
+This specification defines the authoritative behavior of the monthly PU (Punkty Umiejętności / Player Units) assignment pipeline implemented in `public/workflow/invoke-playercharacterpuassignment.ps1`, the diagnostic tool in `public/reporting/test-playercharacterpuassignment.ps1`, and the new-character PU formula in `public/player/get-newplayercharacterpucount.ps1`. Where the rules document (`Nerthus/Mechanika/Tworzenie i Rozwój Postaci.md`) and this specification diverge, this specification takes precedence for implementation purposes. Divergences are documented explicitly in §9.
 
 ---
 
@@ -10,11 +10,11 @@ This specification defines the authoritative behavior of the monthly PU (Punkty 
 
 | Term | Type | Definition |
 |------|------|------------|
-| **PU** | decimal | Punkty Umiejętności — skill points awarded to characters |
+| **PU** | decimal | Punkty Umiejętności - skill points awarded to characters |
 | **PUStart** | decimal | Starting PU granted when the character was created (entity tag: `@pu_startowe`) |
 | **PUSum** | decimal | Total PU the character possesses: PUStart + PUTaken (entity tag: `@pu_suma`) |
 | **PUTaken** | decimal | PU earned through gameplay: PUSum − PUStart (entity tag: `@pu_zdobyte`) |
-| **PUExceeded** | decimal | Overflow pool — accumulated excess PU carried forward across months, unbounded (entity tag: `@pu_nadmiar`) |
+| **PUExceeded** | decimal | Overflow pool - accumulated excess PU carried forward across months, unbounded (entity tag: `@pu_nadmiar`) |
 | **BasePU** | decimal | Raw monthly PU before overflow pool interaction: `1 + Sum(session PU values)` |
 | **GrantedPU** | decimal | PU actually awarded this month (capped at 5) |
 | **OverflowPU** | decimal | Excess PU generated this month: `BasePU − 5`, when `BasePU > 5` |
@@ -29,8 +29,8 @@ This specification defines the authoritative behavior of the monthly PU (Punkty 
 Primary pipeline function. Computes and optionally applies monthly PU awards.
 
 ```
-File:        invoke-playercharacterpuassignment.ps1
-Dot-sources: admin-state.ps1, admin-config.ps1
+File:        public/workflow/invoke-playercharacterpuassignment.ps1
+Dot-sources: private/admin-state.ps1, private/admin-config.ps1
 CmdletBinding: SupportsShouldProcess, ConfirmImpact = High
 ```
 
@@ -52,8 +52,8 @@ CmdletBinding: SupportsShouldProcess, ConfirmImpact = High
 Diagnostic validation wrapper. Runs the pipeline in compute-only mode (`-WhatIf`) and validates data quality.
 
 ```
-File:        test-playercharacterpuassignment.ps1
-Dot-sources: admin-state.ps1, admin-config.ps1
+File:        public/reporting/test-playercharacterpuassignment.ps1
+Dot-sources: private/admin-state.ps1, private/admin-config.ps1
 CmdletBinding: default
 ```
 
@@ -64,7 +64,7 @@ CmdletBinding: default
 Pure computation function for new character starting PU.
 
 ```
-File:        get-newplayercharacterpucount.ps1
+File:        public/player/get-newplayercharacterpucount.ps1
 CmdletBinding: default
 ```
 
@@ -79,14 +79,14 @@ CmdletBinding: default
 The pipeline operates on a date range `[MinDate, MaxDate]` determined as follows:
 
 1. **Year/Month parameters**: `MinDate = YYYY-MM-01`, `MaxDate = last day of that month` (computed via `$MinDate.AddMonths(1).AddDays(-1)`).
-2. **Explicit MinDate/MaxDate**: used directly. Either can be provided independently — only the missing bound falls back to the default.
+2. **Explicit MinDate/MaxDate**: used directly. Either can be provided independently - only the missing bound falls back to the default.
 3. **Default** (no parameters): `MinDate = 1st of the month two months ago`, `MaxDate = last day of the previous month`.
 
 The 2-month lookback is intentional: sessions are sometimes documented late, and the assignment typically runs at the end of the current month or beginning of the next.
 
 **Implementation note**: The default computation uses `[datetime]::Now.AddMonths(-2)` for MinDate and `[datetime]::new($Now.Year, $Now.Month, 1).AddDays(-1)` for MaxDate. Both bounds can be individually overridden when only one of `MinDate`/`MaxDate` is passed.
 
-**Diagnostic default range**: `Test-PlayerCharacterPUAssignment` uses a slightly different default — MinDate is 1st of the previous month (not two months ago) and MaxDate is tomorrow (`Now.AddDays(1)`). This extends the window forward to catch today's sessions.
+**Diagnostic default range**: `Test-PlayerCharacterPUAssignment` uses a slightly different default - MinDate is 1st of the previous month (not two months ago) and MaxDate is tomorrow (`Now.AddDays(1)`). This extends the window forward to catch today's sessions.
 
 ### 3.2 Git Optimization
 
@@ -102,7 +102,7 @@ To avoid scanning the entire repository, the pipeline uses `Get-GitChangeLog -No
 
 Sessions are extracted from Markdown files by `Get-Session`, which parses level-3 headers (`### YYYY-MM-DD, Title, Narrator`) and their associated metadata blocks. Only sessions whose date falls within `[MinDate, MaxDate]` are included.
 
-**PU entry format** — two equivalent syntaxes:
+**PU entry format** - two equivalent syntaxes:
 
 ```markdown
 - PU:
@@ -133,7 +133,7 @@ Session headers already recorded in the state file (`pu-sessions.md`) are exclud
 3. Strip leading `### ` prefix for comparison.
 4. Both the stripped and unstripped forms are checked (the code tests `$ProcessedHeaders.Contains($CompareHeader) -and -not $ProcessedHeaders.Contains($NormalizedHeader)`).
 
-**State file format** (`admin-state.ps1`):
+**State file format** (`private/admin-state.ps1`):
 - Entry lines match the pattern `^\s+-\s+###\s+(.+)$` (precompiled regex `$script:HistoryEntryPattern`).
 - Timestamp header lines follow the format `- YYYY-MM-dd HH:mm (UTC±HH:MM):`.
 
@@ -150,7 +150,7 @@ The lookup dictionary (`$CharacterLookup`) maps both canonical names and aliases
 
 **Fail-early behavior**: If **any** PU entry references a character name that cannot be resolved, the pipeline throws a terminating error (`ErrorId: UnresolvedPUCharacters`, `ErrorCategory: InvalidData`) and aborts all processing. No PU is awarded, no Discord messages are sent, no log entries are appended.
 
-The error's `TargetObject` contains a structured array of `[PSCustomObject]@{ CharacterName; SessionCount; Sessions }` for each unresolved name — this is consumed by `Test-PlayerCharacterPUAssignment` to build diagnostic reports.
+The error's `TargetObject` contains a structured array of `[PSCustomObject]@{ CharacterName; SessionCount; Sessions }` for each unresolved name - this is consumed by `Test-PlayerCharacterPUAssignment` to build diagnostic reports.
 
 ---
 
@@ -162,7 +162,7 @@ For each resolved character that has PU entries in the filtered, deduplicated se
 
 ```
 SessionPUSum = Sum of all PU values for this character across all sessions in the batch
-               (null values contribute 0 — they are skipped via $null -ne check)
+               (null values contribute 0 - they are skipped via $null -ne check)
 BasePU       = 1 + SessionPUSum
 ```
 
@@ -196,7 +196,7 @@ RemainingPUExceeded = (OriginalPUExceeded - UsedExceeded) + OverflowPU
 
 **No flooring to integer.** Decimal PU values are granted as-is (e.g., 3.70 PU is granted as 3.70, not floored to 3). See §9.1.
 
-The overflow pool (`PUExceeded`) is unbounded — there is no maximum cap.
+The overflow pool (`PUExceeded`) is unbounded - there is no maximum cap.
 
 ### 5.4 Updated Character Totals
 
@@ -261,7 +261,7 @@ Writes updated values to `entities.md` via `Set-PlayerCharacter`. Three fields a
 | PUTaken | `@pu_zdobyte` | `NewPUTaken` |
 | PUExceeded | `@pu_nadmiar` | `max(0, RemainingPUExceeded)` |
 
-`Set-PlayerCharacter` resolves the entity target in `entities.md` under `## Postać (Gracz)`, creating the entry with `@należy_do: <PlayerName>` if it doesn't exist. PU derivation rules (`Complete-PUData`) may auto-derive missing fields (e.g., if SUMA is given but ZDOBYTE is missing, ZDOBYTE = SUMA − STARTOWE).
+`Set-PlayerCharacter` resolves the entity target in `entities.md` under `## Postać`, creating the entry with `@należy_do: <PlayerName>` if it doesn't exist. PU derivation rules (`Complete-PUData`) may auto-derive missing fields (e.g., if SUMA is given but ZDOBYTE is missing, ZDOBYTE = SUMA − STARTOWE).
 
 PUTaken is written explicitly (not left to derivation) to ensure data consistency.
 
@@ -291,7 +291,7 @@ Multiple characters for the same player are separated by `\n\n` (blank line).
 
 **Bot username**: `Bothen` (hardcoded in the pipeline; note: `Get-AdminConfig` resolves a `BotUsername` from config but it is not used by PU assignment).
 
-**Webhook resolution**: Taken from `$Items[0].Character.Player.PRFWebhook` (the first result's Character→Player→PRFWebhook path).
+**Webhook resolution**: Taken from `$Items[0].Character.Player.PRFWebhook` (the first result's Character->Player->PRFWebhook path).
 
 **Missing webhook**: If a player has no `PRFWebhook` configured, the notification is skipped with a `[WARN]` to stderr. This does **not** prevent other players' notifications from being sent.
 
@@ -301,7 +301,7 @@ Multiple characters for the same player are separated by `\n\n` (blank line).
 
 Processed session headers are appended to `pu-sessions.md` via `Add-AdminHistoryEntry`.
 
-**Entry format** (written by `admin-state.ps1`):
+**Entry format** (written by `private/admin-state.ps1`):
 ```
 - YYYY-MM-dd HH:mm (UTC+HH:MM):
     - ### session header 1
@@ -312,7 +312,7 @@ Headers are sorted chronologically using `[StringComparer]::Ordinal` (string-lex
 
 **File creation**: If `pu-sessions.md` doesn't exist, it is created with the preamble: `"W tym pliku znajduje się lista sesji przetworzonych przez system.\n\n## Historia\n\n"`.
 
-**File location**: `$Config.ResDir` → `<RepoRoot>/.robot/res/pu-sessions.md`.
+**File location**: `$Config.ResDir` -> `<RepoRoot>/.robot/res/pu-sessions.md`.
 
 ---
 
@@ -356,7 +356,7 @@ The rules document (`Tworzenie i Rozwój Postaci.md`) states:
 
 This implies flooring to integer, with fractional remainders going to the overflow pool. Example in the rules document:
 
-> Hjero Nim earned 2.4 PU → receives 2 PU, 0.4 carries to next month.
+> Hjero Nim earned 2.4 PU -> receives 2 PU, 0.4 carries to next month.
 
 **This specification does not implement flooring.** Decimal PU values are granted as-is. The overflow pool (`PUExceeded`) accumulates only the excess beyond the 5 PU monthly cap, not fractional remainders.
 
@@ -459,26 +459,26 @@ Each character produces one result object:
 
 ```
 Invoke-PlayerCharacterPUAssignment
-├── admin-state.ps1 (dot-sourced)
-│   ├── Get-AdminHistoryEntries    → reads pu-sessions.md
-│   └── Add-AdminHistoryEntry      → appends to pu-sessions.md
-├── admin-config.ps1 (dot-sourced)
-│   └── Get-AdminConfig            → resolves RepoRoot, ResDir, etc.
-├── Get-GitChangeLog -NoPatch      → identifies changed .md files
-├── Get-Session                    → extracts sessions with PU data
-├── Get-PlayerCharacter            → loads all characters for resolution
-├── Set-PlayerCharacter            → writes PU to entities.md (gated)
-│   ├── entity-writehelpers.ps1    → entity file manipulation
-│   └── charfile-helpers.ps1       → character file manipulation
-├── Send-DiscordMessage            → Discord webhook POST (gated)
-└── Add-AdminHistoryEntry          → history log append (gated)
+├── private/admin-state.ps1 (dot-sourced)
+│   ├── Get-AdminHistoryEntries    -> reads pu-sessions.md
+│   └── Add-AdminHistoryEntry      -> appends to pu-sessions.md
+├── private/admin-config.ps1 (dot-sourced)
+│   └── Get-AdminConfig            -> resolves RepoRoot, ResDir, etc.
+├── Get-GitChangeLog -NoPatch      -> identifies changed .md files
+├── Get-Session                    -> extracts sessions with PU data
+├── Get-PlayerCharacter            -> loads all characters for resolution
+├── Set-PlayerCharacter            -> writes PU to entities.md (gated)
+│   ├── private/entity-writehelpers.ps1    -> entity file manipulation
+│   └── private/charfile-helpers.ps1       -> character file manipulation
+├── Send-DiscordMessage            -> Discord webhook POST (gated)
+└── Add-AdminHistoryEntry          -> history log append (gated)
 
 Test-PlayerCharacterPUAssignment
 ├── Invoke-PlayerCharacterPUAssignment -WhatIf
 ├── Get-Session -IncludeFailed -IncludeContent
 ├── Get-AdminHistoryEntries
 ├── Get-Session (full repo, for stale detection)
-└── admin-state.ps1, admin-config.ps1 (dot-sourced)
+└── private/admin-state.ps1, private/admin-config.ps1 (dot-sourced)
 
 Get-NewPlayerCharacterPUCount
 └── Get-Player (optional, auto-fetched if not pre-supplied)
@@ -524,8 +524,8 @@ Get-NewPlayerCharacterPUCount
                     ┌─────────▼───────────┐
                     │  PU Computation      │
                     │  (per character)     │
-                    │  BasePU → Overflow → │
-                    │  GrantedPU → Totals  │
+                    │  BasePU -> Overflow -> │
+                    │  GrantedPU -> Totals  │
                     └─────────┬───────────┘
                               │
               ┌───────────────┼───────────────┐
@@ -550,4 +550,4 @@ Test files covering PU functionality:
 | `tests/test-playercharacterpuassignment.Tests.ps1` | Clean data OK, unresolved characters capture, malformed PU detection, duplicate entries detection, failed sessions with PU data, stale history entries, output structure |
 | `tests/get-newplayercharacterpucount.Tests.ps1` | Formula correctness, BRAK PU handling, zero-character players, non-existent player error |
 
-All tests use mock objects — no dependency on repository content. Mock patterns include session objects, character objects, admin config, git log, and admin history entries.
+All tests use mock objects - no dependency on repository content. Mock patterns include session objects, character objects, admin config, git log, and admin history entries.

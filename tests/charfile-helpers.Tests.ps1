@@ -10,7 +10,7 @@
 
 BeforeAll {
     . "$PSScriptRoot/TestHelpers.ps1"
-    . (Join-Path $script:ModuleRoot 'charfile-helpers.ps1')
+    . (Join-Path $script:ModuleRoot 'private' 'charfile-helpers.ps1')
 
     $script:FullCharFile = Join-Path $script:FixturesRoot 'charfile-full.md'
     $script:EmptyCharFile = Join-Path $script:FixturesRoot 'charfile-empty.md'
@@ -195,7 +195,7 @@ Describe 'Format-ReputationSection' {
     }
 }
 
-Describe 'Read-CharacterFile — rich character file' {
+Describe 'Read-CharacterFile - rich character file' {
     BeforeAll {
         $script:Result = Read-CharacterFile -Path (Join-Path $script:FixturesRoot 'charfile-rich.md')
     }
@@ -236,7 +236,7 @@ Describe 'Read-CharacterFile — rich character file' {
     }
 }
 
-Describe 'Read-CharacterFile — unicode content' {
+Describe 'Read-CharacterFile - unicode content' {
     BeforeAll {
         $script:Result = Read-CharacterFile -Path (Join-Path $script:FixturesRoot 'charfile-unicode.md')
     }
@@ -260,7 +260,7 @@ Describe 'Read-CharacterFile — unicode content' {
     }
 }
 
-Describe 'Read-CharacterFile — missing sections' {
+Describe 'Read-CharacterFile - missing sections' {
     BeforeAll {
         $script:Result = Read-CharacterFile -Path (Join-Path $script:FixturesRoot 'charfile-missing-sections.md')
     }
@@ -274,7 +274,7 @@ Describe 'Read-CharacterFile — missing sections' {
     }
 }
 
-Describe 'Read-CharacterFile — empty reputation tiers' {
+Describe 'Read-CharacterFile - empty reputation tiers' {
     BeforeAll {
         $script:Result = Read-CharacterFile -Path (Join-Path $script:FixturesRoot 'charfile-empty-reputation.md')
     }

@@ -1,4 +1,4 @@
-# Migration — Transition to the New Data and Session Management
+# Migration - Transition to the New Data and Session Management
 
 ## Purpose
 
@@ -46,7 +46,7 @@ This migration introduces a reliable, structured way to manage player data, char
 
 ### For the initial migration
 
-- Access to the existing player database (`Gracze.md`) — read-only, never modified
+- Access to the existing player database (`Gracze.md`) - read-only, never modified
 - A working copy of the repository with the `.robot.new` module available
 
 ### For ongoing operations
@@ -57,7 +57,7 @@ This migration introduces a reliable, structured way to manage player data, char
 
 ## Step-by-Step Flow
 
-### Phase 1 — Initial Data Migration
+### Phase 1 - Initial Data Migration
 
 1. **The coordinator generates the new entity store** from the existing player database. This is a one-time operation that reads all current player and character data and writes it into the new structured format.
 
@@ -65,7 +65,7 @@ This migration introduces a reliable, structured way to manage player data, char
 
 3. **The coordinator verifies parity** by comparing the merged output (old + new data) against expectations. The system reads both sources simultaneously and overlays them, so nothing is lost during transition.
 
-### Phase 2 — Session Format Upgrade
+### Phase 2 - Session Format Upgrade
 
 Session records exist in four format generations, accumulated over the project's history:
 
@@ -76,11 +76,11 @@ Session records exist in four format generations, accumulated over the project's
 | 2024–2026 | Structured lists | Location, logs, PU, and changes as list items |
 | 2026 onward | Current format | All metadata prefixed with `@` markers for unambiguous parsing |
 
-**All four formats remain readable** — the system auto-detects and parses each one transparently. No data is lost if older sessions are left in their original format.
+**All four formats remain readable** - the system auto-detects and parses each one transparently. No data is lost if older sessions are left in their original format.
 
 **The coordinator can optionally upgrade** older sessions to the current format. The upgrade preserves all content (narrative text, clarifications, effects) and only restructures the metadata blocks. This is recommended for active session files but not required for archived ones.
 
-### Phase 3 — Ongoing Operations
+### Phase 3 - Ongoing Operations
 
 #### Recording a Session (Narrator)
 
@@ -99,7 +99,7 @@ The narrator documents each session using the current format:
 
 2. **The system scans sessions** in the date range, skipping any already processed (tracked in the history log).
 
-3. **Character names are verified** against the player roster. If any name cannot be matched, the process stops immediately — no PU is awarded and no notifications are sent. The coordinator must fix the unrecognized names before retrying.
+3. **Character names are verified** against the player roster. If any name cannot be matched, the process stops immediately - no PU is awarded and no notifications are sent. The coordinator must fix the unrecognized names before retrying.
 
 4. **PU is calculated** for each character:
    - Base PU = 1 (universal monthly base) + sum of session PU values
@@ -127,15 +127,15 @@ The narrator documents each session using the current format:
 
 #### Removing a Character (Coordinator)
 
-- Character removal is a soft operation — the character is marked as removed with an effective date, but no data is physically deleted.
+- Character removal is a soft operation - the character is marked as removed with an effective date, but no data is physically deleted.
 - Removed characters stop appearing in standard queries but remain in the system for historical accuracy.
 - This action requires explicit confirmation due to its significance.
 
 #### Updating Character Data (Coordinator or Narrator)
 
 Character updates can affect two areas:
-- **Entity-level data** (PU values, aliases, status, group memberships) — stored in the entity store
-- **Character file data** (character sheet, special items, reputation, conditions, notes) — stored in the character's individual file
+- **Entity-level data** (PU values, aliases, status, group memberships) - stored in the entity store
+- **Character file data** (character sheet, special items, reputation, conditions, notes) - stored in the character's individual file
 
 Both are updated through a single operation. Unknown special items are automatically registered as new entities.
 
@@ -143,17 +143,17 @@ Both are updated through a single operation. Unknown special items are automatic
 
 After migration is complete:
 
-1. **Single source of truth for mutable data** — all updates go to the entity store; the legacy file stays frozen as a read-only archive.
+1. **Single source of truth for mutable data** - all updates go to the entity store; the legacy file stays frozen as a read-only archive.
 
-2. **Backward-compatible reading** — queries merge both old and new data transparently. No information is lost.
+2. **Backward-compatible reading** - queries merge both old and new data transparently. No information is lost.
 
-3. **Consistent session format** — new sessions use the current structured format; older sessions remain readable.
+3. **Consistent session format** - new sessions use the current structured format; older sessions remain readable.
 
-4. **Automated PU processing** — monthly PU assignment is calculated, validated, applied, and notified in one operation with full audit trail.
+4. **Automated PU processing** - monthly PU assignment is calculated, validated, applied, and notified in one operation with full audit trail.
 
-5. **Data quality enforcement** — unresolved character names block PU assignment; diagnostic tools surface stale records, duplicate entries, and parsing failures.
+5. **Data quality enforcement** - unresolved character names block PU assignment; diagnostic tools surface stale records, duplicate entries, and parsing failures.
 
-6. **Clear audit trail** — every PU assignment is logged with timestamps and processed session headers.
+6. **Clear audit trail** - every PU assignment is logged with timestamps and processed session headers.
 
 ## Exceptions and Recovery Actions
 
@@ -161,7 +161,7 @@ After migration is complete:
 |---|---|---|
 | **Unresolved character name in PU** | The entire PU assignment stops before any changes are made | Fix the character name in the session file (typo, missing alias) and retry |
 | **Session with unparseable date** | The session is skipped silently during PU assignment | Run the diagnostic tool to surface these sessions; fix the date format (must be `YYYY-MM-DD`) |
-| **Duplicate session across files** | Sessions with identical headers are automatically merged — PU is counted once, not per copy | No action needed; this is handled automatically |
+| **Duplicate session across files** | Sessions with identical headers are automatically merged - PU is counted once, not per copy | No action needed; this is handled automatically |
 | **Player has no webhook address** | PU is still calculated and applied, but the Discord notification for that player is skipped with a warning | Add the webhook address to the player's record and re-send manually if needed |
 | **Stale history entries** | The diagnostic tool flags session headers in the processing log that no longer match any session in the repository | Review flagged entries; they may indicate renamed or deleted session files |
 | **Character soft-deleted but still referenced** | Removed characters are excluded from standard views but still exist in the data | Use the include-deleted option to view them; they can be reactivated by updating their status |
@@ -175,5 +175,5 @@ After migration is complete:
 
 ## Related Documents
 
-- [Glossary](Glossary.md) — Term definitions and Polish equivalents
-- [MIGRATION.md](../MIGRATION.md) — Technical implementation reference (for developers)
+- [Glossary](Glossary.md) - Term definitions and Polish equivalents
+- [MIGRATION.md](../MIGRATION.md) - Technical implementation reference (for developers)

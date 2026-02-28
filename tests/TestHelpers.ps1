@@ -85,7 +85,7 @@ function Import-RobotHelpers {
         [Parameter(Mandatory)]
         [string]$FileName
     )
-    . (Join-Path $script:ModuleRoot $FileName)
+    . (Join-Path $script:ModuleRoot 'private' $FileName)
 }
 
 function Write-TestFile {

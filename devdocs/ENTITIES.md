@@ -1,4 +1,4 @@
-# Entity System — Technical Reference
+# Entity System - Technical Reference
 
 **Status**: Reference documentation.
 
@@ -8,7 +8,7 @@
 
 This document covers the entity subsystem: `Get-Entity` (registry parsing, multi-file merge, canonical names), `Get-EntityState` (session override merging), and the three-layer character state merge in `Get-PlayerCharacter -IncludeState`.
 
-**Not covered**: Entity write operations — see [ENTITY-WRITES.md](ENTITY-WRITES.md). Character file format — see [CHARFILE.md](CHARFILE.md).
+**Not covered**: Entity write operations - see [ENTITY-WRITES.md](ENTITY-WRITES.md). Character file format - see [CHARFILE.md](CHARFILE.md).
 
 ---
 
@@ -36,14 +36,14 @@ Pass 3:  Get-PlayerCharacter -IncludeState ──> Three-layer character state
 
 ---
 
-## 3. `Get-Entity` — Registry Parsing
+## 3. `Get-Entity` - Registry Parsing
 
 ### 3.1 Helper Functions
 
 | Function | Purpose |
 |---|---|
 | `ConvertFrom-ValidityString` | Splits `"Value (2025-02:)"` into `{ Text, ValidFrom, ValidTo }` |
-| `Resolve-PartialDate` | Expands `YYYY` → full year, `YYYY-MM` → month bounds (uses `DaysInMonth`) |
+| `Resolve-PartialDate` | Expands `YYYY` -> full year, `YYYY-MM` -> month bounds (uses `DaysInMonth`) |
 | `Test-TemporalActivity` | Checks if item falls within `-ActiveOn` date window; `$null` bounds always pass |
 | `Get-NestedBulletText` | Collects child bullet text passing temporal filter; uses `RuntimeHelpers.GetHashCode()` for parent lookup |
 | `Get-LastActiveValue` | Returns last active entry from a history list |
@@ -54,7 +54,7 @@ Pass 3:  Get-PlayerCharacter -IncludeState ──> Three-layer character state
 
 Entity registry files: `entities.md` and `*-NNN-ent.md` variants.
 
-**Sorting**: Files sorted by numeric key descending. `entities.md` has sort key `MaxValue` (processed first, lowest primacy). Lower numbers are processed last → highest override primacy.
+**Sorting**: Files sorted by numeric key descending. `entities.md` has sort key `MaxValue` (processed first, lowest primacy). Lower numbers are processed last -> highest override primacy.
 
 **Merge rules**: Same-name entities across files have their histories **concatenated**, not replaced. Names, aliases, overrides, and all history lists are combined.
 
@@ -70,7 +70,7 @@ Level-2 headers define entity type sections, mapped via `$TypeMap`:
 | `## Organizacja` | Organizacja |
 | `## Lokacja` | Lokacja |
 | `## Gracz` | Gracz |
-| `## Postać (Gracz)` | Postać (Gracz) |
+| `## Postać` | Postać |
 | `## Przedmiot` | Przedmiot |
 
 ### 3.4 @Tag Recognition
@@ -81,7 +81,7 @@ Level-2 headers define entity type sections, mapped via `$TypeMap`:
 | `@lokacja` | Temporal | `Location`, `LocationHistory` | Location assignment / containment |
 | `@drzwi` | Temporal | `Doors`, `DoorHistory` | Physical access connections |
 | `@typ` | Temporal | `Type`, `TypeHistory` | Entity type override |
-| `@należy_do` | Temporal | `Owner`, `OwnerHistory` | Ownership (entity → player) |
+| `@należy_do` | Temporal | `Owner`, `OwnerHistory` | Ownership (entity -> player) |
 | `@grupa` | Temporal | `Groups`, `GroupHistory` | Group/faction membership |
 | `@status` | Temporal | `Status`, `StatusHistory` | `Aktywny`/`Nieaktywny`/`Usunięty` |
 | `@ilość` | Temporal | `Quantity`, `QuantityHistory` | Item quantity (used for stackable items such as currency). Accepts integer values. In Zmiany blocks, supports `+N`/`-N` delta syntax to add/subtract from current quantity. |
@@ -94,8 +94,8 @@ Level-2 headers define entity type sections, mapped via `$TypeMap`:
 Format: `(YYYY-MM:YYYY-MM)`, `(YYYY-MM:)`, `(:YYYY-MM)`, or absent (always active).
 
 Partial dates resolved via `Resolve-PartialDate`:
-- Start bound → first day of period (`YYYY-01-01`, `YYYY-MM-01`)
-- End bound → last day of period (`YYYY-12-31`, `YYYY-MM-{DaysInMonth}`)
+- Start bound -> first day of period (`YYYY-01-01`, `YYYY-MM-01`)
+- End bound -> last day of period (`YYYY-12-31`, `YYYY-MM-{DaysInMonth}`)
 
 ### 3.6 Parent-Child Lookup Optimization
 
@@ -120,9 +120,9 @@ Resolve-EntityCN("Zamek Steadwick"):
     Resolve-EntityCN("Erathia"):
         @lokacja = "Antagarich"
         Resolve-EntityCN("Antagarich"):
-            @lokacja = null → "Lokacja/Antagarich"
-        → "Lokacja/Antagarich/Erathia"
-    → "Lokacja/Antagarich/Erathia/Zamek Steadwick"
+            @lokacja = null -> "Lokacja/Antagarich"
+        -> "Lokacja/Antagarich/Erathia"
+    -> "Lokacja/Antagarich/Erathia/Zamek Steadwick"
 ```
 
 **Cycle detection**: `HashSet[string]` of visited entity names. Warns to stderr and falls back to flat CN on cycle.
@@ -131,7 +131,7 @@ Resolve-EntityCN("Zamek Steadwick"):
 
 ---
 
-## 4. `Get-EntityState` — Session Override Merge
+## 4. `Get-EntityState` - Session Override Merge
 
 ### 4.1 Two-Pass Architecture
 
@@ -146,8 +146,8 @@ For each entity name in Zmiany blocks:
 ```
 1. Exact entity lookup (case-insensitive dictionary)
 2. Fuzzy Resolve-Name (stem, Levenshtein)
-3. If fuzzy returns a Player object → search Player.Names for matching entity
-4. If all fail → warn to stderr, skip change
+3. If fuzzy returns a Player object -> search Player.Names for matching entity
+4. If all fail -> warn to stderr, skip change
 ```
 
 ### 4.3 Auto-Dating
@@ -157,9 +157,9 @@ Tags in `- Zmiany:` without explicit temporal ranges receive the session date as
 ### 4.4 `@ilość` Arithmetic Deltas
 
 In Zmiany blocks, `@ilość` supports delta syntax:
-- `@ilość: +25` → adds 25 to the current quantity
-- `@ilość: -3` → subtracts 3 from the current quantity
-- `@ilość: 100` → sets absolute value (backward compatible)
+- `@ilość: +25` -> adds 25 to the current quantity
+- `@ilość: -3` -> subtracts 3 from the current quantity
+- `@ilość: 100` -> sets absolute value (backward compatible)
 
 When a `+N` or `-N` pattern is detected, the system looks up the last active quantity value and computes the new absolute value. If no prior quantity exists, the base is treated as 0. The computed absolute value is stored in `QuantityHistory` so downstream code is unaffected.
 
@@ -172,7 +172,7 @@ For each resolved entity change:
 ### 4.5 History Resorting
 
 After all sessions processed, for each modified entity:
-1. Sort all history lists by `ValidFrom` (custom comparer: `$null` sorts first → always-active entries stable at start)
+1. Sort all history lists by `ValidFrom` (custom comparer: `$null` sorts first -> always-active entries stable at start)
 2. Recompute active values via `Get-LastActiveValue` / `Get-AllActiveValues`
 
 ### 4.7 Parameters
@@ -191,7 +191,7 @@ Performed by `Get-PlayerCharacter -IncludeState`.
 
 | Layer | Source | Temporal behavior |
 |---|---|---|
-| 1 (Baseline) | Character `.md` file (`Read-CharacterFile`) | Undated — always active, sorts before dated entries |
+| 1 (Baseline) | Character `.md` file (`Read-CharacterFile`) | Undated - always active, sorts before dated entries |
 | 2+3 (Overrides) | `Get-EntityState` result (entities.md + session Zmiany, already merged) | Temporal ranges parsed via `ConvertFrom-ValidityString` |
 
 **Scalar properties**: Last active value wins (most recent `ValidFrom`).
@@ -226,7 +226,7 @@ Characters with `Status = 'Usunięty'` are excluded unless `-IncludeDeleted`.
 | `Doors` | string[] | Active physical access connections |
 | `DoorHistory` | `List[object]` | Full door history |
 | `Contains` | `List[string]` | Child entity names |
-| `Overrides` | hashtable | Generic `@tag` → value list dictionary |
+| `Overrides` | hashtable | Generic `@tag` -> value list dictionary |
 | `TypeHistory` | `List[object]` | Type changes with validity ranges |
 | `OwnerHistory` | `List[object]` | Ownership changes with validity ranges |
 
@@ -315,9 +315,9 @@ Fixtures: `entities.md`, `entities-100-ent.md`, `entities-200-ent.md`, `sessions
 
 ## 9. Related Documents
 
-- [ENTITY-WRITES.md](ENTITY-WRITES.md) — Write operations on entity files
-- [CHARFILE.md](CHARFILE.md) — Character file format (Layer 1 of three-layer merge)
-- [SESSIONS.md](SESSIONS.md) — Session Zmiany extraction
-- [NAME-RESOLUTION.md](NAME-RESOLUTION.md) — Name resolution used by `Get-EntityState`
-- [CURRENCY.md](CURRENCY.md) — Currency tracking system (denominations, @Transfer, reconciliation)
-- [MIGRATION.md](MIGRATION.md) — §1 Data Model Transition
+- [ENTITY-WRITES.md](ENTITY-WRITES.md) - Write operations on entity files
+- [CHARFILE.md](CHARFILE.md) - Character file format (Layer 1 of three-layer merge)
+- [SESSIONS.md](SESSIONS.md) - Session Zmiany extraction
+- [NAME-RESOLUTION.md](NAME-RESOLUTION.md) - Name resolution used by `Get-EntityState`
+- [CURRENCY.md](CURRENCY.md) - Currency tracking system (denominations, @Transfer, reconciliation)
+- [MIGRATION.md](MIGRATION.md) - §1 Data Model Transition

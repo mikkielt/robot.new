@@ -1,4 +1,4 @@
-# Configuration & State — Technical Reference
+# Configuration & State - Technical Reference
 
 **Status**: Reference documentation.
 
@@ -6,11 +6,11 @@
 
 ## 1. Scope
 
-This document covers `admin-config.ps1` (configuration resolution, path management, template rendering) and `admin-state.ps1` (append-only history file management for PU processing).
+This document covers `private/admin-config.ps1` (configuration resolution, path management, template rendering) and `private/admin-state.ps1` (append-only history file management for PU processing).
 
 ---
 
-## 2. Configuration Resolution (`admin-config.ps1`)
+## 2. Configuration Resolution (`private/admin-config.ps1`)
 
 ### 2.1 Functions
 
@@ -46,8 +46,8 @@ The local config file is loaded via `Import-PowerShellDataFile` with try-catch p
 | `PlayersFile` | `Gracze.md` | Legacy player database |
 
 Additional config values:
-- `BotUsername` — Discord bot display name (resolved but not used by PU assignment, which hardcodes `"Bothen"`)
-- Webhook URLs — resolved via priority chain
+- `BotUsername` - Discord bot display name (resolved but not used by PU assignment, which hardcodes `"Bothen"`)
+- Webhook URLs - resolved via priority chain
 
 ### 2.4 Template Rendering (`Get-AdminTemplate`)
 
@@ -58,13 +58,13 @@ $Template = Get-AdminTemplate -Name "player-character-file.md.template"
 $Result = $Template.Replace("{CharacterSheetUrl}", $Url)
 ```
 
-No advanced template engine — pure string `.Replace()` calls by the consumer.
+No advanced template engine - pure string `.Replace()` calls by the consumer.
 
 **File existence check**: Validates template file exists before reading. Throws on missing file.
 
 ---
 
-## 3. State Management (`admin-state.ps1`)
+## 3. State Management (`private/admin-state.ps1`)
 
 ### 3.1 Functions
 
@@ -130,7 +130,7 @@ W tym pliku znajduje się lista sesji przetworzonych przez system.
 
 ### 3.5 State File Location
 
-`$Config.ResDir` → `<RepoRoot>/.robot/res/pu-sessions.md`
+`$Config.ResDir` -> `<RepoRoot>/.robot/res/pu-sessions.md`
 
 This is separate from the module directory (`.robot.new/`) and lives in `.robot/res/` for historical compatibility with the legacy system.
 
@@ -158,7 +158,7 @@ PowerShell data file format:
 }
 ```
 
-Loaded via `Import-PowerShellDataFile` with error handling. Missing file is not an error — the priority chain falls through to the next source.
+Loaded via `Import-PowerShellDataFile` with error handling. Missing file is not an error - the priority chain falls through to the next source.
 
 ---
 
@@ -188,6 +188,6 @@ Fixtures: `local.config.psd1`, `pu-sessions.md`, template files in `tests/fixtur
 
 ## 8. Related Documents
 
-- [PU.md](PU.md) — PU pipeline uses history entries for deduplication
-- [ENTITY-WRITES.md](ENTITY-WRITES.md) — Write commands consume `Get-AdminConfig`
-- [DISCORD.md](DISCORD.md) — Webhook config resolution
+- [PU.md](PU.md) - PU pipeline uses history entries for deduplication
+- [ENTITY-WRITES.md](ENTITY-WRITES.md) - Write commands consume `Get-AdminConfig`
+- [DISCORD.md](DISCORD.md) - Webhook config resolution

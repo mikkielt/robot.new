@@ -123,7 +123,7 @@ The coordinator can add the webhook address later and re-send manually if needed
 
 If a Discord message fails to send (network error, invalid webhook, etc.):
 - The failure is logged
-- Other messages continue sending — one failure does not block the rest
+- Other messages continue sending - one failure does not block the rest
 - The coordinator can retry manually
 
 ### Name resolution failure
@@ -135,14 +135,14 @@ If an Intel target name cannot be resolved to a known entity:
 
 ## Expected Outcomes
 
-1. **Intel reaches the right people** — group and location fan-out ensures all relevant entities are notified
-2. **PU notifications are comprehensive** — each player gets a single message covering all their characters
-3. **Failures are isolated** — one failed notification does not prevent others from being sent
-4. **Missing webhooks are non-blocking** — the system continues processing and logs warnings
+1. **Intel reaches the right people** - group and location fan-out ensures all relevant entities are notified
+2. **PU notifications are comprehensive** - each player gets a single message covering all their characters
+3. **Failures are isolated** - one failed notification does not prevent others from being sent
+4. **Missing webhooks are non-blocking** - the system continues processing and logs warnings
 
 ## Related Documents
 
-- [PU.md](PU.md) — Monthly PU assignment process
-- [Sessions.md](Sessions.md) — How to record sessions with Intel entries
-- [Players.md](Players.md) — How to configure webhook addresses
-- [Glossary](Glossary.md) — Term definitions
+- [PU.md](PU.md) - Monthly PU assignment process
+- [Sessions.md](Sessions.md) - How to record sessions with Intel entries
+- [Players.md](Players.md) - How to configure webhook addresses
+- [Glossary](Glossary.md) - Term definitions

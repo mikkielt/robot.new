@@ -12,7 +12,7 @@ BeforeAll {
     . "$PSScriptRoot/TestHelpers.ps1"
     Import-RobotModule
     Mock Get-RepoRoot { return $script:FixturesRoot }
-    . (Join-Path $script:ModuleRoot 'admin-state.ps1')
+    . (Join-Path $script:ModuleRoot 'private' 'admin-state.ps1')
 }
 
 Describe 'Get-AdminHistoryEntries' {

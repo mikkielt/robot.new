@@ -1,4 +1,4 @@
-# Name Resolution Pipeline — Technical Reference
+# Name Resolution Pipeline - Technical Reference
 
 **Status**: Reference documentation.
 
@@ -8,9 +8,9 @@
 
 This document covers the name resolution subsystem: `Get-NameIndex` (index construction), `Resolve-Name` (multi-stage lookup), and their supporting data structures (BK-tree, stem index, priority/ambiguity system).
 
-**Shared dependency**: `string-helpers.ps1` provides `Get-LevenshteinDistance`, dot-sourced by `resolve-name.ps1`, `get-nameindex.ps1`, and `get-namedlocationreport.ps1`.
+**Shared dependency**: `private/string-helpers.ps1` provides `Get-LevenshteinDistance`, dot-sourced by `public/resolve/resolve-name.ps1`, `public/get-nameindex.ps1`, and `public/reporting/get-namedlocationreport.ps1`.
 
-**Not covered**: How name resolution is consumed by `Get-Session`, `Get-EntityState`, or `Resolve-Narrator` — see [SESSIONS.md](SESSIONS.md) and [ENTITIES.md](ENTITIES.md).
+**Not covered**: How name resolution is consumed by `Get-Session`, `Get-EntityState`, or `Resolve-Narrator` - see [SESSIONS.md](SESSIONS.md) and [ENTITIES.md](ENTITIES.md).
 
 ---
 
@@ -39,7 +39,7 @@ Get-Entity ──┘                              │
 
 | Function | Purpose |
 |---|---|
-| `Get-NameIndex` | Main builder — produces `{ Index, StemIndex, BKTree }` |
+| `Get-NameIndex` | Main builder - produces `{ Index, StemIndex, BKTree }` |
 | `Add-BKTreeNode` | Recursive BK-tree insertion by edit distance |
 | `Search-BKTree` | Iterative BK-tree traversal with triangle-inequality pruning |
 | `Add-IndexToken` | Inserts a single token with priority-based collision resolution |
@@ -56,14 +56,14 @@ Get-Entity ──┘                              │
 
 ```
 IF token already in index:
-    Same owner → keep higher priority (lower number wins)
-    Different owner, incoming has higher priority → replace, no ambiguity
+    Same owner -> keep higher priority (lower number wins)
+    Different owner, incoming has higher priority -> replace, no ambiguity
     Different owner, same priority:
-        Gracz/Postać(Gracz) vs Player → Player wins (same logical entity, deduplicate)
-        Otherwise → mark Ambiguous, store all owners in Owners array
+        Gracz/Postać vs Player -> Player wins (same logical entity, deduplicate)
+        Otherwise -> mark Ambiguous, store all owners in Owners array
 ELSE:
     Insert new entry
-    Build stem index entry inline (declension stem → list of token keys)
+    Build stem index entry inline (declension stem -> list of token keys)
 ```
 
 Ambiguous entries are skipped by `Resolve-Name` stages 1–2b and penalized in stage 3.
@@ -87,7 +87,7 @@ Each index entry:
 | Field | Type | Description |
 |---|---|---|
 | `Owner` | object | Resolved entity (if not ambiguous) |
-| `OwnerType` | string | `"Player"`, `"NPC"`, `"Organizacja"`, `"Lokacja"`, `"Gracz"`, `"Postać (Gracz)"` |
+| `OwnerType` | string | `"Player"`, `"NPC"`, `"Organizacja"`, `"Lokacja"`, `"Gracz"`, `"Postać"` |
 | `Owners` | object[] | All owners (if ambiguous) |
 | `Source` | string | Original full name the token came from |
 | `Priority` | int | 1 (full name) or 2 (word token) |
@@ -118,9 +118,9 @@ Each node is a hashtable:
 ```
 FUNCTION Add-BKTreeNode(node, key):
     distance = Levenshtein(node.Key, key)
-    IF distance == 0 → RETURN (skip duplicates)
-    IF children[distance] exists → recurse on that child
-    ELSE → create new child node at that distance
+    IF distance == 0 -> RETURN (skip duplicates)
+    IF children[distance] exists -> recurse on that child
+    ELSE -> create new child node at that distance
 ```
 
 ### 4.3 Search
@@ -132,11 +132,11 @@ FUNCTION Search-BKTree(tree, query, threshold):
     WHILE stack not empty:
         current = pop()
         distance = Levenshtein(query, current.Key)
-        IF distance <= threshold → add to results
+        IF distance <= threshold -> add to results
         LOW = distance - threshold
         HIGH = distance + threshold
         FOR each child at childDistance:
-            IF LOW <= childDistance <= HIGH → push child
+            IF LOW <= childDistance <= HIGH -> push child
     RETURN results
 ```
 
@@ -144,7 +144,7 @@ The triangle inequality `|d(a,c) - d(a,b)| ≤ d(b,c)` guarantees that children 
 
 ### 4.4 Construction
 
-Built lazily — only if at least 1 token key exists. `Search-BKTree` handles a `$null` tree safely (returns empty results).
+Built lazily - only if at least 1 token key exists. `Search-BKTree` handles a `$null` tree safely (returns empty results).
 
 ---
 
@@ -157,7 +157,7 @@ Built lazily — only if at least 1 token key exists. `Search-BKTree` handles a 
 | `Resolve-Name` | 4-stage lookup pipeline |
 | `Get-DeclensionStem` | Strips Polish case suffixes |
 | `Get-StemAlternationCandidates` | Reverses Polish consonant mutations |
-| `Get-LevenshteinDistance` | Two-row matrix edit distance (from `string-helpers.ps1`) |
+| `Get-LevenshteinDistance` | Two-row matrix edit distance (from `private/string-helpers.ps1`) |
 | `Test-TypeFilter` | Nested closure capturing `-OwnerType` filter |
 
 ### 5.2 Parameters
@@ -171,18 +171,18 @@ Built lazily — only if at least 1 token key exists. `Search-BKTree` handles a 
 | `Players` | object[] | Pre-fetched players (for auto-building index) |
 | `Entities` | object[] | Pre-fetched entities (for auto-building index) |
 
-### 5.3 Stage 1 — Exact Index Lookup
+### 5.3 Stage 1 - Exact Index Lookup
 
 ```
 IF Query in Index (case-insensitive)
     AND NOT Ambiguous
     AND passes OwnerType filter
-→ RETURN Entry.Owner
+-> RETURN Entry.Owner
 ```
 
 **Complexity**: O(1) dictionary lookup.
 
-### 5.4 Stage 2 — Declension-Stripped Match
+### 5.4 Stage 2 - Declension-Stripped Match
 
 Strips Polish noun declension suffixes from the query and looks up the resulting stem in the pre-built stem index.
 
@@ -200,9 +200,9 @@ IF stem in StemIndex:
             RETURN Owner
 ```
 
-**Examples**: `"Solmyra"` → stem `"Solmyr"` → resolves to Solmyr. `"Sandrem"` → stem `"Sandro"`.
+**Examples**: `"Solmyra"` -> stem `"Solmyr"` -> resolves to Solmyr. `"Sandrem"` -> stem `"Sandro"`.
 
-### 5.5 Stage 2b — Stem Alternation Match
+### 5.5 Stage 2b - Stem Alternation Match
 
 Handles Polish consonant mutations where the suffix replaces the stem ending. Generates candidate base forms by reversing known alternation patterns.
 
@@ -210,15 +210,15 @@ Handles Polish consonant mutations where the suffix replaces the stem ending. Ge
 
 | Inflected ending | Base form | Example |
 |---|---|---|
-| `-dzie` | `-da` | `Vidominie` → `Vidomina` |
-| `-ce` | `-ka` | `Żylce` → `Żylka` |
-| `-rze` | `-ra` | `Solmyrze` → `Solmyra` |
-| `-dze` | `-ga` | — |
-| `-ście` | `-sta` | — |
-| `-ni` | `-ń` | — |
-| `-si` | `-ś` | — |
-| `-zi` | `-ź` | — |
-| `-ci` | `-ć` | — |
+| `-dzie` | `-da` | `Vidominie` -> `Vidomina` |
+| `-ce` | `-ka` | `Żylce` -> `Żylka` |
+| `-rze` | `-ra` | `Solmyrze` -> `Solmyra` |
+| `-dze` | `-ga` | - |
+| `-ście` | `-sta` | - |
+| `-ni` | `-ń` | - |
+| `-si` | `-ś` | - |
+| `-zi` | `-ź` | - |
+| `-ci` | `-ć` | - |
 
 ```
 candidates = ReverseConsonantMutations(Query)
@@ -227,7 +227,7 @@ FOR each candidate:
         RETURN Owner
 ```
 
-### 5.6 Stage 3 — Levenshtein Fuzzy Match
+### 5.6 Stage 3 - Levenshtein Fuzzy Match
 
 **Threshold**: dynamic based on query length.
 
@@ -236,8 +236,8 @@ threshold = Query.Length < 5 ? 1 : floor(Query.Length / 3)
 ```
 
 **Algorithm**:
-1. If BK-tree is available → `Search-BKTree(Query, threshold)` — O(log N)
-2. Otherwise → linear scan with length pre-filter
+1. If BK-tree is available -> `Search-BKTree(Query, threshold)` - O(log N)
+2. Otherwise -> linear scan with length pre-filter
 
 **Length pre-filter**: Skip tokens where `|Query.Length - token.Length| > threshold`. Eliminates ~60–70% of comparisons.
 
@@ -279,7 +279,7 @@ This distinguishes between "never looked up" (`ContainsKey` = false) and "looked
 | Short tokens (< `MinTokenLength`) | Excluded from word-token indexing (priority 2) to reduce noise |
 | Duplicate BK-tree keys | Silently skipped (distance 0 check) |
 | `$null` BK-tree | `Search-BKTree` returns empty results; falls back to linear scan |
-| Player/Entity dedup | `Gracz`/`Postać (Gracz)` entity entries defer to `Player` entries in collisions |
+| Player/Entity dedup | `Gracz`/`Postać` entity entries defer to `Player` entries in collisions |
 
 ---
 
@@ -294,6 +294,6 @@ This distinguishes between "never looked up" (`ContainsKey` = false) and "looked
 
 ## 9. Related Documents
 
-- [ENTITIES.md](ENTITIES.md) — Entity name resolution in `Get-EntityState` (uses `Resolve-Name` internally)
-- [SESSIONS.md](SESSIONS.md) — Mention extraction and narrator resolution (uses `Resolve-Name`)
-- [MIGRATION.md](MIGRATION.md) — §1.5 Entity State Pipeline describes name resolution in context
+- [ENTITIES.md](ENTITIES.md) - Entity name resolution in `Get-EntityState` (uses `Resolve-Name` internally)
+- [SESSIONS.md](SESSIONS.md) - Mention extraction and narrator resolution (uses `Resolve-Name`)
+- [MIGRATION.md](MIGRATION.md) - §1.5 Entity State Pipeline describes name resolution in context

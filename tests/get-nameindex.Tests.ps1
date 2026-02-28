@@ -13,10 +13,10 @@ BeforeAll {
     . "$PSScriptRoot/TestHelpers.ps1"
     Import-RobotModule
     Mock Get-RepoRoot { return $script:FixturesRoot }
-    . (Join-Path $script:ModuleRoot 'get-entity.ps1')
-    . (Join-Path $script:ModuleRoot 'get-player.ps1')
-    . (Join-Path $script:ModuleRoot 'resolve-name.ps1')
-    . (Join-Path $script:ModuleRoot 'get-nameindex.ps1')
+    . (Join-Path $script:ModuleRoot 'public' 'get-entity.ps1')
+    . (Join-Path $script:ModuleRoot 'public' 'get-player.ps1')
+    . (Join-Path $script:ModuleRoot 'public' 'resolve-name.ps1')
+    . (Join-Path $script:ModuleRoot 'public' 'get-nameindex.ps1')
 }
 
 Describe 'Get-NameIndex' {
@@ -138,7 +138,7 @@ Describe 'Add-BKTreeNode and Search-BKTree' {
     }
 }
 
-Describe 'Get-NameIndex — many aliases entity' {
+Describe 'Get-NameIndex - many aliases entity' {
     BeforeAll {
         $script:ManyAliasEntities = Get-Entity -Path (Join-Path $script:FixturesRoot 'entities-many-aliases.md')
         $script:ManyAliasIdx = Get-NameIndex -Players @() -Entities $script:ManyAliasEntities
@@ -155,7 +155,7 @@ Describe 'Get-NameIndex — many aliases entity' {
     }
 }
 
-Describe 'Get-NameIndex — duplicate names across types' {
+Describe 'Get-NameIndex - duplicate names across types' {
     BeforeAll {
         $script:DupEntities = Get-Entity -Path (Join-Path $script:FixturesRoot 'entities-duplicate-names.md')
         $script:DupIdx = Get-NameIndex -Players @() -Entities $script:DupEntities
@@ -172,7 +172,7 @@ Describe 'Get-NameIndex — duplicate names across types' {
     }
 }
 
-Describe 'Get-NameIndex — unicode names indexing' {
+Describe 'Get-NameIndex - unicode names indexing' {
     BeforeAll {
         $script:UniEntities = Get-Entity -Path (Join-Path $script:FixturesRoot 'entities-unicode-names.md')
         $script:UniIdx = Get-NameIndex -Players @() -Entities $script:UniEntities

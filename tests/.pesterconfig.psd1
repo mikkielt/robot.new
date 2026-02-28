@@ -13,7 +13,7 @@
     }
     CodeCoverage = @{
         Enabled    = $false
-        Path       = @('./*.ps1')
+        Path       = @('./public/*.ps1', './public/**/*.ps1', './private/*.ps1')
         OutputPath = './tests/coverage.xml'
     }
 }

@@ -10,8 +10,8 @@
 
 BeforeAll {
     $script:ModuleRoot = Split-Path $PSScriptRoot -Parent
-    . "$script:ModuleRoot/charfile-helpers.ps1"
-    . "$script:ModuleRoot/entity-writehelpers.ps1"
+    . "$script:ModuleRoot/private/charfile-helpers.ps1"
+    . "$script:ModuleRoot/private/entity-writehelpers.ps1"
 
     $script:TempRoot = Join-Path ([System.IO.Path]::GetTempPath()) ("robot-set-pc-cf-" + [System.Guid]::NewGuid().ToString('N'))
     [void][System.IO.Directory]::CreateDirectory($script:TempRoot)

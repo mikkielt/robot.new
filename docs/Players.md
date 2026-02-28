@@ -145,7 +145,7 @@ When the coordinator updates a character, both the entity store and the characte
 ### What happens
 
 1. The character is marked as **removed** (`Usunięty`) with an effective date
-2. No data is physically deleted — the character remains in the system
+2. No data is physically deleted - the character remains in the system
 3. Removed characters stop appearing in standard queries and PU processing
 4. This action requires explicit confirmation due to its significance
 
@@ -161,11 +161,11 @@ Removed characters are hidden by default but can be included in queries when nee
 
 After player and character management operations:
 
-1. **Player data is consistent** — webhook, triggers, and Margonem ID are validated and stored
-2. **Characters are properly owned** — each character is linked to its player
-3. **Starting PU is fair** — calculated automatically based on the player's total earned PU
-4. **Name resolution works** — character names and aliases are indexed for automatic matching
-5. **Removed characters are preserved** — soft-delete ensures no historical data is lost
+1. **Player data is consistent** - webhook, triggers, and Margonem ID are validated and stored
+2. **Characters are properly owned** - each character is linked to its player
+3. **Starting PU is fair** - calculated automatically based on the player's total earned PU
+4. **Name resolution works** - character names and aliases are indexed for automatic matching
+5. **Removed characters are preserved** - soft-delete ensures no historical data is lost
 
 ## Exceptions and Recovery Actions
 
@@ -185,7 +185,7 @@ After player and character management operations:
 
 ## Related Documents
 
-- [PU.md](PU.md) — Monthly PU assignment process
-- [Sessions.md](Sessions.md) — How sessions are recorded
-- [Glossary](Glossary.md) — Term definitions
-- [Migration](Migration.md) — Transition from the legacy system
+- [PU.md](PU.md) - Monthly PU assignment process
+- [Sessions.md](Sessions.md) - How sessions are recorded
+- [Glossary](Glossary.md) - Term definitions
+- [Migration](Migration.md) - Transition from the legacy system

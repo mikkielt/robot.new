@@ -1,4 +1,4 @@
-# Markdown Parser Internals — Technical Reference
+# Markdown Parser Internals - Technical Reference
 
 **Status**: Reference documentation.
 
@@ -6,7 +6,7 @@
 
 ## 1. Scope
 
-This document covers the Markdown parsing subsystem: `Get-Markdown` (orchestration and parallelism) and `parse-markdownfile.ps1` (single-file parser). These are the foundational data extraction layer — all other functions consume their output.
+This document covers the Markdown parsing subsystem: `Get-Markdown` (orchestration and parallelism) and `private/parse-markdownfile.ps1` (single-file parser). These are the foundational data extraction layer - all other functions consume their output.
 
 **Not covered**: How parsed output is consumed by `Get-Player`, `Get-Entity`, `Get-Session`, etc.
 
@@ -15,13 +15,13 @@ This document covers the Markdown parsing subsystem: `Get-Markdown` (orchestrati
 ## 2. Two-File Architecture
 
 ```
-Get-Markdown (get-markdown.ps1)
+Get-Markdown (public/get-markdown.ps1)          # public/ root
     │
     ├── Sequential path (≤4 files): & $ParseFileScript $FilePath
     │
     └── Parallel path (>4 files): RunspacePool workers
             │
-            └── parse-markdownfile.ps1 (self-contained script)
+            └── private/parse-markdownfile.ps1 (self-contained script)
 ```
 
 The split exists because **RunspacePool workers don't share module scope**. The parser script is loaded as a string (`[System.IO.File]::ReadAllText`) and passed to each worker via `AddScript()`, making it fully self-contained with no external dependencies.
@@ -58,26 +58,26 @@ $MaxThreads = [Math]::Min($FileCount, [Environment]::ProcessorCount)
 
 **Worker management**:
 1. Create `RunspacePool` with `[1, $MaxThreads]` bounds
-2. For each file: create `PowerShell` instance → `AddScript($ParseFileScriptStr)` → `AddArgument($FilePath)` → `BeginInvoke()`
+2. For each file: create `PowerShell` instance -> `AddScript($ParseFileScriptStr)` -> `AddArgument($FilePath)` -> `BeginInvoke()`
 3. Track jobs as `[PSCustomObject]@{ PS; Handle }`
 4. Collect results via `EndInvoke()` (blocking)
 5. Explicit `Dispose()` on each `PowerShell` instance and the pool
 
 ### 3.4 Return Convention
 
-- Single file via `-File` with one path → returns the parsed object directly (unwrapped)
-- Multiple files or `-Directory` → returns `List[object]`
+- Single file via `-File` with one path -> returns the parsed object directly (unwrapped)
+- Multiple files or `-Directory` -> returns `List[object]`
 
 ---
 
-## 4. Single-File Parser (`parse-markdownfile.ps1`)
+## 4. Single-File Parser (`private/parse-markdownfile.ps1`)
 
 ### 4.1 Script-Scope Variables
 
 | Variable | Type | Description |
 |---|---|---|
-| `$MdLinkPattern` | `[regex]` | `'\[(.+?)\]\((.+?)\)'` — Markdown link capture |
-| `$PlainUrlPattern` | `[regex]` | `'https?:\/\/[^\s\)\]]+'` — Plain URL pattern |
+| `$MdLinkPattern` | `[regex]` | `'\[(.+?)\]\((.+?)\)'` - Markdown link capture |
+| `$PlainUrlPattern` | `[regex]` | `'https?:\/\/[^\s\)\]]+'` - Plain URL pattern |
 | `$HeaderStack` | `Stack[object]` | Maintains header hierarchy |
 | `$ListStack` | `Stack[object]` | Maintains list item nesting |
 | `$InCodeBlock` | `bool` | Fenced code block toggle |
@@ -86,11 +86,11 @@ $MaxThreads = [Math]::Min($FileCount, [Environment]::ProcessorCount)
 
 The parser reads all lines via `[System.IO.File]::ReadAllLines()` and processes them in a single pass with 1-based line numbering. The scan handles five concerns simultaneously:
 
-1. **Code block tracking** — `` ``` `` toggles `$InCodeBlock`; everything inside is opaque
-2. **Header extraction** — Lines starting with `#` (outside code blocks)
-3. **Section accumulation** — Content grouped by headers
-4. **List item parsing** — Bullet (`-`, `*`) and numbered (`1.`) items with indent tracking
-5. **Link extraction** — Both Markdown links and plain URLs
+1. **Code block tracking** - `` ``` `` toggles `$InCodeBlock`; everything inside is opaque
+2. **Header extraction** - Lines starting with `#` (outside code blocks)
+3. **Section accumulation** - Content grouped by headers
+4. **List item parsing** - Bullet (`-`, `*`) and numbered (`1.`) items with indent tracking
+5. **Link extraction** - Both Markdown links and plain URLs
 
 ### 4.3 Header Hierarchy (Stack-Based)
 
@@ -216,6 +216,6 @@ Content is accumulated into a `StringBuilder` between headers. When a new header
 
 ## 9. Related Documents
 
-- [SESSIONS.md](SESSIONS.md) — `Get-Session` consumes `Get-Markdown` output for session extraction
-- [ENTITIES.md](ENTITIES.md) — `Get-Entity` consumes `Get-Markdown` output for entity parsing
-- [MIGRATION.md](MIGRATION.md) — §11 Module Structure lists parser in the non-exported helpers
+- [SESSIONS.md](SESSIONS.md) - `Get-Session` consumes `Get-Markdown` output for session extraction
+- [ENTITIES.md](ENTITIES.md) - `Get-Entity` consumes `Get-Markdown` output for entity parsing
+- [MIGRATION.md](MIGRATION.md) - §11 Module Structure lists parser in the non-exported helpers

@@ -62,6 +62,10 @@ All metadata uses `@`-prefixed tags:
 
 ```markdown
 ### 2025-06-15, Ucieczka z Erathii, Catherine
+
+Free-form narrative text goes here. It is preserved by the system
+but not parsed for metadata.
+
 - @Lokacje:
     - Erathia
     - Bracada
@@ -79,9 +83,6 @@ All metadata uses `@`-prefixed tags:
 - @Intel:
     - Grupa/Nekromanci: Wiadomość do wszystkich członków Nekromantów
     - Solmyr: Prywatna wiadomość
-
-Free-form narrative text goes here. It is preserved by the system
-but not parsed for metadata.
 ```
 
 ### Metadata Fields
@@ -118,9 +119,9 @@ Changes record permanent updates to the game world:
 ```
 
 Common tags:
-- `@lokacja: LocationName` — entity permanently moves to a new location
-- `@grupa: GroupName` — entity joins a group/faction
-- `@status: Aktywny` / `Nieaktywny` / `Usunięty` — entity status change
+- `@lokacja: LocationName` - entity permanently moves to a new location
+- `@grupa: GroupName` - entity joins a group/faction
+- `@status: Aktywny` / `Nieaktywny` / `Usunięty` - entity status change
 
 Changes are applied automatically with the session's date as the effective date.
 
@@ -137,13 +138,13 @@ Intel entries send targeted messages to specific recipients via Discord:
 ```
 
 Targeting options:
-- `Grupa/Name` — all entities in the named group/organization
-- `Lokacja/Name` — all entities in the named location and sub-locations
-- `Name` — direct targeting (comma-separated for multiple recipients)
+- `Grupa/Name` - all entities in the named group/organization
+- `Lokacja/Name` - all entities in the named location and sub-locations
+- `Name` - direct targeting (comma-separated for multiple recipients)
 
 ## Older Format Generations
 
-The system reads four format generations. Sessions written before 2026 do not need to be rewritten — the system auto-detects and parses all formats.
+The system reads four format generations. Sessions written before 2026 do not need to be rewritten - the system auto-detects and parses all formats.
 
 | Period | Format | Example |
 |---|---|---|
@@ -158,7 +159,7 @@ When writing new sessions, always use the current format (with `@` prefix).
 
 The same session may appear in multiple Markdown files (e.g., a location log file and a thread file). This is handled automatically:
 
-- Sessions with identical headers are merged — PU is counted only once
+- Sessions with identical headers are merged - PU is counted only once
 - The instance with the richest metadata is used as the primary source
 - Location lists, log links, and other array fields are combined
 
@@ -184,6 +185,6 @@ A properly recorded session:
 
 ## Related Documents
 
-- [PU.md](PU.md) — Monthly PU assignment process
-- [Glossary](Glossary.md) — Term definitions
-- [Players.md](Players.md) — Player and character management
+- [PU.md](PU.md) - Monthly PU assignment process
+- [Glossary](Glossary.md) - Term definitions
+- [Players.md](Players.md) - Player and character management

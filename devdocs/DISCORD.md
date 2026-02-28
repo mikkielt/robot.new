@@ -1,4 +1,4 @@
-# Discord Messaging — Technical Reference
+# Discord Messaging - Technical Reference
 
 **Status**: Reference documentation.
 
@@ -61,7 +61,7 @@ $Response = $HttpClient.PostAsync($Webhook, $Content).GetAwaiter().GetResult()
 - URL format validation before attempting POST
 - HTTP status code checking with response body on error
 - Resource cleanup in `finally` block (`HttpClient`, `StringContent`, `Response` all disposed)
-- No retry logic at this level — delegated to future queue system
+- No retry logic at this level - delegated to future queue system
 
 ---
 
@@ -111,11 +111,11 @@ $FinalMessage = $Messages -join "`n`n"
 
 Hardcoded as `"Bothen"` in the PU assignment pipeline.
 
-Note: `Get-AdminConfig` resolves a `BotUsername` from config, but it is **not used** by PU assignment — only the hardcoded value applies.
+Note: `Get-AdminConfig` resolves a `BotUsername` from config, but it is **not used** by PU assignment - only the hardcoded value applies.
 
 ### 3.5 Webhook Resolution
 
-Taken from `$Items[0].Character.Player.PRFWebhook` (first result's Character → Player → PRFWebhook path).
+Taken from `$Items[0].Character.Player.PRFWebhook` (first result's Character -> Player -> PRFWebhook path).
 
 **Missing webhook**: If a player has no `PRFWebhook`, the notification is skipped with a `[WARN]` to stderr. This does **not** prevent other players' notifications from being sent.
 
@@ -134,7 +134,7 @@ Priority chain for resolving a Discord webhook URL for any entity:
 | Priority | Source |
 |---|---|
 | 1 | Entity's own `@prfwebhook` override (any entity type can have one) |
-| 2 | For `Postać (Gracz)`: owning Player's `PRFWebhook` |
+| 2 | For `Postać`: owning Player's `PRFWebhook` |
 | 3 | `$null` (no webhook available) |
 
 ### 4.2 Dispatch Flow
@@ -144,7 +144,7 @@ Intel messages are constructed during `Get-Session` processing when `@Intel` blo
 - `Message`: Intel content
 - `Recipients[]`: Resolved entities with webhook URLs
 
-The actual sending is left to the consumer — `Get-Session` only resolves targets and webhooks.
+The actual sending is left to the consumer - `Get-Session` only resolves targets and webhooks.
 
 ---
 
@@ -173,6 +173,6 @@ The actual sending is left to the consumer — `Get-Session` only resolves targe
 
 ## 7. Related Documents
 
-- [PU.md](PU.md) — §6.2 SendToDiscord side effect
-- [SESSIONS.md](SESSIONS.md) — Intel resolution and webhook lookup
-- [CONFIG-STATE.md](CONFIG-STATE.md) — Webhook configuration resolution
+- [PU.md](PU.md) - §6.2 SendToDiscord side effect
+- [SESSIONS.md](SESSIONS.md) - Intel resolution and webhook lookup
+- [CONFIG-STATE.md](CONFIG-STATE.md) - Webhook configuration resolution

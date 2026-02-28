@@ -1,6 +1,6 @@
 ## Gracz
 
-## Postać (Gracz)
+## Postać
 
 ## Przedmiot
 

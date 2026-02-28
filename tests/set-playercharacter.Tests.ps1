@@ -12,19 +12,19 @@ BeforeAll {
     . "$PSScriptRoot/TestHelpers.ps1"
     Import-RobotModule
     Mock Get-RepoRoot { return $script:FixturesRoot }
-    . (Join-Path $script:ModuleRoot 'get-entity.ps1')
-    . (Join-Path $script:ModuleRoot 'get-player.ps1')
-    . (Join-Path $script:ModuleRoot 'resolve-name.ps1')
-    . (Join-Path $script:ModuleRoot 'get-nameindex.ps1')
-    . (Join-Path $script:ModuleRoot 'resolve-narrator.ps1')
-    . (Join-Path $script:ModuleRoot 'get-session.ps1')
-    . (Join-Path $script:ModuleRoot 'get-entitystate.ps1')
-    . (Join-Path $script:ModuleRoot 'get-playercharacter.ps1')
-    . (Join-Path $script:ModuleRoot 'set-playercharacter.ps1')
-    . (Join-Path $script:ModuleRoot 'admin-config.ps1')
+    . (Join-Path $script:ModuleRoot 'public' 'get-entity.ps1')
+    . (Join-Path $script:ModuleRoot 'public' 'get-player.ps1')
+    . (Join-Path $script:ModuleRoot 'public' 'resolve-name.ps1')
+    . (Join-Path $script:ModuleRoot 'public' 'get-nameindex.ps1')
+    . (Join-Path $script:ModuleRoot 'public' 'resolve-narrator.ps1')
+    . (Join-Path $script:ModuleRoot 'public' 'get-session.ps1')
+    . (Join-Path $script:ModuleRoot 'public' 'get-entitystate.ps1')
+    . (Join-Path $script:ModuleRoot 'public' 'get-playercharacter.ps1')
+    . (Join-Path $script:ModuleRoot 'public' 'set-playercharacter.ps1')
+    . (Join-Path $script:ModuleRoot 'private' 'admin-config.ps1')
 }
 
-Describe 'Set-PlayerCharacter — entity tags' {
+Describe 'Set-PlayerCharacter - entity tags' {
     BeforeAll {
         $script:TempDir = New-TestTempDir
     }
@@ -70,7 +70,7 @@ Describe 'Set-PlayerCharacter — entity tags' {
     }
 }
 
-Describe 'Set-PlayerCharacter — character file updates' {
+Describe 'Set-PlayerCharacter - character file updates' {
     BeforeAll {
         $script:TempDir = New-TestTempDir
     }
@@ -110,7 +110,7 @@ Describe 'Set-PlayerCharacter — character file updates' {
         $CharPath = Copy-FixtureToTemp -FixtureName 'templates/player-character-file.md.template' -DestName 'Postaci/Gracze/XeronPrzedmiot.md'
         Mock Get-RepoRoot { return $script:TempRoot }
 
-        # Should not throw — exercises the Przedmiot auto-creation code path
+        # Should not throw - exercises the Przedmiot auto-creation code path
         { Set-PlayerCharacter -PlayerName 'Solmyr' -CharacterName 'Xeron Demonlord' `
             -SpecialItems @('Nowy Przedmiot Testowy') -EntitiesFile $Path -CharacterFile $CharPath } |
             Should -Not -Throw

@@ -12,10 +12,10 @@ BeforeAll {
     . "$PSScriptRoot/TestHelpers.ps1"
     Import-RobotModule
     Mock Get-RepoRoot { return $script:FixturesRoot }
-    . (Join-Path $script:ModuleRoot 'get-entity.ps1')
-    . (Join-Path $script:ModuleRoot 'get-player.ps1')
-    . (Join-Path $script:ModuleRoot 'get-newplayercharacterpucount.ps1')
-    . (Join-Path $script:ModuleRoot 'new-playercharacter.ps1')
+    . (Join-Path $script:ModuleRoot 'public' 'get-entity.ps1')
+    . (Join-Path $script:ModuleRoot 'public' 'get-player.ps1')
+    . (Join-Path $script:ModuleRoot 'public' 'get-newplayercharacterpucount.ps1')
+    . (Join-Path $script:ModuleRoot 'public' 'new-playercharacter.ps1')
 }
 
 Describe 'New-PlayerCharacter' {

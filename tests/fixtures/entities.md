@@ -55,7 +55,7 @@
 * Crag Hack
     - @margonemid: 67890
 
-## Postać (Gracz)
+## Postać
 
 * Xeron Demonlord
     - @należy_do: Solmyr

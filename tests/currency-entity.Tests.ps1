@@ -10,7 +10,7 @@
 
 BeforeAll {
     $script:ModuleRoot = Split-Path $PSScriptRoot -Parent
-    . "$script:ModuleRoot/entity-writehelpers.ps1"
+    . "$script:ModuleRoot/private/entity-writehelpers.ps1"
 
     $script:TempRoot = Join-Path ([System.IO.Path]::GetTempPath()) ("robot-currency-" + [System.Guid]::NewGuid().ToString('N'))
     [void][System.IO.Directory]::CreateDirectory($script:TempRoot)
@@ -92,7 +92,6 @@ Describe 'Currency @ilość tag update via Set-EntityTag' {
         $Target.Created | Should -Be $false
 
         $NewEnd = Set-EntityTag -Lines $Target.Lines `
-            -BulletIdx $Target.BulletIdx `
             -ChildrenStart $Target.ChildrenStart `
             -ChildrenEnd $Target.ChildrenEnd `
             -TagName 'ilość' -Value '75'

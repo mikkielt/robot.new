@@ -1,4 +1,4 @@
-# Testing Guide — Technical Reference
+# Testing Guide - Technical Reference
 
 **Status**: Reference documentation.
 
@@ -36,7 +36,7 @@ Invoke-Pester ./tests/get-entity.Tests.ps1 -Output Detailed
 Invoke-Pester -Configuration (Import-PowerShellDataFile ./tests/.pesterconfig.psd1)
 
 # Run with code coverage
-Invoke-Pester ./tests/ -Output Detailed -CodeCoverage ./*.ps1
+Invoke-Pester ./tests/ -Output Detailed -CodeCoverage ./public/*.ps1,./public/**/*.ps1,./private/*.ps1
 ```
 
 ### 3.1 Configuration (`.pesterconfig.psd1`)
@@ -52,7 +52,7 @@ Invoke-Pester ./tests/ -Output Detailed -CodeCoverage ./*.ps1
     }
     CodeCoverage = @{
         Enabled    = $false
-        Path       = @('./*.ps1')
+        Path       = @('./public/*.ps1', './public/**/*.ps1', './private/*.ps1')
         OutputPath = './tests/coverage.xml'
     }
 }
@@ -67,8 +67,8 @@ Invoke-Pester ./tests/ -Output Detailed -CodeCoverage ./*.ps1
 Test files mirror source files with a `.Tests.ps1` suffix:
 
 ```
-get-entity.ps1           →  tests/get-entity.Tests.ps1
-charfile-helpers.ps1     →  tests/charfile-helpers.Tests.ps1
+public/get-entity.ps1                ->  tests/get-entity.Tests.ps1
+private/charfile-helpers.ps1         ->  tests/charfile-helpers.Tests.ps1
 ```
 
 `Robot.Tests.ps1` validates module-level behavior (loading, exports).
@@ -131,7 +131,7 @@ $script:TempRoot     = # GUID-based temp directory (per test run)
 
 ## 6. Loading Patterns
 
-### Pattern A — Exported Functions
+### Pattern A - Exported Functions
 
 For testing exported `Verb-Noun` functions:
 
@@ -143,7 +143,7 @@ BeforeAll {
 }
 ```
 
-### Pattern B — Helpers in Function Files
+### Pattern B - Helpers in Function Files
 
 For testing internal helper functions within a function file:
 
@@ -151,12 +151,12 @@ For testing internal helper functions within a function file:
 BeforeAll {
     . "$PSScriptRoot/TestHelpers.ps1"
     Import-RobotModule
-    . "$script:ModuleRoot/get-entity.ps1"  # Access internal helpers
+    . "$script:ModuleRoot/public/get-entity.ps1"  # Access internal helpers (adjust path for subdirectory functions)
     Mock Get-RepoRoot { return $script:FixturesRoot }
 }
 ```
 
-### Pattern C — Standalone Helper Files
+### Pattern C - Standalone Helper Files
 
 For testing standalone helper scripts (non-Verb-Noun):
 
@@ -164,17 +164,17 @@ For testing standalone helper scripts (non-Verb-Noun):
 BeforeAll {
     . "$PSScriptRoot/TestHelpers.ps1"
     Import-RobotModule
-    Import-RobotHelpers 'entity-writehelpers.ps1'
+    Import-RobotHelpers 'private/entity-writehelpers.ps1'
     Mock Get-RepoRoot { return $script:TempRoot }
 }
 ```
 
-### Pattern D — Parser (Special)
+### Pattern D - Parser (Special)
 
-`parse-markdownfile.ps1` is invoked via `&` operator (not dot-sourced) because it has a top-level `param()`:
+`private/parse-markdownfile.ps1` is invoked via `&` operator (not dot-sourced) because it has a top-level `param()`:
 
 ```powershell
-$Result = & "$script:ModuleRoot/parse-markdownfile.ps1" $FixturePath
+$Result = & "$script:ModuleRoot/private/parse-markdownfile.ps1" $FixturePath
 ```
 
 ---
@@ -192,7 +192,7 @@ BeforeAll {
 Describe 'FunctionName' {
     Context 'scenario group' {
         It 'specific behaviour assertion' {
-            # Arrange → Act → Assert
+            # Arrange -> Act -> Assert
         }
     }
 }
@@ -224,9 +224,9 @@ AfterAll {
 
 ### 8.3 What Is NOT Mocked
 
-- `.NET static methods** (`[System.IO.File]::ReadAllLines`, etc.) — use real fixtures instead
-- `Get-Markdown` — operates on real fixture files
-- `Get-Entity` / `Get-Player` — typically operate on fixture data
+- `.NET static methods** (`[System.IO.File]::ReadAllLines`, etc.) - use real fixtures instead
+- `Get-Markdown` - operates on real fixture files
+- `Get-Entity` / `Get-Player` - typically operate on fixture data
 
 ### 8.4 Write Test Pattern
 
@@ -251,16 +251,16 @@ $Lines | Should -Contain "    - @margonemid: 12345"
 
 ### 9.1 Principles
 
-- **Synthetic, controlled data** — no dependency on actual repository content
-- **Minimal but complete** — enough data to exercise all code paths
-- **Cross-referencing** — fixtures reference each other (e.g., `Gracze.md` players match `entities.md` entries)
+- **Synthetic, controlled data** - no dependency on actual repository content
+- **Minimal but complete** - enough data to exercise all code paths
+- **Cross-referencing** - fixtures reference each other (e.g., `Gracze.md` players match `entities.md` entries)
 
 ### 9.2 Key Fixtures
 
 | Fixture | Contents | Tests |
 |---|---|---|
 | `Gracze.md` | 3 players with full PU data, character variations, MargonemID, webhooks | `get-player`, `get-playercharacter` |
-| `entities.md` | NPCs, orgs, locations (with hierarchy), Gracz/Postać (Gracz) entries | `get-entity`, `get-entitystate` |
+| `entities.md` | NPCs, orgs, locations (with hierarchy), Gracz/Postać entries | `get-entity`, `get-entitystate` |
 | `entities-100-ent.md` | Override entries (primacy 100) | Multi-file merge, override primacy |
 | `entities-200-ent.md` | Override entries (primacy 200) | Multi-file merge |
 | `sessions-gen{1,2,3,4}.md` | Session metadata in each format generation | `get-session`, format detection |
@@ -283,7 +283,7 @@ Multiple fixture files (`entities.md`, `entities-100-ent.md`, `entities-200-ent.
 
 ### 10.3 Polish Declension
 
-`resolve-name.Tests.ps1` includes test cases for suffix stripping and stem alternation with Polish morphological forms (e.g., `"Solmyra"` → `"Solmyr"`, `"Vidominie"` → `"Vidomina"`).
+`resolve-name.Tests.ps1` includes test cases for suffix stripping and stem alternation with Polish morphological forms (e.g., `"Solmyra"` -> `"Solmyr"`, `"Vidominie"` -> `"Vidomina"`).
 
 ### 10.4 Format Generation
 
@@ -296,7 +296,7 @@ Separate fixture files per format generation ensure all four formats are tested 
 1. **Create test file**: `tests/<function-name>.Tests.ps1`
 2. **Choose loading pattern**: A (exported), B (internal helpers), C (standalone helper), or D (parser)
 3. **Create fixtures** (if needed): Add to `tests/fixtures/` with minimal but complete data
-4. **Follow skeleton**: `BeforeAll` → `Describe` → `Context` → `It` → `AfterAll`
+4. **Follow skeleton**: `BeforeAll` -> `Describe` -> `Context` -> `It` -> `AfterAll`
 5. **Mock `Get-RepoRoot`**: Point to fixtures (read) or temp dir (write)
 6. **Use temp dirs for writes**: `New-TestTempDir` + `Copy-FixtureToTemp` + `Remove-TestTempDir`
 7. **Verify with assertions**: Use Pester's `Should` syntax
@@ -305,6 +305,6 @@ Separate fixture files per format generation ensure all four formats are tested 
 
 ## 12. Related Documents
 
-- [SYNTAX.md](SYNTAX.md) — Code style conventions (applies to test code too)
-- [MIGRATION.md](MIGRATION.md) — §15 Testing section lists test coverage per area
-- [PU.md](PU.md) — §15 Testing lists PU-specific test files
+- [SYNTAX.md](SYNTAX.md) - Code style conventions (applies to test code too)
+- [MIGRATION.md](MIGRATION.md) - §15 Testing section lists test coverage per area
+- [PU.md](PU.md) - §15 Testing lists PU-specific test files

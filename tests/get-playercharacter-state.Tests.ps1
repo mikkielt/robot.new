@@ -13,11 +13,11 @@ BeforeAll {
     $script:ModuleRoot = Split-Path $PSScriptRoot -Parent
 
     # Dot-source the helpers directly for unit testing merge functions
-    . "$script:ModuleRoot/get-entity.ps1"
-    . "$script:ModuleRoot/charfile-helpers.ps1"
+    . "$script:ModuleRoot/public/get-entity.ps1"
+    . "$script:ModuleRoot/private/charfile-helpers.ps1"
 
     # Source Get-PlayerCharacter to test the merge helpers
-    . "$script:ModuleRoot/Get-PlayerCharacter.ps1"
+    . "$script:ModuleRoot/public/player/get-playercharacter.ps1"
 
     $script:TempRoot = Join-Path ([System.IO.Path]::GetTempPath()) ("robot-gpc-state-" + [System.Guid]::NewGuid().ToString('N'))
     [void][System.IO.Directory]::CreateDirectory($script:TempRoot)
@@ -61,7 +61,7 @@ Describe 'Merge-ScalarProperty' {
                 'stan' = [System.Collections.Generic.List[string]]::new([string[]]@('Ranny (2025-06:2025-12)'))
             }
         }
-        # Query before override range — should fall back to char file value
+        # Query before override range - should fall back to char file value
         $Before = [datetime]::ParseExact('2025-03-15', 'yyyy-MM-dd', $null)
         $Result = Merge-ScalarProperty -CharFileValue 'Zdrowy.' -Entity $Entity -OverrideKey 'stan' -ActiveOn $Before
         $Result | Should -Be 'Zdrowy.'

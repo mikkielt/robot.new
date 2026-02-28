@@ -7,7 +7,7 @@
 - Lokalizacje:
     - Erathia
 
-Duplikat sesji z sessions-gen3.md — tylko lokalizacja, bez PU.
+Duplikat sesji z sessions-gen3.md - tylko lokalizacja, bez PU.
 
 ### 2024-08-20, Bitwa o Steadwick, Crag Hack
 
@@ -16,4 +16,4 @@ Duplikat sesji z sessions-gen3.md — tylko lokalizacja, bez PU.
 - PU:
     - Dracon: 1,0
 
-Duplikat sesji z sessions-gen3.md — identyczne PU.
+Duplikat sesji z sessions-gen3.md - identyczne PU.

@@ -14,7 +14,7 @@ BeforeAll {
     . "$PSScriptRoot/TestHelpers.ps1"
     Import-RobotModule
     Mock Get-RepoRoot { return $script:FixturesRoot }
-    . (Join-Path $script:ModuleRoot 'get-entity.ps1')
+    . (Join-Path $script:ModuleRoot 'public' 'get-entity.ps1')
 }
 
 Describe 'ConvertFrom-ValidityString' {
@@ -198,10 +198,10 @@ Describe 'Get-Entity' {
         $Kupcy.Type | Should -Be 'Organizacja'
     }
 
-    It 'parses Postać (Gracz) type correctly' {
+    It 'parses Postać type correctly' {
         $Xeron = $script:Entities | Where-Object { $_.Name -eq 'Xeron Demonlord' }
         $Xeron | Should -Not -BeNullOrEmpty
-        $Xeron.Type | Should -Be 'Postać (Gracz)'
+        $Xeron.Type | Should -Be 'Postać'
     }
 
     It 'parses Przedmiot type correctly' {
@@ -246,7 +246,7 @@ Describe 'Get-Entity' {
         $Xeron.Overrides.ContainsKey('pu_startowe') | Should -BeTrue
     }
 
-    It 'merges entities across files — entities-100-ent.md has highest primacy' {
+    It 'merges entities across files - entities-100-ent.md has highest primacy' {
         $Xeron = $script:Entities | Where-Object { $_.Name -eq 'Xeron Demonlord' }
         $Xeron.Overrides['pu_suma'] | Should -Contain '26'
     }
@@ -451,7 +451,7 @@ Describe 'Get-Entity @drzwi and @typ parsing' {
     }
 }
 
-Describe 'Get-Entity — unicode entity names' {
+Describe 'Get-Entity - unicode entity names' {
     BeforeAll {
         $script:Entities = Get-Entity -Path (Join-Path $script:FixturesRoot 'entities-unicode-names.md')
     }
@@ -482,7 +482,7 @@ Describe 'Get-Entity — unicode entity names' {
     }
 }
 
-Describe 'Get-Entity — empty entity sections' {
+Describe 'Get-Entity - empty entity sections' {
     BeforeAll {
         $script:Entities = Get-Entity -Path (Join-Path $script:FixturesRoot 'entities-empty-sections.md')
     }
@@ -504,7 +504,7 @@ Describe 'Get-Entity — empty entity sections' {
     }
 }
 
-Describe 'Get-Entity — many aliases' {
+Describe 'Get-Entity - many aliases' {
     BeforeAll {
         $script:Entities = Get-Entity -Path (Join-Path $script:FixturesRoot 'entities-many-aliases.md')
     }
@@ -533,7 +533,7 @@ Describe 'Get-Entity — many aliases' {
     }
 }
 
-Describe 'Get-Entity — deep nested locations' {
+Describe 'Get-Entity - deep nested locations' {
     BeforeAll {
         $script:Entities = Get-Entity -Path (Join-Path $script:FixturesRoot 'entities-deep-locations.md')
     }
@@ -564,7 +564,7 @@ Describe 'Get-Entity — deep nested locations' {
     }
 }
 
-Describe 'Get-Entity — many groups' {
+Describe 'Get-Entity - many groups' {
     BeforeAll {
         $script:Entities = Get-Entity -Path (Join-Path $script:FixturesRoot 'entities-many-groups.md')
     }
@@ -594,7 +594,7 @@ Describe 'Get-Entity — many groups' {
     }
 }
 
-Describe 'Get-Entity — duplicate names across types' {
+Describe 'Get-Entity - duplicate names across types' {
     BeforeAll {
         $script:Entities = Get-Entity -Path (Join-Path $script:FixturesRoot 'entities-duplicate-names.md')
     }
@@ -612,7 +612,7 @@ Describe 'Get-Entity — duplicate names across types' {
     }
 }
 
-Describe 'Get-Entity — multiline info' {
+Describe 'Get-Entity - multiline info' {
     BeforeAll {
         $script:Entities = Get-Entity -Path (Join-Path $script:FixturesRoot 'entities-multiline-info.md')
     }
@@ -631,7 +631,7 @@ Describe 'Get-Entity — multiline info' {
     }
 }
 
-Describe 'Get-Entity — currency edge cases' {
+Describe 'Get-Entity - currency edge cases' {
     BeforeAll {
         $script:Entities = Get-Entity -Path (Join-Path $script:FixturesRoot 'entities-currency-edge.md')
     }
@@ -663,7 +663,7 @@ Describe 'Get-Entity — currency edge cases' {
     }
 }
 
-Describe 'Get-Entity — BRAK PU values' {
+Describe 'Get-Entity - BRAK PU values' {
     BeforeAll {
         $script:Entities = Get-Entity -Path (Join-Path $script:FixturesRoot 'entities-brak-pu.md')
     }
@@ -678,18 +678,18 @@ Describe 'Get-Entity — BRAK PU values' {
     }
 }
 
-Describe 'Get-Entity — many characters per player' {
+Describe 'Get-Entity - many characters per player' {
     BeforeAll {
         $script:Entities = Get-Entity -Path (Join-Path $script:FixturesRoot 'entities-many-characters.md')
     }
 
     It 'parses five character entities' {
-        $Characters = $script:Entities | Where-Object { $_.Type -eq 'Postać (Gracz)' }
+        $Characters = $script:Entities | Where-Object { $_.Type -eq 'Postać' }
         $Characters.Count | Should -Be 5
     }
 
     It 'all characters belong to same player' {
-        $Characters = $script:Entities | Where-Object { $_.Type -eq 'Postać (Gracz)' }
+        $Characters = $script:Entities | Where-Object { $_.Type -eq 'Postać' }
         foreach ($C in $Characters) {
             $C.Owner | Should -Be 'Solmyr'
         }

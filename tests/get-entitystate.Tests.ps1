@@ -13,13 +13,13 @@ BeforeAll {
     . "$PSScriptRoot/TestHelpers.ps1"
     Import-RobotModule
     Mock Get-RepoRoot { return $script:FixturesRoot }
-    . (Join-Path $script:ModuleRoot 'get-entity.ps1')
-    . (Join-Path $script:ModuleRoot 'get-player.ps1')
-    . (Join-Path $script:ModuleRoot 'resolve-name.ps1')
-    . (Join-Path $script:ModuleRoot 'get-nameindex.ps1')
-    . (Join-Path $script:ModuleRoot 'resolve-narrator.ps1')
-    . (Join-Path $script:ModuleRoot 'get-session.ps1')
-    . (Join-Path $script:ModuleRoot 'get-entitystate.ps1')
+    . (Join-Path $script:ModuleRoot 'public' 'get-entity.ps1')
+    . (Join-Path $script:ModuleRoot 'public' 'get-player.ps1')
+    . (Join-Path $script:ModuleRoot 'public' 'resolve-name.ps1')
+    . (Join-Path $script:ModuleRoot 'public' 'get-nameindex.ps1')
+    . (Join-Path $script:ModuleRoot 'public' 'resolve-narrator.ps1')
+    . (Join-Path $script:ModuleRoot 'public' 'get-session.ps1')
+    . (Join-Path $script:ModuleRoot 'public' 'get-entitystate.ps1')
 }
 
 Describe 'Get-EntityState' {
@@ -83,14 +83,14 @@ Describe 'Get-EntityState' {
     It 'applies @ilość addition delta from Zmiany' {
         $Korony = $script:Enriched | Where-Object { $_.Name -eq 'Korony Xeron Demonlorda' }
         $Korony | Should -Not -BeNullOrEmpty
-        # Base: 50, session adds +25, transfer subtracts -10 → 65
+        # Base: 50, session adds +25, transfer subtracts -10 -> 65
         $Korony.Quantity | Should -Be '65'
     }
 
     It 'applies @ilość subtraction delta from Zmiany' {
         $Straznik = $script:Enriched | Where-Object { $_.Name -eq 'Strażnik Bramy' }
         $Straznik | Should -Not -BeNullOrEmpty
-        # Base: 3, session subtracts -1 → 2
+        # Base: 3, session subtracts -1 -> 2
         $Straznik.Quantity | Should -Be '2'
     }
 
@@ -130,7 +130,7 @@ Describe 'Get-EntityState' {
     }
 }
 
-Describe 'Get-EntityState — @drzwi, @typ, @należy_do, @grupa changes' {
+Describe 'Get-EntityState - @drzwi, @typ, @należy_do, @grupa changes' {
     BeforeAll {
         $Entities = Get-Entity -Path (Join-Path $script:FixturesRoot 'entities-changes.md')
         $Sessions = Get-Session -File (Join-Path $script:FixturesRoot 'sessions-changes.md')
@@ -173,7 +173,7 @@ Describe 'Get-EntityState — @drzwi, @typ, @należy_do, @grupa changes' {
     }
 }
 
-Describe 'Get-EntityState — unresolved entity warning' {
+Describe 'Get-EntityState - unresolved entity warning' {
     BeforeAll {
         $script:Entities = Get-Entity -Path (Join-Path $script:FixturesRoot 'entities-unresolved.md')
         $script:Sessions = Get-Session -File (Join-Path $script:FixturesRoot 'sessions-unresolved.md')
@@ -185,7 +185,7 @@ Describe 'Get-EntityState — unresolved entity warning' {
     }
 }
 
-Describe 'Get-EntityState — @Transfer expansion' {
+Describe 'Get-EntityState - @Transfer expansion' {
     It 'applies transfer amounts to source and destination currency entities' {
         $Entities = Get-Entity -Path $script:FixturesRoot
         $Sessions = Get-Session -File (Join-Path $script:FixturesRoot 'sessions-zmiany.md')
@@ -201,7 +201,7 @@ Describe 'Get-EntityState — @Transfer expansion' {
     }
 }
 
-Describe 'Get-EntityState — deep Zmiany from session' {
+Describe 'Get-EntityState - deep Zmiany from session' {
     BeforeAll {
         $Entities = Get-Entity -Path $script:FixturesRoot
         $Sessions = Get-Session -File (Join-Path $script:FixturesRoot 'sessions-deep-zmiany.md')
@@ -244,7 +244,7 @@ Describe 'Get-EntityState — deep Zmiany from session' {
     }
 }
 
-Describe 'Get-EntityState — multi-Transfer' {
+Describe 'Get-EntityState - multi-Transfer' {
     BeforeAll {
         $Entities = Get-Entity -Path (Join-Path $script:FixturesRoot 'entities-multi-transfer.md')
         $Sessions = Get-Session -File (Join-Path $script:FixturesRoot 'sessions-multi-transfer.md')

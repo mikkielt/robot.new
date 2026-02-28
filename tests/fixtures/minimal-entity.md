@@ -1,6 +1,6 @@
 ## Gracz
 
-## Postać (Gracz)
+## Postać
 
 * Erdamon
     - @należy_do: Kilgor

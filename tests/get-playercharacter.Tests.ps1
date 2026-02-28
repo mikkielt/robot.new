@@ -12,14 +12,14 @@ BeforeAll {
     . "$PSScriptRoot/TestHelpers.ps1"
     Import-RobotModule
     Mock Get-RepoRoot { return $script:FixturesRoot }
-    . (Join-Path $script:ModuleRoot 'get-entity.ps1')
-    . (Join-Path $script:ModuleRoot 'get-player.ps1')
-    . (Join-Path $script:ModuleRoot 'resolve-name.ps1')
-    . (Join-Path $script:ModuleRoot 'get-nameindex.ps1')
-    . (Join-Path $script:ModuleRoot 'resolve-narrator.ps1')
-    . (Join-Path $script:ModuleRoot 'get-session.ps1')
-    . (Join-Path $script:ModuleRoot 'get-entitystate.ps1')
-    . (Join-Path $script:ModuleRoot 'get-playercharacter.ps1')
+    . (Join-Path $script:ModuleRoot 'public' 'get-entity.ps1')
+    . (Join-Path $script:ModuleRoot 'public' 'get-player.ps1')
+    . (Join-Path $script:ModuleRoot 'public' 'resolve-name.ps1')
+    . (Join-Path $script:ModuleRoot 'public' 'get-nameindex.ps1')
+    . (Join-Path $script:ModuleRoot 'public' 'resolve-narrator.ps1')
+    . (Join-Path $script:ModuleRoot 'public' 'get-session.ps1')
+    . (Join-Path $script:ModuleRoot 'public' 'get-entitystate.ps1')
+    . (Join-Path $script:ModuleRoot 'public' 'get-playercharacter.ps1')
 }
 
 Describe 'Get-PlayerCharacter' {
@@ -97,9 +97,9 @@ Describe 'Get-PlayerCharacter' {
     }
 }
 
-Describe 'Get-PlayerCharacter — IncludeState' {
+Describe 'Get-PlayerCharacter - IncludeState' {
     BeforeAll {
-        . (Join-Path $script:ModuleRoot 'charfile-helpers.ps1')
+        . (Join-Path $script:ModuleRoot 'private' 'charfile-helpers.ps1')
         $script:Entities = Get-Entity -Path $script:FixturesRoot
         $script:StateChars = Get-PlayerCharacter -IncludeState -Entities $script:Entities
     }
@@ -136,7 +136,7 @@ Describe 'Get-PlayerCharacter — IncludeState' {
     }
 }
 
-Describe 'Get-PlayerCharacter — CharacterName filter' {
+Describe 'Get-PlayerCharacter - CharacterName filter' {
     It 'filters by single CharacterName' {
         $Result = Get-PlayerCharacter -CharacterName 'Dracon'
         $Result.Count | Should -Be 1

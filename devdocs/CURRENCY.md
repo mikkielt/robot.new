@@ -1,4 +1,4 @@
-# Currency System — Technical Reference
+# Currency System - Technical Reference
 
 **Status**: Reference documentation.
 
@@ -8,37 +8,37 @@
 
 This document covers the currency tracking subsystem: denomination constants, conversion utilities, currency entity identification, reporting (`Get-CurrencyReport`), reconciliation (`Test-CurrencyReconciliation`), the `@Transfer` session directive, and PU workflow integration.
 
-**Not covered**: General entity parsing — see [ENTITIES.md](ENTITIES.md). Entity write operations — see [ENTITY-WRITES.md](ENTITY-WRITES.md).
+**Not covered**: General entity parsing - see [ENTITIES.md](ENTITIES.md). Entity write operations - see [ENTITY-WRITES.md](ENTITY-WRITES.md).
 
 ---
 
 ## 2. Architecture Overview
 
 ```
-currency-helpers.ps1          Denomination constants, conversion, identification
+private/currency-helpers.ps1          Denomination constants, conversion, identification
     ├── $CurrencyDenominations     Canonical denomination definitions
-    ├── ConvertTo-CurrencyBaseUnit   Amount → Kogi conversion
-    ├── ConvertFrom-CurrencyBaseUnit Kogi → denomination breakdown
-    ├── Resolve-CurrencyDenomination Stem/colloquial → canonical denomination
+    ├── ConvertTo-CurrencyBaseUnit   Amount -> Kogi conversion
+    ├── ConvertFrom-CurrencyBaseUnit Kogi -> denomination breakdown
+    ├── Resolve-CurrencyDenomination Stem/colloquial -> canonical denomination
     ├── Test-IsCurrencyEntity        Check if entity is currency
     └── Find-CurrencyEntity          Find currency entity by denomination + owner
 
-get-currencyreport.ps1        Reporting command
+public/reporting/get-currencyreport.ps1        Reporting command
     └── Get-CurrencyReport           Filtered currency holdings report
 
-test-currencyreconciliation.ps1  Validation checks
+public/reporting/test-currencyreconciliation.ps1  Validation checks
     └── Test-CurrencyReconciliation  5-check reconciliation report
 
-get-session.ps1               @Transfer parsing (session-level directive)
-get-entitystate.ps1           @Transfer expansion (symmetric quantity deltas)
-invoke-playercharacterpuassignment.ps1  -ReconcileCurrency integration
+public/session/get-session.ps1               @Transfer parsing (session-level directive)
+public/get-entitystate.ps1           @Transfer expansion (symmetric quantity deltas)
+public/workflow/invoke-playercharacterpuassignment.ps1  -ReconcileCurrency integration
 ```
 
 ---
 
 ## 3. Denomination Constants
 
-Defined in `currency-helpers.ps1` as `$script:CurrencyDenominations`:
+Defined in `private/currency-helpers.ps1` as `$script:CurrencyDenominations`:
 
 | Name | Short | Tier | Multiplier (Kogi) | Stems |
 |---|---|---|---|---|
@@ -70,7 +70,7 @@ Currency entities are `Przedmiot` entities with `@generyczne_nazwy` set to a can
 
 ### 4.2 Naming Convention
 
-- **Entity name**: `{Denomination} {OwnerGenitive}` — e.g., "Korony Xeron Demonlorda", "Kogi Gildi Kupców"
+- **Entity name**: `{Denomination} {OwnerGenitive}` - e.g., "Korony Xeron Demonlorda", "Kogi Gildi Kupców"
 - **`@generyczne_nazwy`**: Always the canonical denomination name (enables lookup by currency type)
 - **`@należy_do`**: Owner entity name (for carried currency)
 - **`@lokacja`**: Location name (for dropped/hidden currency, mutually exclusive with `@należy_do`)
@@ -113,7 +113,7 @@ Resolves any denomination reference to its canonical definition. Uses three-tier
 
 1. Exact match on canonical name (case-insensitive)
 2. Exact match on short name
-3. Stem prefix match (`kor` → Korony, `tal` → Talary, `kog` → Kogi)
+3. Stem prefix match (`kor` -> Korony, `tal` -> Talary, `kog` -> Kogi)
 
 Returns the denomination object or `$null`.
 
@@ -134,7 +134,7 @@ A session-level directive (same level as `@Zmiany`, `@PU`, `@Logi`):
 
 Format: `- @Transfer: {amount} {denomination}, {source} -> {destination}`
 
-### 6.2 Parsing (get-session.ps1)
+### 6.2 Parsing (public/session/get-session.ps1)
 
 Parsed in `Get-SessionListMetadata` alongside other metadata blocks. The parser:
 
@@ -144,8 +144,7 @@ Parsed in `Get-SessionListMetadata` alongside other metadata blocks. The parser:
 
 Multiple `@Transfer` directives per session are supported.
 
-### 6.3 Expansion (get-entitystate.ps1)
-
+### 6.3 Expansion (public/get-entitystate.ps1)
 After processing regular Zmiany changes, `Get-EntityState` expands each Transfer:
 
 1. Resolves denomination via `Resolve-CurrencyDenomination`
@@ -283,7 +282,7 @@ Step 7+: Side effects (UpdatePlayerCharacters, SendToDiscord, AppendToLog)
 
 ## 11. Related Documents
 
-- [ENTITIES.md](ENTITIES.md) — Entity system (tags, temporal scoping, multi-file merge)
-- [ENTITY-WRITES.md](ENTITY-WRITES.md) — Write operations on entity files
-- [SESSIONS.md](SESSIONS.md) — Session parsing (Zmiany, @Transfer)
-- [PU.md](PU.md) — PU assignment workflow
+- [ENTITIES.md](ENTITIES.md) - Entity system (tags, temporal scoping, multi-file merge)
+- [ENTITY-WRITES.md](ENTITY-WRITES.md) - Write operations on entity files
+- [SESSIONS.md](SESSIONS.md) - Session parsing (Zmiany, @Transfer)
+- [PU.md](PU.md) - PU assignment workflow

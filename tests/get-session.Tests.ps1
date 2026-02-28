@@ -13,12 +13,12 @@ BeforeAll {
     . "$PSScriptRoot/TestHelpers.ps1"
     Import-RobotModule
     Mock Get-RepoRoot { return $script:FixturesRoot }
-    . (Join-Path $script:ModuleRoot 'get-entity.ps1')
-    . (Join-Path $script:ModuleRoot 'get-player.ps1')
-    . (Join-Path $script:ModuleRoot 'resolve-name.ps1')
-    . (Join-Path $script:ModuleRoot 'get-nameindex.ps1')
-    . (Join-Path $script:ModuleRoot 'resolve-narrator.ps1')
-    . (Join-Path $script:ModuleRoot 'get-session.ps1')
+    . (Join-Path $script:ModuleRoot 'public' 'get-entity.ps1')
+    . (Join-Path $script:ModuleRoot 'public' 'get-player.ps1')
+    . (Join-Path $script:ModuleRoot 'public' 'resolve-name.ps1')
+    . (Join-Path $script:ModuleRoot 'public' 'get-nameindex.ps1')
+    . (Join-Path $script:ModuleRoot 'public' 'resolve-narrator.ps1')
+    . (Join-Path $script:ModuleRoot 'public' 'get-session.ps1')
 }
 
 Describe 'ConvertFrom-SessionHeader' {
@@ -88,7 +88,7 @@ Describe 'Get-SessionFormat' {
     }
 }
 
-Describe 'Get-Session — Gen1' {
+Describe 'Get-Session - Gen1' {
     BeforeAll {
         $script:Sessions = Get-Session -File (Join-Path $script:FixturesRoot 'sessions-gen1.md')
     }
@@ -114,7 +114,7 @@ Describe 'Get-Session — Gen1' {
     }
 }
 
-Describe 'Get-Session — Gen2' {
+Describe 'Get-Session - Gen2' {
     BeforeAll {
         $script:Sessions = Get-Session -File (Join-Path $script:FixturesRoot 'sessions-gen2.md')
     }
@@ -137,7 +137,7 @@ Describe 'Get-Session — Gen2' {
     }
 }
 
-Describe 'Get-Session — Gen3' {
+Describe 'Get-Session - Gen3' {
     BeforeAll {
         $script:Sessions = Get-Session -File (Join-Path $script:FixturesRoot 'sessions-gen3.md')
     }
@@ -179,7 +179,7 @@ Describe 'Get-Session — Gen3' {
     }
 }
 
-Describe 'Get-Session — Gen4' {
+Describe 'Get-Session - Gen4' {
     BeforeAll {
         $script:Sessions = Get-Session -File (Join-Path $script:FixturesRoot 'sessions-gen4.md')
     }
@@ -215,7 +215,7 @@ Describe 'Get-Session — Gen4' {
     }
 }
 
-Describe 'Get-Session — date filtering' {
+Describe 'Get-Session - date filtering' {
     It 'MinDate filters out sessions before the date' {
         $Sessions = Get-Session -File (Join-Path $script:FixturesRoot 'sessions-gen3.md') -MinDate ([datetime]::new(2024, 7, 1))
         $Sessions.Count | Should -BeLessThan 3
@@ -232,7 +232,7 @@ Describe 'Get-Session — date filtering' {
     }
 }
 
-Describe 'Get-Session — deduplication' {
+Describe 'Get-Session - deduplication' {
     It 'merges duplicate sessions across files' {
         $Sessions = Get-Session -Directory $script:FixturesRoot
         $Ucieczka = $Sessions | Where-Object { $_.Title -eq 'Ucieczka z Erathii' }
@@ -254,7 +254,7 @@ Describe 'Get-Session — deduplication' {
     }
 }
 
-Describe 'Get-Session — failed sessions' {
+Describe 'Get-Session - failed sessions' {
     It 'excludes failed sessions by default' {
         $Sessions = Get-Session -File (Join-Path $script:FixturesRoot 'sessions-failed.md')
         $Sessions.Count | Should -Be 0
@@ -267,7 +267,7 @@ Describe 'Get-Session — failed sessions' {
     }
 }
 
-Describe 'Get-Session — IncludeContent' {
+Describe 'Get-Session - IncludeContent' {
     It 'includes content text when -IncludeContent is set' {
         $Sessions = Get-Session -File (Join-Path $script:FixturesRoot 'sessions-gen3.md') -IncludeContent
         $Sessions[0].Content | Should -Not -BeNullOrEmpty
@@ -283,7 +283,7 @@ Describe 'Resolve-EntityWebhook' {
     It 'returns entity prfwebhook override when present' {
         $Entity = [PSCustomObject]@{
             Name      = 'Xeron'
-            Type      = 'Postać (Gracz)'
+            Type      = 'Postać'
             Owner     = 'Kilgor'
             Overrides = @{ 'prfwebhook' = @('https://discord.com/api/webhooks/111/abc') }
         }
@@ -294,7 +294,7 @@ Describe 'Resolve-EntityWebhook' {
     It 'uses last value when multiple prfwebhook overrides exist' {
         $Entity = [PSCustomObject]@{
             Name      = 'Xeron'
-            Type      = 'Postać (Gracz)'
+            Type      = 'Postać'
             Owner     = 'Kilgor'
             Overrides = @{ 'prfwebhook' = @('https://discord.com/api/webhooks/111/old', 'https://discord.com/api/webhooks/222/new') }
         }
@@ -305,7 +305,7 @@ Describe 'Resolve-EntityWebhook' {
     It 'falls back to owning player webhook for character entities' {
         $Entity = [PSCustomObject]@{
             Name      = 'Xeron'
-            Type      = 'Postać (Gracz)'
+            Type      = 'Postać'
             Owner     = 'Kilgor'
             Overrides = @{}
         }
@@ -355,7 +355,7 @@ Describe 'Resolve-EntityWebhook' {
     It 'ignores prfwebhook override that is not a valid Discord URL' {
         $Entity = [PSCustomObject]@{
             Name      = 'Xeron'
-            Type      = 'Postać (Gracz)'
+            Type      = 'Postać'
             Owner     = 'Kilgor'
             Overrides = @{ 'prfwebhook' = @('not-a-webhook-url') }
         }
@@ -482,13 +482,13 @@ Describe 'Get-SessionLocations' {
 
 Describe 'Resolve-IntelTargets' {
     BeforeAll {
-        . (Join-Path $script:ModuleRoot 'get-entity.ps1')
+        . (Join-Path $script:ModuleRoot 'public' 'get-entity.ps1')
         $script:Index = [System.Collections.Generic.Dictionary[string, object]]::new([System.StringComparer]::OrdinalIgnoreCase)
         $script:StemIndex = [System.Collections.Generic.Dictionary[string, System.Collections.Generic.List[string]]]::new([System.StringComparer]::OrdinalIgnoreCase)
 
         $script:EntityXeron = [PSCustomObject]@{
             Name            = 'Xeron'
-            Type            = 'Postać (Gracz)'
+            Type            = 'Postać'
             Owner           = 'Kilgor'
             Names           = @('Xeron')
             GroupHistory    = @()
@@ -505,7 +505,7 @@ Describe 'Resolve-IntelTargets' {
             Overrides       = @{}
         }
 
-        $script:Index['Xeron'] = [PSCustomObject]@{ Owner = $script:EntityXeron; OwnerType = 'Postać (Gracz)'; Ambiguous = $false }
+        $script:Index['Xeron'] = [PSCustomObject]@{ Owner = $script:EntityXeron; OwnerType = 'Postać'; Ambiguous = $false }
         $script:Index['Dragon'] = [PSCustomObject]@{ Owner = $script:EntityDragon; OwnerType = 'NPC'; Ambiguous = $false }
     }
 
@@ -549,7 +549,7 @@ Describe 'Resolve-IntelTargets' {
         }
         $Member = [PSCustomObject]@{
             Name            = 'Xeron'
-            Type            = 'Postać (Gracz)'
+            Type            = 'Postać'
             Owner           = 'Kilgor'
             Names           = @('Xeron')
             GroupHistory    = @(
@@ -645,10 +645,10 @@ Describe 'Get-SessionMentions' {
         $script:MentionIndex = [System.Collections.Generic.Dictionary[string, object]]::new([System.StringComparer]::OrdinalIgnoreCase)
         $script:MentionStemIndex = [System.Collections.Generic.Dictionary[string, System.Collections.Generic.List[string]]]::new([System.StringComparer]::OrdinalIgnoreCase)
 
-        $script:MentionEntity = [PSCustomObject]@{ Name = 'Xeron'; Type = 'Postać (Gracz)' }
+        $script:MentionEntity = [PSCustomObject]@{ Name = 'Xeron'; Type = 'Postać' }
         $script:MentionIndex['Xeron'] = [PSCustomObject]@{
             Owner     = $script:MentionEntity
-            OwnerType = 'Postać (Gracz)'
+            OwnerType = 'Postać'
             Ambiguous = $false
         }
     }
@@ -789,7 +789,7 @@ Describe 'Get-SessionMentions' {
     }
 }
 
-Describe 'Get-Session — empty body sessions' {
+Describe 'Get-Session - empty body sessions' {
     BeforeAll {
         $script:Sessions = Get-Session -File (Join-Path $script:FixturesRoot 'sessions-empty-body.md')
     }
@@ -808,7 +808,7 @@ Describe 'Get-Session — empty body sessions' {
     }
 }
 
-Describe 'Get-Session — no metadata sessions' {
+Describe 'Get-Session - no metadata sessions' {
     BeforeAll {
         $script:Sessions = Get-Session -File (Join-Path $script:FixturesRoot 'sessions-no-metadata.md')
     }
@@ -830,7 +830,7 @@ Describe 'Get-Session — no metadata sessions' {
     }
 }
 
-Describe 'Get-Session — Gen4 full metadata' {
+Describe 'Get-Session - Gen4 full metadata' {
     BeforeAll {
         $script:Sessions = Get-Session -File (Join-Path $script:FixturesRoot 'sessions-gen4-full.md')
     }
@@ -869,7 +869,7 @@ Describe 'Get-Session — Gen4 full metadata' {
     }
 }
 
-Describe 'Get-Session — date range sessions' {
+Describe 'Get-Session - date range sessions' {
     BeforeAll {
         $script:Sessions = Get-Session -File (Join-Path $script:FixturesRoot 'sessions-date-range.md')
     }
@@ -892,7 +892,7 @@ Describe 'Get-Session — date range sessions' {
     }
 }
 
-Describe 'Get-Session — co-narrator sessions' {
+Describe 'Get-Session - co-narrator sessions' {
     BeforeAll {
         $script:Sessions = Get-Session -File (Join-Path $script:FixturesRoot 'sessions-co-narrator.md')
     }
@@ -906,7 +906,7 @@ Describe 'Get-Session — co-narrator sessions' {
     }
 }
 
-Describe 'Get-Session — unicode session content' {
+Describe 'Get-Session - unicode session content' {
     BeforeAll {
         $script:Sessions = Get-Session -File (Join-Path $script:FixturesRoot 'sessions-unicode.md')
     }
@@ -924,7 +924,7 @@ Describe 'Get-Session — unicode session content' {
     }
 }
 
-Describe 'Get-Session — many sessions in one file' {
+Describe 'Get-Session - many sessions in one file' {
     BeforeAll {
         $script:Sessions = Get-Session -File (Join-Path $script:FixturesRoot 'sessions-many.md')
     }
@@ -950,7 +950,7 @@ Describe 'Get-Session — many sessions in one file' {
     }
 }
 
-Describe 'Get-Session — Gen2 multi-location italic' {
+Describe 'Get-Session - Gen2 multi-location italic' {
     BeforeAll {
         $script:Sessions = Get-Session -File (Join-Path $script:FixturesRoot 'sessions-gen2-multi-loc.md')
     }
@@ -970,7 +970,7 @@ Describe 'Get-Session — Gen2 multi-location italic' {
     }
 }
 
-Describe 'Get-Session — deep Zmiany' {
+Describe 'Get-Session - deep Zmiany' {
     BeforeAll {
         $script:Sessions = Get-Session -File (Join-Path $script:FixturesRoot 'sessions-deep-zmiany.md')
     }
@@ -991,7 +991,7 @@ Describe 'Get-Session — deep Zmiany' {
     }
 }
 
-Describe 'Get-Session — multi-Transfer' {
+Describe 'Get-Session - multi-Transfer' {
     BeforeAll {
         $script:Sessions = Get-Session -File (Join-Path $script:FixturesRoot 'sessions-multi-transfer.md')
     }

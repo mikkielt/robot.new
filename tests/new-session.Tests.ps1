@@ -12,8 +12,8 @@ BeforeAll {
     . "$PSScriptRoot/TestHelpers.ps1"
     Import-RobotModule
     Mock Get-RepoRoot { return $script:FixturesRoot }
-    . (Join-Path $script:ModuleRoot 'format-sessionblock.ps1')
-    . (Join-Path $script:ModuleRoot 'new-session.ps1')
+    . (Join-Path $script:ModuleRoot 'private' 'format-sessionblock.ps1')
+    . (Join-Path $script:ModuleRoot 'public' 'new-session.ps1')
 }
 
 Describe 'New-Session' {

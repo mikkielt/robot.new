@@ -4,6 +4,8 @@
 
 ### 2026-01-10, Powrót Riona, Solmyr
 
+Rion wrócił po długiej nieobecności.
+
 - @Lokacje:
     - Erathia
     - Ratusz Erathii
@@ -20,9 +22,9 @@
     - Lokacja/Erathia: Nowy porządek w mieście
     - Rion: Osobista wiadomość
 
-Rion wrócił po długiej nieobecności.
-
 ### 2026-02-14, Noc w Nighonie, Crag Hack
+
+Dracon odkrył tajemnicę Nighonu.
 
 - @Lokacje:
     - Nighon
@@ -32,5 +34,3 @@ Rion wrócił po długiej nieobecności.
     - https://example.com/log-gen4-2
 - @Intel:
     - Adrienne Darkfire, Thant: Ostrzeżenie przed niebezpieczeństwem
-
-Dracon odkrył tajemnicę Nighonu.

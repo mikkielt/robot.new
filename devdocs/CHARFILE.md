@@ -1,4 +1,4 @@
-# Character File Format — Technical Reference
+# Character File Format - Technical Reference
 
 **Status**: Reference documentation.
 
@@ -6,9 +6,9 @@
 
 ## 1. Scope
 
-This document covers `charfile-helpers.ps1`: the parser and writer for character files (`Postaci/Gracze/*.md`), and the template system used by `New-PlayerCharacter`.
+This document covers `private/charfile-helpers.ps1`: the parser and writer for character files (`Postaci/Gracze/*.md`), and the template system used by `New-PlayerCharacter`.
 
-**Not covered**: Entity-level character data (PU tags, aliases, status) — see [ENTITY-WRITES.md](ENTITY-WRITES.md). Three-layer state merge — see [ENTITIES.md](ENTITIES.md).
+**Not covered**: Entity-level character data (PU tags, aliases, status) - see [ENTITY-WRITES.md](ENTITY-WRITES.md). Three-layer state merge - see [ENTITIES.md](ENTITIES.md).
 
 ---
 
@@ -54,13 +54,13 @@ Locates a `**Header:**` section in the file lines.
 
 **Detection**: Regex pattern matching `**Header:**` bold-header format and `###` level-3 headers.
 
-**Returns**: `{ StartIdx, EndIdx }` — the content range between this header and the next (or EOF). Trailing blank lines are trimmed.
+**Returns**: `{ StartIdx, EndIdx }` - the content range between this header and the next (or EOF). Trailing blank lines are trimmed.
 
 ### 3.2 `Read-CharacterFile`
 
 Parses an entire character file into a structured object.
 
-**Section name mapping** (Polish → property):
+**Section name mapping** (Polish -> property):
 
 | Section header | Property | Type |
 |---|---|---|
@@ -74,7 +74,7 @@ Parses an entire character file into a structured object.
 
 **Special handling**:
 - `"Brak."` marker treated as empty/null
-- Angle brackets stripped from URLs (`<url>` → `url`)
+- Angle brackets stripped from URLs (`<url>` -> `url`)
 - Diacritic normalization: maps both `Tematy zastrzeżone` and `Tematy zastrzezone`
 
 ### 3.3 `Read-ReputationTier`
@@ -135,7 +135,7 @@ $Result = $Template.Replace("{CharacterSheetUrl}", $Url)
                    .Replace("{AdditionalInfo}", $Info)
 ```
 
-Simple string `.Replace()` — no advanced template engine.
+Simple string `.Replace()` - no advanced template engine.
 
 ### 4.3 Character File Template Placeholders
 
@@ -182,11 +182,11 @@ Character file path is auto-resolved from `Get-PlayerCharacter` or overridden wi
 |---|---|
 | `"Brak."` in any section | Treated as empty (no items, no condition) |
 | Missing section in character file | Returns `$null` for that property |
-| Angle brackets around URL | Stripped: `<url>` → `url` |
+| Angle brackets around URL | Stripped: `<url>` -> `url` |
 | Diacritic variation in headers | Both `zastrzeżone` and `zastrzezone` recognized |
 | Inline vs nested reputation | Auto-detected; rendered back in matching format |
 | Sub-bullets under location | Collected as multi-line detail text |
-| `DescribedSessions` | Read-only — never written back by `Write-CharacterFileSection` |
+| `DescribedSessions` | Read-only - never written back by `Write-CharacterFileSection` |
 
 ---
 
@@ -201,6 +201,6 @@ Character file path is auto-resolved from `Get-PlayerCharacter` or overridden wi
 
 ## 9. Related Documents
 
-- [ENTITY-WRITES.md](ENTITY-WRITES.md) — Entity-level write operations (Target 1)
-- [ENTITIES.md](ENTITIES.md) — Three-layer state merge (character file is Layer 1)
-- [CONFIG-STATE.md](CONFIG-STATE.md) — Template loading via `Get-AdminTemplate`
+- [ENTITY-WRITES.md](ENTITY-WRITES.md) - Entity-level write operations (Target 1)
+- [ENTITIES.md](ENTITIES.md) - Three-layer state merge (character file is Layer 1)
+- [CONFIG-STATE.md](CONFIG-STATE.md) - Template loading via `Get-AdminTemplate`

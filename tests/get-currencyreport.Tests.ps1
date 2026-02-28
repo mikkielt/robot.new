@@ -11,15 +11,15 @@
 BeforeAll {
     . "$PSScriptRoot/TestHelpers.ps1"
     Import-RobotModule
-    . (Join-Path $script:ModuleRoot 'currency-helpers.ps1')
-    . (Join-Path $script:ModuleRoot 'get-currencyreport.ps1')
-    . (Join-Path $script:ModuleRoot 'get-entity.ps1')
-    . (Join-Path $script:ModuleRoot 'get-player.ps1')
-    . (Join-Path $script:ModuleRoot 'resolve-name.ps1')
-    . (Join-Path $script:ModuleRoot 'get-nameindex.ps1')
-    . (Join-Path $script:ModuleRoot 'resolve-narrator.ps1')
-    . (Join-Path $script:ModuleRoot 'get-session.ps1')
-    . (Join-Path $script:ModuleRoot 'get-entitystate.ps1')
+    . (Join-Path $script:ModuleRoot 'private' 'currency-helpers.ps1')
+    . (Join-Path $script:ModuleRoot 'public' 'get-currencyreport.ps1')
+    . (Join-Path $script:ModuleRoot 'public' 'get-entity.ps1')
+    . (Join-Path $script:ModuleRoot 'public' 'get-player.ps1')
+    . (Join-Path $script:ModuleRoot 'public' 'resolve-name.ps1')
+    . (Join-Path $script:ModuleRoot 'public' 'get-nameindex.ps1')
+    . (Join-Path $script:ModuleRoot 'public' 'resolve-narrator.ps1')
+    . (Join-Path $script:ModuleRoot 'public' 'get-session.ps1')
+    . (Join-Path $script:ModuleRoot 'public' 'get-entitystate.ps1')
 }
 
 Describe 'Get-CurrencyReport' {

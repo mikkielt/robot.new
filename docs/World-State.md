@@ -2,7 +2,7 @@
 
 ## Purpose
 
-This guide explains how the repository tracks the state of the game world — NPCs, organizations, locations, and player characters. It covers how world-state changes from sessions are recorded, how the system tracks things that change over time, and how to query the current or historical state of any entity.
+This guide explains how the repository tracks the state of the game world - NPCs, organizations, locations, and player characters. It covers how world-state changes from sessions are recorded, how the system tracks things that change over time, and how to query the current or historical state of any entity.
 
 ## Scope
 
@@ -43,7 +43,7 @@ An entity is any named element of the game world that the system tracks. Each en
 | **Organizacja** | A group, faction, or organization | Bractwo Miecza, Nekromanci |
 | **Lokacja** | A place in the game world | Erathia, Bracada, Zamek Steadwick |
 | **Gracz** | A player (real person) | Roland, Catherine |
-| **Postać (Gracz)** | A player character | Crag Hack, Gem |
+| **Postać** | A player character | Crag Hack, Gem |
 | **Przedmiot** | A notable item | Miecz Piekieł, Tarcza Krasnoludów |
 
 ## Currency
@@ -64,15 +64,15 @@ Currency in the Nerthus world is tracked as physical items that characters can c
 
 ### How Currency Belongs to Someone
 
-Every currency holding is recorded as a separate Przedmiot (item) in the entity store. The item name follows the convention **"{Denomination} {Owner}"** — for example, "Korony Xeron Demonlorda" or "Kogi Gildi Kupców".
+Every currency holding is recorded as a separate Przedmiot (item) in the entity store. The item name follows the convention **"{Denomination} {Owner}"** - for example, "Korony Xeron Demonlorda" or "Kogi Gildi Kupców".
 
 Each currency item specifies:
 
-- **Who owns it** — the character or organization that carries the coins
-- **Or where it is** — if the coins are dropped at a location instead of carried
-- **How many coins** — the current count
+- **Who owns it** - the character or organization that carries the coins
+- **Or where it is** - if the coins are dropped at a location instead of carried
+- **How many coins** - the current count
 
-Currency is either carried by someone or dropped somewhere — never both at the same time.
+Currency is either carried by someone or dropped somewhere - never both at the same time.
 
 ### Recording Currency Changes in Sessions
 
@@ -91,9 +91,9 @@ Use `@Transfer` when coins move from one character to another. Write it as a ses
 
 The format is: `- @Transfer: {amount} {denomination}, {source} -> {destination}`
 
-You can use colloquial denomination names ("koron", "talarów", "kogi") — the system recognizes them automatically. Multiple transfers per session are allowed.
+You can use colloquial denomination names ("koron", "talarów", "kogi") - the system recognizes them automatically. Multiple transfers per session are allowed.
 
-The system finds the right currency items for the source and destination and adjusts the counts automatically. If a character's currency item doesn't exist yet, the system will warn you — create the item first.
+The system finds the right currency items for the source and destination and adjusts the counts automatically. If a character's currency item doesn't exist yet, the system will warn you - create the item first.
 
 #### Option 2: Manual Zmiany (for complex scenarios)
 
@@ -121,15 +121,15 @@ Use `+N` to add coins and `-N` to subtract coins.
 
 Coordinators can review currency across the world to see who holds what, filtered by owner or denomination. History of changes over time is also available.
 
-### Reconciliation — Catching Errors
+### Reconciliation - Catching Errors
 
 A monthly reconciliation check can flag problems automatically:
 
-- **Negative balance** — a character somehow has fewer than zero coins (likely a recording error)
-- **Stale balance** — someone has currency that hasn't changed in over 3 months (may need review)
-- **Orphaned currency** — currency assigned to a character who is no longer active
-- **Asymmetric transactions** — coins left a character but didn't arrive anywhere (or vice versa)
-- **Supply tracking** — total coins per denomination across the entire world, for detecting drift over time
+- **Negative balance** - a character somehow has fewer than zero coins (likely a recording error)
+- **Stale balance** - someone has currency that hasn't changed in over 3 months (may need review)
+- **Orphaned currency** - currency assigned to a character who is no longer active
+- **Asymmetric transactions** - coins left a character but didn't arrive anywhere (or vice versa)
+- **Supply tracking** - total coins per denomination across the entire world, for detecting drift over time
 
 Reconciliation can run as a standalone check or as part of the monthly PU process.
 
@@ -142,7 +142,7 @@ Reconciliation can run as a standalone check or as part of the monthly PU proces
 | **Phantom creation** | Currency created without an in-game source | Only coordinators should create new currency items |
 | **Quantity mismatch** | Splitting or merging stacks without correct totals | Verify the total stays constant; use @Transfer for simple moves |
 | **Orphaned currency** | Coins belonging to a deleted or inactive character | Reconciliation flags this automatically |
-| **Multiple stacks** | Same character has multiple entries for the same denomination | Allowed — total wealth is the sum of all stacks |
+| **Multiple stacks** | Same character has multiple entries for the same denomination | Allowed - total wealth is the sum of all stacks |
 | **Accuracy drift** | Physical items lost or transferred outside session scope | Monthly reconciliation + periodic baseline resets |
 
 ## How Entities Are Organized
@@ -151,10 +151,10 @@ Reconciliation can run as a standalone check or as part of the monthly PU proces
 
 All entity data is stored in structured Markdown files. Each entity has:
 
-- A **name** — the canonical display name
-- A **type** — which category it belongs to
-- **Metadata** — properties like location, group memberships, status, and aliases
-- **History** — a timeline of changes to each property
+- A **name** - the canonical display name
+- A **type** - which category it belongs to
+- **Metadata** - properties like location, group memberships, status, and aliases
+- **History** - a timeline of changes to each property
 
 ### Location Hierarchy
 
@@ -168,13 +168,13 @@ Antagarich (continent)
 └── Bracada (city)
 ```
 
-This hierarchy is used for location-based Intel targeting — a message sent to "Lokacja/Erathia" reaches everyone in Erathia and all its sub-locations.
+This hierarchy is used for location-based Intel targeting - a message sent to "Lokacja/Erathia" reaches everyone in Erathia and all its sub-locations.
 
 ### Aliases
 
 Entities can have alternative names (aliases) that the system recognizes. For example, "Sandro" might also be known as "Mroczny Mag" or "Lich z Deyji".
 
-Aliases can be **time-scoped** — valid only during a specific period. For example, a character might use a different name while undercover.
+Aliases can be **time-scoped** - valid only during a specific period. For example, a character might use a different name while undercover.
 
 ## How World State Changes
 
@@ -210,7 +210,7 @@ These changes are applied with the session's date as the effective date.
 
 ### Automatic dating
 
-When a change is recorded in a session, it automatically receives the session's date as its starting point. This means you don't need to specify dates manually — the system knows when each change took effect.
+When a change is recorded in a session, it automatically receives the session's date as its starting point. This means you don't need to specify dates manually - the system knows when each change took effect.
 
 ## Temporal Scoping
 
@@ -218,16 +218,16 @@ When a change is recorded in a session, it automatically receives the session's 
 
 Many entity properties change over time. The system tracks not just the current value, but the full history:
 
-- **When did this NPC move to Bracada?** → After the session on 2025-06-15
-- **Who was in the Bractwo Miecza in January 2024?** → All entities with an active `@grupa` membership at that date
-- **What was this character's status last year?** → Check the status history
+- **When did this NPC move to Bracada?** -> After the session on 2025-06-15
+- **Who was in the Bractwo Miecza in January 2024?** -> All entities with an active `@grupa` membership at that date
+- **What was this character's status last year?** -> Check the status history
 
 ### How it works
 
 Each property change has a validity period:
-- **Always active** — no dates specified (e.g., an entity's original name)
-- **Open-ended** — starts on a date, no end (e.g., `(2025-06:)` = from June 2025 onward)
-- **Bounded** — starts and ends on specific dates (e.g., `(2024-01:2024-06)` = January to June 2024)
+- **Always active** - no dates specified (e.g., an entity's original name)
+- **Open-ended** - starts on a date, no end (e.g., `(2025-06:)` = from June 2025 onward)
+- **Bounded** - starts and ends on specific dates (e.g., `(2024-01:2024-06)` = January to June 2024)
 
 The most recent active value wins for single-value properties (like location). For multi-value properties (like group memberships), all active values are collected.
 
@@ -257,11 +257,11 @@ When asking "where was X on date Y?", the system checks session visits first, th
 
 The world-state tracking system ensures:
 
-1. **Consistent world state** — all changes are recorded with dates and applied automatically
-2. **Historical accuracy** — you can query what the world looked like at any point in time
-3. **Automatic updates** — session changes are applied without manual entity editing
-4. **Name resolution** — entity names and aliases are recognized in session text
-5. **Intel targeting** — group and location memberships determine who receives targeted messages
+1. **Consistent world state** - all changes are recorded with dates and applied automatically
+2. **Historical accuracy** - you can query what the world looked like at any point in time
+3. **Automatic updates** - session changes are applied without manual entity editing
+4. **Name resolution** - entity names and aliases are recognized in session text
+5. **Intel targeting** - group and location memberships determine who receives targeted messages
 
 ## Exceptions and Recovery Actions
 
@@ -274,7 +274,7 @@ The world-state tracking system ensures:
 
 ## Related Documents
 
-- [Sessions.md](Sessions.md) — How to record session changes
-- [Players.md](Players.md) — Player and character management
-- [Notifications.md](Notifications.md) — How Intel targeting uses entity data
-- [Glossary](Glossary.md) — Term definitions
+- [Sessions.md](Sessions.md) - How to record session changes
+- [Players.md](Players.md) - Player and character management
+- [Notifications.md](Notifications.md) - How Intel targeting uses entity data
+- [Glossary](Glossary.md) - Term definitions

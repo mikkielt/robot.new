@@ -11,7 +11,7 @@
 BeforeAll {
     . "$PSScriptRoot/TestHelpers.ps1"
     Import-RobotModule
-    . (Join-Path $script:ModuleRoot 'get-entity.ps1')
+    . (Join-Path $script:ModuleRoot 'public' 'get-entity.ps1')
 }
 
 Describe '@status tag parsing in Get-Entity' {
@@ -91,7 +91,7 @@ Describe '@status tag parsing in Get-Entity' {
         }
     }
 
-    Context 'Temporal transitions — edge cases' {
+    Context 'Temporal transitions - edge cases' {
         BeforeAll {
             $script:Entities = Get-Entity -Path (Join-Path $script:FixturesRoot 'entities-status-transitions.md')
         }

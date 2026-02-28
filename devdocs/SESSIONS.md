@@ -1,4 +1,4 @@
-# Session Pipeline — Technical Reference
+# Session Pipeline - Technical Reference
 
 **Status**: Reference documentation.
 
@@ -6,9 +6,9 @@
 
 ## 1. Scope
 
-This document covers the session subsystem: `Get-Session` (extraction, format detection, deduplication, Intel resolution), `Set-Session` (modification, format upgrade), `New-Session` (Gen4 generation), and `format-sessionblock.ps1` (shared rendering).
+This document covers the session subsystem: `Get-Session` (extraction, format detection, deduplication, Intel resolution), `Set-Session` (modification, format upgrade), `New-Session` (Gen4 generation), and `private/format-sessionblock.ps1` (shared rendering).
 
-**Not covered**: PU computation from session data — see [PU.md](PU.md). Entity state merging from session Zmiany — see [ENTITIES.md](ENTITIES.md).
+**Not covered**: PU computation from session data - see [PU.md](PU.md). Entity state merging from session Zmiany - see [ENTITIES.md](ENTITIES.md).
 
 ---
 
@@ -29,11 +29,11 @@ Get-Session (read path)
 Set-Session (write path)
     ├── Find-SessionInFile (section boundary detection)
     ├── Split-SessionSection (decompose into meta/preserved/body)
-    ├── format-sessionblock.ps1 (Gen4 rendering)
-    └── Format upgrade converters (Gen2/3 → Gen4)
+    ├── private/format-sessionblock.ps1 (Gen4 rendering)
+    └── Format upgrade converters (Gen2/3 -> Gen4)
 
 New-Session (creation path)
-    └── format-sessionblock.ps1 (Gen4 rendering)
+    └── private/format-sessionblock.ps1 (Gen4 rendering)
 ```
 
 ---
@@ -52,15 +52,15 @@ All four formats remain parseable. `Get-Session` auto-detects and normalizes tra
 ### 3.1 Format Detection (`Get-SessionFormat`)
 
 Detection order (per-section heuristic):
-1. `$FirstNonEmptyLine` starts with `*Lokalizacj` → **Gen2**
+1. `$FirstNonEmptyLine` starts with `*Lokalizacj` -> **Gen2**
 2. Root list items (`$LI.Indent -eq 0`):
-   - Text starts with `@` + letter → **Gen4**
-   - Text starts with `pu` followed by `:` or space → **Gen3**
-3. Fallback → **Gen1**
+   - Text starts with `@` + letter -> **Gen4**
+   - Text starts with `pu` followed by `:` or space -> **Gen3**
+3. Fallback -> **Gen1**
 
 ---
 
-## 4. `Get-Session` — Extraction Pipeline
+## 4. `Get-Session` - Extraction Pipeline
 
 ### 4.1 Parameters
 
@@ -88,7 +88,7 @@ $Docs     = Get-Markdown -File $FilesToProcess  # or -Directory
 
 Parses `### YYYY-MM-DD` headers via `[datetime]::TryParseExact` with format `"yyyy-MM-dd"`.
 
-Supports date ranges: `2022-12-21/22` → `Date = Dec 21`, `DateEnd = Dec 22`. The `/DD` suffix must be same month/year.
+Supports date ranges: `2022-12-21/22` -> `Date = Dec 21`, `DateEnd = Dec 22`. The `/DD` suffix must be same month/year.
 
 ### 4.4 Title Extraction (`Get-SessionTitle`)
 
@@ -113,7 +113,7 @@ $MatchText = if ($LowerText.StartsWith('@')) { $LowerText.Substring(1) } else { 
 This enables unified parsing for both `- PU:` and `- @PU:`.
 
 Extracted fields:
-- **PU**: `Character: Value` pairs (comma → period decimal normalization)
+- **PU**: `Character: Value` pairs (comma -> period decimal normalization)
 - **Logs**: Child URLs under `logi` tag
 - **Changes (Zmiany)**: Entity names at 4-space indent, `@tag: value` at 8-space indent
 - **Intel**: `RawTarget: Message` pairs under `intel` tag
@@ -165,13 +165,13 @@ Merged sessions carry `IsMerged = $true`, `DuplicateCount`, and `FilePaths[]`.
 
 ### 6.2 Resolution Stages
 
-Uses stages 1/2/2b of name resolution (exact → declension → stem alternation). **No fuzzy matching** (stage 3 skipped for Intel).
+Uses stages 1/2/2b of name resolution (exact -> declension -> stem alternation). **No fuzzy matching** (stage 3 skipped for Intel).
 
 ### 6.3 Webhook Resolution (`Resolve-EntityWebhook`)
 
 Priority chain:
 1. Entity's own `@prfwebhook` override
-2. For `Postać (Gracz)` entities: owning Player's `PRFWebhook`
+2. For `Postać` entities: owning Player's `PRFWebhook`
 3. `$null` if neither available
 
 ---
@@ -190,7 +190,7 @@ Cache pattern uses `[DBNull]::Value` sentinel for unresolvable tokens.
 
 ---
 
-## 8. `Set-Session` — Modification Pipeline
+## 8. `Set-Session` - Modification Pipeline
 
 ### 8.1 Parameters
 
@@ -200,7 +200,7 @@ Cache pattern uses `[DBNull]::Value` sentinel for unresolvable tokens.
 | `Date` / `File` | explicit | Alternative to pipeline input |
 | `Locations`, `PU`, `Logs`, `Changes`, `Intel`, `Content` | various | New values (full-replace semantics) |
 | `Properties` | hashtable | Alternative to individual parameters |
-| `UpgradeFormat` | switch | Convert Gen2/Gen3 → Gen4 |
+| `UpgradeFormat` | switch | Convert Gen2/Gen3 -> Gen4 |
 
 ### 8.2 Section Discovery (`Find-SessionInFile`)
 
@@ -220,9 +220,9 @@ State machine classifies content into:
 ### 8.4 Metadata Replacement
 
 **Full-replace semantics** (not merge):
-- `$null` (or omit) → leave unchanged
-- `@()` (empty array) → clear the block
-- Non-empty value → replace entirely
+- `$null` (or omit) -> leave unchanged
+- `@()` (empty array) -> clear the block
+- Non-empty value -> replace entirely
 
 ### 8.5 Format Upgrade Conversions
 
@@ -232,11 +232,11 @@ State machine classifies content into:
 | Gen2 italic locations | `ConvertFrom-ItalicLocation` | `- @Lokacje:` with expanded children |
 | Gen1/2 plain text logs | `ConvertFrom-PlainTextLog` | `- @Logi:` with child URLs |
 
-Inline CSV values on root lines are expanded to nested 4-space indented children during Gen3→Gen4 conversion.
+Inline CSV values on root lines are expanded to nested 4-space indented children during Gen3->Gen4 conversion.
 
 ---
 
-## 9. `New-Session` — Gen4 Generation
+## 9. `New-Session` - Gen4 Generation
 
 ### 9.1 Header Construction
 
@@ -248,13 +248,13 @@ Optional `DateEnd` appended as `/dd` suffix (validated: same month/year, > Date)
 
 Delegates to `ConvertTo-SessionMetadata` which calls `ConvertTo-Gen4MetadataBlock` per field.
 
-**Canonical block order**: `@Lokacje` → `@Logi` → `@PU` → `@Zmiany` → `@Transfer` → `@Intel`
+**Canonical block order**: `@Lokacje` -> `@Logi` -> `@PU` -> `@Zmiany` -> `@Transfer` -> `@Intel`
 
-Returns a string — does **not** write to disk.
+Returns a string - does **not** write to disk.
 
 ---
 
-## 10. Shared Rendering (`format-sessionblock.ps1`)
+## 10. Shared Rendering (`private/format-sessionblock.ps1`)
 
 ### 10.1 Functions
 
@@ -270,11 +270,11 @@ Returns a string — does **not** write to disk.
 | `@Lokacje` | `    - LocationName` (4-space indent) |
 | `@Logi` | `    - URL` (4-space indent) |
 | `@PU` | `    - Character: Value` (decimal with `InvariantCulture`) |
-| `@Zmiany` | `    - EntityName` (4-space) → `        - @tag: value` (8-space) |
+| `@Zmiany` | `    - EntityName` (4-space) -> `        - @tag: value` (8-space) |
 | `@Transfer` | `    - @Transfer: {amount} {denomination}, {source} -> {destination}` |
 | `@Intel` | `    - RawTarget: Message` (4-space) |
 
-Returns `$null` if items are empty/null — caller must check before including in output.
+Returns `$null` if items are empty/null - caller must check before including in output.
 
 ---
 
@@ -331,7 +331,7 @@ Returns `$null` if items are empty/null — caller must check before including i
 | Property | Type | Description |
 |---|---|---|
 | `Name` | string | Entity's canonical display name (nominative form) |
-| `Type` | string | Entity type: `Player`, `NPC`, `Organizacja`, `Lokacja`, `Gracz`, `Postać (Gracz)` |
+| `Type` | string | Entity type: `Player`, `NPC`, `Organizacja`, `Lokacja`, `Gracz`, `Postać` |
 | `Owner` | object | Reference to the resolved owner object (Player or Entity) |
 
 ### Intel Object (`Session.Intel`)
@@ -397,8 +397,8 @@ Fixtures: `sessions-gen1.md`, `sessions-gen2.md`, `sessions-gen3.md`, `sessions-
 
 ## 14. Related Documents
 
-- [PU.md](PU.md) — PU computation from session data
-- [ENTITIES.md](ENTITIES.md) — Entity state merging from session Zmiany
-- [CURRENCY.md](CURRENCY.md) — Currency tracking system (@Transfer processing, reconciliation)
-- [PARSER.md](PARSER.md) — Underlying Markdown parser
-- [MIGRATION.md](MIGRATION.md) — §3 Session Format Transition
+- [PU.md](PU.md) - PU computation from session data
+- [ENTITIES.md](ENTITIES.md) - Entity state merging from session Zmiany
+- [CURRENCY.md](CURRENCY.md) - Currency tracking system (@Transfer processing, reconciliation)
+- [PARSER.md](PARSER.md) - Underlying Markdown parser
+- [MIGRATION.md](MIGRATION.md) - §3 Session Format Transition

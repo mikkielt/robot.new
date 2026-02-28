@@ -27,7 +27,7 @@ Every `.ps1` file opens with a `<# ... #>` block comment containing `.SYNOPSIS` 
 
 ### Function-Level Documentation
 
-Exported functions (Verb-Noun) carry a minimal `<# .SYNOPSIS #>` block inside the function body, immediately after the opening brace. Helpers do not repeat a block comment — their purpose is documented in the file-level `.DESCRIPTION`.
+Exported functions (Verb-Noun) carry a minimal `<# .SYNOPSIS #>` block inside the function body, immediately after the opening brace. Helpers do not repeat a block comment - their purpose is documented in the file-level `.DESCRIPTION`.
 
 ```powershell
 function Get-Example {
@@ -48,7 +48,7 @@ function Get-Example {
 Single-line `#` comments precede logical code blocks to explain intent or group related operations. They describe *why*, not *what*.
 
 ```powershell
-# Build parent→children lookup in one pass (avoids O(n²) repeated .Where() filtering)
+# Build parent->children lookup in one pass (avoids O(n²) repeated .Where() filtering)
 $ChildrenOf = @{}
 ```
 
@@ -382,7 +382,7 @@ Level-2 headers define entity type sections:
 ## Organizacja
 ## Lokacja
 ## Gracz
-## Postać (Gracz)
+## Postać
 ```
 
 ### Entity Declarations
@@ -428,7 +428,7 @@ Partial dates are supported: `YYYY` (full year), `YYYY-MM` (full month), `YYYY-M
 | `@drzwi`      | Time-scoped physical access connection            |
 | `@zawiera`    | Declares child containment (no temporal scope)    |
 | `@typ`        | Time-scoped entity type override                  |
-| `@należy_do`  | Time-scoped ownership (entity → player)           |
+| `@należy_do`  | Time-scoped ownership (entity -> player)           |
 | `@grupa`      | Time-scoped group/faction membership              |
 | Any other     | Generic override stored in Overrides dictionary   |
 
@@ -483,4 +483,4 @@ foreach ($FilePath in $FunctionFiles) {
 Export-ModuleMember -Function $ExportedFunctions
 ```
 
-Non-Verb-Noun scripts (e.g., `parse-markdownfile.ps1`) are helper scripts loaded on demand by consuming functions, not at module import time.
+Non-Verb-Noun scripts (e.g., `private/parse-markdownfile.ps1`) are helper scripts loaded on demand by consuming functions, not at module import time.

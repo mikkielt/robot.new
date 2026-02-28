@@ -3,7 +3,7 @@
 * Solmyr
     - @margonemid: 12345
 
-## Postać (Gracz)
+## Postać
 
 * Postać BRAK
     - @należy_do: Solmyr

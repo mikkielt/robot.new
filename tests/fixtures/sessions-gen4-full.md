@@ -4,6 +4,10 @@
 
 ### 2026-03-01, Pełna sesja Gen4, Solmyr
 
+Xeron, Kyrre i Dracon spotkali się w Ratuszu Erathii aby omówić plany.
+Kupiec Orrin dostarczył rzadkie składniki do mikstury.
+Rion został oficjalnie mianowany Wielkim Arcymagiem.
+
 - @Lokacje:
     - Erathia
     - Ratusz Erathii
@@ -30,7 +34,3 @@
     - Lokacja/Steadwick: Zwiększona aktywność handlowa
     - Xeron Demonlord: Znalazł starożytny artefakt
     - Grupa/Rada Czarodziejów: Rion awansowany na arcymaga
-
-Xeron, Kyrre i Dracon spotkali się w Ratuszu Erathii aby omówić plany.
-Kupiec Orrin dostarczył rzadkie składniki do mikstury.
-Rion został oficjalnie mianowany Wielkim Arcymagiem.

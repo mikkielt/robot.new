@@ -11,15 +11,15 @@
 BeforeAll {
     . "$PSScriptRoot/TestHelpers.ps1"
     Import-RobotModule
-    . (Join-Path $script:ModuleRoot 'currency-helpers.ps1')
-    . (Join-Path $script:ModuleRoot 'test-currencyreconciliation.ps1')
-    . (Join-Path $script:ModuleRoot 'get-entity.ps1')
-    . (Join-Path $script:ModuleRoot 'get-player.ps1')
-    . (Join-Path $script:ModuleRoot 'resolve-name.ps1')
-    . (Join-Path $script:ModuleRoot 'get-nameindex.ps1')
-    . (Join-Path $script:ModuleRoot 'resolve-narrator.ps1')
-    . (Join-Path $script:ModuleRoot 'get-session.ps1')
-    . (Join-Path $script:ModuleRoot 'get-entitystate.ps1')
+    . (Join-Path $script:ModuleRoot 'private' 'currency-helpers.ps1')
+    . (Join-Path $script:ModuleRoot 'public' 'test-currencyreconciliation.ps1')
+    . (Join-Path $script:ModuleRoot 'public' 'get-entity.ps1')
+    . (Join-Path $script:ModuleRoot 'public' 'get-player.ps1')
+    . (Join-Path $script:ModuleRoot 'public' 'resolve-name.ps1')
+    . (Join-Path $script:ModuleRoot 'public' 'get-nameindex.ps1')
+    . (Join-Path $script:ModuleRoot 'public' 'resolve-narrator.ps1')
+    . (Join-Path $script:ModuleRoot 'public' 'get-session.ps1')
+    . (Join-Path $script:ModuleRoot 'public' 'get-entitystate.ps1')
 }
 
 Describe 'Test-CurrencyReconciliation' {
@@ -105,7 +105,6 @@ Describe 'Test-CurrencyReconciliation with @Transfer' {
         # The @Transfer in sessions-zmiany.md transfers 10 koron from Xeron to Kupiec Orrin
         # This should be a symmetric -10/+10 operation, not flagged as asymmetric
         $Result = Test-CurrencyReconciliation -Entities $script:Enriched -Sessions $script:Sessions
-        $AsymWarnings = $Result.Warnings | Where-Object { $_.Check -eq 'AsymmetricTransaction' }
         # The manual +25 to Korony Xeron Demonlorda IS asymmetric (no matching -25)
         # so we may have asymmetric warnings, but not from the Transfer itself
         # The Transfer is handled at entity-state level, not in Zmiany tags, so it won't appear there
@@ -113,7 +112,7 @@ Describe 'Test-CurrencyReconciliation with @Transfer' {
     }
 }
 
-Describe 'Test-CurrencyReconciliation — edge cases' {
+Describe 'Test-CurrencyReconciliation - edge cases' {
     It 'handles zero balance entity without warnings' {
         $TestEntities = @(
             [PSCustomObject]@{

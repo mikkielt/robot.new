@@ -1,15 +1,15 @@
 **Karta Postaci:** https://example.com/unicode-char
 
 **Tematy zastrzeżone:**
-- Śmierć bliskich — źle wpływa na gracza.
+- Śmierć bliskich - źle wpływa na gracza.
 
 **Stan:**
 - Złamana noga po upadku ze Ścieżki Północnej.
 Łączy się z bólem żeber.
 
 **Przedmioty specjalne:**
-- Różdżka Świętego Źródła — łączy się z żywiołami
-- Łuk Wędrowca — celność +3
+- Różdżka Świętego Źródła - łączy się z żywiołami
+- Łuk Wędrowca - celność +3
 
 **Reputacja:**
 - Pozytywna:

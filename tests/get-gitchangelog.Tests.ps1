@@ -14,7 +14,7 @@ BeforeAll {
     # Point Get-RepoRoot to the actual repository (parent of .robot.new)
     $script:ActualRepoRoot = Split-Path $script:ModuleRoot -Parent
     Mock Get-RepoRoot { return $script:ActualRepoRoot }
-    . (Join-Path $script:ModuleRoot 'get-gitchangelog.ps1')
+    . (Join-Path $script:ModuleRoot 'public' 'get-gitchangelog.ps1')
 }
 
 Describe 'ConvertFrom-CommitLine' {

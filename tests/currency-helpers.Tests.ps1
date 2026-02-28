@@ -11,7 +11,7 @@
 
 BeforeAll {
     $script:ModuleRoot = Split-Path $PSScriptRoot -Parent
-    . "$script:ModuleRoot/currency-helpers.ps1"
+    . "$script:ModuleRoot/private/currency-helpers.ps1"
 }
 
 Describe 'ConvertTo-CurrencyBaseUnit' {

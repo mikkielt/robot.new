@@ -59,7 +59,7 @@ Remove-PlayerCharacter -PlayerName "Solmyr" -CharacterName "OldChar"
 $SessionText = New-Session -Date (Get-Date "2025-06-15") -Title "Ucieczka z Erathii" `
     -Narrator "Dracon" -Locations @("Erathia", "Steadwick")
 
-# Monthly PU assignment — compute only (dry run)
+# Monthly PU assignment - compute only (dry run)
 $Results = Invoke-PlayerCharacterPUAssignment -Year 2025 -Month 1
 $Results | Format-Table CharacterName, PlayerName, BasePU, GrantedPU, NewPUSum
 
@@ -88,20 +88,39 @@ foreach ($Name in $NamesToResolve) {
 ## Module Structure
 
 ### Module Core
-`robot.psd1`, `robot.psm1`, `parse-markdownfile.ps1` (RunspacePool worker)
+`robot.psd1`, `robot.psm1`
 
-### Exported Functions (22)
+### Directory Layout
 
-| Category | Functions |
-|---|---|
-| Data extraction | `Get-Markdown`, `Get-Player`, `Get-Entity`, `Get-EntityState`, `Get-PlayerCharacter`, `Get-Session`, `Get-GitChangeLog`, `Get-RepoRoot` |
-| Name resolution | `Get-NameIndex`, `Resolve-Name`, `Resolve-Narrator` |
-| Data modification | `Set-Player`, `Set-PlayerCharacter`, `New-Player`, `New-PlayerCharacter`, `New-Session`, `Set-Session`, `Remove-PlayerCharacter` |
-| Admin & PU | `Invoke-PlayerCharacterPUAssignment`, `Test-PlayerCharacterPUAssignment`, `Get-NewPlayerCharacterPUCount` |
-| Discord | `Send-DiscordMessage` |
+```
+.robot.new/
+├── public/          # Exported Verb-Noun functions (auto-discovered by robot.psm1)
+│   ├── player/      # Player & character CRUD
+│   ├── session/     # Session lifecycle & git history
+│   ├── resolve/     # Name resolution
+│   ├── workflow/    # PU assignment pipeline & Discord
+│   └── reporting/   # Reports & validation
+├── private/         # Shared helpers, dot-sourced on demand (not exported)
+├── tests/           # Pester test suite
+│   └── fixtures/    # Test data files
+├── templates/       # Markdown templates for player/character creation
+├── docs/            # Documentation for narrators, coordinators, players
+└── devdocs/         # Technical documentation for developers
+```
 
-### Shared Helpers (dot-sourced, non-exported)
-`entity-writehelpers.ps1`, `charfile-helpers.ps1`, `admin-config.ps1`, `admin-state.ps1`, `format-sessionblock.ps1`, `string-helpers.ps1`
+### Exported Functions (`public/`, 25)
+
+| Category | Subdirectory | Functions |
+|---|---|---|
+| Core data | `public/` | `Get-Markdown`, `Get-Entity`, `Get-EntityState`, `Get-NameIndex`, `Get-RepoRoot` |
+| Player & character | `public/player/` | `Get-Player`, `Get-PlayerCharacter`, `Get-NewPlayerCharacterPUCount`, `New-Player`, `New-PlayerCharacter`, `Set-Player`, `Set-PlayerCharacter`, `Remove-PlayerCharacter` |
+| Session | `public/session/` | `Get-Session`, `Get-GitChangeLog`, `New-Session`, `Set-Session` |
+| Name resolution | `public/resolve/` | `Resolve-Name`, `Resolve-Narrator` |
+| Workflow | `public/workflow/` | `Invoke-PlayerCharacterPUAssignment`, `Send-DiscordMessage` |
+| Reporting & validation | `public/reporting/` | `Get-CurrencyReport`, `Get-NamedLocationReport`, `Test-CurrencyReconciliation`, `Test-PlayerCharacterPUAssignment` |
+
+### Shared Helpers (`private/`, dot-sourced, non-exported)
+`entity-writehelpers.ps1`, `charfile-helpers.ps1`, `admin-config.ps1`, `admin-state.ps1`, `format-sessionblock.ps1`, `string-helpers.ps1`, `currency-helpers.ps1`, `parse-markdownfile.ps1`
 
 ### Templates
 `templates/player-character-file.md.template`, `templates/player-entry.md.template`
