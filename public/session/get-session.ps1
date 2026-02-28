@@ -1040,7 +1040,13 @@ function Get-Session {
         [switch]$IncludeFailed,
 
         [Parameter(HelpMessage = "Directories to exclude from recursive file scanning")]
-        [string[]]$ExcludeDirectory
+        [string[]]$ExcludeDirectory,
+
+        [Parameter(HelpMessage = "Pre-fetched entity list from Get-Entity")]
+        [object[]]$Entities,
+
+        [Parameter(HelpMessage = "Pre-fetched player list from Get-Player")]
+        [object[]]$Players
     )
 
     $RepoRoot = Get-RepoRoot
@@ -1098,8 +1104,12 @@ function Get-Session {
 
     # Pre-fetch shared dependencies
 
-    $Entities = Get-Entity
-    $Players  = Get-Player -Entities $Entities
+    if (-not $PSBoundParameters.ContainsKey('Entities')) {
+        $Entities = Get-Entity
+    }
+    if (-not $PSBoundParameters.ContainsKey('Players')) {
+        $Players  = Get-Player -Entities $Entities
+    }
     $NameIndexResult = Get-NameIndex -Players $Players -Entities $Entities
     $Index     = $NameIndexResult.Index
     $StemIndex = $NameIndexResult.StemIndex

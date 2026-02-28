@@ -71,8 +71,8 @@ Describe 'Get-LevenshteinDistance' {
 Describe 'Resolve-Name' {
     BeforeAll {
         # Build index from fixtures
-        $script:Entities = Get-Entity
-        $script:Players = Get-Player -Entities $script:Entities
+        $script:Entities = Get-Entity -Path $script:FixturesRoot
+        $script:Players = Get-Player -File (Join-Path $script:FixturesRoot 'Gracze.md') -Entities $script:Entities
         $script:NameIdx = Get-NameIndex -Players $script:Players -Entities $script:Entities
     }
 

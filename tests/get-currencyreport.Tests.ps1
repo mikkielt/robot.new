@@ -25,7 +25,8 @@ BeforeAll {
 Describe 'Get-CurrencyReport' {
     BeforeAll {
         $script:Entities = Get-Entity -Path $script:FixturesRoot
-        $script:Sessions = Get-Session -File (Join-Path $script:FixturesRoot 'sessions-zmiany.md')
+        $script:Players = Get-Player -File (Join-Path $script:FixturesRoot 'Gracze.md') -Entities $script:Entities
+        $script:Sessions = Get-Session -File (Join-Path $script:FixturesRoot 'sessions-zmiany.md') -Entities $script:Entities -Players $script:Players
         $script:Enriched = Get-EntityState -Entities $script:Entities -Sessions $script:Sessions
     }
 
