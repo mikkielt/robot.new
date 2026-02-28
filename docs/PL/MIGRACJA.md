@@ -292,7 +292,7 @@ Diagnostyka daje jasny wynik: **tak/nie** — czy wszystko jest w porządku.
 
 ### Czego oczekujemy od koordynatorów
 
-- Przeprowadzenie migracji technicznej zgodnie z [migr.md](migr.md)
+- Przeprowadzenie migracji technicznej zgodnie z [MIGRACJA-TECH.md](MIGRACJA-TECH.md)
 - Uruchomienie diagnostyki przed każdym przydziałem PU
 - Komunikacja z zespołem o zmianach
 - Szkolenie narratorów z nowego formatu sesji
@@ -391,7 +391,7 @@ O: Nie. Migracja nie usuwa ani nie modyfikuje istniejących danych. Stary plik `
 O: To zależy od Twojej roli:
 - **Gracz** — poczekaj na formularz walut. Poza tym nic się nie zmienia.
 - **Narrator** — zacznij pisać nowe sesje w formacie z `@` (stary format nadal działa, ale nowy jest preferowany).
-- **Koordynator** — postępuj zgodnie z [migr.md](migr.md).
+- **Koordynator** — postępuj zgodnie z [MIGRACJA-TECH.md](MIGRACJA-TECH.md).
 
 **P: Co jeśli coś pójdzie nie tak?**
 
@@ -453,7 +453,7 @@ O: Nowy system korzysta z **tego samego** pliku historii (`pu-sessions.md`). Ża
 
 **P: Czy muszę znać PowerShell?**
 
-O: Podstawowa znajomość wystarczy — komendy są zaprojektowane tak, żeby można je skopiować i uruchomić. Dokument techniczny [migr.md](migr.md) zawiera dokładne komendy do skopiowania na każdym etapie.
+O: Podstawowa znajomość wystarczy — komendy są zaprojektowane tak, żeby można je skopiować i uruchomić. Dokument techniczny [MIGRACJA-TECH.md](MIGRACJA-TECH.md) zawiera dokładne komendy do skopiowania na każdym etapie.
 
 ---
 
@@ -461,7 +461,7 @@ O: Podstawowa znajomość wystarczy — komendy są zaprojektowane tak, żeby mo
 
 | Dokument | Dla kogo | Opis |
 |---|---|---|
-| [migr.md](migr.md) | Koordynator | Techniczny przewodnik migracji krok po kroku |
+| [MIGRACJA-TECH.md](MIGRACJA-TECH.md) | Koordynator | Techniczny przewodnik migracji krok po kroku |
 | [docs/Sessions.md](docs/Sessions.md) | Narratorzy | Przewodnik zapisu sesji w nowym formacie |
 | [docs/PU.md](docs/PU.md) | Koordynator | Proces miesięcznego przydziału PU |
 | [docs/Players.md](docs/Players.md) | Koordynator | Zarządzanie graczami i postaciami |
