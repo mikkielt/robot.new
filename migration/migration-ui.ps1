@@ -246,8 +246,9 @@ function Request-StringInput {
     Write-Host "  $Prompt$Hint`: " -ForegroundColor White -NoNewline
     $Input = Read-Host
 
-    if ([string]::IsNullOrWhiteSpace($Input) -and $Default) {
-        return $Default
+    if ([string]::IsNullOrWhiteSpace($Input)) {
+        if ($Default) { return $Default }
+        return ''
     }
     return $Input.Trim()
 }

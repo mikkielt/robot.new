@@ -655,6 +655,7 @@ function Invoke-MigrationPhase4 {
 
     # Execute format upgrade per file
     $UpgradeCount = 0
+    $FailedFiles = [System.Collections.Generic.List[string]]::new()
     foreach ($File in $ActiveFiles) {
         $RelPath = $File
         if ($File.StartsWith($RepoRoot)) {
@@ -668,10 +669,22 @@ function Invoke-MigrationPhase4 {
         if ($DryRun) {
             Write-Host " — $Count sesji (suchy przebieg)" -ForegroundColor DarkGray
         } else {
-            $FileSessions | Set-Session -UpgradeFormat
-            Write-Host " — $Count sesji zaktualizowanych" -ForegroundColor Green
+            try {
+                $FileSessions | Set-Session -UpgradeFormat
+                Write-Host " — $Count sesji zaktualizowanych" -ForegroundColor Green
+            }
+            catch {
+                Write-Host " — BŁĄD" -ForegroundColor Red
+                Write-StepError "  Plik $RelPath`: $_"
+                $FailedFiles.Add($RelPath)
+            }
         }
         $UpgradeCount += $Count
+    }
+
+    if ($FailedFiles.Count -gt 0) {
+        Write-StepWarning "Nie udało się zaktualizować $($FailedFiles.Count) plików:"
+        foreach ($F in $FailedFiles) { Write-Host "    - $F" -ForegroundColor Yellow }
     }
 
     if ($DryRun) {

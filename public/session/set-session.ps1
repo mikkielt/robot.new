@@ -48,7 +48,7 @@ function Find-SessionInFile {
         $Line = $Lines[$i]
         if (-not $Line.StartsWith('### ')) { continue }
 
-        $HeaderText = $Line.Substring(4)
+        $HeaderText = $Line.Substring(4).TrimStart()
         $IsMatch = $false
 
         if ($TargetHeader) {
