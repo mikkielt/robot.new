@@ -139,12 +139,13 @@ function Add-IndexToken {
             return
         }
 
-        # Same priority, different owner - Gracz/Postac entities defer to Player entries
-        # (they represent the same logical entity but Player has more resolution powers)
-        if ($OwnerType -in @('Gracz', 'Postać') -and $Existing.OwnerType -eq 'Player') {
+        # Same priority, different owner - Gracz entities defer to Player entries
+        # (they represent the same logical person). Postać entities are more specific
+        # than the Player who owns them and take precedence for character names.
+        if ($OwnerType -eq 'Gracz' -and $Existing.OwnerType -eq 'Player') {
             return
         }
-        if ($OwnerType -eq 'Player' -and $Existing.OwnerType -in @('Gracz', 'Postać')) {
+        if ($OwnerType -eq 'Player' -and $Existing.OwnerType -eq 'Gracz') {
             $Index[$Token] = [PSCustomObject]@{
                 Owner     = $Owner
                 OwnerType = $OwnerType
@@ -152,6 +153,19 @@ function Add-IndexToken {
                 Priority  = $Priority
                 Ambiguous = $false
             }
+            return
+        }
+        if ($OwnerType -eq 'Postać' -and $Existing.OwnerType -eq 'Player') {
+            $Index[$Token] = [PSCustomObject]@{
+                Owner     = $Owner
+                OwnerType = $OwnerType
+                Source    = $Source
+                Priority  = $Priority
+                Ambiguous = $false
+            }
+            return
+        }
+        if ($OwnerType -eq 'Player' -and $Existing.OwnerType -eq 'Postać') {
             return
         }
 
