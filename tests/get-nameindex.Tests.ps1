@@ -14,8 +14,8 @@ BeforeAll {
     Import-RobotModule
     Mock Get-RepoRoot { return $script:FixturesRoot }
     . (Join-Path $script:ModuleRoot 'public' 'get-entity.ps1')
-    . (Join-Path $script:ModuleRoot 'public' 'get-player.ps1')
-    . (Join-Path $script:ModuleRoot 'public' 'resolve-name.ps1')
+    . (Join-Path $script:ModuleRoot 'public' 'player' 'get-player.ps1')
+    . (Join-Path $script:ModuleRoot 'public' 'resolve' 'resolve-name.ps1')
     . (Join-Path $script:ModuleRoot 'public' 'get-nameindex.ps1')
 }
 

@@ -107,6 +107,7 @@ function Resolve-Name {
 
     [CmdletBinding()] param(
         [Parameter(Mandatory, HelpMessage = "Name string to resolve")]
+        [AllowEmptyString()]
         [string]$Query,
 
         [Parameter(HelpMessage = "Pre-fetched player roster from Get-Player")]
@@ -136,6 +137,7 @@ function Resolve-Name {
     )
 
     # Build index if not provided - includes both players and entities
+    if ([string]::IsNullOrWhiteSpace($Query)) { return $null }
     if (-not $Index) {
         if (-not $Players) { $Players = Get-Player }
         if (-not $Entities) { $Entities = Get-Entity }

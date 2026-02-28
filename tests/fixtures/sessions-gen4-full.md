@@ -2,7 +2,7 @@
 
 ## Historia
 
-### 2026-03-01, Pełna sesja Gen4, Solmyr
+### 2025-03-01, Pełna sesja Gen4, Solmyr
 
 Xeron, Kyrre i Dracon spotkali się w Ratuszu Erathii aby omówić plany.
 Kupiec Orrin dostarczył rzadkie składniki do mikstury.
@@ -21,13 +21,13 @@ Rion został oficjalnie mianowany Wielkim Arcymagiem.
     - https://example.com/log-full-2
 - @Zmiany:
     - Kupiec Orrin
-        - @lokacja: Erathia (2026-03:)
-        - @status: Aktywny (2026-03:)
+        - @lokacja: Erathia (2025-03:)
+        - @status: Aktywny (2025-03:)
     - Rion
-        - @alias: Wielki Arcymag Rion (2026-03:)
-        - @grupa: Rada Czarodziejów (2026-03:)
+        - @alias: Wielki Arcymag Rion (2025-03:)
+        - @grupa: Rada Czarodziejów (2025-03:)
     - Miecz Armagedonu
-        - @należy_do: Kyrre (2026-03:)
+        - @należy_do: Kyrre (2025-03:)
         - @ilość: +1
 - @Intel:
     - Grupa/Kupcy Erathii: Orrin wrócił do Erathii z towarem

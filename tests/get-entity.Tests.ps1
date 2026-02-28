@@ -478,7 +478,7 @@ Describe 'Get-Entity - unicode entity names' {
     }
 
     It 'parses all entities from unicode file' {
-        $script:Entities.Count | Should -Be 4
+        $script:Entities.Count | Should -Be 5
     }
 }
 
@@ -517,7 +517,7 @@ Describe 'Get-Entity - many aliases' {
 
     It 'includes expired aliases in Names set' {
         $E = $script:Entities | Where-Object { $_.Name -eq 'NPC z Aliasami' }
-        $E.Names | Should -Contain 'Stare Imię'
+        $E.Names | Should -Contain 'Szpieg Tunnelów'
     }
 
     It 'includes current aliases in Names set' {

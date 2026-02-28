@@ -14,11 +14,11 @@ BeforeAll {
     Import-RobotModule
     Mock Get-RepoRoot { return $script:FixturesRoot }
     . (Join-Path $script:ModuleRoot 'public' 'get-entity.ps1')
-    . (Join-Path $script:ModuleRoot 'public' 'get-player.ps1')
-    . (Join-Path $script:ModuleRoot 'public' 'resolve-name.ps1')
+    . (Join-Path $script:ModuleRoot 'public' 'player' 'get-player.ps1')
+    . (Join-Path $script:ModuleRoot 'public' 'resolve' 'resolve-name.ps1')
     . (Join-Path $script:ModuleRoot 'public' 'get-nameindex.ps1')
-    . (Join-Path $script:ModuleRoot 'public' 'resolve-narrator.ps1')
-    . (Join-Path $script:ModuleRoot 'public' 'get-session.ps1')
+    . (Join-Path $script:ModuleRoot 'public' 'resolve' 'resolve-narrator.ps1')
+    . (Join-Path $script:ModuleRoot 'public' 'session' 'get-session.ps1')
 }
 
 Describe 'ConvertFrom-SessionHeader' {
@@ -810,7 +810,7 @@ Describe 'Get-Session - empty body sessions' {
 
 Describe 'Get-Session - no metadata sessions' {
     BeforeAll {
-        $script:Sessions = Get-Session -File (Join-Path $script:FixturesRoot 'sessions-no-metadata.md')
+        $script:Sessions = Get-Session -File (Join-Path $script:FixturesRoot 'sessions-no-metadata.md') -IncludeContent
     }
 
     It 'parses session without any metadata blocks' {
@@ -851,7 +851,7 @@ Describe 'Get-Session - Gen4 full metadata' {
     }
 
     It 'parses multiple log URLs' {
-        $script:Sessions[0].LogUrls.Count | Should -Be 2
+        $script:Sessions[0].Logs.Count | Should -Be 2
     }
 
     It 'parses @Zmiany with multiple entities' {
@@ -908,7 +908,7 @@ Describe 'Get-Session - co-narrator sessions' {
 
 Describe 'Get-Session - unicode session content' {
     BeforeAll {
-        $script:Sessions = Get-Session -File (Join-Path $script:FixturesRoot 'sessions-unicode.md')
+        $script:Sessions = Get-Session -File (Join-Path $script:FixturesRoot 'sessions-unicode.md') -IncludeContent
     }
 
     It 'parses sessions with Polish diacritics in titles' {
@@ -940,9 +940,9 @@ Describe 'Get-Session - many sessions in one file' {
     }
 
     It 'each session has correct narrator' {
-        $script:Sessions[0].Narrator | Should -Be 'Solmyr'
-        $script:Sessions[1].Narrator | Should -Be 'Crag Hack'
-        $script:Sessions[2].Narrator | Should -Be 'Solmyr'
+        $script:Sessions[0].Narrator.RawText | Should -Be 'Solmyr'
+        $script:Sessions[1].Narrator.RawText | Should -Be 'Crag Hack'
+        $script:Sessions[2].Narrator.RawText | Should -Be 'Solmyr'
     }
 
     It 'fifth session has PU for three characters' {
@@ -952,7 +952,7 @@ Describe 'Get-Session - many sessions in one file' {
 
 Describe 'Get-Session - Gen2 multi-location italic' {
     BeforeAll {
-        $script:Sessions = Get-Session -File (Join-Path $script:FixturesRoot 'sessions-gen2-multi-loc.md')
+        $script:Sessions = Get-Session -File (Join-Path $script:FixturesRoot 'sessions-gen2-multi-loc.md') -IncludeContent
     }
 
     It 'parses Gen2 sessions with italic location lines' {
@@ -1020,5 +1020,39 @@ Describe 'Get-Session - multi-Transfer' {
         $T.Amount | Should -Be 5
         $T.Source | Should -Be 'Odbiorca'
         $T.Destination | Should -Be 'Trzeci'
+    }
+}
+
+Describe 'Get-Session - ExcludeDirectory' {
+    It 'excludes files from the specified directory' {
+        $TempDir = New-TestTempDir
+        $SubDir  = Join-Path $TempDir 'sub'
+        [void][System.IO.Directory]::CreateDirectory($SubDir)
+        [System.IO.File]::Copy(
+            (Join-Path $script:FixturesRoot 'sessions-gen3.md'),
+            (Join-Path $SubDir 'sessions-gen3.md')
+        )
+
+        $Sessions = Get-Session -Directory $TempDir -ExcludeDirectory $SubDir
+        $Sessions.Count | Should -Be 0
+
+        Remove-TestTempDir
+    }
+
+    It 'returns sessions when ExcludeDirectory does not match' {
+        $TempDir = New-TestTempDir
+        $SubDir  = Join-Path $TempDir 'sub'
+        $OtherDir = Join-Path $TempDir 'other'
+        [void][System.IO.Directory]::CreateDirectory($SubDir)
+
+        [System.IO.File]::Copy(
+            (Join-Path $script:FixturesRoot 'sessions-gen3.md'),
+            (Join-Path $SubDir 'sessions-gen3.md')
+        )
+
+        $Sessions = Get-Session -Directory $TempDir -ExcludeDirectory $OtherDir
+        $Sessions.Count | Should -BeGreaterThan 0
+
+        Remove-TestTempDir
     }
 }

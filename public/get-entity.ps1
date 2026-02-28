@@ -498,7 +498,13 @@ function Get-Entity {
                         $Parsed = ConvertFrom-ValidityString -InputText $EffectiveValue
                         if (Test-TemporalActivity -Item $Parsed -ActiveOn $ActiveOn) {
                             $PropName  = $Tag.Substring(1)  # strip leading '@'
-                            $PropValue = if ([string]::IsNullOrWhiteSpace($Value) -and $NestedValue) { $NestedValue } else { $Parsed.Text }
+                            $PropValue = if ([string]::IsNullOrWhiteSpace($Value) -and $NestedValue) {
+                                $NestedValue
+                            } elseif (-not [string]::IsNullOrWhiteSpace($Value) -and $NestedValue) {
+                                $Parsed.Text + "`n" + $NestedValue
+                            } else {
+                                $Parsed.Text
+                            }
 
                             if (-not $Overrides.ContainsKey($PropName)) {
                                 $Overrides[$PropName] = [System.Collections.Generic.List[string]]::new()
@@ -522,9 +528,10 @@ function Get-Entity {
             $ActiveQuantity = Get-LastActiveValue  -History $QuantityHistory -PropertyName 'Quantity'  -ActiveOn $ActiveOn
 
             # Merge or create entity
-            if ($EntityMap.ContainsKey($EntityName)) {
+            $EntityKey = "$SectionType/$EntityName"
+            if ($EntityMap.ContainsKey($EntityKey)) {
                 # Entity already seen in a previously-processed file - merge data
-                $Existing = $EntityMap[$EntityName]
+                $Existing = $EntityMap[$EntityKey]
 
                 foreach ($NameEntry in $Names) { [void]$Existing.Names.Add($NameEntry) }
                 $Existing.Aliases.AddRange($Aliases)
@@ -595,7 +602,7 @@ function Get-Entity {
                     GenericNames    = $GenericNames
                     Contains        = $ContainsList
                 }
-                $EntityMap[$EntityName] = $Entity
+                $EntityMap[$EntityKey] = $Entity
                 $Entities.Add($Entity)
             }
         }

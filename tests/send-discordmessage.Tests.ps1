@@ -10,7 +10,7 @@
 BeforeAll {
     . "$PSScriptRoot/TestHelpers.ps1"
     Import-RobotModule
-    . (Join-Path $script:ModuleRoot 'public' 'send-discordmessage.ps1')
+    . (Join-Path $script:ModuleRoot 'public' 'workflow' 'send-discordmessage.ps1')
 }
 
 Describe 'Send-DiscordMessage' {

@@ -10,7 +10,7 @@
 
 BeforeAll {
     $script:ModuleRoot = Split-Path $PSScriptRoot -Parent
-    $script:ParserPath = Join-Path $script:ModuleRoot 'private' 'parse-markdownfile.ps1''
+    $script:ParserPath = Join-Path $script:ModuleRoot 'private' 'parse-markdownfile.ps1'
     $script:TempRoot = Join-Path ([System.IO.Path]::GetTempPath()) ("robot-parse-markdownfile-" + [System.Guid]::NewGuid().ToString('N'))
     [void][System.IO.Directory]::CreateDirectory($script:TempRoot)
 }

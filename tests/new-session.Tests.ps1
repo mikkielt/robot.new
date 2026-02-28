@@ -13,7 +13,7 @@ BeforeAll {
     Import-RobotModule
     Mock Get-RepoRoot { return $script:FixturesRoot }
     . (Join-Path $script:ModuleRoot 'private' 'format-sessionblock.ps1')
-    . (Join-Path $script:ModuleRoot 'public' 'new-session.ps1')
+    . (Join-Path $script:ModuleRoot 'public' 'session' 'new-session.ps1')
 }
 
 Describe 'New-Session' {

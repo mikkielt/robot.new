@@ -13,7 +13,7 @@ BeforeAll {
     Import-RobotModule
     Mock Get-RepoRoot { return $script:FixturesRoot }
     . (Join-Path $script:ModuleRoot 'public' 'get-nameindex.ps1')
-    . (Join-Path $script:ModuleRoot 'public' 'resolve-name.ps1')
+    . (Join-Path $script:ModuleRoot 'public' 'resolve' 'resolve-name.ps1')
 }
 
 Describe 'Get-DeclensionStem' {

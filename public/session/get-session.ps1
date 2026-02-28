@@ -1037,7 +1037,10 @@ function Get-Session {
         [switch]$IncludeMentions,
 
         [Parameter(HelpMessage = "Include sessions that failed header parsing (no valid date)")]
-        [switch]$IncludeFailed
+        [switch]$IncludeFailed,
+
+        [Parameter(HelpMessage = "Directories to exclude from recursive file scanning")]
+        [string[]]$ExcludeDirectory
     )
 
     $RepoRoot = Get-RepoRoot
@@ -1057,7 +1060,40 @@ function Get-Session {
     } else {
         $SearchDir = if ($Directory) { $Directory } else { $RepoRoot }
         $AllFiles = [System.IO.Directory]::GetFiles($SearchDir, "*.md", [System.IO.SearchOption]::AllDirectories)
-        $FilesToProcess.AddRange($AllFiles)
+
+        # Build exclusion prefixes
+        $Sep = [System.IO.Path]::DirectorySeparatorChar
+        $ExcludePrefixes = [System.Collections.Generic.List[string]]::new()
+
+        # Auto-exclude the module's own directory when it is a proper subdirectory of the search path
+        $SearchDirNorm  = $SearchDir.TrimEnd($Sep) + $Sep
+        $ModuleRootNorm = $script:ModuleRoot.TrimEnd($Sep) + $Sep
+        if ($ModuleRootNorm.StartsWith($SearchDirNorm, [System.StringComparison]::OrdinalIgnoreCase) -and
+            -not $SearchDirNorm.StartsWith($ModuleRootNorm, [System.StringComparison]::OrdinalIgnoreCase)) {
+            $ExcludePrefixes.Add($ModuleRootNorm)
+        }
+
+        # Add user-specified exclusions
+        foreach ($Dir in $ExcludeDirectory) {
+            if ([System.IO.Directory]::Exists($Dir)) {
+                $ExcludePrefixes.Add($Dir.TrimEnd($Sep) + $Sep)
+            }
+        }
+
+        if ($ExcludePrefixes.Count -eq 0) {
+            $FilesToProcess.AddRange($AllFiles)
+        } else {
+            foreach ($f in $AllFiles) {
+                $Skip = $false
+                foreach ($Prefix in $ExcludePrefixes) {
+                    if ($f.StartsWith($Prefix, [System.StringComparison]::OrdinalIgnoreCase)) {
+                        $Skip = $true
+                        break
+                    }
+                }
+                if (-not $Skip) { $FilesToProcess.Add($f) }
+            }
+        }
     }
 
     # Pre-fetch shared dependencies

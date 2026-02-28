@@ -62,7 +62,7 @@ function Get-AdminConfig {
         [hashtable]$Overrides = @{}
     )
 
-    $ModuleRoot = $PSScriptRoot
+    $ModuleRoot = [System.IO.Path]::GetDirectoryName($PSScriptRoot)
 
     # Load local config file if it exists
     $LocalConfigPath = [System.IO.Path]::Combine($ModuleRoot, 'local.config.psd1')
@@ -118,7 +118,7 @@ function Get-AdminTemplate {
     )
 
     if (-not $TemplatesDir) {
-        $TemplatesDir = [System.IO.Path]::Combine($PSScriptRoot, 'templates')
+        $TemplatesDir = [System.IO.Path]::Combine([System.IO.Path]::GetDirectoryName($PSScriptRoot), 'templates')
     }
 
     $TemplatePath = [System.IO.Path]::Combine($TemplatesDir, $Name)
