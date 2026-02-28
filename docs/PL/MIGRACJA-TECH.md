@@ -250,6 +250,26 @@ Get-Command -Module robot
 
 Powinno wyświetlić listę ~32 eksportowanych komend. Jeśli komenda `Import-Module` kończy się błędem — rozwiąż problem przed kontynuowaniem.
 
+**Krok 6 — Manifest danych `.robot-data.psd1`:**
+
+Manifest informuje moduł gdzie szukać pliku `entities.md`. Bez niego komendy takie jak `New-Entity` zapisują dane do `.robot.new/entities.md` zamiast do katalogu głównego repozytorium (gdzie bootstrap w Fazie 1 tworzy plik).
+
+Skrypt migracyjny tworzy manifest automatycznie. Jeśli wykonujesz kroki ręcznie:
+
+```powershell
+# Sprawdź czy manifest już istnieje
+Test-Path .robot-data.psd1
+
+# Jeśli nie — utwórz go
+@"
+@{
+    EntitiesFile = 'entities.md'
+}
+"@ | Set-Content -Path .robot-data.psd1 -Encoding UTF8
+```
+
+Manifest jest prostym plikiem PowerShell Data File (`.psd1`) z kluczem `EntitiesFile` wskazującym ścieżkę względną do pliku encji. Moduł szuka go automatycznie w katalogu repozytorium.
+
 ### Checklist Fazy 0
 
 - [ ] Repozytorium w czystym stanie (brak niezacommitowanych zmian)
@@ -258,6 +278,7 @@ Powinno wyświetlić listę ~32 eksportowanych komend. Jeśli komenda `Import-Mo
 - [ ] Submoduł `.robot.new` zarejestrowany (plik `.gitmodules` istnieje) i aktualny
 - [ ] `Import-Module` wykonany pomyślnie
 - [ ] Lista komend `Get-Command -Module robot` zwraca ~32 pozycje
+- [ ] Manifest `.robot-data.psd1` istnieje w katalogu głównym repozytorium
 
 ---
 
@@ -598,6 +619,12 @@ Upgrade zmienia **wyłącznie strukturę metadanych** — treść narracyjna i b
 | `*Lokalizacja: A, B*` (Gen2) | `- @Lokacje:` + `    - A` + `    - B` |
 | `Logi: URL` (Gen1) | `- @Logi:` + `    - URL` |
 
+### Obsługa błędów
+
+Upgrade przetwarza pliki pojedynczo. Jeśli `Set-Session -UpgradeFormat` napotka błąd w konkretnym pliku (np. nagłówek sesji, który nie daje się zlokalizować), plik jest pomijany z komunikatem błędu, a przetwarzanie pozostałych plików kontynuowane. Po zakończeniu wyświetlana jest lista plików, które nie zostały zaktualizowane.
+
+Nagłówki sesji z nietypowym formatowaniem (np. podwójna spacja po `###`) są normalizowane automatycznie — system dopasowuje je poprawnie niezależnie od ilości białych znaków po znaku nagłówka.
+
 ### Kroki
 
 **Krok 1 — Sprawdź dystrybucję formatów:**
@@ -657,7 +684,51 @@ Get-Session | Where-Object { $ActiveFiles -contains $_.FilePath } |
 
 Wszystkie powinny być `Gen4`.
 
-**Krok 5 — Zacommituj:**
+**Krok 5 — Przegląd nazw lokalizacji:**
+
+Po upgrade wszystkie aktywne sesje mają ustrukturyzowane bloki `@Lokacje`. To dobry moment na przegląd nazw lokalizacji — raport analizuje wszystkie użyte nazwy, porównuje je z zarejestrowanymi encjami typu Lokacja, i wykrywa konflikty.
+
+```powershell
+# Wygeneruj raport lokalizacji
+$ActiveSessions = Get-Session | Where-Object { $_.Date -ge [datetime]::new(2024, 1, 1) }
+$Report = Get-NamedLocationReport -Sessions $ActiveSessions -Entities (Get-Entity)
+
+# Podsumowanie
+$Unresolved = $Report | Where-Object { $null -eq $_.EntityMatch }
+$WithConflicts = $Report | Where-Object { $_.Conflicts.Count -gt 0 }
+
+"Lokacji ogółem: $($Report.Count)"
+"Rozwiązanych: $($Report.Count - $Unresolved.Count - $WithConflicts.Count)"
+"Ostrzeżeń (konflikty): $($WithConflicts.Count)"
+"Nierozwiązanych: $($Unresolved.Count)"
+```
+
+Raport dla każdej lokalizacji zawiera:
+
+| Pole | Opis |
+|---|---|
+| `Name` | Najczęściej używana forma nazwy |
+| `Variants` | Inne formy pisowni (np. odmienione nazwy) |
+| `OccurrenceCount` | Ile razy lokalizacja pojawiła się w sesjach |
+| `EntityMatch` | Dopasowana encja typu Lokacja (jeśli istnieje) |
+| `Conflicts` | Wykryte konflikty (różna pisownia, niespójna hierarchia) |
+
+**Nierozwiązane lokalizacje** to nazwy, które nie pasują do żadnej zarejestrowanej encji typu Lokacja. Dla każdej z nich decydujesz:
+
+- **Utwórz encję** — jeśli to prawdziwa lokalizacja, dodaj ją: `New-Entity -Type Lokacja -Name "NazwaLokacji"`
+- **Oznacz jako nie-lokację** — jeśli to nie jest lokalizacja (np. „na zewnątrz", „w drodze"), dodaj do pliku wykluczeń
+
+Plik wykluczeń (`.robot/res/location-exclusions.txt`) zawiera nazwy oznaczone jako nie-lokacje — po jednej na linię:
+
+```
+# Wartości oznaczone jako nie-lokacje podczas migracji
+na zewnątrz
+w drodze
+```
+
+Skrypt migracyjny (`Invoke-Migration -Phase 4`) obsługuje ten proces interaktywnie — wyświetla nierozwiązane lokalizacje i pozwala oznaczyć je jako nie-lokacje bezpośrednio. Commit jest blokowany dopóki istnieją nierozwiązane lokalizacje (te, które nie zostały ani zarejestrowane jako encje, ani oznaczone jako nie-lokacje).
+
+**Krok 6 — Zacommituj:**
 
 ```powershell
 git add Wątki/
@@ -670,6 +741,7 @@ git commit -m "Upgrade aktywnych sesji do formatu Gen4"
 - [ ] Lista aktywnych vs archiwalnych plików ustalona
 - [ ] Aktywne pliki zaktualizowane do Gen4
 - [ ] Weryfikacja po upgrade — zero sesji nie-Gen4 w aktywnych plikach
+- [ ] Raport lokalizacji przejrzany — nierozwiązane lokalizacje obsłużone
 - [ ] Zacommitowane
 
 ---

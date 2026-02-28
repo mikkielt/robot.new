@@ -122,13 +122,42 @@ function Invoke-MigrationPhase0 {
         $AllOK = $false
     }
 
+    # Step 6: Ensure .robot-data.psd1 manifest exists
+    Write-Step -Number 6 -Text 'Sprawdzanie manifestu .robot-data.psd1...'
+    $ManifestPath = [System.IO.Path]::Combine($RepoRoot, '.robot-data.psd1')
+    if ([System.IO.File]::Exists($ManifestPath)) {
+        try {
+            $ManifestData = Import-PowerShellDataFile -Path $ManifestPath
+            if ($ManifestData.ContainsKey('EntitiesFile')) {
+                Write-StepOK "Manifest istnieje (EntitiesFile = '$($ManifestData['EntitiesFile'])')"
+            } else {
+                Write-StepWarning 'Manifest istnieje, ale brakuje klucza EntitiesFile'
+                $AllOK = $false
+            }
+        }
+        catch {
+            Write-StepError "Nie udało się odczytać manifestu: $_"
+            $AllOK = $false
+        }
+    } else {
+        if ($WhatIf) {
+            Write-StepWarning '[SUCHY PRZEBIEG] Utworzyłbym manifest .robot-data.psd1'
+        } else {
+            $ManifestContent = "@{`n    EntitiesFile = 'entities.md'`n}`n"
+            [System.IO.File]::WriteAllText($ManifestPath, $ManifestContent, [System.Text.UTF8Encoding]::new($false))
+            Write-StepOK 'Utworzono manifest .robot-data.psd1 (EntitiesFile → entities.md)'
+        }
+    }
+    Update-PhaseChecklist -State $State -Phase 0 -Item 'ManifestCreated' -Value $true
+
     # Phase summary and state persistence
     if ($AllOK) {
         Set-PhaseCompleted -State $State -Phase 0
         Write-PhaseSummary -Phase 0 -Status 'Completed' -Lines @(
             '[OK] Repozytorium czyste',
             '[OK] Tag pre-migration istnieje',
-            '[OK] Moduł załadowany'
+            '[OK] Moduł załadowany',
+            '[OK] Manifest .robot-data.psd1 gotowy'
         )
     } else {
         Set-PhaseInProgress -State $State -Phase 0
@@ -706,8 +735,150 @@ function Invoke-MigrationPhase4 {
         Write-StepWarning "Wciąż $StillNonGen4 sesji nie w Gen4"
     }
 
-    # Step 6: Prompt to commit upgraded sessions
-    Write-Step -Number 5 -Text 'Commit...'
+    # Step 6: Location report review
+    $LocationReviewDone = $State.Phases.ContainsKey('4') -and $State.Phases['4'].ContainsKey('Checklist') -and $State.Phases['4'].Checklist.ContainsKey('LocationReviewDone') -and $State.Phases['4'].Checklist['LocationReviewDone']
+    if (-not $LocationReviewDone) {
+        Write-Step -Number 5 -Text 'Raport lokalizacji — przegląd nazw...'
+
+        $LocationReport = Get-NamedLocationReport -Sessions $PostActive -Entities (Get-Entity)
+
+        # Load exclusions (non-locations marked by coordinator on previous runs)
+        $ExclusionsPath = [System.IO.Path]::Combine($RepoRoot, '.robot', 'res', 'location-exclusions.txt')
+        $Exclusions = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+        if ([System.IO.File]::Exists($ExclusionsPath)) {
+            foreach ($ExLine in [System.IO.File]::ReadAllLines($ExclusionsPath)) {
+                $ExTrimmed = $ExLine.Trim()
+                if ($ExTrimmed.Length -gt 0 -and -not $ExTrimmed.StartsWith('#')) {
+                    [void]$Exclusions.Add($ExTrimmed)
+                }
+            }
+        }
+
+        # Categorize report entries
+        $Unresolved = [System.Collections.Generic.List[object]]::new()
+        $Warnings   = [System.Collections.Generic.List[object]]::new()
+        $Resolved   = 0
+
+        foreach ($Loc in $LocationReport) {
+            if ($Exclusions.Contains($Loc.Name)) { continue }
+            if ($null -eq $Loc.EntityMatch) {
+                $Unresolved.Add($Loc)
+            } elseif ($Loc.Conflicts.Count -gt 0) {
+                $Warnings.Add($Loc)
+            } else {
+                $Resolved++
+            }
+        }
+
+        Write-Host "    Rozwiązane: $Resolved | Ostrzeżenia: $($Warnings.Count) | Nierozwiązane: $($Unresolved.Count)" -ForegroundColor Cyan
+        if ($Exclusions.Count -gt 0) {
+            Write-Host "    Wykluczone (nie-lokacje): $($Exclusions.Count)" -ForegroundColor DarkGray
+        }
+
+        if ($Warnings.Count -gt 0) {
+            Write-Host ''
+            Write-Host '    Ostrzeżenia (dopasowanie rozmyte lub konflikty):' -ForegroundColor Yellow
+            foreach ($W in ($Warnings | Select-Object -First 10)) {
+                $ConflictTypes = ($W.Conflicts | ForEach-Object { $_.Type }) -join ', '
+                Write-Host "      - $($W.Name) ($($W.OccurrenceCount)x) [$ConflictTypes]" -ForegroundColor Yellow
+            }
+            if ($Warnings.Count -gt 10) {
+                Write-Host "      ... i $($Warnings.Count - 10) więcej" -ForegroundColor DarkGray
+            }
+        }
+
+        if ($Unresolved.Count -gt 0) {
+            Write-Host ''
+            Write-StepWarning "Nierozwiązane lokalizacje ($($Unresolved.Count)):"
+
+            $NewExclusions = [System.Collections.Generic.List[string]]::new()
+
+            foreach ($U in $Unresolved) {
+                Write-Host "      $($U.Name) ($($U.OccurrenceCount)x)" -ForegroundColor White
+                if ($U.Variants.Count -gt 0) {
+                    Write-Host "        Warianty: $($U.Variants -join ', ')" -ForegroundColor DarkGray
+                }
+
+                $Choice = Request-UserChoice `
+                    -Prompt "      [P] Pomiń  [N] Nie-lokacja  [K] Kontynuuj bez przeglądu >" `
+                    -ValidChoices @('P', 'N', 'K')
+
+                if ($Choice -eq 'K') { break }
+                if ($Choice -eq 'N') {
+                    $NewExclusions.Add($U.Name)
+                    Write-Host "        → Oznaczono jako nie-lokację" -ForegroundColor DarkGray
+                }
+            }
+
+            # Save new exclusions
+            if ($NewExclusions.Count -gt 0) {
+                $ResDir = [System.IO.Path]::Combine($RepoRoot, '.robot', 'res')
+                if (-not [System.IO.Directory]::Exists($ResDir)) {
+                    [System.IO.Directory]::CreateDirectory($ResDir) | Out-Null
+                }
+
+                $AppendLines = [System.Collections.Generic.List[string]]::new()
+                if (-not [System.IO.File]::Exists($ExclusionsPath)) {
+                    $AppendLines.Add('# Wartości oznaczone jako nie-lokacje podczas migracji')
+                }
+                foreach ($Ex in $NewExclusions) {
+                    $AppendLines.Add($Ex)
+                    [void]$Exclusions.Add($Ex)
+                }
+                [System.IO.File]::AppendAllLines($ExclusionsPath, $AppendLines, [System.Text.UTF8Encoding]::new($false))
+                Write-Host "    Zapisano $($NewExclusions.Count) wykluczeń do location-exclusions.txt" -ForegroundColor DarkGray
+            }
+
+            # Re-check: are there still truly unresolved locations?
+            $StillUnresolved = 0
+            foreach ($U in $Unresolved) {
+                if (-not $Exclusions.Contains($U.Name)) { $StillUnresolved++ }
+            }
+
+            if ($StillUnresolved -gt 0) {
+                Write-StepWarning "$StillUnresolved lokalizacji wciąż nierozwiązanych — utwórz brakujące encje typu Lokacja lub oznacz jako nie-lokacje"
+                Write-ActionRequired 'Commit zostanie zablokowany do rozwiązania nierozwiązanych lokalizacji.'
+                if (-not $WhatIf) { Save-MigrationState -State $State }
+                return
+            }
+        }
+
+        # Offer full report export
+        if ($LocationReport.Count -gt 0 -and (Request-YesNo -Prompt 'Czy wyeksportować pełny raport lokalizacji?' -Default $false)) {
+            $ReportPath = [System.IO.Path]::Combine($RepoRoot, '.robot', 'res', 'location-report.txt')
+            $ReportLines = [System.Collections.Generic.List[string]]::new()
+            $ReportLines.Add("# Raport lokalizacji — $(Get-Date -Format 'yyyy-MM-dd HH:mm')")
+            $ReportLines.Add("# Sesje od: $($Cutoff.ToString('yyyy-MM-dd'))")
+            $ReportLines.Add('')
+            foreach ($Loc in $LocationReport) {
+                $Status = if ($Exclusions.Contains($Loc.Name)) { '[WYKLUCZONA]' }
+                          elseif ($null -eq $Loc.EntityMatch) { '[NIEROZWIĄZANA]' }
+                          elseif ($Loc.Conflicts.Count -gt 0) { '[OSTRZEŻENIE]' }
+                          else { '[OK]' }
+                $ReportLines.Add("$Status $($Loc.Name) ($($Loc.OccurrenceCount)x)")
+                if ($Loc.Variants.Count -gt 0) {
+                    $ReportLines.Add("  Warianty: $($Loc.Variants -join ', ')")
+                }
+                if ($null -ne $Loc.EntityMatch) {
+                    $ReportLines.Add("  Encja: $($Loc.EntityMatch.EntityName) (etap: $($Loc.EntityMatch.MatchStage))")
+                }
+                foreach ($C in $Loc.Conflicts) {
+                    $ReportLines.Add("  Konflikt [$($C.Type)]: $($C.Details)")
+                }
+            }
+            [System.IO.File]::WriteAllLines($ReportPath, $ReportLines, [System.Text.UTF8Encoding]::new($false))
+            Write-StepOK "Raport zapisany: $ReportPath"
+        }
+
+        Write-StepOK 'Przegląd lokalizacji zakończony'
+        Update-PhaseChecklist -State $State -Phase 4 -Item 'LocationReviewDone' -Value $true
+    } else {
+        Write-Step -Number 5 -Text 'Raport lokalizacji...'
+        Write-StepOK 'Przegląd lokalizacji już wykonany'
+    }
+
+    # Step 7: Prompt to commit upgraded sessions
+    Write-Step -Number 6 -Text 'Commit...'
     if (Request-YesNo -Prompt 'Czy zacommitować upgrade sesji?' -Default $true) {
         & git -C $RepoRoot add . 2>&1
         & git -C $RepoRoot commit -m 'Upgrade aktywnych sesji do formatu Gen4' 2>&1
