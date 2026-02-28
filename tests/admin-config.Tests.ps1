@@ -3,9 +3,9 @@
     Pester tests for admin-config.ps1.
 
     .DESCRIPTION
-    Tests for Resolve-ConfigValue, Get-AdminConfig, and Get-AdminTemplate
-    functions covering value resolution priority, template substitution,
-    and configuration loading.
+    Tests for Resolve-ConfigValue, Find-DataManifest, Get-AdminConfig,
+    and Get-AdminTemplate functions covering value resolution priority,
+    manifest discovery, template substitution, and configuration loading.
 #>
 
 BeforeAll {
@@ -45,6 +45,46 @@ Describe 'Resolve-ConfigValue' {
     It 'treats whitespace-only values as absent' {
         $Result = Resolve-ConfigValue -ExplicitValue '   ' -EnvVarName 'NERTHUS_NONEXISTENT_VAR' -ConfigKey 'missing' -LocalConfig @{}
         $Result | Should -BeNullOrEmpty
+    }
+}
+
+Describe 'Find-DataManifest' {
+    BeforeAll {
+        $script:TempDir = New-TestTempDir
+    }
+    AfterAll {
+        Remove-TestTempDir
+    }
+    BeforeEach {
+        # Clear cache between tests
+        $script:CachedManifest = $null
+        $script:CachedManifestDir = $null
+    }
+
+    It 'returns null when no manifest exists' {
+        $Result = Find-DataManifest -RepoRoot $script:TempDir -ParentRepoRoot $script:TempDir -Force
+        $Result | Should -BeNullOrEmpty
+    }
+
+    It 'finds manifest in repo root' {
+        $ManifestContent = "@{ EntitiesFile = 'data/entities.md' }"
+        Write-TestFile -Path (Join-Path $script:TempDir '.robot-data.psd1') -Content $ManifestContent
+
+        $Result = Find-DataManifest -RepoRoot $script:TempDir -ParentRepoRoot $script:TempDir -Force
+        $Result | Should -Not -BeNullOrEmpty
+        $Result.Manifest.EntitiesFile | Should -Be 'data/entities.md'
+        $Result.ManifestDir | Should -Be $script:TempDir
+    }
+
+    It 'caches result across calls' {
+        $ManifestContent = "@{ PlayersFile = 'Gracze.md' }"
+        Write-TestFile -Path (Join-Path $script:TempDir '.robot-data.psd1') -Content $ManifestContent
+
+        $Result1 = Find-DataManifest -RepoRoot $script:TempDir -ParentRepoRoot $script:TempDir -Force
+        # Remove the file - cached result should still be returned
+        [System.IO.File]::Delete((Join-Path $script:TempDir '.robot-data.psd1'))
+        $Result2 = Find-DataManifest -RepoRoot $script:TempDir -ParentRepoRoot $script:TempDir
+        $Result2.Manifest.PlayersFile | Should -Be 'Gracze.md'
     }
 }
 

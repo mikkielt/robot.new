@@ -8,15 +8,19 @@
     (non-Verb-Noun filename).
 
     Contains:
-    - Get-AdminConfig:    resolves config values from parameter/env/config file
-    - Get-AdminTemplate:  loads and renders template files with variable substitution
-    - Resolve-ConfigValue: priority-chain resolution for a single config key
+    - Resolve-ConfigValue:   priority-chain resolution for a single config key
+    - Find-DataManifest:     scans for .robot-data.psd1 manifest up to parent repo root
+    - Get-AdminConfig:       resolves config values from parameter/env/config file/manifest
+    - Get-AdminTemplate:     loads and renders template files with variable substitution
 
     Config resolution priority:
     1. Explicit parameter value (caller passes directly)
     2. Environment variable (e.g. $env:NERTHUS_REPO_WEBHOOK)
     3. Local config file (.robot.new/local.config.psd1, git-ignored)
     4. Fail with clear error message
+
+    Data manifest (.robot-data.psd1) provides path overrides relative to its location.
+    Searched from RepoRoot upward to parent git root, cached per session.
 
     Templates live in .robot.new/templates/ as standalone .md.template files.
     Rendering uses simple {VariableName} placeholder substitution.
@@ -55,6 +59,65 @@ function Resolve-ConfigValue {
     return $null
 }
 
+# Session-scoped cache for data manifest
+$script:CachedManifest = $null
+$script:CachedManifestDir = $null
+
+# Scans for .robot-data.psd1 from RepoRoot upward to parent git root.
+# Returns @{ Manifest = hashtable; ManifestDir = string } or $null.
+# Result is cached per session.
+function Find-DataManifest {
+    [CmdletBinding()] param(
+        [Parameter(HelpMessage = "Override the repo root for testing")]
+        [string]$RepoRoot,
+
+        [Parameter(HelpMessage = "Override the parent repo root for testing")]
+        [string]$ParentRepoRoot,
+
+        [Parameter(HelpMessage = "Skip cache and rescan")]
+        [switch]$Force
+    )
+
+    if ($script:CachedManifest -and -not $Force) {
+        return @{ Manifest = $script:CachedManifest; ManifestDir = $script:CachedManifestDir }
+    }
+
+    if (-not $RepoRoot) {
+        $RepoRoot = Get-RepoRoot
+    }
+
+    if (-not $ParentRepoRoot) {
+        if (Get-Command 'Get-ParentRepoRoot' -ErrorAction SilentlyContinue) {
+            $ParentRepoRoot = Get-ParentRepoRoot -RepoRoot $RepoRoot
+        }
+    }
+
+    $ManifestName = '.robot-data.psd1'
+    $StopDir = if ($ParentRepoRoot) { [System.IO.Path]::GetDirectoryName($ParentRepoRoot) } else { $RepoRoot }
+
+    $CurrentDir = $RepoRoot
+    while ($true) {
+        $ManifestPath = [System.IO.Path]::Combine($CurrentDir, $ManifestName)
+        if ([System.IO.File]::Exists($ManifestPath)) {
+            try {
+                $Data = Import-PowerShellDataFile -Path $ManifestPath
+                $script:CachedManifest = $Data
+                $script:CachedManifestDir = $CurrentDir
+                return @{ Manifest = $Data; ManifestDir = $CurrentDir }
+            } catch {
+                [System.Console]::Error.WriteLine("[WARN Find-DataManifest] Failed to parse $ManifestPath : $_")
+            }
+        }
+
+        if ($CurrentDir -eq $StopDir -or $CurrentDir -eq [System.IO.Path]::GetPathRoot($CurrentDir)) {
+            break
+        }
+        $CurrentDir = [System.IO.Path]::GetDirectoryName($CurrentDir)
+    }
+
+    return $null
+}
+
 # Returns a hashtable with all resolved admin config values
 function Get-AdminConfig {
     param(
@@ -72,14 +135,28 @@ function Get-AdminConfig {
 
     $RepoRoot = Get-RepoRoot
 
+    # Try to load data manifest for path overrides
+    $ManifestResult = Find-DataManifest
+    $ManifestPaths = @{}
+    if ($ManifestResult) {
+        $ManifestDir = $ManifestResult.ManifestDir
+        $Manifest = $ManifestResult.Manifest
+        foreach ($Key in $Manifest.Keys) {
+            $RelPath = $Manifest[$Key]
+            if ($RelPath -is [string]) {
+                $ManifestPaths[$Key] = [System.IO.Path]::GetFullPath([System.IO.Path]::Combine($ManifestDir, $RelPath))
+            }
+        }
+    }
+
     $Config = @{
         RepoRoot       = $RepoRoot
         ModuleRoot     = $ModuleRoot
-        EntitiesFile   = [System.IO.Path]::Combine($ModuleRoot, 'entities.md')
+        EntitiesFile   = if ($ManifestPaths.ContainsKey('EntitiesFile')) { $ManifestPaths['EntitiesFile'] } else { [System.IO.Path]::Combine($ModuleRoot, 'entities.md') }
         TemplatesDir   = [System.IO.Path]::Combine($ModuleRoot, 'templates')
-        ResDir         = [System.IO.Path]::Combine($RepoRoot, '.robot', 'res')
-        CharactersDir  = [System.IO.Path]::Combine($RepoRoot, 'Postaci', 'Gracze')
-        PlayersFile    = [System.IO.Path]::Combine($RepoRoot, 'Gracze.md')
+        ResDir         = if ($ManifestPaths.ContainsKey('ResDir')) { $ManifestPaths['ResDir'] } else { [System.IO.Path]::Combine($RepoRoot, '.robot', 'res') }
+        CharactersDir  = if ($ManifestPaths.ContainsKey('CharactersDir')) { $ManifestPaths['CharactersDir'] } else { [System.IO.Path]::Combine($RepoRoot, 'Postaci', 'Gracze') }
+        PlayersFile    = if ($ManifestPaths.ContainsKey('PlayersFile')) { $ManifestPaths['PlayersFile'] } else { [System.IO.Path]::Combine($RepoRoot, 'Gracze.md') }
 
         RepoWebhook    = Resolve-ConfigValue `
             -ExplicitValue ($Overrides['RepoWebhook']) `

@@ -13,6 +13,10 @@
     .git entry is a file, not a directory.
 
     Used by every other function in the module to resolve repo-relative paths.
+
+    Also contains Get-ParentRepoRoot which locates the parent repository root when
+    the module lives inside a Git submodule. Walks past the submodule boundary to find
+    the enclosing repository. Used by manifest discovery (Find-DataManifest).
 #>
 
 function Get-RepoRoot {
@@ -46,4 +50,36 @@ function Get-RepoRoot {
         $CurrentDir = [System.IO.Path]::GetDirectoryName($CurrentDir)
     }
     throw "No git repository found in any parent of the module directory '$ModuleRoot'."
+}
+
+function Get-ParentRepoRoot {
+    <#
+        .SYNOPSIS
+        Finds the root directory of the parent repository when this module is a submodule.
+    #>
+    [CmdletBinding()] param(
+        [Parameter(HelpMessage = "Override the repo root for testing. Defaults to Get-RepoRoot result.")]
+        [string]$RepoRoot
+    )
+
+    if (-not $RepoRoot) {
+        $RepoRoot = Get-RepoRoot
+    }
+
+    # Walk up from the repo root itself. If this repo is a submodule,
+    # its parent directory (or an ancestor) contains the enclosing .git directory.
+    $CurrentDir = [System.IO.Path]::GetDirectoryName($RepoRoot)
+    if (-not $CurrentDir) {
+        return $null
+    }
+
+    while ($CurrentDir -ne [System.IO.Path]::GetPathRoot($CurrentDir)) {
+        $GitPath = [System.IO.Path]::Combine($CurrentDir, ".git")
+        if ([System.IO.Directory]::Exists($GitPath) -or [System.IO.File]::Exists($GitPath)) {
+            return $CurrentDir
+        }
+        $CurrentDir = [System.IO.Path]::GetDirectoryName($CurrentDir)
+    }
+
+    return $null
 }

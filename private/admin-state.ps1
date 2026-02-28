@@ -85,8 +85,12 @@ function Add-AdminHistoryEntry {
             [void][System.IO.Directory]::CreateDirectory($Dir)
         }
 
-        $FileName = [System.IO.Path]::GetFileNameWithoutExtension($Path)
-        $Preamble = "W tym pliku znajduje się lista sesji przetworzonych przez system.`n`n## Historia`n`n"
+        # Load admin-config helpers if not already available
+        if (-not (Get-Command 'Get-AdminTemplate' -ErrorAction SilentlyContinue)) {
+            . "$PSScriptRoot/admin-config.ps1"
+        }
+
+        $Preamble = Get-AdminTemplate -Name 'pu-sessions-header.md.template'
         [System.IO.File]::WriteAllText($Path, $Preamble, $UTF8NoBOM)
     }
 

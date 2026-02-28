@@ -108,10 +108,15 @@ function New-PlayerCharacter {
     }
 
     # Create character entry under ## Postać
-    $InitialTags = [ordered]@{
-        'należy_do'  = $PlayerName
-        'pu_startowe' = $PUStartStr
+    # Load default tags from player-entry.md.template
+    $TemplateVars = @{
+        CharacterName = $CharacterName
+        PlayerName    = $PlayerName
+        PUStart       = $PUStartStr
     }
+    $RenderedEntry = Get-AdminTemplate -Name 'player-entry.md.template' -Variables $TemplateVars
+    $Parsed = ConvertFrom-EntityTemplate -Content $RenderedEntry
+    $InitialTags = $Parsed.Tags
 
     $CharTarget = Resolve-EntityTarget -FilePath $EntitiesFile -EntityType 'Postać' -EntityName $CharacterName -InitialTags $InitialTags
 

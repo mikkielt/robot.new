@@ -1,0 +1,5 @@
+* {EntityName}
+    - @generyczne_nazwy: {CanonicalDenomination}
+    - @ilość: {Amount} ({ValidFrom}:)
+    - @należy_do: {Owner} ({ValidFrom}:)
+    - @status: Aktywny ({ValidFrom}:)

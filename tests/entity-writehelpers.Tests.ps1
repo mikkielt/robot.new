@@ -4,7 +4,8 @@
 
     .DESCRIPTION
     Tests for Find-EntitySection, Find-EntityBullet, Find-EntityTag,
-    Set-EntityTag, New-EntityBullet, Invoke-EnsureEntityFile, Resolve-EntityTarget,
+    Set-EntityTag, New-EntityBullet, ConvertFrom-EntityTemplate,
+    Invoke-EnsureEntityFile, Resolve-EntityTarget,
     Write-EntityFile, Read-EntityFile, and ConvertTo-EntitiesFromPlayers
     covering entity file manipulation and player-to-entity conversion.
 #>
@@ -115,6 +116,39 @@ Describe 'New-EntityBullet' {
     }
 }
 
+Describe 'ConvertFrom-EntityTemplate' {
+    It 'parses entity name and tags from rendered template' {
+        $Content = "* TestChar`n    - @należy_do: TestPlayer`n    - @pu_startowe: 20"
+        $Result = ConvertFrom-EntityTemplate -Content $Content
+        $Result.Name | Should -Be 'TestChar'
+        $Result.Tags['należy_do'] | Should -Be 'TestPlayer'
+        $Result.Tags['pu_startowe'] | Should -Be '20'
+    }
+
+    It 'handles multiple values for same tag' {
+        $Content = "* MultiTag`n    - @alias: Foo`n    - @alias: Bar"
+        $Result = ConvertFrom-EntityTemplate -Content $Content
+        $Result.Name | Should -Be 'MultiTag'
+        $Result.Tags['alias'].Count | Should -Be 2
+        $Result.Tags['alias'][0] | Should -Be 'Foo'
+        $Result.Tags['alias'][1] | Should -Be 'Bar'
+    }
+
+    It 'handles template with no tags' {
+        $Content = "* NameOnly"
+        $Result = ConvertFrom-EntityTemplate -Content $Content
+        $Result.Name | Should -Be 'NameOnly'
+        $Result.Tags.Count | Should -Be 0
+    }
+
+    It 'handles CRLF line endings' {
+        $Content = "* CRLFTest`r`n    - @tag1: val1`r`n    - @tag2: val2"
+        $Result = ConvertFrom-EntityTemplate -Content $Content
+        $Result.Name | Should -Be 'CRLFTest'
+        $Result.Tags.Count | Should -Be 2
+    }
+}
+
 Describe 'Invoke-EnsureEntityFile' {
     BeforeAll {
         $script:TempDir = New-TestTempDir
@@ -123,7 +157,7 @@ Describe 'Invoke-EnsureEntityFile' {
         Remove-TestTempDir
     }
 
-    It 'creates file with standard sections if missing' {
+    It 'creates file with all six standard sections if missing' {
         $Path = Join-Path $script:TempDir 'new-entities.md'
         $Result = Invoke-EnsureEntityFile -Path $Path
         $Result | Should -Be $Path
@@ -131,6 +165,10 @@ Describe 'Invoke-EnsureEntityFile' {
         $Content = [System.IO.File]::ReadAllText($Path)
         $Content | Should -BeLike '*## Gracz*'
         $Content | Should -BeLike '*## Postać*'
+        $Content | Should -BeLike '*## Przedmiot*'
+        $Content | Should -BeLike '*## NPC*'
+        $Content | Should -BeLike '*## Organizacja*'
+        $Content | Should -BeLike '*## Lokacja*'
     }
 
     It 'returns existing file path without modification' {

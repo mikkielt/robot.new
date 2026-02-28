@@ -9,14 +9,15 @@
     (non-Verb-Noun filename).
 
     Contains:
-    - Find-EntitySection:         locates ## Type section boundaries in file lines
-    - Find-EntityBullet:          locates * EntityName bullet and its children range
-    - Find-EntityTag:             locates - @tag: line within an entity's children
-    - Set-EntityTag:              adds or updates a @tag: value under an entity
-    - New-EntityBullet:           creates a new * EntityName entry with optional tags
-    - Invoke-EnsureEntityFile:          ensures entities.md exists with required sections
-    - Write-EntityFile:           writes updated lines to file (UTF-8 no BOM)
-    - ConvertTo-EntitiesFromPlayers: bootstraps entities.md from Gracze.md data
+    - Find-EntitySection:             locates ## Type section boundaries in file lines
+    - Find-EntityBullet:              locates * EntityName bullet and its children range
+    - Find-EntityTag:                 locates - @tag: line within an entity's children
+    - Set-EntityTag:                  adds or updates a @tag: value under an entity
+    - New-EntityBullet:               creates a new * EntityName entry with optional tags
+    - ConvertFrom-EntityTemplate:     parses a rendered entity template into name + tags
+    - Invoke-EnsureEntityFile:        ensures entities.md exists with required sections
+    - Write-EntityFile:               writes updated lines to file (UTF-8 no BOM)
+    - ConvertTo-EntitiesFromPlayers:  bootstraps entities.md from Gracze.md data
 
     All functions operate on raw line arrays (same approach as Set-Session).
     Parse boundaries by scanning lines, manipulate via List[string], write
@@ -254,8 +255,55 @@ function New-EntityBullet {
     return $InsertIdx
 }
 
-# Helper: ensures entities.md exists with required type sections
-# Creates the file with standard section headers if it doesn't exist.
+# Parses a rendered entity template string into entity name and tag hashtable.
+# Template format: first line is "* EntityName", subsequent lines are "    - @tag: value".
+# Returns @{ Name = string; Tags = [ordered]hashtable }.
+function ConvertFrom-EntityTemplate {
+    param(
+        [Parameter(Mandatory, HelpMessage = "Rendered template content")]
+        [string]$Content
+    )
+
+    $Lines = $Content.Split([string[]]@("`r`n", "`n"), [System.StringSplitOptions]::RemoveEmptyEntries)
+    $EntityName = $null
+    $Tags = [ordered]@{}
+
+    foreach ($Line in $Lines) {
+        $BulletMatch = $script:EntityBulletPattern.Match($Line)
+        if ($BulletMatch.Success -and -not $EntityName) {
+            $EntityName = $BulletMatch.Groups[1].Value.Trim()
+            continue
+        }
+
+        $TagMatch = $script:TagPattern.Match($Line)
+        if ($TagMatch.Success) {
+            $TagName = $TagMatch.Groups[1].Value.Trim()
+            $TagValue = $TagMatch.Groups[2].Value.Trim()
+            # Support multiple values for the same tag
+            if ($Tags.Contains($TagName)) {
+                $Existing = $Tags[$TagName]
+                if ($Existing -is [System.Collections.Generic.List[string]]) {
+                    [void]$Existing.Add($TagValue)
+                } else {
+                    $NewList = [System.Collections.Generic.List[string]]::new()
+                    [void]$NewList.Add($Existing)
+                    [void]$NewList.Add($TagValue)
+                    $Tags[$TagName] = $NewList
+                }
+            } else {
+                $Tags[$TagName] = $TagValue
+            }
+        }
+    }
+
+    return @{
+        Name = $EntityName
+        Tags = $Tags
+    }
+}
+
+# Helper: ensures entities.md exists with required type sections.
+# Loads the skeleton from entities-skeleton.md.template when creating a new file.
 # Returns the file path.
 function Invoke-EnsureEntityFile {
     param(
@@ -268,14 +316,12 @@ function Invoke-EnsureEntityFile {
     }
 
     if (-not [System.IO.File]::Exists($Path)) {
-        $Content = @(
-            "## Gracz"
-            ""
-            "## Postać"
-            ""
-            "## Przedmiot"
-            ""
-        ) -join "`n"
+        # Load admin-config helpers if not already available
+        if (-not (Get-Command 'Get-AdminTemplate' -ErrorAction SilentlyContinue)) {
+            . "$PSScriptRoot/admin-config.ps1"
+        }
+
+        $Content = Get-AdminTemplate -Name 'entities-skeleton.md.template'
 
         $UTF8NoBOM = [System.Text.UTF8Encoding]::new($false)
         [System.IO.File]::WriteAllText($Path, $Content, $UTF8NoBOM)

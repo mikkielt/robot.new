@@ -281,22 +281,24 @@ function Invoke-PlayerCharacterPUAssignment {
         $NewPUSum = [math]::Round($CurrentPUSum + $GrantedPU, 2)
         $NewPUTaken = [math]::Round($CurrentPUTaken + $GrantedPU, 2)
 
-        # Build notification message (Polish, per spec §5.2)
-        $MsgSB = [System.Text.StringBuilder]::new(256)
-        [void]$MsgSB.Append("Postać `"$($Character.Name)`" (Gracz `"$($Character.PlayerName)`") otrzymuje ")
-        [void]$MsgSB.Append($GrantedPU.ToString('F2', [System.Globalization.CultureInfo]::InvariantCulture))
-        [void]$MsgSB.Append(" PU.")
-        [void]$MsgSB.Append("`n")
-        [void]$MsgSB.Append("Aktualna suma PU tej Postaci: ")
-        [void]$MsgSB.Append($NewPUSum.ToString('F2', [System.Globalization.CultureInfo]::InvariantCulture))
+        # Build notification message from templates
+        $MsgVars = @{
+            CharacterName = $Character.Name
+            PlayerName    = $Character.PlayerName
+            GrantedPU     = $GrantedPU.ToString('F2', [System.Globalization.CultureInfo]::InvariantCulture)
+            NewPUSum      = $NewPUSum.ToString('F2', [System.Globalization.CultureInfo]::InvariantCulture)
+        }
+        $MsgText = Get-AdminTemplate -Name 'pu-notification-base.txt.template' -Variables $MsgVars
 
         if ($UsedExceeded -gt 0) {
-            [void]$MsgSB.Append(", wykorzystano PU nadmiarowe: ")
-            [void]$MsgSB.Append($UsedExceeded.ToString('F2', [System.Globalization.CultureInfo]::InvariantCulture))
+            $MsgText += Get-AdminTemplate -Name 'pu-notification-overflow.txt.template' -Variables @{
+                UsedExceeded = $UsedExceeded.ToString('F2', [System.Globalization.CultureInfo]::InvariantCulture)
+            }
         }
         if ($RemainingPUExceeded -gt 0) {
-            [void]$MsgSB.Append(", pozostałe PU nadmiarowe: ")
-            [void]$MsgSB.Append($RemainingPUExceeded.ToString('F2', [System.Globalization.CultureInfo]::InvariantCulture))
+            $MsgText += Get-AdminTemplate -Name 'pu-notification-remaining.txt.template' -Variables @{
+                RemainingPUExceeded = $RemainingPUExceeded.ToString('F2', [System.Globalization.CultureInfo]::InvariantCulture)
+            }
         }
 
         $AssignmentResults.Add([PSCustomObject]@{
@@ -313,7 +315,7 @@ function Invoke-PlayerCharacterPUAssignment {
             NewPUTaken          = $NewPUTaken
             SessionCount        = $PUEntries.Count
             Sessions            = @($PUEntries | ForEach-Object { $_.Session.Header })
-            Message             = $MsgSB.ToString()
+            Message             = $MsgText
             Resolved            = $true
         })
     }
