@@ -33,10 +33,10 @@ function Test-CurrencyReconciliation {
         [datetime]$Since
     )
 
-    if (-not $Entities) {
+    if (-not $PSBoundParameters.ContainsKey('Entities')) {
         $Entities = Get-EntityState
     }
-    if (-not $Sessions) {
+    if (-not $PSBoundParameters.ContainsKey('Sessions')) {
         $Sessions = Get-Session
     }
 
