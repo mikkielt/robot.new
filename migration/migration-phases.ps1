@@ -23,7 +23,7 @@
 #>
 
 # ============================================================================
-# PHASE 0 — Preparation & backup
+# PHASE 0 - Preparation & backup
 # ============================================================================
 
 function Invoke-MigrationPhase0 {
@@ -102,7 +102,7 @@ function Invoke-MigrationPhase0 {
             $AllOK = $false
         }
     } else {
-        Write-StepWarning 'Plik .gitmodules nie istnieje — submoduł nie jest zarejestrowany'
+        Write-StepWarning 'Plik .gitmodules nie istnieje - submoduł nie jest zarejestrowany'
         Write-CommandHint 'git submodule add git@github.com:mikkielt/robot.new.git .robot.new'
         Update-PhaseChecklist -State $State -Phase 0 -Item 'SubmoduleOK' -Value $false
         $AllOK = $false
@@ -162,7 +162,7 @@ function Invoke-MigrationPhase0 {
     } else {
         Set-PhaseInProgress -State $State -Phase 0
         Write-PhaseSummary -Phase 0 -Status 'InProgress' -Lines @(
-            '[!!] Niektóre warunki nie są spełnione — sprawdź powyższe komunikaty'
+            '[!!] Niektóre warunki nie są spełnione - sprawdź powyższe komunikaty'
         )
     }
 
@@ -170,7 +170,7 @@ function Invoke-MigrationPhase0 {
 }
 
 # ============================================================================
-# PHASE 1 — Bootstrap entities.md from Gracze.md
+# PHASE 1 - Bootstrap entities.md from Gracze.md
 # ============================================================================
 
 function Invoke-MigrationPhase1 {
@@ -243,7 +243,7 @@ function Invoke-MigrationPhase1 {
         }
     }
 
-    # Step 3: Verify generated file — count entries, show preview
+    # Step 3: Verify generated file - count entries, show preview
     Write-Step -Number 3 -Text 'Weryfikacja wygenerowanego pliku...'
     if ([System.IO.File]::Exists($EntitiesPath)) {
         $Content = [System.IO.File]::ReadAllText($EntitiesPath)
@@ -338,7 +338,7 @@ function Invoke-MigrationPhase1 {
 }
 
 # ============================================================================
-# PHASE 2 — Data parity validation (read-only)
+# PHASE 2 - Data parity validation (read-only)
 # ============================================================================
 
 function Invoke-MigrationPhase2 {
@@ -447,7 +447,7 @@ function Invoke-MigrationPhase2 {
     } else {
         $IssueCount = $Diag.UnresolvedCharacters.Count + $Diag.MalformedPU.Count +
                       $Diag.DuplicateEntries.Count + $Diag.FailedSessionsWithPU.Count
-        $SummaryLines += "[!!] Diagnostyka PU: $IssueCount problemów — przejdź do Fazy 3"
+        $SummaryLines += "[!!] Diagnostyka PU: $IssueCount problemów - przejdź do Fazy 3"
         Set-PhaseInProgress -State $State -Phase 2
         Write-PhaseSummary -Phase 2 -Status 'InProgress' -Lines $SummaryLines
     }
@@ -456,7 +456,7 @@ function Invoke-MigrationPhase2 {
 }
 
 # ============================================================================
-# PHASE 3 — Diagnostics & data repair (iterative)
+# PHASE 3 - Diagnostics & data repair (iterative)
 # ============================================================================
 
 function Invoke-MigrationPhase3 {
@@ -472,7 +472,7 @@ function Invoke-MigrationPhase3 {
     $Diag = Test-PlayerCharacterPUAssignment
 
     if ($Diag.OK) {
-        Write-StepOK 'Diagnostyka: OK — brak problemów'
+        Write-StepOK 'Diagnostyka: OK - brak problemów'
         Set-PhaseCompleted -State $State -Phase 3
         Add-DiagnosticSnapshot -State $State -OK $true -IssueCount 0
         Write-PhaseSummary -Phase 3 -Status 'Completed' -Lines @('[OK] Wszystkie dane poprawne')
@@ -488,9 +488,85 @@ function Invoke-MigrationPhase3 {
         Show-BRAKCharacters -State $State
     }
 
+    # Narrator normalization step
+    $NarratorNormDone = $State.Phases.ContainsKey('3') -and $State.Phases['3'].ContainsKey('Checklist') -and $State.Phases['3'].Checklist.ContainsKey('NarratorNormalizationDone') -and $State.Phases['3'].Checklist['NarratorNormalizationDone']
+    $UnresolvedNarratorCount = 0
+
+    if (-not $NarratorNormDone) {
+        Write-Step -Number 2 -Text 'Diagnostyka narratorów...'
+
+        $NarrReport = Get-NarratorReport -UnresolvedOnly
+        # Filter to Confidence = None and no existing mapping
+        $UnresolvedNarrators = @($NarrReport | Where-Object { $_.Confidence -eq 'None' -and -not $_.HasMapping })
+        $UnresolvedNarratorCount = $UnresolvedNarrators.Count
+
+        if ($UnresolvedNarratorCount -eq 0) {
+            Write-StepOK 'Wszyscy narratorzy rozwiązani lub zamapowani'
+            Update-PhaseChecklist -State $State -Phase 3 -Item 'NarratorNormalizationDone' -Value $true
+        } else {
+            Write-StepWarning "$UnresolvedNarratorCount nierozwiązanych narratorów"
+
+            if (-not $WhatIf) {
+                . "$PSScriptRoot/narrator-normalization.ps1"
+                $NarrMappings = Import-NarratorMappings
+                $MappingsChanged = $false
+
+                foreach ($U in $UnresolvedNarrators) {
+                    Write-Host ''
+                    Write-Host "      $($U.RawText) ($($U.OccurrenceCount)x)" -ForegroundColor White
+                    if ($U.NearDuplicates.Count -gt 0) {
+                        $NDs = ($U.NearDuplicates | ForEach-Object { "$($_.Target) (d=$($_.EditDistance))" }) -join ', '
+                        Write-Host "        Podobne: $NDs" -ForegroundColor DarkGray
+                    }
+
+                    $Choice = Request-UserChoice `
+                        -Prompt "      [A] Dodaj alias  [M] Mapuj ręcznie  [P] Pomiń  [K] Kontynuuj >" `
+                        -ValidChoices @('A', 'M', 'P', 'K')
+
+                    if ($Choice -eq 'K') { break }
+                    if ($Choice -eq 'P') { continue }
+
+                    if ($Choice -eq 'A') {
+                        $PlayerName = Request-StringInput -Prompt 'Nazwa Gracza'
+                        if (-not [string]::IsNullOrWhiteSpace($PlayerName)) {
+                            Set-Player -Name $PlayerName -Aliases @($U.RawText)
+                            Write-Host "        → Dodano alias '$($U.RawText)' do gracza '$PlayerName'" -ForegroundColor DarkGray
+                            # Also add mapping for @Narrator override
+                            $NarrMappings[$U.RawText] = @($PlayerName)
+                            $MappingsChanged = $true
+                        }
+                    }
+
+                    if ($Choice -eq 'M') {
+                        $MapInput = Request-StringInput -Prompt 'Kanoniczne nazwy (oddzielone przecinkami)'
+                        if (-not [string]::IsNullOrWhiteSpace($MapInput)) {
+                            $CanonNames = @($MapInput.Split(',') | ForEach-Object { $_.Trim() } | Where-Object { $_.Length -gt 0 })
+                            if ($CanonNames.Count -gt 0) {
+                                $NarrMappings[$U.RawText] = $CanonNames
+                                $MappingsChanged = $true
+                                Write-Host "        → Zamapowano '$($U.RawText)' na: $($CanonNames -join ', ')" -ForegroundColor DarkGray
+                            }
+                        }
+                    }
+                }
+
+                if ($MappingsChanged) {
+                    Export-NarratorMappings -Mappings $NarrMappings
+                    Write-Host "    Zapisano mapowania do narrator-mappings.txt" -ForegroundColor DarkGray
+                }
+            }
+
+            Update-PhaseChecklist -State $State -Phase 3 -Item 'NarratorNormalizationDone' -Value $true
+        }
+    } else {
+        Write-Step -Number 2 -Text 'Diagnostyka narratorów...'
+        Write-StepOK 'Normalizacja narratorów już wykonana'
+    }
+
     # Record diagnostic snapshot and calculate totals
     $TotalIssues = $Diag.UnresolvedCharacters.Count + $Diag.MalformedPU.Count +
-                   $Diag.DuplicateEntries.Count + $Diag.FailedSessionsWithPU.Count
+                   $Diag.DuplicateEntries.Count + $Diag.FailedSessionsWithPU.Count +
+                   $UnresolvedNarratorCount
     Add-DiagnosticSnapshot -State $State -OK $false -IssueCount $TotalIssues
 
     # Show diagnostic trend across iterations
@@ -600,7 +676,7 @@ function Show-BRAKCharacters {
 
     Write-SectionHeader "POSTACIE Z PU = BRAK ($($BRAKChars.Count))"
     foreach ($Item in $BRAKChars) {
-        Write-Host "    $($Item.PlayerName) / $($Item.CharacterName) — brak wartości PU" -ForegroundColor Yellow
+        Write-Host "    $($Item.PlayerName) / $($Item.CharacterName) - brak wartości PU" -ForegroundColor Yellow
         $Choice = Request-YesNo -Prompt "    Czy oznaczyć '$($Item.CharacterName)' jako usuniętą?" -Default $false
         if ($Choice) {
             try {
@@ -615,7 +691,7 @@ function Show-BRAKCharacters {
 }
 
 # ============================================================================
-# PHASE 4 — Session format upgrade to Gen4
+# PHASE 4 - Session format upgrade to Gen4
 # ============================================================================
 
 function Invoke-MigrationPhase4 {
@@ -696,14 +772,14 @@ function Invoke-MigrationPhase4 {
         $Count = ($FileSessions | Measure-Object).Count
 
         if ($DryRun) {
-            Write-Host " — $Count sesji (suchy przebieg)" -ForegroundColor DarkGray
+            Write-Host " - $Count sesji (suchy przebieg)" -ForegroundColor DarkGray
         } else {
             try {
                 $FileSessions | Set-Session -UpgradeFormat
-                Write-Host " — $Count sesji zaktualizowanych" -ForegroundColor Green
+                Write-Host " - $Count sesji zaktualizowanych" -ForegroundColor Green
             }
             catch {
-                Write-Host " — BŁĄD" -ForegroundColor Red
+                Write-Host " - BŁĄD" -ForegroundColor Red
                 Write-StepError "  Plik $RelPath`: $_"
                 $FailedFiles.Add($RelPath)
             }
@@ -735,10 +811,44 @@ function Invoke-MigrationPhase4 {
         Write-StepWarning "Wciąż $StillNonGen4 sesji nie w Gen4"
     }
 
-    # Step 6: Location report review
+    # Step 6: Narrator verification (non-blocking - informational only)
+    $NarratorReviewDone = $State.Phases.ContainsKey('4') -and $State.Phases['4'].ContainsKey('Checklist') -and $State.Phases['4'].Checklist.ContainsKey('NarratorReviewDone') -and $State.Phases['4'].Checklist['NarratorReviewDone']
+    if (-not $NarratorReviewDone) {
+        Write-Step -Number 5 -Text 'Weryfikacja narratorów po upgrade...'
+
+        # Check narrator mappings count for display
+        . "$PSScriptRoot/narrator-normalization.ps1"
+        $NarrMappings = Import-NarratorMappings
+        if ($NarrMappings.Count -gt 0) {
+            Write-Host "    Mapowania narratorów: $($NarrMappings.Count) wpisów" -ForegroundColor DarkGray
+        }
+
+        $NarrReport = Get-NarratorReport -Sessions $PostActive -UnresolvedOnly
+        $StillUnresolved = @($NarrReport | Where-Object { $_.Confidence -eq 'None' -and -not $_.HasMapping })
+
+        if ($StillUnresolved.Count -eq 0) {
+            Write-StepOK 'Wszyscy narratorzy rozwiązani lub zamapowani'
+        } else {
+            Write-StepWarning "$($StillUnresolved.Count) narratorów wciąż nierozwiązanych (informacyjnie)"
+            $ShowCount = [Math]::Min($StillUnresolved.Count, 10)
+            for ($k = 0; $k -lt $ShowCount; $k++) {
+                Write-Host "      - $($StillUnresolved[$k].RawText) ($($StillUnresolved[$k].OccurrenceCount)x)" -ForegroundColor DarkGray
+            }
+            if ($StillUnresolved.Count -gt 10) {
+                Write-Host "      ... i $($StillUnresolved.Count - 10) więcej" -ForegroundColor DarkGray
+            }
+        }
+
+        Update-PhaseChecklist -State $State -Phase 4 -Item 'NarratorReviewDone' -Value $true
+    } else {
+        Write-Step -Number 5 -Text 'Weryfikacja narratorów...'
+        Write-StepOK 'Weryfikacja narratorów już wykonana'
+    }
+
+    # Step 7: Location report review
     $LocationReviewDone = $State.Phases.ContainsKey('4') -and $State.Phases['4'].ContainsKey('Checklist') -and $State.Phases['4'].Checklist.ContainsKey('LocationReviewDone') -and $State.Phases['4'].Checklist['LocationReviewDone']
     if (-not $LocationReviewDone) {
-        Write-Step -Number 5 -Text 'Raport lokalizacji — przegląd nazw...'
+        Write-Step -Number 6 -Text 'Raport lokalizacji - przegląd nazw...'
 
         $LocationReport = Get-NamedLocationReport -Sessions $PostActive -Entities (Get-Entity)
 
@@ -814,7 +924,7 @@ function Invoke-MigrationPhase4 {
             if ($NewExclusions.Count -gt 0) {
                 $ResDir = [System.IO.Path]::Combine($RepoRoot, '.robot', 'res')
                 if (-not [System.IO.Directory]::Exists($ResDir)) {
-                    [System.IO.Directory]::CreateDirectory($ResDir) | Out-Null
+                    [void][System.IO.Directory]::CreateDirectory($ResDir)
                 }
 
                 $AppendLines = [System.Collections.Generic.List[string]]::new()
@@ -836,7 +946,7 @@ function Invoke-MigrationPhase4 {
             }
 
             if ($StillUnresolved -gt 0) {
-                Write-StepWarning "$StillUnresolved lokalizacji wciąż nierozwiązanych — utwórz brakujące encje typu Lokacja lub oznacz jako nie-lokacje"
+                Write-StepWarning "$StillUnresolved lokalizacji wciąż nierozwiązanych - utwórz brakujące encje typu Lokacja lub oznacz jako nie-lokacje"
                 Write-ActionRequired 'Commit zostanie zablokowany do rozwiązania nierozwiązanych lokalizacji.'
                 if (-not $WhatIf) { Save-MigrationState -State $State }
                 return
@@ -847,7 +957,7 @@ function Invoke-MigrationPhase4 {
         if ($LocationReport.Count -gt 0 -and (Request-YesNo -Prompt 'Czy wyeksportować pełny raport lokalizacji?' -Default $false)) {
             $ReportPath = [System.IO.Path]::Combine($RepoRoot, '.robot', 'res', 'location-report.txt')
             $ReportLines = [System.Collections.Generic.List[string]]::new()
-            $ReportLines.Add("# Raport lokalizacji — $(Get-Date -Format 'yyyy-MM-dd HH:mm')")
+            $ReportLines.Add("# Raport lokalizacji - $([datetime]::Now.ToString('yyyy-MM-dd HH:mm'))")
             $ReportLines.Add("# Sesje od: $($Cutoff.ToString('yyyy-MM-dd'))")
             $ReportLines.Add('')
             foreach ($Loc in $LocationReport) {
@@ -873,12 +983,12 @@ function Invoke-MigrationPhase4 {
         Write-StepOK 'Przegląd lokalizacji zakończony'
         Update-PhaseChecklist -State $State -Phase 4 -Item 'LocationReviewDone' -Value $true
     } else {
-        Write-Step -Number 5 -Text 'Raport lokalizacji...'
+        Write-Step -Number 6 -Text 'Raport lokalizacji...'
         Write-StepOK 'Przegląd lokalizacji już wykonany'
     }
 
-    # Step 7: Prompt to commit upgraded sessions
-    Write-Step -Number 6 -Text 'Commit...'
+    # Step 8: Prompt to commit upgraded sessions
+    Write-Step -Number 7 -Text 'Commit...'
     if (Request-YesNo -Prompt 'Czy zacommitować upgrade sesji?' -Default $true) {
         & git -C $RepoRoot add . 2>&1
         & git -C $RepoRoot commit -m 'Upgrade aktywnych sesji do formatu Gen4' 2>&1
@@ -902,7 +1012,7 @@ function Invoke-MigrationPhase4 {
 }
 
 # ============================================================================
-# PHASE 5 — Currency enrollment
+# PHASE 5 - Currency enrollment
 # ============================================================================
 
 function Invoke-MigrationPhase5 {
@@ -1066,7 +1176,7 @@ function Invoke-MigrationPhase5 {
         if ($GitDiff) {
             if (Request-YesNo -Prompt 'Czy zacommitować zmiany walutowe?' -Default $true) {
                 & git -C $RepoRoot add 'entities.md' 2>&1
-                & git -C $RepoRoot commit -m 'Enrollment walut — stan początkowy' 2>&1
+                & git -C $RepoRoot commit -m 'Enrollment walut - stan początkowy' 2>&1
                 if ($LASTEXITCODE -eq 0) {
                     Write-StepOK 'Zacommitowano'
                     Update-PhaseChecklist -State $State -Phase 5 -Item 'Committed' -Value $true
@@ -1192,7 +1302,7 @@ function Invoke-NarratorBudgetEntry {
 }
 
 # ============================================================================
-# PHASE 6 — Parallel operation monitoring dashboard
+# PHASE 6 - Parallel operation monitoring dashboard
 # ============================================================================
 
 function Invoke-MigrationPhase6 {
@@ -1295,7 +1405,7 @@ function Invoke-MigrationPhase6 {
         }
     }
 
-    # Evaluate all criteria — mark phase completed if all pass
+    # Evaluate all criteria - mark phase completed if all pass
     $AllCriteria = $Criteria.Values | Where-Object { $_ -eq $false }
     if (($AllCriteria | Measure-Object).Count -eq 0) {
         Write-Host ''
@@ -1313,7 +1423,7 @@ function Invoke-MigrationPhase6 {
 }
 
 # ============================================================================
-# PHASE 7 — Cutover (freeze legacy, first standalone PU run)
+# PHASE 7 - Cutover (freeze legacy, first standalone PU run)
 # ============================================================================
 
 function Invoke-MigrationPhase7 {
@@ -1334,7 +1444,7 @@ function Invoke-MigrationPhase7 {
         Write-StepOK 'Diagnostyka: OK'
         Update-PhaseChecklist -State $State -Phase 7 -Item 'FinalDiagnostics' -Value $true
     } else {
-        Write-StepError 'Diagnostyka: PROBLEMY — napraw je przed przełączeniem'
+        Write-StepError 'Diagnostyka: PROBLEMY - napraw je przed przełączeniem'
         Show-DiagnosticResults -Diagnostics $Diag
         if (-not $WhatIf) { Save-MigrationState -State $State }
         return
@@ -1359,7 +1469,7 @@ function Invoke-MigrationPhase7 {
                 $NewContent = "$FreezeComment`n`n$GraczeContent"
                 [System.IO.File]::WriteAllText($GraczePath, $NewContent, $UTF8NoBOM)
                 & git -C $RepoRoot add 'Gracze.md' 2>&1
-                & git -C $RepoRoot commit -m 'Zamrożenie Gracze.md — migracja zakończona' 2>&1
+                & git -C $RepoRoot commit -m 'Zamrożenie Gracze.md - migracja zakończona' 2>&1
                 if ($LASTEXITCODE -eq 0) {
                     Write-StepOK 'Gracze.md zamrożony i zacommitowany'
                     Update-PhaseChecklist -State $State -Phase 7 -Item 'GraczeFrozen' -Value $true
@@ -1445,7 +1555,7 @@ function Invoke-MigrationPhase7 {
     Write-Host '  Od teraz wszystkie operacje przez moduł .robot.new.' -ForegroundColor Cyan
     Write-Host '  Sesje prosimy zapisywać w formacie z prefiksem @.' -ForegroundColor Cyan
     Write-Host '  Stary system (.robot/robot.ps1) nie jest już używany.' -ForegroundColor Cyan
-    Write-Host '  W razie pytań — kontakt z koordynatorem.' -ForegroundColor Cyan
+    Write-Host '  W razie pytań - kontakt z koordynatorem.' -ForegroundColor Cyan
     Write-Host '  ────────────────────────────────────────────' -ForegroundColor DarkGray
     Update-PhaseChecklist -State $State -Phase 7 -Item 'Announcement' -Value $true
 
@@ -1476,7 +1586,7 @@ function Invoke-MigrationPhase7 {
 }
 
 # ============================================================================
-# QUICK DIAGNOSTICS — main menu shortcut
+# QUICK DIAGNOSTICS - main menu shortcut
 # ============================================================================
 
 function Invoke-QuickDiagnostics {
@@ -1520,7 +1630,7 @@ function Invoke-QuickDiagnostics {
 }
 
 # ============================================================================
-# FULL REPORT — per-phase status with checklists
+# FULL REPORT - per-phase status with checklists
 # ============================================================================
 
 function Invoke-FullReport {
@@ -1537,7 +1647,7 @@ function Invoke-FullReport {
         $Name = $script:PhaseNames[$I]
 
         Write-Host ''
-        Write-Host "  Faza $I`: $Name — $($StatusInfo.Symbol) $($StatusInfo.Text)" -ForegroundColor $StatusInfo.Color
+        Write-Host "  Faza $I`: $Name - $($StatusInfo.Symbol) $($StatusInfo.Text)" -ForegroundColor $StatusInfo.Color
 
         $PhaseData = $State.Phases["$I"]
         if ($PhaseData -and $PhaseData.Checklist) {

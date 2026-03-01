@@ -71,4 +71,21 @@ Describe 'New-Session' {
         $Result | Should -BeLike '*Rion*'
         $Result | Should -BeLike '*Secret info*'
     }
+
+    It 'includes @Narrator block when -MetadataNarrators provided' {
+        $Result = New-Session -Date ([datetime]::new(2026, 3, 1)) -Title 'Override Test' `
+            -Narrator 'Air Archmage' -MetadataNarrators @('Solmyr') -Locations @('Erathia')
+        $Result | Should -BeLike '*@Narrator:*'
+        $Result | Should -BeLike '*Solmyr*'
+        # Header still uses the original narrator name
+        $Result | Should -BeLike '*Air Archmage*'
+    }
+
+    It 'renders @Narrator before @Lokacje when -MetadataNarrators provided' {
+        $Result = New-Session -Date ([datetime]::new(2026, 3, 1)) -Title 'Order Test' `
+            -Narrator 'Air Archmage' -MetadataNarrators @('Solmyr') -Locations @('Erathia')
+        $NarrIdx = $Result.IndexOf('@Narrator:')
+        $LocIdx = $Result.IndexOf('@Lokacje:')
+        $NarrIdx | Should -BeLessThan $LocIdx
+    }
 }

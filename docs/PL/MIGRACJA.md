@@ -1,4 +1,4 @@
-# Migracja systemu administracyjnego Nerthus — przewodnik dla zespołu
+# Migracja systemu administracyjnego Nerthus - przewodnik dla zespołu
 
 ## Dla kogo jest ten dokument
 
@@ -27,27 +27,27 @@ Szczegółowy przewodnik techniczny (z komendami i procedurami krok po kroku) zn
 
 Dotychczasowy system administracyjny Nerthus (znany jako „robot") działa od lat, ale ma ograniczenia, które coraz bardziej utrudniają pracę:
 
-- **Ciche pomijanie błędów** — jeśli nazwa postaci w sesji jest źle zapisana (literówka, odmiana), system po prostu ją ignoruje. Gracz nie dostaje PU, a nikt nie wie dlaczego.
-- **Ręczna edycja danych** — każda zmiana w danych graczy wymaga bezpośredniej edycji dużego pliku tekstowego. Łatwo o pomyłkę.
-- **Brak śledzenia walut** — waluta w grze nie jest formalnie rejestrowana, co utrudnia kontrolę i bilansowanie.
-- **Brak diagnostyki** — nie ma prostego sposobu, żeby sprawdzić czy dane są spójne zanim uruchomi się przydział PU.
+- **Ciche pomijanie błędów** - jeśli nazwa postaci w sesji jest źle zapisana (literówka, odmiana), system po prostu ją ignoruje. Gracz nie dostaje PU, a nikt nie wie dlaczego.
+- **Ręczna edycja danych** - każda zmiana w danych graczy wymaga bezpośredniej edycji dużego pliku tekstowego. Łatwo o pomyłkę.
+- **Brak śledzenia walut** - waluta w grze nie jest formalnie rejestrowana, co utrudnia kontrolę i bilansowanie.
+- **Brak diagnostyki** - nie ma prostego sposobu, żeby sprawdzić czy dane są spójne zanim uruchomi się przydział PU.
 
 ### Rozwiązanie
 
 Nowy system zastępuje pojedynczy skrypt zestawem wyspecjalizowanych narzędzi, które:
 
-- **Walidują dane** — jeśli nazwa postaci nie pasuje do żadnej zarejestrowanej postaci, system zatrzymuje się i informuje o problemie. Żadne PU nie zostanie przyznane ani pominięte bez wiedzy koordynatora.
-- **Automatyzują operacje** — tworzenie postaci, aktualizacja PU, wysyłanie powiadomień Discord — wszystko przez dedykowane komendy zamiast ręcznej edycji plików.
-- **Śledzą waluty** — trzy denominacje (Korony, Talary, Kogi) z pełnym rejestrem posiadania, transferów i raportowaniem.
-- **Oferują diagnostykę** — przed każdym przydziałem PU można uruchomić sprawdzenie, które wykrywa problemy zawczasu.
-- **Zachowują historię** — każda zmiana jest śledzona, z pełnym audytem kto, co i kiedy zmienił.
+- **Walidują dane** - jeśli nazwa postaci nie pasuje do żadnej zarejestrowanej postaci, system zatrzymuje się i informuje o problemie. Żadne PU nie zostanie przyznane ani pominięte bez wiedzy koordynatora.
+- **Automatyzują operacje** - tworzenie postaci, aktualizacja PU, wysyłanie powiadomień Discord - wszystko przez dedykowane komendy zamiast ręcznej edycji plików.
+- **Śledzą waluty** - trzy denominacje (Korony, Talary, Kogi) z pełnym rejestrem posiadania, transferów i raportowaniem.
+- **Oferują diagnostykę** - przed każdym przydziałem PU można uruchomić sprawdzenie, które wykrywa problemy zawczasu.
+- **Zachowują historię** - każda zmiana jest śledzona, z pełnym audytem kto, co i kiedy zmienił.
 
 ### Co pozostaje bez zmian
 
-- **Mechanizm PU** — zasady przydziału Punktów Umiejętności nie zmieniają się. Bazowe 1 PU miesięcznie, plus PU za sesje, limit 5, nadmiar przenoszony — wszystko działa tak samo.
-- **Powiadomienia Discord** — format i sposób dostarczania powiadomień nie zmienia się.
-- **Pliki postaci** — karty postaci w repozytorium (`Postaci/Gracze/*.md`) pozostają w tym samym formacie.
-- **Treść sesji** — opisy fabularne, objaśnienia, efekty — nic z tego nie jest zmieniane ani usuwane.
+- **Mechanizm PU** - zasady przydziału Punktów Umiejętności nie zmieniają się. Bazowe 1 PU miesięcznie, plus PU za sesje, limit 5, nadmiar przenoszony - wszystko działa tak samo.
+- **Powiadomienia Discord** - format i sposób dostarczania powiadomień nie zmienia się.
+- **Pliki postaci** - karty postaci w repozytorium (`Postaci/Gracze/*.md`) pozostają w tym samym formacie.
+- **Treść sesji** - opisy fabularne, objaśnienia, efekty - nic z tego nie jest zmieniane ani usuwane.
 
 ---
 
@@ -59,8 +59,8 @@ Migracja jest podzielona na etapy. Nie wszystkie wymagają zaangażowania całeg
 |---|---|---|---|
 | **Przygotowanie** | Koordynator tworzy kopie bezpieczeństwa i konfiguruje nowy system | Koordynator | 1–2 dni |
 | **Przeniesienie danych** | Dane graczy i postaci przenoszone do nowego formatu | Koordynator | 1 dzień |
-| **Naprawa danych** | Poprawki literówek w sesjach, uzupełnienie brakujących danych | Koordynator, narratorzy | 2–3 dni |
-| **Aktualizacja sesji** | Aktywne pliki sesji aktualizowane do nowego formatu zapisu | Koordynator | 1–2 dni |
+| **Naprawa danych** | Poprawki literówek w sesjach, uzupełnienie brakujących danych, normalizacja nazw narratorów | Koordynator, narratorzy | 2–3 dni |
+| **Aktualizacja sesji** | Aktywne pliki sesji aktualizowane do nowego formatu zapisu, weryfikacja narratorów | Koordynator | 1–2 dni |
 | **Rejestracja walut** | Zbieranie informacji o stanie walut postaci | Wszyscy | ~1 tydzień |
 | **Okres równoległy** | Oba systemy działają jednocześnie, wyniki porównywane | Koordynator | 2–4 tygodnie |
 | **Przełączenie** | Oficjalne przejście na nowy system | Koordynator | 1 dzień |
@@ -84,11 +84,11 @@ Z Twojej perspektywy jako gracza, codzienna rozgrywka i interakcje z systemem wy
 
 ### Co może się zmienić
 
-1. **Formularz walut** — w ramach migracji możesz zostać poproszony o podanie aktualnego stanu walut Twojej postaci (ile Koron, Talarów i Kogów posiada). To jednorazowa ankieta.
+1. **Formularz walut** - w ramach migracji możesz zostać poproszony o podanie aktualnego stanu walut Twojej postaci (ile Koron, Talarów i Kogów posiada). To jednorazowa ankieta.
 
-2. **Lepsza wykrywalność błędów** — jeśli Twoja postać nie dostała PU za sesję, koordynator dowie się o tym natychmiast (system go ostrzeże), zamiast odkryć to tygodnie później.
+2. **Lepsza wykrywalność błędów** - jeśli Twoja postać nie dostała PU za sesję, koordynator dowie się o tym natychmiast (system go ostrzeże), zamiast odkryć to tygodnie później.
 
-3. **Nowy format deklaracji (zgłaszanie alternatywne)** — jeśli korzystasz z możliwości samodzielnego zgłaszania deklaracji w formacie repozytorium, obowiązuje nowy format z prefiksem `@` przy polach metadanych. Zmienia się wyłącznie zapis metadanych — treść i struktura nagłówka pozostają takie same.
+3. **Nowy format deklaracji (zgłaszanie alternatywne)** - jeśli korzystasz z możliwości samodzielnego zgłaszania deklaracji w formacie repozytorium, obowiązuje nowy format z prefiksem `@` przy polach metadanych. Zmienia się wyłącznie zapis metadanych - treść i struktura nagłówka pozostają takie same.
 
 **Dotychczasowy format zgłoszenia alternatywnego:**
 
@@ -127,9 +127,9 @@ Z Twojej perspektywy jako gracza, codzienna rozgrywka i interakcje z systemem wy
 - Pola metadanych mają prefiks `@` (`@Lokacje`, `@PU`, `@Logi`)
 - `Lokalizacje` zmienia się na `@Lokacje`
 - Logi wpisywane w osobnej linii pod nagłówkiem `@Logi:` (zamiast w jednej linii z `Logi: URL`)
-- Reszta — nagłówek, treść, format daty, nazwy postaci — **bez zmian**
+- Reszta - nagłówek, treść, format daty, nazwy postaci - **bez zmian**
 
-> **Uwaga**: Stary format nadal działa — system go rozpoznaje. Nowy format jest jednak preferowany dla nowych zgłoszeń.
+> **Uwaga**: Stary format nadal działa - system go rozpoznaje. Nowy format jest jednak preferowany dla nowych zgłoszeń.
 
 ### Czego oczekujemy od graczy
 
@@ -181,13 +181,13 @@ Opis sesji...
 **Różnice:**
 - Pola metadanych mają prefiks `@` (np. `@Lokacje`, `@PU`, `@Logi`)
 - Logi wpisywane w osobnej linii pod nagłówkiem `@Logi:` (zamiast w jednej linii)
-- Reszta — treść narracyjna, daty, nagłówki — **bez zmian**
+- Reszta - treść narracyjna, daty, nagłówki - **bez zmian**
 
 ### Nowe możliwości
 
 Nowy format pozwala na dodatkowe pola, których wcześniej nie było:
 
-**Zmiany w świecie gry (`@Zmiany`)** — rejestrowanie trwałych zmian po sesji:
+**Zmiany w świecie gry (`@Zmiany`)** - rejestrowanie trwałych zmian po sesji:
 
 ```markdown
 - @Zmiany:
@@ -198,7 +198,7 @@ Nowy format pozwala na dodatkowe pola, których wcześniej nie było:
         - @status: Nieaktywny (2026-03:)
 ```
 
-**Informacje celowane (`@Intel`)** — wiadomości do konkretnych osób, grup lub lokacji:
+**Informacje celowane (`@Intel`)** - wiadomości do konkretnych osób, grup lub lokacji:
 
 ```markdown
 - @Intel:
@@ -207,7 +207,7 @@ Nowy format pozwala na dodatkowe pola, których wcześniej nie było:
     - Lokacja/Erathia: Ogólna wiadomość dla obecnych w Erathii
 ```
 
-**Transfery walut (`@Transfer`)** — rejestrowanie transakcji walutowych:
+**Transfery walut (`@Transfer`)** - rejestrowanie transakcji walutowych:
 
 ```markdown
 - @Transfer: 100 koron, Xeron Demonlord -> Kupiec Orrin
@@ -229,7 +229,7 @@ Nowy format pozwala na dodatkowe pola, których wcześniej nie było:
 |---|---|---|
 | `2026-3-15` zamiast `2026-03-15` | Sesja cicho pomijana | Zawsze dwie cyfry: miesiąc i dzień |
 | `Krag Hack` zamiast `Crag Hack` | Przydział PU zatrzymany | Sprawdź nazwę z rejestrem postaci |
-| Brak dwukropka po nazwie w PU | Wartość PU nierozpoznana | `NazwaPostaci: 0.3` — dwukropek obowiązkowy |
+| Brak dwukropka po nazwie w PU | Wartość PU nierozpoznana | `NazwaPostaci: 0.3` - dwukropek obowiązkowy |
 | 2 spacje zamiast 4 we wcięciu | Podelementy nierozpoznane | Używaj 4 spacji na poziom |
 
 ### Czego oczekujemy od narratorów
@@ -249,7 +249,7 @@ Nowy format pozwala na dodatkowe pola, których wcześniej nie było:
 
 Zamiast bezpośredniej edycji pliku `Gracze.md` i uruchamiania monolitycznego skryptu, koordynator korzysta z zestawu dedykowanych komend. Każda operacja ma swoją komendę, która waliduje dane i zapobiega typowym błędom.
 
-### Przydział PU — co się zmienia
+### Przydział PU - co się zmienia
 
 | Aspekt | Stary system | Nowy system |
 |---|---|---|
@@ -272,11 +272,11 @@ Zamiast bezpośredniej edycji pliku `Gracze.md` i uruchamiania monolitycznego sk
 
 ### Kluczowa zmiana: `Gracze.md` staje się archiwum
 
-Po migracji plik `Gracze.md` jest **zamrożony** — staje się archiwum historycznym, tylko do odczytu. Wszystkie nowe dane trafiają do pliku `entities.md`, który ma ustrukturyzowany format i jest obsługiwany przez dedykowane komendy.
+Po migracji plik `Gracze.md` jest **zamrożony** - staje się archiwum historycznym, tylko do odczytu. Wszystkie nowe dane trafiają do pliku `entities.md`, który ma ustrukturyzowany format i jest obsługiwany przez dedykowane komendy.
 
-System przy odczycie **scala oba pliki** automatycznie — żadne dane nie giną. Po prostu nowe zmiany zapisywane są w nowym miejscu.
+System przy odczycie **scala oba pliki** automatycznie - żadne dane nie giną. Po prostu nowe zmiany zapisywane są w nowym miejscu.
 
-### Diagnostyka — nowe narzędzie
+### Diagnostyka - nowe narzędzie
 
 Przed każdym przydziałem PU koordynator może (i powinien) uruchomić diagnostykę, która sprawdza:
 
@@ -288,12 +288,13 @@ Przed każdym przydziałem PU koordynator może (i powinien) uruchomić diagnost
 | Sesje z błędnymi datami | Sesje z danymi PU, które nie zostaną przetworzone z powodu złego formatu daty |
 | Przestarzałe wpisy historii | Stare nagłówki sesji w pliku historii, które już nie istnieją w repozytorium |
 
-Diagnostyka daje jasny wynik: **tak/nie** — czy wszystko jest w porządku.
+Diagnostyka daje jasny wynik: **tak/nie** - czy wszystko jest w porządku.
 
 ### Czego oczekujemy od koordynatorów
 
 - Przeprowadzenie migracji technicznej zgodnie z [MIGRACJA-TECH.md](MIGRACJA-TECH.md)
 - Uruchomienie diagnostyki przed każdym przydziałem PU
+- Weryfikacja i normalizacja nazw narratorów w sesjach (mapowania w `narrator-mappings.txt`)
 - Komunikacja z zespołem o zmianach
 - Szkolenie narratorów z nowego formatu sesji
 
@@ -303,7 +304,7 @@ Diagnostyka daje jasny wynik: **tak/nie** — czy wszystko jest w porządku.
 
 ### Co to jest
 
-Nowy system wprowadza formalne śledzenie walut w grze. Do tej pory waluta nie była rejestrowana centralnie — teraz każda postać, NPC i lokacja mogą mieć przypisane konkretne ilości walut.
+Nowy system wprowadza formalne śledzenie walut w grze. Do tej pory waluta nie była rejestrowana centralnie - teraz każda postać, NPC i lokacja mogą mieć przypisane konkretne ilości walut.
 
 ### Denominacje
 
@@ -326,9 +327,9 @@ W świecie Nerthus istnieją trzy denominacje walut:
 
 Ponieważ waluta nie była wcześniej formalnie śledzona, musimy zebrać dane o aktualnym stanie posiadania:
 
-1. **Gracze** — otrzymają krótki formularz z pytaniem o stan walut swoich postaci
-2. **Narratorzy** — podadzą informacje o budżetach walutowych, którymi dysponują
-3. **Koordynatorzy** — ustalą ogólne rezerwy i początkowy stan skarbca
+1. **Gracze** - otrzymają krótki formularz z pytaniem o stan walut swoich postaci
+2. **Narratorzy** - podadzą informacje o budżetach walutowych, którymi dysponują
+3. **Koordynatorzy** - ustalą ogólne rezerwy i początkowy stan skarbca
 
 Formularz dla graczy będzie prosty:
 
@@ -355,14 +356,14 @@ System automatycznie odejmie walutę od źródła i doda do celu.
 
 ### Jak będzie wyglądał
 
-Przez 2–4 tygodnie oba systemy (stary i nowy) będą działać równolegle. To zabezpieczenie — pozwala porównać wyniki i upewnić się, że nowy system działa poprawnie.
+Przez 2–4 tygodnie oba systemy (stary i nowy) będą działać równolegle. To zabezpieczenie - pozwala porównać wyniki i upewnić się, że nowy system działa poprawnie.
 
 W tym czasie:
 
-- **Przydział PU** — koordynator uruchomi oba systemy i porówna wyniki
-- **Nowe sesje** — narratorzy zaczynają pisać w nowym formacie (z `@`)
-- **Nowe postacie** — tworzone wyłącznie przez nowy system
-- **Stare sesje** — nadal czytelne, nie wymagają zmian
+- **Przydział PU** - koordynator uruchomi oba systemy i porówna wyniki
+- **Nowe sesje** - narratorzy zaczynają pisać w nowym formacie (z `@`)
+- **Nowe postacie** - tworzone wyłącznie przez nowy system
+- **Stare sesje** - nadal czytelne, nie wymagają zmian
 
 ### Kiedy nastąpi przełączenie
 
@@ -389,13 +390,13 @@ O: Nie. Migracja nie usuwa ani nie modyfikuje istniejących danych. Stary plik `
 **P: Czy muszę coś robić od razu?**
 
 O: To zależy od Twojej roli:
-- **Gracz** — poczekaj na formularz walut. Poza tym nic się nie zmienia.
-- **Narrator** — zacznij pisać nowe sesje w formacie z `@` (stary format nadal działa, ale nowy jest preferowany).
-- **Koordynator** — postępuj zgodnie z [MIGRACJA-TECH.md](MIGRACJA-TECH.md).
+- **Gracz** - poczekaj na formularz walut. Poza tym nic się nie zmienia.
+- **Narrator** - zacznij pisać nowe sesje w formacie z `@` (stary format nadal działa, ale nowy jest preferowany).
+- **Koordynator** - postępuj zgodnie z [MIGRACJA-TECH.md](MIGRACJA-TECH.md).
 
 **P: Co jeśli coś pójdzie nie tak?**
 
-O: Istnieje pełen plan awaryjny z możliwością powrotu do starego systemu na każdym etapie. Dane oryginalne nie są modyfikowane — zawsze można się cofnąć.
+O: Istnieje pełen plan awaryjny z możliwością powrotu do starego systemu na każdym etapie. Dane oryginalne nie są modyfikowane - zawsze można się cofnąć.
 
 ### Dla graczy
 
@@ -405,7 +406,7 @@ O: Nie. Mechanizm przydziału PU (1 bazowe + sesyjne, limit 5, nadmiar przenoszo
 
 **P: Czy muszę znać nowy format sesji?**
 
-O: Jeśli korzystasz ze [zgłaszania alternatywnego deklaracji](https://nerthus.pl/Mechanika/Deklaracje/#zgłaszanie-alternatywne) (samodzielne wpisywanie deklaracji w formacie repozytorium), to tak — nowe zgłoszenia powinny używać formatu z prefiksem `@` przy polach metadanych (`@Lokacje`, `@PU`, `@Logi`). Jeśli nie korzystasz z tej opcji, format sesji Cię nie dotyczy.
+O: Jeśli korzystasz ze [zgłaszania alternatywnego deklaracji](https://nerthus.pl/Mechanika/Deklaracje/#zgłaszanie-alternatywne) (samodzielne wpisywanie deklaracji w formacie repozytorium), to tak - nowe zgłoszenia powinny używać formatu z prefiksem `@` przy polach metadanych (`@Lokacje`, `@PU`, `@Logi`). Jeśli nie korzystasz z tej opcji, format sesji Cię nie dotyczy.
 
 **P: Co z moją kartą postaci?**
 
@@ -431,7 +432,7 @@ O: Zapytaj koordynatora o aktualną listę zarejestrowanych postaci i ich alias�
 
 **P: Co to jest `@Intel`?**
 
-O: Intel to mechanizm wysyłania celowanych wiadomości do konkretnych osób, grup lub lokacji przez Discord. Jeśli Twoja sesja generuje informację, którą powinni otrzymać konkretni gracze — wpisz ją jako `@Intel`.
+O: Intel to mechanizm wysyłania celowanych wiadomości do konkretnych osób, grup lub lokacji przez Discord. Jeśli Twoja sesja generuje informację, którą powinni otrzymać konkretni gracze - wpisz ją jako `@Intel`.
 
 **P: Jak działa `@Transfer`?**
 
@@ -453,7 +454,7 @@ O: Nowy system korzysta z **tego samego** pliku historii (`pu-sessions.md`). Ża
 
 **P: Czy muszę znać PowerShell?**
 
-O: Podstawowa znajomość wystarczy — komendy są zaprojektowane tak, żeby można je skopiować i uruchomić. Dokument techniczny [MIGRACJA-TECH.md](MIGRACJA-TECH.md) zawiera dokładne komendy do skopiowania na każdym etapie.
+O: Podstawowa znajomość wystarczy - komendy są zaprojektowane tak, żeby można je skopiować i uruchomić. Dokument techniczny [MIGRACJA-TECH.md](MIGRACJA-TECH.md) zawiera dokładne komendy do skopiowania na każdym etapie.
 
 ---
 

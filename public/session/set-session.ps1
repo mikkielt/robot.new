@@ -96,7 +96,7 @@ function Split-SessionSection {
     param([string[]]$Lines)
 
     $MetaTags = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
-    foreach ($T in @('pu', 'logi', 'lokalizacje', 'lokacje', 'zmiany', 'intel')) {
+    foreach ($T in @('narrator', 'pu', 'logi', 'lokalizacje', 'lokacje', 'zmiany', 'intel')) {
         [void]$MetaTags.Add($T)
     }
 
@@ -107,6 +107,7 @@ function Split-SessionSection {
 
     # Normalize raw tag name -> canonical key
     $TagKeyMap = @{
+        'narrator'    = 'narrator'
         'lokalizacje' = 'locations'
         'lokacje'     = 'locations'
         'logi'        = 'logs'
@@ -254,6 +255,7 @@ function ConvertTo-Gen4FromRawBlock {
     )
 
     $Gen4Tag = switch ($Tag) {
+        'narrator'  { 'Narrator' }
         'locations' { 'Lokacje' }
         'logs'      { 'Logi' }
         'pu'        { 'PU' }
@@ -378,6 +380,9 @@ function Set-Session {
         [Parameter(HelpMessage = "Entity state changes (Zmiany entries) to set")]
         [object[]]$Changes,
 
+        [Parameter(HelpMessage = "Narrator canonical names for @Narrator metadata override")]
+        [string[]]$Narrator,
+
         [Parameter(HelpMessage = "Intel targeting entries to set")]
         [object[]]$Intel,
 
@@ -439,10 +444,14 @@ function Set-Session {
                       elseif ($Properties -and $Properties.ContainsKey('Content')) { $Properties.Content }
                       else { $null }
 
+        $EffNarrator = if ($PSBoundParameters.ContainsKey('Narrator')) { $Narrator }
+                       elseif ($Properties -and $Properties.ContainsKey('Narrator')) { $Properties.Narrator }
+                       else { $null }
+
         # Check if any changes requested
         $HasChanges = ($null -ne $EffLocations) -or ($null -ne $EffPU) -or ($null -ne $EffLogs) -or
                       ($null -ne $EffChanges) -or ($null -ne $EffIntel) -or ($null -ne $EffContent) -or
-                      $UpgradeFormat
+                      ($null -ne $EffNarrator) -or $UpgradeFormat
         if (-not $HasChanges) {
             Write-Warning 'No changes specified. Use -Locations, -PU, -Logs, -Changes, -Intel, -Content, -Properties, or -UpgradeFormat.'
             return
@@ -452,12 +461,16 @@ function Set-Session {
 
         # Metadata config: canonical key, Gen4 tag name, possible original keys in Split output
         $MetaConfig = @(
-            @{ Key = 'locations'; Gen4Tag = 'Lokacje'; OrigKeys = @('locations', 'locations-italic'); Effective = $EffLocations }
-            @{ Key = 'logs';      Gen4Tag = 'Logi';    OrigKeys = @('logs', 'logs-plain');            Effective = $EffLogs }
-            @{ Key = 'pu';        Gen4Tag = 'PU';      OrigKeys = @('pu');                            Effective = $EffPU }
-            @{ Key = 'changes';   Gen4Tag = 'Zmiany';  OrigKeys = @('changes');                       Effective = $EffChanges }
-            @{ Key = 'intel';     Gen4Tag = 'Intel';    OrigKeys = @('intel');                         Effective = $EffIntel }
+            @{ Key = 'narrator';  Gen4Tag = 'Narrator'; OrigKeys = @('narrator');                      Effective = $EffNarrator }
+            @{ Key = 'locations'; Gen4Tag = 'Lokacje';  OrigKeys = @('locations', 'locations-italic'); Effective = $EffLocations }
+            @{ Key = 'logs';      Gen4Tag = 'Logi';     OrigKeys = @('logs', 'logs-plain');            Effective = $EffLogs }
+            @{ Key = 'pu';        Gen4Tag = 'PU';       OrigKeys = @('pu');                            Effective = $EffPU }
+            @{ Key = 'changes';   Gen4Tag = 'Zmiany';   OrigKeys = @('changes');                       Effective = $EffChanges }
+            @{ Key = 'intel';     Gen4Tag = 'Intel';     OrigKeys = @('intel');                         Effective = $EffIntel }
         )
+
+        # Lazy-loaded narrator mappings for UpgradeFormat injection
+        $NarratorMappings = $null
 
         # Process each file
 
@@ -497,6 +510,26 @@ function Set-Session {
 
                 # Decompose section
                 $Split = Split-SessionSection -Lines $SectionLines
+
+                # UpgradeFormat: inject @Narrator from normalization file when no explicit narrator was provided
+                if ($UpgradeFormat -and $null -eq $EffNarrator -and -not $Split.MetaBlocks.Contains('narrator')) {
+                    if ($null -eq $NarratorMappings) {
+                        . "$script:ModuleRoot/migration/narrator-normalization.ps1"
+                        $NarratorMappings = Import-NarratorMappings
+                    }
+                    if ($NarratorMappings.Count -gt 0) {
+                        $HdrText = $Match.HeaderText
+                        $LC = $HdrText.LastIndexOf(',')
+                        if ($LC -ge 0 -and ($HdrText.Split(',').Length - 1) -ge 2) {
+                            $RawNarr = $HdrText.Substring($LC + 1).Trim()
+                            if ($NarratorMappings.ContainsKey($RawNarr)) {
+                                foreach ($MC in $MetaConfig) {
+                                    if ($MC.Key -eq 'narrator') { $MC.Effective = $NarratorMappings[$RawNarr]; break }
+                                }
+                            }
+                        }
+                    }
+                }
 
                 # Build new section content
 

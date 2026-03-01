@@ -46,14 +46,17 @@ function Get-EntityState {
         [Parameter(HelpMessage = "Pre-fetched session list from Get-Session")]
         [object[]]$Sessions,
 
+        [Parameter(HelpMessage = "Pre-fetched player roster from Get-Player")]
+        [object[]]$Players,
+
         [Parameter(HelpMessage = "Filter temporally-scoped data to entries active on this date")]
         [datetime]$ActiveOn
     )
 
-    if (-not $Entities) {
+    if (-not $PSBoundParameters.ContainsKey('Entities')) {
         $Entities = if ($ActiveOn) { Get-Entity -ActiveOn $ActiveOn } else { Get-Entity }
     }
-    if (-not $Sessions) {
+    if (-not $PSBoundParameters.ContainsKey('Sessions')) {
         $Sessions = Get-Session
     }
 
@@ -69,7 +72,9 @@ function Get-EntityState {
     }
 
     # Build full name resolution infrastructure for fuzzy matching fallback
-    $Players = Get-Player -Entities $Entities
+    if (-not $PSBoundParameters.ContainsKey('Players')) {
+        $Players = Get-Player -Entities $Entities
+    }
     $NameIndexResult = Get-NameIndex -Players $Players -Entities $Entities
     $Cache = @{}
 

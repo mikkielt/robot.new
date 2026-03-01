@@ -18,6 +18,26 @@ BeforeAll {
 }
 
 Describe 'ConvertTo-Gen4MetadataBlock' {
+    Context 'Narrator' {
+        It 'renders "- @Narrator:" with nested name items' {
+            $Items = @('Solmyr', 'Dracon')
+            $Result = ConvertTo-Gen4MetadataBlock -Tag 'Narrator' -Items $Items -NL $script:NL
+            $Lines = $Result -split "`n"
+            $Lines[0] | Should -Be '- @Narrator:'
+            $Lines[1] | Should -Be '    - Solmyr'
+            $Lines[2] | Should -Be '    - Dracon'
+        }
+
+        It 'renders single narrator' {
+            $Items = @('Solmyr')
+            $Result = ConvertTo-Gen4MetadataBlock -Tag 'Narrator' -Items $Items -NL $script:NL
+            $Lines = $Result -split "`n"
+            $Lines.Count | Should -Be 2
+            $Lines[0] | Should -Be '- @Narrator:'
+            $Lines[1] | Should -Be '    - Solmyr'
+        }
+    }
+
     Context 'Lokacje' {
         It 'renders "- @Lokacje:" with nested location items' {
             # Arrange
@@ -168,8 +188,9 @@ Describe 'ConvertTo-Gen4MetadataBlock' {
 
 Describe 'ConvertTo-SessionMetadata' {
     Context 'All blocks present' {
-        It 'renders all blocks in canonical order: Lokacje, Logi, PU, Zmiany, Intel' {
+        It 'renders all blocks in canonical order: Narrator, Lokacje, Logi, PU, Zmiany, Intel' {
             # Arrange
+            $Narrator = @('Solmyr')
             $Locations = @('Erathia')
             $Logs = @('https://example.com/log1')
             $PU = @([PSCustomObject]@{ Character = 'Solmyr'; Value = 0.5 })
@@ -181,6 +202,7 @@ Describe 'ConvertTo-SessionMetadata' {
 
             # Act
             $Result = ConvertTo-SessionMetadata `
+                -Narrator $Narrator `
                 -Locations $Locations `
                 -Logs $Logs `
                 -PU $PU `
@@ -191,18 +213,36 @@ Describe 'ConvertTo-SessionMetadata' {
             # Assert
             $Result | Should -Not -BeNullOrEmpty
             $Blocks = $Result -split "`n"
-            # First block should be Lokacje
-            $Blocks[0] | Should -Be '- @Lokacje:'
+            # First block should be Narrator
+            $Blocks[0] | Should -Be '- @Narrator:'
             # Find block starts by looking for "- @"
             $BlockStarts = @()
             for ($i = 0; $i -lt $Blocks.Count; $i++) {
                 if ($Blocks[$i] -match '^\- @') { $BlockStarts += $Blocks[$i] }
             }
-            $BlockStarts[0] | Should -Be '- @Lokacje:'
-            $BlockStarts[1] | Should -Be '- @Logi:'
-            $BlockStarts[2] | Should -Be '- @PU:'
-            $BlockStarts[3] | Should -Be '- @Zmiany:'
-            $BlockStarts[4] | Should -Be '- @Intel:'
+            $BlockStarts[0] | Should -Be '- @Narrator:'
+            $BlockStarts[1] | Should -Be '- @Lokacje:'
+            $BlockStarts[2] | Should -Be '- @Logi:'
+            $BlockStarts[3] | Should -Be '- @PU:'
+            $BlockStarts[4] | Should -Be '- @Zmiany:'
+            $BlockStarts[5] | Should -Be '- @Intel:'
+        }
+    }
+
+    Context 'Narrator block renders before Lokacje' {
+        It 'renders Narrator first when both Narrator and Lokacje are present' {
+            $Result = ConvertTo-SessionMetadata `
+                -Narrator @('Solmyr') `
+                -Locations @('Erathia') `
+                -NL $script:NL
+
+            $Blocks = $Result -split "`n"
+            $BlockStarts = @()
+            for ($i = 0; $i -lt $Blocks.Count; $i++) {
+                if ($Blocks[$i] -match '^\- @') { $BlockStarts += $Blocks[$i] }
+            }
+            $BlockStarts[0] | Should -Be '- @Narrator:'
+            $BlockStarts[1] | Should -Be '- @Lokacje:'
         }
     }
 

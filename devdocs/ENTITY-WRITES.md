@@ -208,7 +208,7 @@ Three precompiled regex patterns (`RegexOptions.Compiled`):
 
 ## 5. Generic Entity CRUD (`public/entity/`)
 
-These commands handle NPC, Organizacja, Lokacja, and Przedmiot entities. `Gracz` and `Postać` are excluded — they have specialized commands (§4) with domain-specific logic (PU, ownership, character files).
+These commands handle NPC, Organizacja, Lokacja, and Przedmiot entities. `Gracz` and `Postać` are excluded - they have specialized commands (§4) with domain-specific logic (PU, ownership, character files).
 
 ### 5.1 `New-Entity`
 
@@ -229,7 +229,7 @@ These commands handle NPC, Organizacja, Lokacja, and Przedmiot entities. `Gracz`
 
 | Aspect | Detail |
 |---|---|
-| **Target** | `entities.md` — searches all sections or scoped to `-Type` |
+| **Target** | `entities.md` - searches all sections or scoped to `-Type` |
 | **Tags written** | Any `@tag` via `-Tags` hashtable, upsert via `Set-EntityTag` |
 | **Cross-section search** | When `-Type` not provided, scans all entity type sections for the named entity |
 | **Auto-creation** | Creates entity if not found (requires `-Type`) |
@@ -241,7 +241,7 @@ These commands handle NPC, Organizacja, Lokacja, and Przedmiot entities. `Gracz`
 
 | Aspect | Detail |
 |---|---|
-| **Target** | `entities.md` — searches all sections or scoped to `-Type` |
+| **Target** | `entities.md` - searches all sections or scoped to `-Type` |
 | **Operation** | Soft-delete: writes `@status: Usunięty (YYYY-MM:)` |
 | **`-ValidFrom`** | Defaults to current month |
 | **No physical deletion** | Entity bullet remains |

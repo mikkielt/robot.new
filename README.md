@@ -124,12 +124,14 @@ foreach ($Name in $NamesToResolve) {
 ├── private/         # Shared helpers, dot-sourced on demand (not exported)
 ├── tests/           # Pester test suite
 │   └── fixtures/    # Test data files
+├── migration/       # Interactive migration wizard (.robot → .robot.new), 8-phase with state tracking
 ├── templates/       # Markdown/text templates for entity creation, notifications, scaffolding
 ├── docs/            # Documentation for narrators, coordinators, players
+│   └── PL/          # Polish-language guides (team migration handbook, technical walkthrough)
 └── devdocs/         # Technical documentation for developers
 ```
 
-### Exported Functions (`public/`, 32)
+### Exported Functions (`public/`, 39)
 
 | Category | Subdirectory | Functions |
 |---|---|---|
@@ -139,8 +141,8 @@ foreach ($Name in $NamesToResolve) {
 | Currency CRUD | `public/currency/` | `New-CurrencyEntity`, `Set-CurrencyEntity`, `Get-CurrencyEntity`, `Remove-CurrencyEntity` |
 | Session | `public/session/` | `Get-Session`, `Get-GitChangeLog`, `New-Session`, `Set-Session` |
 | Name resolution | `public/resolve/` | `Resolve-Name`, `Resolve-Narrator` |
-| Workflow | `public/workflow/` | `Invoke-PlayerCharacterPUAssignment`, `Send-DiscordMessage` |
-| Reporting & validation | `public/reporting/` | `Get-CurrencyReport`, `Get-NamedLocationReport`, `Test-CurrencyReconciliation`, `Test-PlayerCharacterPUAssignment` |
+| Workflow | `public/workflow/` | `Get-VotingEligibility`, `Invoke-PlayerCharacterPUAssignment`, `Send-DiscordMessage` |
+| Reporting & validation | `public/reporting/` | `Get-ChangeLog`, `Get-CurrencyReport`, `Get-EntityHistory`, `Get-NamedLocationReport`, `Get-NarratorReport`, `Get-NotificationLog`, `Get-PUAssignmentLog`, `Get-TransactionLedger`, `Test-CurrencyReconciliation`, `Test-PlayerCharacterPUAssignment` |
 
 ### Shared Helpers (`private/`, dot-sourced, non-exported)
 `entity-writehelpers.ps1`, `charfile-helpers.ps1`, `admin-config.ps1`, `admin-state.ps1`, `format-sessionblock.ps1`, `string-helpers.ps1`, `currency-helpers.ps1`, `parse-markdownfile.ps1`
@@ -171,30 +173,35 @@ See [devdocs/TESTING.md](devdocs/TESTING.md) for test architecture, fixtures, lo
 
 | Document | Description |
 |---|---|
+| [Auditing](docs/Auditing.md) | Audit trail guide: entity history, change log, transaction ledger, PU log, notification log |
 | [Glossary](docs/Glossary.md) | Domain terminology reference (PU, Entity types, etc.) |
-| [Sessions](docs/Sessions.md) | Session recording format guide (Gen4 syntax, common mistakes) |
-| [PU](docs/PU.md) | Monthly PU assignment process and calculation rules |
-| [Players](docs/Players.md) | Player and character lifecycle (registration, updates, deletion) |
-| [World-State](docs/World-State.md) | Entity tracking, temporal scoping, and three-layer data model |
-| [Notifications](docs/Notifications.md) | Intel targeting and Discord notifications |
 | [Migration](docs/Migration.md) | Transition guide from legacy system |
+| [Notifications](docs/Notifications.md) | Intel targeting and Discord notifications |
+| [Players](docs/Players.md) | Player and character lifecycle (registration, updates, deletion) |
+| [PU](docs/PU.md) | Monthly PU assignment process and calculation rules |
+| [Sessions](docs/Sessions.md) | Session recording format guide (Gen4 syntax, common mistakes) |
 | [Troubleshooting](docs/Troubleshooting.md) | Diagnostics, common issues, and recovery actions |
+| [World-State](docs/World-State.md) | Entity tracking, temporal scoping, and three-layer data model |
+| [MIGRACJA](docs/PL/MIGRACJA.md) | Team migration handbook - role-by-role impact, timeline, FAQ (Polish) |
+| [MIGRACJA-TECH](docs/PL/MIGRACJA-TECH.md) | Step-by-step technical migration walkthrough with commands (Polish) |
 
 ### For Developers (`devdocs/`)
 
 | Document | Description |
 |---|---|
-| [ENTITIES](devdocs/ENTITIES.md) | Entity system: parsing, state merge, three-layer model, output schemas |
-| [ENTITY-WRITES](devdocs/ENTITY-WRITES.md) | Write operations: all five mutating commands, line-array primitives |
-| [SESSIONS](devdocs/SESSIONS.md) | Session pipeline: format detection Gen1-Gen4, deduplication, Intel |
-| [PU](devdocs/PU.md) | Normative PU specification: algorithm, overflow pools, diagnostics |
-| [NAME-RESOLUTION](devdocs/NAME-RESOLUTION.md) | Name resolution: index building, declension, stem alternation, Levenshtein |
-| [PARSER](devdocs/PARSER.md) | Markdown parser: RunspacePool architecture, single-pass scanner |
+| [AUDITING](devdocs/AUDITING.md) | Audit functions: five read-only reporting commands, algorithms, output schemas |
 | [CHARFILE](devdocs/CHARFILE.md) | Character file format: reputation parsing, template rendering |
 | [CONFIG-STATE](devdocs/CONFIG-STATE.md) | Configuration resolution, templates, append-only history |
-| [GIT](devdocs/GIT.md) | Git integration: streaming changelog parser, repo detection |
+| [CURRENCY](devdocs/CURRENCY.md) | Currency system: denominations, CRUD, @Transfer, reconciliation, treasury model |
 | [DISCORD](devdocs/DISCORD.md) | Discord messaging: webhooks, PU notifications, Intel dispatch |
+| [ENTITIES](devdocs/ENTITIES.md) | Entity system: parsing, state merge, three-layer model, output schemas |
+| [ENTITY-WRITES](devdocs/ENTITY-WRITES.md) | Write operations: all five mutating commands, line-array primitives |
+| [GIT](devdocs/GIT.md) | Git integration: streaming changelog parser, repo detection |
 | [MIGRATION](devdocs/MIGRATION.md) | Full migration reference: data model, all subsystems |
+| [NAME-RESOLUTION](devdocs/NAME-RESOLUTION.md) | Name resolution: index building, declension, stem alternation, Levenshtein |
+| [PARSER](devdocs/PARSER.md) | Markdown parser: RunspacePool architecture, single-pass scanner |
+| [PU](devdocs/PU.md) | Normative PU specification: algorithm, overflow pools, diagnostics |
+| [SESSIONS](devdocs/SESSIONS.md) | Session pipeline: format detection Gen1-Gen4, deduplication, Intel |
 | [SYNTAX](devdocs/SYNTAX.md) | Code style guide: naming, .NET patterns, entity file syntax |
 | [TESTING](devdocs/TESTING.md) | Test infrastructure: fixtures, loading patterns, mock strategies |
 

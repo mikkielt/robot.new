@@ -40,7 +40,7 @@
       - Zmiany: blocks contain entity state overrides and are extracted to session objects.
       - Efekty: and Objaśnienia: are present in source but not extracted to session object fields.
     - Gen4 (2026+): @-prefixed list-based metadata (- @Lokacje:, - @PU:, - @Logi:, - @Zmiany:).
-      Backwards compatible — Gen3 sessions parse identically to before.
+      Backwards compatible - Gen3 sessions parse identically to before.
 
     Key implementation decisions:
     - All Markdown files are batch-parsed in a single Get-Markdown call to enable
@@ -174,7 +174,7 @@ function Get-SessionLocations {
             }
         }
         { $_ -eq 'Gen3' -or $_ -eq 'Gen4' } {
-            # Strategy 1: Entity resolution — find a nested list where all
+            # Strategy 1: Entity resolution - find a nested list where all
             # resolved names are Lokacja entities (tag-name-independent)
             if ($Index) {
                 foreach ($TopLI in $SectionLists) {
@@ -209,7 +209,7 @@ function Get-SessionLocations {
                 }
             }
 
-            # Strategy 2: Tag-based fallback — look for "Lokalizacj*" or "Lokacj*" list item
+            # Strategy 2: Tag-based fallback - look for "Lokalizacj*" or "Lokacj*" list item
             # Normalizes leading @ for Gen4 compatibility
             if ($Locations.Count -eq 0) {
                 $LocList = $null
@@ -260,6 +260,7 @@ function Get-SessionListMetadata {
     $Changes      = [System.Collections.Generic.List[object]]::new()
     $Intel        = [System.Collections.Generic.List[object]]::new()
     $Transfers    = [System.Collections.Generic.List[object]]::new()
+    $Narrators    = [System.Collections.Generic.List[string]]::new()
 
     foreach ($ListItem in $SectionLists) {
         $ItemText  = $ListItem.Text
@@ -354,6 +355,17 @@ function Get-SessionListMetadata {
             }
         }
 
+        # Narrator: canonical names for @Narrator metadata override
+        if ($MatchText.StartsWith('narrator') -and ($MatchText.Length -eq 8 -or $MatchText[8] -eq ':' -or $MatchText[8] -eq ' ')) {
+            foreach ($NarrItem in $SectionLists) {
+                if ($NarrItem.ParentListItem -ne $ListItem) { continue }
+                $NarrName = $NarrItem.Text.Trim()
+                if (-not [string]::IsNullOrWhiteSpace($NarrName)) {
+                    $Narrators.Add($NarrName)
+                }
+            }
+        }
+
         # Transfer: currency convenience shorthand
         # Format: "- @Transfer: {amount} {denomination}, {source} -> {destination}"
         if ($MatchText.StartsWith('transfer') -and $MatchText.Length -gt 8 -and ($MatchText[8] -eq ':' -or $MatchText[8] -eq ' ')) {
@@ -398,6 +410,7 @@ function Get-SessionListMetadata {
         Changes   = $Changes
         Intel     = $Intel
         Transfers = $Transfers
+        Narrators = $Narrators
     }
 }
 
@@ -672,7 +685,7 @@ function Resolve-IntelTargets {
         $RecipientEntities = [System.Collections.Generic.List[object]]::new()
 
         foreach ($TName in $TargetNames) {
-            # Resolve via name index (stages 1, 2, 2b — no fuzzy)
+            # Resolve via name index (stages 1, 2, 2b - no fuzzy)
             $Resolved = $null
 
             if ($Index.ContainsKey($TName)) {
@@ -837,6 +850,7 @@ function Get-SessionMentions {
         $Lower = $TestText.ToLowerInvariant()
 
         $IsExcluded = $false
+        if ($Lower.StartsWith('narrator') -and ($Lower.Length -eq 8 -or $Lower[8] -eq ':' -or $Lower[8] -eq ' ')) { $IsExcluded = $true }
         if ($Lower.StartsWith('pu') -and ($Lower.Length -eq 2 -or $Lower[2] -eq ':' -or $Lower[2] -eq ' ')) { $IsExcluded = $true }
         if ($Lower.StartsWith('logi') -and ($Lower.Length -eq 4 -or $Lower[4] -eq ':' -or $Lower[4] -eq ' ')) { $IsExcluded = $true }
         if ($Lower.StartsWith('lokalizacj') -or $Lower.StartsWith('lokacj')) { $IsExcluded = $true }
@@ -903,7 +917,7 @@ function Get-SessionMentions {
     # Phase 3: Tokenize
 
     $MdLinkRegex = [regex]::new('\[(.+?)\]\(.+?\)')
-    $PunctuationRegex = [regex]::new('[,\.\;\:\!\?\(\)\[\]\{\}\"' + "'" + '\-\—\/\>\<\#\^\=\+\~\`]+')
+    $PunctuationRegex = [regex]::new('[,\.\;\:\!\?\(\)\[\]\{\}\"' + "'" + '\-\-\/\>\<\#\^\=\+\~\`]+')
 
     $CandidateTokens = [System.Collections.Generic.List[string]]::new()
 
@@ -932,7 +946,7 @@ function Get-SessionMentions {
         }
     }
 
-    # Phase 4: Resolve Tokens (stages 1, 2, 2b only — no fuzzy)
+    # Phase 4: Resolve Tokens (stages 1, 2, 2b only - no fuzzy)
 
     $ResolvedEntities = [System.Collections.Generic.Dictionary[string, object]]::new(
         [System.StringComparer]::OrdinalIgnoreCase
@@ -1173,7 +1187,7 @@ function Get-Session {
                     }
                 }
             } else {
-                # No date — can't filter out, must process (or skip as failed)
+                # No date - can't filter out, must process (or skip as failed)
                 $HasCandidateSession = $true
             }
         }
@@ -1196,7 +1210,7 @@ function Get-Session {
             $DateInfo = ConvertFrom-SessionHeader -Header $Header -DateRegex $DateRegex -Match $CachedMatch
 
             if ($null -eq $DateInfo) {
-                # Header does not match session pattern — record as failed
+                # Header does not match session pattern - record as failed
                 if ($IncludeFailed) {
                     $FailedSession = [PSCustomObject]@{
                         FilePath       = $FilePath
@@ -1225,7 +1239,7 @@ function Get-Session {
 
             # Narrator result (aligned with parseable sections index)
             # Must be extracted BEFORE date filtering to keep $NarratorIdx in sync
-            # with $ParseableIndices — skipped sessions must still consume their slot.
+            # with $ParseableIndices - skipped sessions must still consume their slot.
             $NarratorResult = $null
             if ($NarratorResults -and $ParseableIndices.Contains($i)) {
                 $NarratorResult = if ($NarratorResults -is [array]) { $NarratorResults[$NarratorIdx] } else { $NarratorResults }
@@ -1262,6 +1276,48 @@ function Get-Session {
             $Changes = $ListMeta.Changes
             $Transfers = $ListMeta.Transfers
 
+            # @Narrator override: when present, completely replaces header-based narrator resolution
+            $MetaNarrators = $ListMeta.Narrators
+            if ($MetaNarrators -and $MetaNarrators.Count -gt 0) {
+                $OverrideNarrators = [System.Collections.Generic.List[object]]::new()
+                foreach ($CanonName in $MetaNarrators) {
+                    # Exact index lookup -> High confidence
+                    if ($Index.ContainsKey($CanonName)) {
+                        $IdxEntry = $Index[$CanonName]
+                        if (-not $IdxEntry.Ambiguous -and $IdxEntry.OwnerType -eq 'Player') {
+                            $OverrideNarrators.Add([PSCustomObject]@{
+                                Name       = $IdxEntry.Owner.Name
+                                Player     = $IdxEntry.Owner
+                                Confidence = 'High'
+                            })
+                            continue
+                        }
+                    }
+                    # Fallback: full Resolve-Name with Player type filter -> Medium confidence
+                    $Resolved = Resolve-Name -Query $CanonName -Index $Index -StemIndex $StemIndex -BKTree $BKTree -OwnerType 'Player'
+                    if ($Resolved) {
+                        $OverrideNarrators.Add([PSCustomObject]@{
+                            Name       = $Resolved.Name
+                            Player     = $Resolved
+                            Confidence = 'Medium'
+                        })
+                    }
+                }
+
+                if ($OverrideNarrators.Count -gt 0) {
+                    $OverallConf = 'High'
+                    foreach ($N in $OverrideNarrators) {
+                        if ($N.Confidence -ne 'High') { $OverallConf = $N.Confidence }
+                    }
+                    $NarratorResult = [PSCustomObject]@{
+                        Narrators  = @($OverrideNarrators)
+                        IsCouncil  = $false
+                        Confidence = $OverallConf
+                        RawText    = if ($NarratorResult) { $NarratorResult.RawText } else { $null }
+                    }
+                }
+            }
+
             # Plain text log fallback (Gen 1/2)
             if ($Logs.Count -eq 0) {
                 $Logs = Get-SessionPlainTextLogs -ContentLines $ContentLines -LogiLineRegex $LogiLineRegex
@@ -1281,7 +1337,7 @@ function Get-Session {
                 $MentionsV = if ($RawMentions -and $RawMentions.Count -gt 0) { @($RawMentions) } else { @() }
             }
 
-            # Intel resolution — always runs when @Intel entries exist
+            # Intel resolution - always runs when @Intel entries exist
             $IntelV = @()
             if ($ListMeta.Intel -and $ListMeta.Intel.Count -gt 0 -and $null -ne $DateInfo.Date) {
                 $ResolvedIntel = Resolve-IntelTargets `
@@ -1346,7 +1402,7 @@ function Get-Session {
         $DedupSessions.Add($Merged)
     }
 
-    # Filter out entries with no parsed date — these are non-session headers
+    # Filter out entries with no parsed date - these are non-session headers
     $Filtered = [System.Collections.Generic.List[object]]::new()
     foreach ($S in $DedupSessions) {
         if ($null -ne $S.Date) { $Filtered.Add($S) }

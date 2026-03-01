@@ -1056,3 +1056,39 @@ Describe 'Get-Session - ExcludeDirectory' {
         Remove-TestTempDir
     }
 }
+
+Describe 'Get-Session - @Narrator override' {
+    It 'extracts @Narrator child items from session metadata' {
+        $Sessions = Get-Session -File (Join-Path $script:FixturesRoot 'sessions-narrator-override.md')
+        # First session has @Narrator: Solmyr
+        $First = $Sessions | Where-Object { $_.Title -like '*Oblężenie*' }
+        $First | Should -Not -BeNull
+        $First.Narrator | Should -Not -BeNull
+        $First.Narrator.Narrators.Count | Should -BeGreaterOrEqual 1
+    }
+
+    It 'extracts multiple @Narrator names for co-narrator override' {
+        $Sessions = Get-Session -File (Join-Path $script:FixturesRoot 'sessions-narrator-override.md')
+        # Second session has @Narrator: Solmyr, Dracon
+        $Second = $Sessions | Where-Object { $_.Title -like '*magów*' }
+        $Second | Should -Not -BeNull
+        $Second.Narrator | Should -Not -BeNull
+        # Should have 2 or more narrators from override (if entities resolve)
+    }
+
+    It 'preserves RawText from header when @Narrator overrides' {
+        $Sessions = Get-Session -File (Join-Path $script:FixturesRoot 'sessions-narrator-override.md')
+        $First = $Sessions | Where-Object { $_.Title -like '*Oblężenie*' }
+        $First | Should -Not -BeNull
+        # RawText should contain original header narrator
+        $First.Narrator.RawText | Should -Not -BeNullOrEmpty
+    }
+
+    It 'handles sessions without @Narrator gracefully' {
+        $Sessions = Get-Session -File (Join-Path $script:FixturesRoot 'sessions-narrator-override.md')
+        $Third = $Sessions | Where-Object { $_.Title -like '*bez override*' }
+        $Third | Should -Not -BeNull
+        # Should still have narrator from header
+        $Third.Narrator | Should -Not -BeNull
+    }
+}

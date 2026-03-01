@@ -38,6 +38,9 @@ function New-Session {
         [ValidateNotNullOrEmpty()]
         [string]$Narrator,
 
+        [Parameter(HelpMessage = "Canonical narrator names for @Narrator metadata (when different from header)")]
+        [string[]]$MetadataNarrators,
+
         [Parameter(HelpMessage = "Location names for the session")]
         [string[]]$Locations,
 
@@ -76,6 +79,7 @@ function New-Session {
 
     # Build metadata
     $Meta = ConvertTo-SessionMetadata `
+        -Narrator  $MetadataNarrators `
         -Locations $Locations `
         -Logs      $Logs `
         -PU        $PU `

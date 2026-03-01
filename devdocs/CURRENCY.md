@@ -343,7 +343,7 @@ Set-CurrencyEntity -Name "Korony Narrator Dracon" -AmountDelta +500 -ValidFrom "
 
 ### 11.4 Reconciliation
 
-`Test-CurrencyReconciliation` supply tracking includes treasury and narrator holdings in the total. This is correct — the total supply should be conserved across all holders (treasury + narrators + player characters). Supply drift indicates minting or loss errors.
+`Test-CurrencyReconciliation` supply tracking includes treasury and narrator holdings in the total. This is correct - the total supply should be conserved across all holders (treasury + narrators + player characters). Supply drift indicates minting or loss errors.
 
 **Note**: Paired `Set-CurrencyEntity` calls for admin distributions are not automatically linked. If one side is forgotten, `Test-CurrencyReconciliation` detects the supply drift at the next monthly reconciliation run.
 

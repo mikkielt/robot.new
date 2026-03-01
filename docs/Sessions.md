@@ -89,6 +89,7 @@ but not parsed for metadata.
 
 | Field | Required | Description |
 |---|---|---|
+| `@Narrator` | Optional | Canonical narrator name override (replaces header-based narrator resolution) |
 | `@Lokacje` | Recommended | Where the session took place (one location per line) |
 | `@Logi` | Recommended | Link(s) to the session transcript |
 | `@PU` | Required for PU processing | Character name and PU value (e.g., `Crag Hack: 0.3`) |

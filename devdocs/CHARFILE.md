@@ -125,9 +125,9 @@ Located in `.robot.new/templates/`:
 | `player-entry.md.template` | Entity entry template (parsed by `ConvertFrom-EntityTemplate`) |
 | `entities-skeleton.md.template` | Initial `entities.md` structure (6 section headers) |
 | `currency-entity.md.template` | New currency entity bullet structure |
-| `pu-notification-base.txt.template` | PU Discord notification — always present |
-| `pu-notification-overflow.txt.template` | PU notification — overflow supplement consumed |
-| `pu-notification-remaining.txt.template` | PU notification — overflow pool remaining |
+| `pu-notification-base.txt.template` | PU Discord notification - always present |
+| `pu-notification-overflow.txt.template` | PU notification - overflow supplement consumed |
+| `pu-notification-remaining.txt.template` | PU notification - overflow pool remaining |
 | `pu-sessions-header.md.template` | State file preamble for `pu-sessions.md` |
 
 ### 4.2 Placeholder Substitution
@@ -151,7 +151,7 @@ Parses a rendered template into a structured object for use with `New-EntityBull
 
 **Output**: `@{ Name = "EntityName"; Tags = [ordered]@{ tag1 = value1; tag2 = value2 } }`
 
-Used by `New-PlayerCharacter` to derive the default tag set from `player-entry.md.template` — the template is the source of truth for which tags a new character entry receives.
+Used by `New-PlayerCharacter` to derive the default tag set from `player-entry.md.template` - the template is the source of truth for which tags a new character entry receives.
 
 ### 4.4 Character File Template Placeholders
 

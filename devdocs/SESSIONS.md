@@ -45,7 +45,7 @@ New-Session (creation path)
 | Gen1 | START–2022 | None | `Logi: https://…` plain text | None | Fallback (no other match) |
 | Gen2 | 2022–2023 | `*Lokalizacja: A, B*` (italic) | `Logi: https://…` plain text | None | First non-empty line starts with `*Lokalizacj` |
 | Gen3 | 2024–2026 | `- Lokalizacje:` list item | `- Logi:` list item | `- PU:`, `- Zmiany:`, `- Efekty:` | Root list item with `pu` prefix (no `@`) |
-| Gen4 | 2026+ | `- @Lokacje:` list item | `- @Logi:` list item | `- @PU:`, `- @Zmiany:`, `- @Intel:` | Root list item starting with `@` + letter |
+| Gen4 | 2026+ | `- @Lokacje:` list item | `- @Logi:` list item | `- @Narrator:`, `- @PU:`, `- @Zmiany:`, `- @Intel:` | Root list item starting with `@` + letter |
 
 All four formats remain parseable. `Get-Session` auto-detects and normalizes transparently.
 
@@ -113,6 +113,7 @@ $MatchText = if ($LowerText.StartsWith('@')) { $LowerText.Substring(1) } else { 
 This enables unified parsing for both `- PU:` and `- @PU:`.
 
 Extracted fields:
+- **Narrator**: Canonical narrator name(s) under `narrator` tag, used as override (see §4.8)
 - **PU**: `Character: Value` pairs (comma -> period decimal normalization)
 - **Logs**: Child URLs under `logi` tag
 - **Changes (Zmiany)**: Entity names at 4-space indent, `@tag: value` at 8-space indent
@@ -121,6 +122,17 @@ Extracted fields:
 ### 4.7 Plain-Text Log Fallback (`Get-SessionPlainTextLogs`)
 
 Applied when list-based `$Logs.Count -eq 0`. Scans raw content lines for `Logi: <url>` patterns (Gen1/Gen2).
+
+### 4.8 @Narrator Override
+
+When a `- @Narrator:` block is present in session metadata, it completely replaces header-based narrator resolution. The override takes precedence over any narrator segment parsed from the `### date, title, narrator` header.
+
+Behavior:
+- The canonical narrator name(s) from the `@Narrator` block are used directly - no fuzzy resolution is applied.
+- `RawText` from the original header is preserved in the session object for round-trip fidelity.
+- If the `@Narrator` block is absent, standard header-based resolution via `Resolve-Narrator` applies as before.
+
+This mechanism supports narrator normalization during migration: the `@Narrator` block provides a verified canonical name, while the original header text remains untouched.
 
 ---
 
@@ -212,7 +224,7 @@ State machine classifies content into:
 
 | Category | Tags | Handling |
 |---|---|---|
-| Meta blocks | `pu`, `logi`, `lokalizacje`, `lokacje`, `zmiany`, `intel` | Replaceable by parameters or upgradeable |
+| Meta blocks | `narrator`, `pu`, `logi`, `lokalizacje`, `lokacje`, `zmiany`, `intel` | Replaceable by parameters or upgradeable |
 | Preserved blocks | `objaśnienia`, `efekty`, `komunikaty`, `straty`, `nagrody` | Written back unchanged |
 | Body lines | Everything else | Replaceable via `-Content` |
 | Legacy formats | Gen2 italic locations, Gen1/2 plain logs | Captured separately, converted during upgrade |
@@ -248,7 +260,7 @@ Optional `DateEnd` appended as `/dd` suffix (validated: same month/year, > Date)
 
 Delegates to `ConvertTo-SessionMetadata` which calls `ConvertTo-Gen4MetadataBlock` per field.
 
-**Canonical block order**: `@Lokacje` -> `@Logi` -> `@PU` -> `@Zmiany` -> `@Transfer` -> `@Intel`
+**Canonical block order**: `@Narrator` -> `@Lokacje` -> `@Logi` -> `@PU` -> `@Zmiany` -> `@Transfer` -> `@Intel`
 
 Returns a string - does **not** write to disk.
 
@@ -267,6 +279,7 @@ Returns a string - does **not** write to disk.
 
 | Tag | Item format |
 |---|---|
+| `@Narrator` | `    - NarratorName` (4-space indent) |
 | `@Lokacje` | `    - LocationName` (4-space indent) |
 | `@Logi` | `    - URL` (4-space indent) |
 | `@PU` | `    - Character: Value` (decimal with `InvariantCulture`) |

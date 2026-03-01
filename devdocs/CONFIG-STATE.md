@@ -85,7 +85,7 @@ Paths in the manifest are relative to the manifest file's directory. The module 
 **Discovery algorithm**:
 
 1. Start at the module root (`$PSScriptRoot` parent)
-2. Walk upward using `Get-ParentRepoRoot` (from `public/get-reporoot.ps1`) to find the parent repository root — the first `.git` directory above the submodule boundary
+2. Walk upward using `Get-ParentRepoRoot` (from `public/get-reporoot.ps1`) to find the parent repository root - the first `.git` directory above the submodule boundary
 3. Scan from RepoRoot upward to the parent repo root for `.robot-data.psd1`
 4. If not found, fall back to hardcoded paths (backward compatible)
 5. Cache the resolved manifest and its directory in `$script:CachedManifest` / `$script:CachedManifestDir`

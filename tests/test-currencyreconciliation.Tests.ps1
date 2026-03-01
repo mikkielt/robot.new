@@ -27,7 +27,7 @@ Describe 'Test-CurrencyReconciliation' {
         $script:Entities = Get-Entity -Path $script:FixturesRoot
         $script:Players = Get-Player -File (Join-Path $script:FixturesRoot 'Gracze.md') -Entities $script:Entities
         $script:Sessions = Get-Session -File (Join-Path $script:FixturesRoot 'sessions-zmiany.md') -Entities $script:Entities -Players $script:Players
-        $script:Enriched = Get-EntityState -Entities $script:Entities -Sessions $script:Sessions
+        $script:Enriched = Get-EntityState -Entities $script:Entities -Sessions $script:Sessions -Players $script:Players
     }
 
     It 'returns reconciliation result object' {
@@ -100,7 +100,7 @@ Describe 'Test-CurrencyReconciliation with @Transfer' {
         $script:Entities = Get-Entity -Path $script:FixturesRoot
         $script:Players = Get-Player -File (Join-Path $script:FixturesRoot 'Gracze.md') -Entities $script:Entities
         $script:Sessions = Get-Session -File (Join-Path $script:FixturesRoot 'sessions-zmiany.md') -Entities $script:Entities -Players $script:Players
-        $script:Enriched = Get-EntityState -Entities $script:Entities -Sessions $script:Sessions
+        $script:Enriched = Get-EntityState -Entities $script:Entities -Sessions $script:Sessions -Players $script:Players
     }
 
     It '@Transfer produces symmetric deltas (net zero)' {

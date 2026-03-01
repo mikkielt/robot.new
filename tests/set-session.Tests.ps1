@@ -316,4 +316,34 @@ Describe 'Split-SessionSection - additional coverage' {
         $Result.MetaBlocks.Count | Should -Be 0
         ($Result.BodyLines -join ' ') | Should -BeLike '*Random list item*'
     }
+
+    It 'recognizes @Narrator as metadata block' {
+        $Lines = @(
+            '- @Narrator:'
+            '    - Solmyr'
+            '- @Lokacje:'
+            '    - Erathia'
+        )
+        $Result = Split-SessionSection -Lines $Lines
+        $Result.MetaBlocks.Keys | Should -Contain 'narrator'
+        $Result.MetaBlocks['narrator'].Count | Should -Be 2
+    }
+}
+
+Describe 'Set-Session - Narrator parameter' {
+    BeforeAll {
+        $script:TempDir = New-TestTempDir
+    }
+    AfterAll {
+        Remove-TestTempDir
+    }
+
+    It 'adds @Narrator block when -Narrator is specified' {
+        $Path = Copy-FixtureToTemp -FixtureName 'sessions-gen4.md' -DestName 'sess-narr.md'
+        $Sessions = Get-Session -File $Path
+        $Sessions[0] | Set-Session -Narrator @('Solmyr')
+        $Content = [System.IO.File]::ReadAllText($Path)
+        $Content | Should -BeLike '*@Narrator:*'
+        $Content | Should -BeLike '*Solmyr*'
+    }
 }

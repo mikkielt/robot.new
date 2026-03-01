@@ -193,8 +193,8 @@ function Request-UserChoice {
         Write-Host ''
         Write-Host "  $Prompt" -ForegroundColor White -NoNewline
         Write-Host ' ' -NoNewline
-        $Input = Read-Host
-        $Trimmed = $Input.Trim().ToUpperInvariant()
+        $UserInput = Read-Host
+        $Trimmed = $UserInput.Trim().ToUpperInvariant()
 
         if ($ValidChoices -contains $Trimmed) {
             return $Trimmed
@@ -214,13 +214,13 @@ function Request-YesNo {
     $Hint = if ($Default) { '(Tak/nie)' } else { '(tak/Nie)' }
     Write-Host ''
     Write-Host "  $Prompt $Hint " -ForegroundColor White -NoNewline
-    $Input = Read-Host
+    $UserInput = Read-Host
 
-    if ([string]::IsNullOrWhiteSpace($Input)) {
+    if ([string]::IsNullOrWhiteSpace($UserInput)) {
         return $Default
     }
 
-    $Lower = $Input.Trim().ToLowerInvariant()
+    $Lower = $UserInput.Trim().ToLowerInvariant()
     if ($Lower -eq 'tak' -or $Lower -eq 't' -or $Lower -eq 'yes' -or $Lower -eq 'y') {
         return $true
     }
@@ -244,13 +244,13 @@ function Request-StringInput {
 
     $Hint = if ($Default) { " [$Default]" } else { '' }
     Write-Host "  $Prompt$Hint`: " -ForegroundColor White -NoNewline
-    $Input = Read-Host
+    $UserInput = Read-Host
 
-    if ([string]::IsNullOrWhiteSpace($Input)) {
+    if ([string]::IsNullOrWhiteSpace($UserInput)) {
         if ($Default) { return $Default }
         return ''
     }
-    return $Input.Trim()
+    return $UserInput.Trim()
 }
 
 # Prompt for a numeric value (nullable)
@@ -262,19 +262,19 @@ function Request-NumericInput {
 
     $Hint = if ($AllowSkip) { ' [Enter = pomiń]' } else { '' }
     Write-Host "    $Prompt$Hint`: " -ForegroundColor White -NoNewline
-    $Input = Read-Host
+    $UserInput = Read-Host
 
-    if ([string]::IsNullOrWhiteSpace($Input)) {
+    if ([string]::IsNullOrWhiteSpace($UserInput)) {
         if ($AllowSkip) { return $null }
         return 0
     }
 
     $Value = 0
-    if ([int]::TryParse($Input.Trim(), [ref]$Value)) {
+    if ([int]::TryParse($UserInput.Trim(), [ref]$Value)) {
         return $Value
     }
 
-    Write-Host "    Nieprawidłowa wartość: '$Input' — oczekiwana liczba całkowita" -ForegroundColor Red
+    Write-Host "    Nieprawidłowa wartość: '$UserInput' - oczekiwana liczba całkowita" -ForegroundColor Red
     return $null
 }
 

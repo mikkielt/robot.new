@@ -61,4 +61,28 @@ Describe 'Set-Player' {
         $Content | Should -BeLike '*NewPlayer*'
         $Content | Should -BeLike '*@margonemid: 55555*'
     }
+
+    It 'adds alias to existing player' {
+        $Path = Copy-FixtureToTemp -FixtureName 'entities.md' -DestName 'ent-alias.md'
+        Set-Player -Name 'Solmyr' -Aliases @('Air Archmage') -EntitiesFile $Path
+        $Content = [System.IO.File]::ReadAllText($Path)
+        $Content | Should -BeLike '*@alias: Air Archmage*'
+    }
+
+    It 'deduplicates existing aliases (case-insensitive)' {
+        $Path = Copy-FixtureToTemp -FixtureName 'entities.md' -DestName 'ent-dedup.md'
+        Set-Player -Name 'Solmyr' -Aliases @('Air Archmage') -EntitiesFile $Path
+        Set-Player -Name 'Solmyr' -Aliases @('air archmage') -EntitiesFile $Path
+        $Content = [System.IO.File]::ReadAllText($Path)
+        $Matches = [regex]::Matches($Content, '@alias: Air Archmage', [System.Text.RegularExpressions.RegexOptions]::IgnoreCase)
+        $Matches.Count | Should -Be 1
+    }
+
+    It 'adds multiple aliases at once' {
+        $Path = Copy-FixtureToTemp -FixtureName 'entities.md' -DestName 'ent-multi-alias.md'
+        Set-Player -Name 'Solmyr' -Aliases @('Air Archmage', 'Sky Wizard') -EntitiesFile $Path
+        $Content = [System.IO.File]::ReadAllText($Path)
+        $Content | Should -BeLike '*@alias: Air Archmage*'
+        $Content | Should -BeLike '*@alias: Sky Wizard*'
+    }
 }

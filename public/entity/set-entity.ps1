@@ -56,7 +56,7 @@ function Set-Entity {
     $File = Read-EntityFile -Path $EntitiesFilePath
     $LinesArray = $File.Lines.ToArray()
 
-    # Find the entity — search in specific section or across all sections
+    # Find the entity - search in specific section or across all sections
     $FoundSection = $null
     $FoundBullet = $null
 

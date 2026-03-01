@@ -7,7 +7,7 @@
     appropriate ## Type section in entities.md.
 
     Supported types: NPC, Organizacja, Lokacja, Przedmiot.
-    Gracz and Postać are excluded — use New-Player and New-PlayerCharacter
+    Gracz and Postać are excluded - use New-Player and New-PlayerCharacter
     for those (they carry domain-specific logic).
 
     Throws if an entity with the same name already exists under the given type.

@@ -8,7 +8,7 @@
 
     Searches all entity type sections for the named entity, or scopes to
     -Type if provided for disambiguation. Does not delete the bullet or
-    any files — only sets the status tag.
+    any files - only sets the status tag.
 
     Entities with status Usunięty are filtered out by Get-Entity unless
     -IncludeDeleted is set.

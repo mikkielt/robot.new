@@ -6,7 +6,7 @@
     Prowadzi koordynatora przez 8 faz migracji (Fazy 0-7) z polskojęzycznym
     interfejsem, śledzeniem postępu i idempotentnym ponawianiem.
 
-    Można uruchamiać wielokrotnie — każda faza sprawdza swój stan
+    Można uruchamiać wielokrotnie - każda faza sprawdza swój stan
     i pomija już ukończone kroki.
 
     Stan migracji zapisywany w .robot/res/migration-state.json.
@@ -20,13 +20,12 @@
     Uruchom konkretną fazę (0-7) bez wyświetlania menu.
 
     .PARAMETER WhatIf
-    Tryb suchy — nie wykonuje zmian, tylko pokazuje co by się stało.
+    Tryb suchy - nie wykonuje zmian, tylko pokazuje co by się stało.
 
     .PARAMETER SkipModuleImport
     Pomiń import modułu robot (do testowania).
 #>
-[CmdletBinding()]
-param(
+[CmdletBinding()] param(
     [ValidateRange(0, 7)]
     [int]$Phase = -1,
 
@@ -98,7 +97,7 @@ function Invoke-PhaseByNumber {
 # WhatIf badge
 if ($WhatIf) {
     Write-Host ''
-    Write-Host '  *** TRYB SUCHY (WhatIf) — żadne zmiany nie zostaną wprowadzone ***' -ForegroundColor Yellow
+    Write-Host '  *** TRYB SUCHY (WhatIf) - żadne zmiany nie zostaną wprowadzone ***' -ForegroundColor Yellow
 }
 
 # Direct phase execution (no menu)

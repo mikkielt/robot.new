@@ -27,6 +27,12 @@ function ConvertTo-Gen4MetadataBlock {
     [void]$SB.Append("- @${Tag}:")
 
     switch ($Tag) {
+        'Narrator' {
+            foreach ($Name in $Items) {
+                [void]$SB.Append($NL)
+                [void]$SB.Append("    - $Name")
+            }
+        }
         'Lokacje' {
             foreach ($Loc in $Items) {
                 [void]$SB.Append($NL)
@@ -79,6 +85,7 @@ function ConvertTo-Gen4MetadataBlock {
 # or empty string if all blocks are empty.
 function ConvertTo-SessionMetadata {
     param(
+        [object]$Narrator,
         [object]$Locations,
         [object]$Logs,
         [object]$PU,
@@ -87,7 +94,10 @@ function ConvertTo-SessionMetadata {
         [string]$NL = [System.Environment]::NewLine
     )
 
-    $Blocks = [System.Collections.Generic.List[string]]::new(5)
+    $Blocks = [System.Collections.Generic.List[string]]::new(6)
+
+    $NarrBlock = ConvertTo-Gen4MetadataBlock -Tag 'Narrator' -Items $Narrator -NL $NL
+    if ($NarrBlock) { $Blocks.Add($NarrBlock) }
 
     $LocBlock = ConvertTo-Gen4MetadataBlock -Tag 'Lokacje' -Items $Locations -NL $NL
     if ($LocBlock) { $Blocks.Add($LocBlock) }

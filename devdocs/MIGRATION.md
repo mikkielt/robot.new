@@ -173,7 +173,7 @@ Detection order (per-section heuristic):
 
 New sessions are always Gen4 (`New-Session` -> `ConvertTo-SessionMetadata` -> `ConvertTo-Gen4MetadataBlock`).
 
-Canonical block order: `@Lokacje` -> `@Logi` -> `@PU` -> `@Zmiany` -> `@Intel`.
+Canonical block order: `@Narrator` -> `@Lokacje` -> `@Logi` -> `@PU` -> `@Zmiany` -> `@Intel`.
 
 Zmiany rendering: entity names at 4-space indent, `@tag: value` at 8-space indent.
 
@@ -199,6 +199,24 @@ Upgrade conversions:
 ### 3.6 Cross-File Session Deduplication (`Merge-SessionGroup`)
 
 Sessions with identical headers across files are grouped by exact `Header` text (Ordinal comparison). The metadata-richest instance is selected as primary. Array fields are unioned via `HashSet` (locations, logs) or deduped by composite key (PU: `Character|Value`, Intel: `RawTarget|Message`). Merged sessions carry `IsMerged = $true`, `DuplicateCount`, and `FilePaths[]`.
+
+### 3.7 Narrator Normalization
+
+Session headers contain a narrator name segment (after the last comma), but these raw names may be inconsistent (abbreviations, nicknames, varying forms). Narrator normalization maps raw names to canonical forms using a mappings file.
+
+**Normalization file**: `.robot/res/narrator-mappings.txt`
+
+Format (one mapping per line):
+
+```
+raw -> Canonical1, Canonical2
+```
+
+Each line maps a raw narrator string (left side) to one or more canonical narrator names (right side). The raw value is matched case-insensitively.
+
+**Phase 3 workflow**: The coordinator runs `Get-NarratorReport` to identify raw narrator names that do not resolve to known players. Unresolved names are added to `narrator-mappings.txt` with their canonical equivalents. The process is iterative: run report, add mappings, re-run until all names resolve.
+
+**Phase 4 workflow**: During session format upgrade, resolved narrator mappings can be persisted as `- @Narrator:` blocks in Gen4 metadata. When present, the `@Narrator` block overrides header-based narrator resolution while preserving the original `RawText`.
 
 ---
 

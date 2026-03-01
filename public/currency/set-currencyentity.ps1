@@ -75,7 +75,7 @@ function Set-CurrencyEntity {
 
     $Section = Find-EntitySection -Lines $LinesArray -EntityType 'Przedmiot'
     if (-not $Section) {
-        throw "Currency entity '$Name' not found — no ## Przedmiot section in entities.md"
+        throw "Currency entity '$Name' not found - no ## Przedmiot section in entities.md"
     }
 
     $Bullet = Find-EntityBullet -Lines $LinesArray -SectionStart $Section.StartIdx -SectionEnd $Section.EndIdx -EntityName $Name

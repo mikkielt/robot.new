@@ -12,7 +12,7 @@ This guide explains how the repository tracks the state of the game world - NPCs
 - How coordinators manage entities (create, update, remove)
 - How session changes (Zmiany) update entity data
 - How temporal scoping works (things that change over time)
-- How currency is tracked, transferred, and managed — including out-of-game reserves
+- How currency is tracked, transferred, and managed - including out-of-game reserves
 - How to understand the current and historical state of entities
 
 **What is excluded:**
@@ -54,11 +54,11 @@ An entity is any named element of the game world that the system tracks. Each en
 
 When a new NPC, organization, location, or item first appears in the game world, the coordinator registers it in the entity store. Each entity gets a type, a name, and optional starting properties (such as initial location or group membership).
 
-Player and character entities are managed through the player registration process — see [Players.md](Players.md).
+Player and character entities are managed through the player registration process - see [Players.md](Players.md).
 
 ### Updating Entities
 
-The coordinator can update any entity's properties at any time. Each update is time-stamped, so the system preserves a full history of what changed and when. This is separate from session changes — coordinators use this for administrative corrections or out-of-session updates.
+The coordinator can update any entity's properties at any time. Each update is time-stamped, so the system preserves a full history of what changed and when. This is separate from session changes - coordinators use this for administrative corrections or out-of-session updates.
 
 When two entities share the same name across different types, the coordinator specifies the type to disambiguate.
 
@@ -149,11 +149,11 @@ The coordinator can review currency across the world at any time. Holdings can b
 
 The coordinator can directly create, adjust, or remove currency holdings outside of sessions:
 
-- **Creating** a new currency holding for a character or organization — the system auto-generates the entity name from the denomination and owner (e.g., "Korony Erdamon")
+- **Creating** a new currency holding for a character or organization - the system auto-generates the entity name from the denomination and owner (e.g., "Korony Erdamon")
 - **Adjusting** a holding's quantity, either to a specific value or by adding/subtracting a delta
 - **Transferring** ownership to a different character or organization
 - **Dropping** currency at a location instead of carried by someone
-- **Removing** a holding — soft-delete with a warning if the balance is not zero
+- **Removing** a holding - soft-delete with a warning if the balance is not zero
 
 These actions are time-stamped and preserved in history, just like session changes.
 
@@ -165,13 +165,13 @@ This out-of-game supply chain is modeled using an **organization** entity as the
 
 **The distribution flow works like this:**
 
-1. **Coordinator creates the treasury** — a one-time setup. An Organizacja entity represents the currency reserve, with initial currency holdings for each denomination.
+1. **Coordinator creates the treasury** - a one-time setup. An Organizacja entity represents the currency reserve, with initial currency holdings for each denomination.
 
-2. **Coordinator distributes to narrator** — before a session, the coordinator subtracts from the treasury's balance and adds to a narrator's budget. This happens outside any game session and is tracked through the entity history.
+2. **Coordinator distributes to narrator** - before a session, the coordinator subtracts from the treasury's balance and adds to a narrator's budget. This happens outside any game session and is tracked through the entity history.
 
-3. **Narrator awards to player character** — during the session, the narrator records a `@Transfer` in the standard session format. The system handles the balance adjustments automatically.
+3. **Narrator awards to player character** - during the session, the narrator records a `@Transfer` in the standard session format. The system handles the balance adjustments automatically.
 
-The total currency supply across all holders — treasury, narrators, and player characters — should remain constant over time. Monthly reconciliation detects any supply drift, which may indicate a recording error or forgotten adjustment.
+The total currency supply across all holders - treasury, narrators, and player characters - should remain constant over time. Monthly reconciliation detects any supply drift, which may indicate a recording error or forgotten adjustment.
 
 ### Reconciliation - Catching Errors
 

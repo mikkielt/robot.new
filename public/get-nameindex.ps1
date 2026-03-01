@@ -247,7 +247,7 @@ function Get-NameIndex {
         [int]$MinTokenLength = 3
     )
 
-    if (-not $Players) {
+    if (-not $PSBoundParameters.ContainsKey('Players')) {
         $Players = Get-Player
     }
 

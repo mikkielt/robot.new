@@ -16,6 +16,7 @@ This migration introduces a reliable, structured way to manage player data, char
 - How to handle errors and edge cases
 - Currency tracking (new capability)
 - Location name verification during migration
+- Narrator name verification during migration
 
 **What is excluded:**
 
@@ -133,6 +134,8 @@ The new system is stricter about data validation. Issues that the old system sil
 - **Characters with PU = BRAK** - decision to soft-delete or supply missing values
 - **Stale history entries** - old session headers in the processing log that no longer match existing sessions (informational, non-blocking)
 
+Additionally, a narrator report identifies raw narrator names from session headers that do not resolve to known players, allowing the coordinator to add normalization mappings.
+
 The coordinator runs diagnostics, fixes issues, re-runs diagnostics, and repeats until the diagnostic tool returns OK.
 
 ### Phase 4 - Session Format Upgrade
@@ -147,6 +150,8 @@ The coordinator upgrades active session files from Gen1/Gen2/Gen3 to the current
 | `*Lokalizacja: A, B*` (Gen2) | `- @Lokacje:` + `    - A` + `    - B` |
 
 **Error handling**: If a particular file fails during upgrade (e.g. a malformed session header), processing continues with the remaining files. A summary of failed files is displayed at the end. Headers with irregular whitespace (e.g. double spaces after `###`) are normalized automatically.
+
+**Narrator verification**: After the format upgrade, narrator names are verified against normalization mappings. Sessions with unresolved narrator names are flagged for review.
 
 **Location name review**: After the format upgrade, a location report analyzes all location names used in active sessions. It compares them against registered Location entities and flags:
 

@@ -5,14 +5,14 @@
 1. [Cel i kontekst](#1-cel-i-kontekst)
 2. [Wymagania wstępne](#2-wymagania-wstępne)
 3. [Sugerowany harmonogram](#3-sugerowany-harmonogram)
-4. [Faza 0 — Przygotowanie i backup](#4-faza-0--przygotowanie-i-backup)
-5. [Faza 1 — Bootstrap entities.md](#5-faza-1--bootstrap-entitiesmd)
-6. [Faza 2 — Walidacja parzystości danych](#6-faza-2--walidacja-parzystości-danych)
-7. [Faza 3 — Diagnostyka i naprawa danych](#7-faza-3--diagnostyka-i-naprawa-danych)
-8. [Faza 4 — Upgrade formatu sesji](#8-faza-4--upgrade-formatu-sesji)
-9. [Faza 5 — Enrollment walut](#9-faza-5--enrollment-walut)
-10. [Faza 6 — Okres równoległy](#10-faza-6--okres-równoległy)
-11. [Faza 7 — Przełączenie (cutover)](#11-faza-7--przełączenie-cutover)
+4. [Faza 0 - Przygotowanie i backup](#4-faza-0--przygotowanie-i-backup)
+5. [Faza 1 - Bootstrap entities.md](#5-faza-1--bootstrap-entitiesmd)
+6. [Faza 2 - Walidacja parzystości danych](#6-faza-2--walidacja-parzystości-danych)
+7. [Faza 3 - Diagnostyka i naprawa danych](#7-faza-3--diagnostyka-i-naprawa-danych)
+8. [Faza 4 - Upgrade formatu sesji](#8-faza-4--upgrade-formatu-sesji)
+9. [Faza 5 - Enrollment walut](#9-faza-5--enrollment-walut)
+10. [Faza 6 - Okres równoległy](#10-faza-6--okres-równoległy)
+11. [Faza 7 - Przełączenie (cutover)](#11-faza-7--przełączenie-cutover)
 12. [Plan awaryjny (rollback)](#12-plan-awaryjny-rollback)
 13. [Szkolenie zespołu](#13-szkolenie-zespołu)
 14. [Weryfikacja końcowa](#14-weryfikacja-końcowa)
@@ -27,24 +27,24 @@
 
 Dotychczasowy system `.robot/robot.ps1` to monolityczny skrypt PowerShell obsługujący zarządzanie graczami, postaciami i sesjami w repozytorium fabularnym Nerthus. Choć działa stabilnie, ma istotne ograniczenia:
 
-- **Brak walidacji danych** — błędne nazwy postaci w PU, złe formaty dat w sesjach i inne niespójności przechodzą bez ostrzeżenia.
-- **Ręczna edycja pliku `Gracze.md`** — każda zmiana wymaga bezpośredniej modyfikacji dużego pliku Markdown, co jest podatne na błędy.
-- **Brak systemu walut** — waluta w grze nie jest formalnie śledzona.
-- **Brak śladu audytowego** — trudno ustalić kto, kiedy i co zmienił.
-- **Monolityczna architektura** — cały kod w jednym pliku, bez testów, trudny do rozbudowy.
+- **Brak walidacji danych** - błędne nazwy postaci w PU, złe formaty dat w sesjach i inne niespójności przechodzą bez ostrzeżenia.
+- **Ręczna edycja pliku `Gracze.md`** - każda zmiana wymaga bezpośredniej modyfikacji dużego pliku Markdown, co jest podatne na błędy.
+- **Brak systemu walut** - waluta w grze nie jest formalnie śledzona.
+- **Brak śladu audytowego** - trudno ustalić kto, kiedy i co zmienił.
+- **Monolityczna architektura** - cały kod w jednym pliku, bez testów, trudny do rozbudowy.
 
 ### Co oferuje nowy system
 
 Moduł `.robot.new` (wersja 2.0.0) to modularny system PowerShell z 32 eksportowanymi komendami, obszernym zestawem testów (43 pliki testowe), i szczegółową dokumentacją. Kluczowe ulepszenia:
 
-- **Walidacja nazw postaci** — PU assignment zatrzymuje się natychmiast jeśli jakakolwiek nazwa nie zostanie rozwiązana, zamiast cicho pomijać.
-- **CRUD przez komendy** — zamiast ręcznej edycji plików, operacje przez `New-Player`, `Set-PlayerCharacter`, `Remove-PlayerCharacter` itp.
-- **Automatyczne rozwiązywanie nazw** — wielostopniowy system (dokładne dopasowanie → deklinacja → alternacja rdzeni → odległość Levenshteina).
-- **System walut** — trzy denominacje (Korony, Talary, Kogi), śledzenie ilości, transfery, raportowanie, rekoncyliacja.
-- **Audit trail** — plik historii przetworzonych sesji z timestampami, pełna historia git.
-- **Diagnostyka** — `Test-PlayerCharacterPUAssignment` wykrywa problemy przed właściwym przetwarzaniem.
-- **Cztery generacje formatu sesji** — automatyczne wykrywanie i parsowanie Gen1–Gen4 bez utraty danych.
-- **Kompatybilność wsteczna** — nowy system czyta zarówno `Gracze.md` (read-only) jak i `entities.md`, nakładając dane w warstwy.
+- **Walidacja nazw postaci** - PU assignment zatrzymuje się natychmiast jeśli jakakolwiek nazwa nie zostanie rozwiązana, zamiast cicho pomijać.
+- **CRUD przez komendy** - zamiast ręcznej edycji plików, operacje przez `New-Player`, `Set-PlayerCharacter`, `Remove-PlayerCharacter` itp.
+- **Automatyczne rozwiązywanie nazw** - wielostopniowy system (dokładne dopasowanie → deklinacja → alternacja rdzeni → odległość Levenshteina).
+- **System walut** - trzy denominacje (Korony, Talary, Kogi), śledzenie ilości, transfery, raportowanie, rekoncyliacja.
+- **Audit trail** - plik historii przetworzonych sesji z timestampami, pełna historia git.
+- **Diagnostyka** - `Test-PlayerCharacterPUAssignment` wykrywa problemy przed właściwym przetwarzaniem.
+- **Cztery generacje formatu sesji** - automatyczne wykrywanie i parsowanie Gen1–Gen4 bez utraty danych.
+- **Kompatybilność wsteczna** - nowy system czyta zarówno `Gracze.md` (read-only) jak i `entities.md`, nakładając dane w warstwy.
 
 ### Architektura dwóch magazynów danych
 
@@ -55,9 +55,9 @@ Nowy system operuje na **dwóch źródłach danych jednocześnie**:
 | **Legacy** | `Gracze.md` | Tylko odczyt | Historyczna baza graczy. Nigdy nie modyfikowana przez nowy system. |
 | **Rejestr encji** | `entities.md` | Odczyt + Zapis | Kanoniczny cel zapisu dla wszystkich operacji CRUD. |
 
-Przy odczycie (np. `Get-Player`) dane z obu magazynów są scalane w pamięci — encje z `entities.md` nadpisują wartości z `Gracze.md` tam, gdzie istnieją. Dzięki temu:
+Przy odczycie (np. `Get-Player`) dane z obu magazynów są scalane w pamięci - encje z `entities.md` nadpisują wartości z `Gracze.md` tam, gdzie istnieją. Dzięki temu:
 - Żadne dane nie giną podczas migracji
-- Przejście jest stopniowe — nowe zmiany idą do `entities.md`, stary plik zostaje jako archiwum
+- Przejście jest stopniowe - nowe zmiany idą do `entities.md`, stary plik zostaje jako archiwum
 
 ---
 
@@ -81,7 +81,7 @@ Install-Module -Name Pester -MinimumVersion 5.7.0 -Force -SkipPublisherCheck
 
 - Repozytorium główne (`repozytorium-fabularne`) z uprawnieniami push
 - Repozytorium modułu (`robot.new`) z uprawnieniami pull
-- Dostęp do internetu (dla powiadomień Discord — opcjonalny na etapie migracji)
+- Dostęp do internetu (dla powiadomień Discord - opcjonalny na etapie migracji)
 
 ### Dodanie submodułu `.robot.new`
 
@@ -120,7 +120,7 @@ Po tej operacji w repozytorium pojawi się plik `.gitmodules` z konfiguracją:
 Każda osoba, która klonuje repozytorium lub wykonuje `git pull` po dodaniu submodułu:
 
 ```powershell
-# Przy klonowaniu — od razu z submodułami
+# Przy klonowaniu - od razu z submodułami
 git clone --recurse-submodules git@github.com:mikkielt/repozytorium-fabularne.git
 
 # Lub jeśli repozytorium jest już sklonowane
@@ -185,7 +185,7 @@ Jeśli chcesz ustawić domyślne wartości, utwórz plik `.robot.new/local.confi
 | 5 | Enrollment walut | 1 tydzień (zbieranie danych) | Faza 1 | Koordynator + narratorzy + gracze |
 | 6 | Okres równoległy | 2–4 tygodnie | Fazy 1–5 | Koordynator |
 | 7 | Przełączenie (cutover) | 1 dzień | Faza 6 przeszła walidację | Koordynator |
-| — | Szkolenie | Równolegle z Fazą 6 | Brak | Koordynator → zespół |
+| - | Szkolenie | Równolegle z Fazą 6 | Brak | Koordynator → zespół |
 
 **Łączny szacowany czas**: 4–6 tygodni (w tym okres równoległy).
 
@@ -193,7 +193,7 @@ Fazy 4 i 5 mogą być realizowane równolegle z Fazami 2–3.
 
 ---
 
-## 4. Faza 0 — Przygotowanie i backup
+## 4. Faza 0 - Przygotowanie i backup
 
 ### Cel
 
@@ -201,16 +201,16 @@ Zabezpieczenie aktualnego stanu danych przed jakąkolwiek zmianą. Stworzenie pu
 
 ### Kroki
 
-**Krok 1 — Sprawdź czysty stan repozytorium:**
+**Krok 1 - Sprawdź czysty stan repozytorium:**
 
 ```powershell
 cd /ścieżka/do/repozytorium-fabularne
 git status
 ```
 
-Upewnij się, że nie ma niezacommitowanych zmian. Jeśli są — najpierw je zacommituj lub schowaj (`git stash`).
+Upewnij się, że nie ma niezacommitowanych zmian. Jeśli są - najpierw je zacommituj lub schowaj (`git stash`).
 
-**Krok 2 — Utwórz tag bezpieczeństwa:**
+**Krok 2 - Utwórz tag bezpieczeństwa:**
 
 ```powershell
 git tag pre-migration -m "Stan repozytorium przed migracją na .robot.new"
@@ -218,20 +218,20 @@ git tag pre-migration -m "Stan repozytorium przed migracją na .robot.new"
 
 Ten tag pozwoli na powrót do dokładnego stanu sprzed migracji.
 
-**Krok 3 — Kopia zapasowa pliku stanu PU:**
+**Krok 3 - Kopia zapasowa pliku stanu PU:**
 
 ```powershell
 # Sprawdź aktualny rozmiar pliku stanu
 wc -l .robot/res/pu-sessions.md
 ```
 
-Plik `.robot/res/pu-sessions.md` zawiera historię przetworzonych sesji (~1587 linii). Nowy system będzie **kontynuował** korzystanie z tego pliku — żadne dane nie zostaną utracone.
+Plik `.robot/res/pu-sessions.md` zawiera historię przetworzonych sesji (~1587 linii). Nowy system będzie **kontynuował** korzystanie z tego pliku - żadne dane nie zostaną utracone.
 
-**Krok 4 — Zarejestruj lub zaktualizuj submoduł `.robot.new`:**
+**Krok 4 - Zarejestruj lub zaktualizuj submoduł `.robot.new`:**
 
-Jeśli submoduł **nie został jeszcze dodany** (brak pliku `.gitmodules`) — wykonaj jednorazową rejestrację zgodnie z instrukcją w sekcji [Dodanie submodułu .robot.new](#dodanie-submodułu-robotnew) w rozdziale „Wymagania wstępne".
+Jeśli submoduł **nie został jeszcze dodany** (brak pliku `.gitmodules`) - wykonaj jednorazową rejestrację zgodnie z instrukcją w sekcji [Dodanie submodułu .robot.new](#dodanie-submodułu-robotnew) w rozdziale „Wymagania wstępne".
 
-Jeśli submoduł jest już zarejestrowany — zaktualizuj go:
+Jeśli submoduł jest już zarejestrowany - zaktualizuj go:
 
 ```powershell
 git submodule update --init --recursive
@@ -241,16 +241,16 @@ git pull origin main
 cd ..
 ```
 
-**Krok 5 — Weryfikacja modułu:**
+**Krok 5 - Weryfikacja modułu:**
 
 ```powershell
 Import-Module ./.robot.new/robot.psd1 -Force
 Get-Command -Module robot
 ```
 
-Powinno wyświetlić listę ~32 eksportowanych komend. Jeśli komenda `Import-Module` kończy się błędem — rozwiąż problem przed kontynuowaniem.
+Powinno wyświetlić listę ~32 eksportowanych komend. Jeśli komenda `Import-Module` kończy się błędem - rozwiąż problem przed kontynuowaniem.
 
-**Krok 6 — Manifest danych `.robot-data.psd1`:**
+**Krok 6 - Manifest danych `.robot-data.psd1`:**
 
 Manifest informuje moduł gdzie szukać pliku `entities.md`. Bez niego komendy takie jak `New-Entity` zapisują dane do `.robot.new/entities.md` zamiast do katalogu głównego repozytorium (gdzie bootstrap w Fazie 1 tworzy plik).
 
@@ -260,7 +260,7 @@ Skrypt migracyjny tworzy manifest automatycznie. Jeśli wykonujesz kroki ręczni
 # Sprawdź czy manifest już istnieje
 Test-Path .robot-data.psd1
 
-# Jeśli nie — utwórz go
+# Jeśli nie - utwórz go
 @"
 @{
     EntitiesFile = 'entities.md'
@@ -282,7 +282,7 @@ Manifest jest prostym plikiem PowerShell Data File (`.psd1`) z kluczem `Entities
 
 ---
 
-## 5. Faza 1 — Bootstrap entities.md
+## 5. Faza 1 - Bootstrap entities.md
 
 ### Cel
 
@@ -290,21 +290,21 @@ Wygenerowanie pliku `entities.md` na podstawie istniejącego `Gracze.md`. To jed
 
 ### Co robi bootstrap
 
-Funkcja `ConvertTo-EntitiesFromPlayers` czyta wszystkich graczy z `Gracze.md` (przez `Get-Player -Entities @()` — pomijając puste entities, żeby uniknąć cyklicznej zależności) i generuje plik `entities.md` z dwoma sekcjami:
+Funkcja `ConvertTo-EntitiesFromPlayers` czyta wszystkich graczy z `Gracze.md` (przez `Get-Player -Entities @()` - pomijając puste entities, żeby uniknąć cyklicznej zależności) i generuje plik `entities.md` z dwoma sekcjami:
 
-- **`## Gracz`** — wpisy z `@margonemid`, `@prfwebhook`, `@trigger`
-- **`## Postać`** — wpisy z `@należy_do`, `@alias`, `@pu_startowe`, `@pu_nadmiar`, `@pu_suma`, `@pu_zdobyte`, `@info`
+- **`## Gracz`** - wpisy z `@margonemid`, `@prfwebhook`, `@trigger`
+- **`## Postać`** - wpisy z `@należy_do`, `@alias`, `@pu_startowe`, `@pu_nadmiar`, `@pu_suma`, `@pu_zdobyte`, `@info`
 
 ### Kroki
 
-**Krok 1 — Załaduj moduł i helpery:**
+**Krok 1 - Załaduj moduł i helpery:**
 
 ```powershell
 Import-Module ./.robot.new/robot.psd1 -Force
 . ./.robot.new/private/entity-writehelpers.ps1
 ```
 
-**Krok 2 — Uruchom bootstrap:**
+**Krok 2 - Uruchom bootstrap:**
 
 ```powershell
 ConvertTo-EntitiesFromPlayers -OutputPath ./entities.md
@@ -312,7 +312,7 @@ ConvertTo-EntitiesFromPlayers -OutputPath ./entities.md
 
 > **Uwaga**: Domyślna ścieżka wyjścia (bez parametru `-OutputPath`) to katalog `private/` modułu. Podaj jawnie `./entities.md` żeby umieścić plik w katalogu głównym repozytorium.
 
-**Krok 3 — Sprawdź wygenerowany plik:**
+**Krok 3 - Sprawdź wygenerowany plik:**
 
 ```powershell
 # Szybki podgląd
@@ -324,7 +324,7 @@ Get-Content ./entities.md | Select-Object -First 40
 
 Liczba wpisów powinna odpowiadać sumie graczy i postaci w `Gracze.md`.
 
-**Krok 4 — Dodaj brakujące sekcje:**
+**Krok 4 - Dodaj brakujące sekcje:**
 
 Wygenerowany plik zawiera sekcje `## Gracz` i `## Postać`. Dodaj ręcznie lub przez system brakujące sekcje na potrzeby przyszłych operacji:
 
@@ -338,9 +338,9 @@ Wygenerowany plik zawiera sekcje `## Gracz` i `## Postać`. Dodaj ręcznie lub p
 ## Przedmiot
 ```
 
-Możesz to zrobić ręcznie, edytując plik, lub zostawić — sekcje zostaną utworzone automatycznie przy pierwszym użyciu `New-Entity`.
+Możesz to zrobić ręcznie, edytując plik, lub zostawić - sekcje zostaną utworzone automatycznie przy pierwszym użyciu `New-Entity`.
 
-**Krok 5 — Zacommituj:**
+**Krok 5 - Zacommituj:**
 
 ```powershell
 git add entities.md
@@ -356,7 +356,7 @@ git commit -m "Bootstrap entities.md z Gracze.md"
 
 ---
 
-## 6. Faza 2 — Walidacja parzystości danych
+## 6. Faza 2 - Walidacja parzystości danych
 
 ### Cel
 
@@ -364,7 +364,7 @@ Upewnienie się, że nowy system poprawnie odczytuje i scala dane z obu magazyn�
 
 ### Kroki
 
-**Krok 1 — Sprawdź scalanie danych graczy:**
+**Krok 1 - Sprawdź scalanie danych graczy:**
 
 ```powershell
 Import-Module ./.robot.new/robot.psd1 -Force
@@ -378,7 +378,7 @@ $Players | ForEach-Object {
 
 Każdy gracz powinien mieć tę samą liczbę postaci co w oryginalnym `Gracze.md`.
 
-**Krok 2 — Sprawdź wartości PU:**
+**Krok 2 - Sprawdź wartości PU:**
 
 ```powershell
 $Players | ForEach-Object {
@@ -392,7 +392,7 @@ $Players | ForEach-Object {
 
 Porównaj wyrywkowo z wartościami w `Gracze.md`. Wartości powinny się zgadzać.
 
-**Krok 3 — Sprawdź aliasy:**
+**Krok 3 - Sprawdź aliasy:**
 
 ```powershell
 $Players | ForEach-Object {
@@ -404,7 +404,7 @@ $Players | ForEach-Object {
 }
 ```
 
-**Krok 4 — Sprawdź webhooki:**
+**Krok 4 - Sprawdź webhooki:**
 
 ```powershell
 $PlayersWithoutWebhook = $Players | Where-Object {
@@ -414,7 +414,7 @@ $PlayersWithoutWebhook = $Players | Where-Object {
 $PlayersWithoutWebhook | ForEach-Object { "  - $($_.Name)" }
 ```
 
-**Krok 5 — Uruchom diagnostykę PU:**
+**Krok 5 - Uruchom diagnostykę PU:**
 
 ```powershell
 $Diag = Test-PlayerCharacterPUAssignment
@@ -432,7 +432,7 @@ Wynik diagnostyki zawiera:
 | `FailedSessionsWithPU` | Sesje z błędną datą, które zawierają dane PU | Pusta tablica |
 | `StaleHistoryEntries` | Nagłówki w pu-sessions.md nieodpowiadające żadnej sesji | Pusta tablica |
 
-Jeśli `OK` to `$false` — przejdź do Fazy 3 (Diagnostyka i naprawa).
+Jeśli `OK` to `$false` - przejdź do Fazy 3 (Diagnostyka i naprawa).
 
 ### Checklist Fazy 2
 
@@ -440,15 +440,15 @@ Jeśli `OK` to `$false` — przejdź do Fazy 3 (Diagnostyka i naprawa).
 - [ ] Wartości PU zgadzają się z `Gracze.md` (wyrywkowa weryfikacja)
 - [ ] Aliasy przeniosły się poprawnie
 - [ ] Lista graczy bez webhooka jest znana
-- [ ] `Test-PlayerCharacterPUAssignment` uruchomione — wynik zapisany
+- [ ] `Test-PlayerCharacterPUAssignment` uruchomione - wynik zapisany
 
 ---
 
-## 7. Faza 3 — Diagnostyka i naprawa danych
+## 7. Faza 3 - Diagnostyka i naprawa danych
 
 ### Cel
 
-Naprawienie znanych problemów w danych przed przejściem na nowy system. Nowy system jest bardziej rygorystyczny w walidacji — problemy które stary system cicho pomijał, nowy traktuje jako błędy.
+Naprawienie znanych problemów w danych przed przejściem na nowy system. Nowy system jest bardziej rygorystyczny w walidacji - problemy które stary system cicho pomijał, nowy traktuje jako błędy.
 
 ### 7.1 Błędne nazwy postaci w PU
 
@@ -463,11 +463,11 @@ if ($Diag.UnresolvedCharacters.Count -gt 0) {
 }
 ```
 
-**Jak naprawić — opcja A (poprawka w pliku sesji):**
+**Jak naprawić - opcja A (poprawka w pliku sesji):**
 
 Otwórz plik sesji i popraw literówkę w nazwie postaci.
 
-**Jak naprawić — opcja B (dodanie aliasu):**
+**Jak naprawić - opcja B (dodanie aliasu):**
 
 Jeśli nazwa jest poprawna, ale jest to alternatywna forma (np. zdrobnienie, odmiana), zarejestruj ją jako alias:
 
@@ -560,9 +560,39 @@ if ($Diag.StaleHistoryEntries.Count -gt 0) {
 }
 ```
 
-Stale entries nie powodują błędów operacyjnych — to nagłówki w `pu-sessions.md` które nie pasują do żadnej istniejącej sesji (sesja mogła zostać przemianowana lub usunięta). Mogą być bezpiecznie zignorowane, chyba że chcesz wyczyścić plik historii.
+Stale entries nie powodują błędów operacyjnych - to nagłówki w `pu-sessions.md` które nie pasują do żadnej istniejącej sesji (sesja mogła zostać przemianowana lub usunięta). Mogą być bezpiecznie zignorowane, chyba że chcesz wyczyścić plik historii.
 
-### 7.6 Webhooks Discord — ujednolicenie URL-i
+### 7.6 Normalizacja nazw narratorów
+
+Nagłówki sesji zawierają nazwę narratora, ale surowe nazwy mogą być niespójne (skróty, pseudonimy, odmiany). Raport narratorów identyfikuje nierozwiązane nazwy.
+
+**Jak wygenerować raport:**
+
+```powershell
+$Report = Get-NarratorReport
+$Report | Where-Object { -not $_.Resolved } | ForEach-Object {
+    "Nierozwiązana nazwa narratora: '$($_.RawName)' (wystąpienia: $($_.Count))"
+}
+```
+
+**Jak naprawić - plik mapowań:**
+
+Dodaj mapowania do pliku `.robot/res/narrator-mappings.txt` w formacie:
+
+```
+surowa_nazwa -> Kanoniczna1, Kanoniczna2
+```
+
+Każda linia mapuje surową nazwę (lewa strona) na jedną lub więcej kanonicznych nazw narratorów (prawa strona). Dopasowanie jest bez rozróżniania wielkości liter.
+
+Po dodaniu mapowań uruchom raport ponownie, aby potwierdzić rozwiązanie:
+
+```powershell
+$Report = Get-NarratorReport
+($Report | Where-Object { -not $_.Resolved }).Count  # Powinno być 0
+```
+
+### 7.7 Webhooks Discord - ujednolicenie URL-i
 
 Starsze wpisy mogą używać formatu `discordapp.com`:
 
@@ -590,25 +620,26 @@ Set-Player -Name "NazwaGracza" -PRFWebhook "https://discord.com/api/webhooks/...
 
 ### Checklist Fazy 3
 
-- [ ] `UnresolvedCharacters` — wszystkie naprawione (literówki poprawione lub aliasy dodane)
-- [ ] `FailedSessionsWithPU` — wszystkie sesje z PU mają poprawne daty
-- [ ] `DuplicateEntries` — brak duplikatów
-- [ ] `MalformedPU` — brak błędnych wartości PU
-- [ ] Postacie z `BRAK` PU — decyzja podjęta (soft-delete lub uzupełnienie)
+- [ ] `UnresolvedCharacters` - wszystkie naprawione (literówki poprawione lub aliasy dodane)
+- [ ] `FailedSessionsWithPU` - wszystkie sesje z PU mają poprawne daty
+- [ ] `DuplicateEntries` - brak duplikatów
+- [ ] `MalformedPU` - brak błędnych wartości PU
+- [ ] Postacie z `BRAK` PU - decyzja podjęta (soft-delete lub uzupełnienie)
 - [ ] `Test-PlayerCharacterPUAssignment` zwraca `OK = $true`
+- [ ] Nazwy narratorów rozwiązane (mapowania w `narrator-mappings.txt`)
 - [ ] Naprawki zacommitowane
 
 ---
 
-## 8. Faza 4 — Upgrade formatu sesji
+## 8. Faza 4 - Upgrade formatu sesji
 
 ### Cel
 
-Zaktualizowanie aktywnych plików sesji z formatów Gen1/Gen2/Gen3 do bieżącego formatu Gen4 (z prefiksem `@`). Pliki archiwalne można zostawić w starym formacie — system czyta wszystkie cztery generacje automatycznie.
+Zaktualizowanie aktywnych plików sesji z formatów Gen1/Gen2/Gen3 do bieżącego formatu Gen4 (z prefiksem `@`). Pliki archiwalne można zostawić w starym formacie - system czyta wszystkie cztery generacje automatycznie.
 
 ### Co zmienia upgrade
 
-Upgrade zmienia **wyłącznie strukturę metadanych** — treść narracyjna i bloki specjalne (`Objaśnienia`, `Efekty`, `Komunikaty`, `Straty`, `Nagrody`) pozostają nietknięte.
+Upgrade zmienia **wyłącznie strukturę metadanych** - treść narracyjna i bloki specjalne (`Objaśnienia`, `Efekty`, `Komunikaty`, `Straty`, `Nagrody`) pozostają nietknięte.
 
 | Przed (Gen3) | Po (Gen4) |
 |---|---|
@@ -623,11 +654,11 @@ Upgrade zmienia **wyłącznie strukturę metadanych** — treść narracyjna i b
 
 Upgrade przetwarza pliki pojedynczo. Jeśli `Set-Session -UpgradeFormat` napotka błąd w konkretnym pliku (np. nagłówek sesji, który nie daje się zlokalizować), plik jest pomijany z komunikatem błędu, a przetwarzanie pozostałych plików kontynuowane. Po zakończeniu wyświetlana jest lista plików, które nie zostały zaktualizowane.
 
-Nagłówki sesji z nietypowym formatowaniem (np. podwójna spacja po `###`) są normalizowane automatycznie — system dopasowuje je poprawnie niezależnie od ilości białych znaków po znaku nagłówka.
+Nagłówki sesji z nietypowym formatowaniem (np. podwójna spacja po `###`) są normalizowane automatycznie - system dopasowuje je poprawnie niezależnie od ilości białych znaków po znaku nagłówka.
 
 ### Kroki
 
-**Krok 1 — Sprawdź dystrybucję formatów:**
+**Krok 1 - Sprawdź dystrybucję formatów:**
 
 ```powershell
 Import-Module ./.robot.new/robot.psd1 -Force
@@ -645,7 +676,7 @@ Gen3    120
 Gen4     30
 ```
 
-**Krok 2 — Zdecyduj, które pliki są aktywne:**
+**Krok 2 - Zdecyduj, które pliki są aktywne:**
 
 Sugerowane kryterium: pliki z sesjami od 2024 roku wzwyż są aktywne. Starsze pliki (wątki zamknięte, archiwalne) mogą zostać w starym formacie.
 
@@ -659,7 +690,7 @@ $ActiveFiles = Get-Session | Where-Object {
 $ActiveFiles | ForEach-Object { "  $_" }
 ```
 
-**Krok 3 — Upgrade plik po pliku:**
+**Krok 3 - Upgrade plik po pliku:**
 
 ```powershell
 foreach ($File in $ActiveFiles) {
@@ -674,7 +705,7 @@ Lub pojedynczy plik:
 Get-Session -File 'Wątki/nazwa-wątku.md' | Where-Object { $_.Format -ne 'Gen4' } | Set-Session -UpgradeFormat
 ```
 
-**Krok 4 — Weryfikacja po upgrade:**
+**Krok 4 - Weryfikacja po upgrade:**
 
 ```powershell
 # Sprawdź czy wszystkie sesje w zaktualizowanych plikach są teraz Gen4
@@ -684,9 +715,9 @@ Get-Session | Where-Object { $ActiveFiles -contains $_.FilePath } |
 
 Wszystkie powinny być `Gen4`.
 
-**Krok 5 — Przegląd nazw lokalizacji:**
+**Krok 5 - Przegląd nazw lokalizacji:**
 
-Po upgrade wszystkie aktywne sesje mają ustrukturyzowane bloki `@Lokacje`. To dobry moment na przegląd nazw lokalizacji — raport analizuje wszystkie użyte nazwy, porównuje je z zarejestrowanymi encjami typu Lokacja, i wykrywa konflikty.
+Po upgrade wszystkie aktywne sesje mają ustrukturyzowane bloki `@Lokacje`. To dobry moment na przegląd nazw lokalizacji - raport analizuje wszystkie użyte nazwy, porównuje je z zarejestrowanymi encjami typu Lokacja, i wykrywa konflikty.
 
 ```powershell
 # Wygeneruj raport lokalizacji
@@ -715,10 +746,10 @@ Raport dla każdej lokalizacji zawiera:
 
 **Nierozwiązane lokalizacje** to nazwy, które nie pasują do żadnej zarejestrowanej encji typu Lokacja. Dla każdej z nich decydujesz:
 
-- **Utwórz encję** — jeśli to prawdziwa lokalizacja, dodaj ją: `New-Entity -Type Lokacja -Name "NazwaLokacji"`
-- **Oznacz jako nie-lokację** — jeśli to nie jest lokalizacja (np. „na zewnątrz", „w drodze"), dodaj do pliku wykluczeń
+- **Utwórz encję** - jeśli to prawdziwa lokalizacja, dodaj ją: `New-Entity -Type Lokacja -Name "NazwaLokacji"`
+- **Oznacz jako nie-lokację** - jeśli to nie jest lokalizacja (np. „na zewnątrz", „w drodze"), dodaj do pliku wykluczeń
 
-Plik wykluczeń (`.robot/res/location-exclusions.txt`) zawiera nazwy oznaczone jako nie-lokacje — po jednej na linię:
+Plik wykluczeń (`.robot/res/location-exclusions.txt`) zawiera nazwy oznaczone jako nie-lokacje - po jednej na linię:
 
 ```
 # Wartości oznaczone jako nie-lokacje podczas migracji
@@ -726,9 +757,22 @@ na zewnątrz
 w drodze
 ```
 
-Skrypt migracyjny (`Invoke-Migration -Phase 4`) obsługuje ten proces interaktywnie — wyświetla nierozwiązane lokalizacje i pozwala oznaczyć je jako nie-lokacje bezpośrednio. Commit jest blokowany dopóki istnieją nierozwiązane lokalizacje (te, które nie zostały ani zarejestrowane jako encje, ani oznaczone jako nie-lokacje).
+Skrypt migracyjny (`Invoke-Migration -Phase 4`) obsługuje ten proces interaktywnie - wyświetla nierozwiązane lokalizacje i pozwala oznaczyć je jako nie-lokacje bezpośrednio. Commit jest blokowany dopóki istnieją nierozwiązane lokalizacje (te, które nie zostały ani zarejestrowane jako encje, ani oznaczone jako nie-lokacje).
 
-**Krok 6 — Zacommituj:**
+**Krok 6 - Weryfikacja narratorów:**
+
+Po upgrade sprawdź, czy nazwy narratorów zostały poprawnie znormalizowane:
+
+```powershell
+$Report = Get-NarratorReport
+$Unresolved = $Report | Where-Object { -not $_.Resolved }
+"Nierozwiązanych narratorów: $($Unresolved.Count)"
+$Unresolved | Format-Table RawName, Count
+```
+
+Jeśli istnieją nierozwiązane nazwy, uzupełnij mapowania w `.robot/res/narrator-mappings.txt` (patrz sekcja 7.6).
+
+**Krok 7 - Zacommituj:**
 
 ```powershell
 git add Wątki/
@@ -740,13 +784,14 @@ git commit -m "Upgrade aktywnych sesji do formatu Gen4"
 - [ ] Dystrybucja formatów przed upgrade'em udokumentowana
 - [ ] Lista aktywnych vs archiwalnych plików ustalona
 - [ ] Aktywne pliki zaktualizowane do Gen4
-- [ ] Weryfikacja po upgrade — zero sesji nie-Gen4 w aktywnych plikach
-- [ ] Raport lokalizacji przejrzany — nierozwiązane lokalizacje obsłużone
+- [ ] Weryfikacja po upgrade - zero sesji nie-Gen4 w aktywnych plikach
+- [ ] Raport lokalizacji przejrzany - nierozwiązane lokalizacje obsłużone
+- [ ] Raport narratorów przejrzany - nazwy narratorów rozwiązane
 - [ ] Zacommitowane
 
 ---
 
-## 9. Faza 5 — Enrollment walut
+## 9. Faza 5 - Enrollment walut
 
 ### Cel
 
@@ -760,7 +805,7 @@ System walut jest **całkowicie nową funkcjonalnością**. W starym systemie wa
 | Talary Hirońskie | Talary | Srebro | 100 | 1 Talar = 100 Kogów |
 | Kogi Skeltvorskie | Kogi | Miedź | 1 | Jednostka bazowa |
 
-### Krok 1 — Utworzenie skarbca koordynatorów
+### Krok 1 - Utworzenie skarbca koordynatorów
 
 Skarbiec to organizacja (Organizacja) reprezentująca ogólną rezerwę walut administrowaną przez koordynatorów:
 
@@ -770,15 +815,15 @@ Import-Module ./.robot.new/robot.psd1 -Force
 # Utwórz organizację skarbca
 New-Entity -Type Organizacja -Name "Skarbiec Koordynatorów"
 
-# Utwórz walutę w skarbcu (początkowe ilości — dostosuj do aktualnych rezerw)
+# Utwórz walutę w skarbcu (początkowe ilości - dostosuj do aktualnych rezerw)
 New-CurrencyEntity -Denomination Korony -Owner "Skarbiec Koordynatorów" -Amount 10000
 New-CurrencyEntity -Denomination Talary -Owner "Skarbiec Koordynatorów" -Amount 50000
 New-CurrencyEntity -Denomination Kogi   -Owner "Skarbiec Koordynatorów" -Amount 100000
 ```
 
-Kwoty początkowe powinny odzwierciedlać rzeczywiste rezerwy. Jeśli nie są znane — ustal je z koordynatorami.
+Kwoty początkowe powinny odzwierciedlać rzeczywiste rezerwy. Jeśli nie są znane - ustal je z koordynatorami.
 
-### Krok 2 — Zbieranie danych od graczy
+### Krok 2 - Zbieranie danych od graczy
 
 **Metoda: sesja inicjalizacyjna (sesja-dummy)**
 
@@ -787,7 +832,7 @@ Najłatwiejszy sposób rejestracji początkowego stanu walut graczy to utworzeni
 ```markdown
 ### YYYY-MM-DD, Inicjalizacja walut, Koordynator
 
-Sesja techniczna — rejestracja początkowego stanu walut postaci graczy.
+Sesja techniczna - rejestracja początkowego stanu walut postaci graczy.
 
 - @Zmiany:
     - Korony NazwaPostaci1
@@ -822,7 +867,7 @@ Formularz stanu walut postaci:
 - Kogi (miedź): _____ sztuk
 ```
 
-### Krok 3 — Budżety narratorów i koordynatorów
+### Krok 3 - Budżety narratorów i koordynatorów
 
 Narratorzy mogą posiadać „budżety" walut do rozdawania na sesjach. Te walutowe encje reprezentują walutę w posiadaniu narratora (poza postacią gracza):
 
@@ -835,9 +880,9 @@ Set-CurrencyEntity -Name "Korony Skarbiec Koordynatorów" -AmountDelta -500 -Val
 Set-CurrencyEntity -Name "Korony Narrator Dracon" -AmountDelta +500 -ValidFrom "2026-03"
 ```
 
-> **Ważne**: Dystrybucja administratora (skarbiec → narrator) to para komend `Set-CurrencyEntity` z przeciwnymi deltami. System nie linkuje ich automatycznie — jeśli zapomnisz jednej strony, `Test-CurrencyReconciliation` wykryje to przy najbliższym sprawdzeniu.
+> **Ważne**: Dystrybucja administratora (skarbiec → narrator) to para komend `Set-CurrencyEntity` z przeciwnymi deltami. System nie linkuje ich automatycznie - jeśli zapomnisz jednej strony, `Test-CurrencyReconciliation` wykryje to przy najbliższym sprawdzeniu.
 
-### Krok 4 — Waluta przy lokacjach
+### Krok 4 - Waluta przy lokacjach
 
 Waluta może być „porzucona" w lokacji zamiast należeć do postaci:
 
@@ -847,7 +892,7 @@ New-CurrencyEntity -Denomination Talary -Owner "Ruiny Erathii" -Amount 300
 
 W tym przypadku `@należy_do` wskazuje na lokację. Encja lokacji musi istnieć w `entities.md` (utwórz ją przez `New-Entity -Type Lokacja -Name "Ruiny Erathii"` jeśli nie istnieje).
 
-### Krok 5 — Weryfikacja
+### Krok 5 - Weryfikacja
 
 ```powershell
 # Raport walut
@@ -860,7 +905,7 @@ $Reconciliation.Warnings | Format-Table Check, Severity, Entity, Detail
 "Warning count: $($Reconciliation.WarningCount)"
 ```
 
-### Krok 6 — Zacommituj
+### Krok 6 - Zacommituj
 
 ```powershell
 git add entities.md
@@ -874,12 +919,12 @@ git commit -m "Enrollment walut - stan początkowy"
 - [ ] Waluty postaci graczy zarejestrowane (sesja-dummy lub komendy bezpośrednie)
 - [ ] Budżety narratorów ustalone (jeśli dotyczy)
 - [ ] `Get-CurrencyReport` pokazuje oczekiwane dane
-- [ ] `Test-CurrencyReconciliation` — brak krytycznych ostrzeżeń
+- [ ] `Test-CurrencyReconciliation` - brak krytycznych ostrzeżeń
 - [ ] Zacommitowane
 
 ---
 
-## 10. Faza 6 — Okres równoległy
+## 10. Faza 6 - Okres równoległy
 
 ### Cel
 
@@ -898,23 +943,23 @@ Uruchom **oba systemy** i porównaj wyniki:
 # Użyj opcji menu lub komendy starego systemu
 ```
 
-**Nowy system (w trybie suchym — bez efektów ubocznych):**
+**Nowy system (w trybie suchym - bez efektów ubocznych):**
 
 ```powershell
 Import-Module ./.robot.new/robot.psd1 -Force
 
-# Tryb suchy (dry-run) — oblicza PU ale nic nie zapisuje
+# Tryb suchy (dry-run) - oblicza PU ale nic nie zapisuje
 $Results = Invoke-PlayerCharacterPUAssignment -Year YYYY -Month MM -WhatIf
 $Results | ForEach-Object {
     "$($_.CharacterName): Granted=$($_.GrantedPU), Overflow=$($_.OverflowPU)"
 }
 ```
 
-Porównaj wyniki. Jeśli się różnią — zbadaj przyczynę (najprawdopodobniej różnica w rozwiązywaniu nazw lub obsłudze duplikatów sesji).
+Porównaj wyniki. Jeśli się różnią - zbadaj przyczynę (najprawdopodobniej różnica w rozwiązywaniu nazw lub obsłudze duplikatów sesji).
 
 #### Nowe sesje
 
-Narrtorzy powinni zacząć pisać nowe sesje w **formacie Gen4** (z prefiksem `@`). Format jest w pełni kompatybilny wstecz — stary system nadal go parsuje.
+Narrtorzy powinni zacząć pisać nowe sesje w **formacie Gen4** (z prefiksem `@`). Format jest w pełni kompatybilny wstecz - stary system nadal go parsuje.
 
 Przykład nowej sesji:
 
@@ -986,7 +1031,7 @@ Przed przejściem do Fazy 7 (przełączenie) upewnij się, że:
 
 ### Checklist Fazy 6
 
-- [ ] PU assignment porównany — wyniki zgodne
+- [ ] PU assignment porównany - wyniki zgodne
 - [ ] Narratorzy piszą w Gen4
 - [ ] Nowe postacie tworzone przez nowy system
 - [ ] Diagnostyka czysta (`OK = $true`)
@@ -994,7 +1039,7 @@ Przed przejściem do Fazy 7 (przełączenie) upewnij się, że:
 
 ---
 
-## 11. Faza 7 — Przełączenie (cutover)
+## 11. Faza 7 - Przełączenie (cutover)
 
 ### Cel
 
@@ -1002,7 +1047,7 @@ Oficjalne przejście na nowy system jako jedyne narzędzie operacyjne. Zamrożen
 
 ### Kroki
 
-**Krok 1 — Ostatnia synchronizacja:**
+**Krok 1 - Ostatnia synchronizacja:**
 
 Upewnij się, że ostatni przydział PU został wykonany przez nowy system i wyniki są poprawne:
 
@@ -1011,7 +1056,7 @@ Import-Module ./.robot.new/robot.psd1 -Force
 Test-PlayerCharacterPUAssignment | Format-List OK
 ```
 
-**Krok 2 — Zamrożenie `Gracze.md`:**
+**Krok 2 - Zamrożenie `Gracze.md`:**
 
 Dodaj komentarz na początku pliku `Gracze.md` informujący o statusie:
 
@@ -1027,7 +1072,7 @@ git add Gracze.md
 git commit -m "Zamrożenie Gracze.md - migracja zakończona"
 ```
 
-**Krok 3 — Oznaczenie starego systemu jako deprecated:**
+**Krok 3 - Oznaczenie starego systemu jako deprecated:**
 
 ```powershell
 # Dodaj notatkę do README starego systemu
@@ -1035,7 +1080,7 @@ git add .robot/README.md
 git commit -m "Oznaczenie .robot jako deprecated"
 ```
 
-**Krok 4 — Pierwsze samodzielne uruchomienie PU:**
+**Krok 4 - Pierwsze samodzielne uruchomienie PU:**
 
 ```powershell
 Import-Module ./.robot.new/robot.psd1 -Force
@@ -1047,10 +1092,10 @@ Invoke-PlayerCharacterPUAssignment -Year YYYY -Month MM `
 ```
 
 > **Parametry**:
-> - `-UpdatePlayerCharacters` — zapisuje zaktualizowane wartości PU do `entities.md`
-> - `-SendToDiscord` — wysyła powiadomienia Discord do graczy
-> - `-AppendToLog` — zapisuje przetworzone sesje w historii (`pu-sessions.md`)
-> - `-Confirm` — wymaga potwierdzenia przed wykonaniem (ConfirmImpact = High)
+> - `-UpdatePlayerCharacters` - zapisuje zaktualizowane wartości PU do `entities.md`
+> - `-SendToDiscord` - wysyła powiadomienia Discord do graczy
+> - `-AppendToLog` - zapisuje przetworzone sesje w historii (`pu-sessions.md`)
+> - `-Confirm` - wymaga potwierdzenia przed wykonaniem (ConfirmImpact = High)
 
 Jeśli chcesz dodatkowo sprawdzić walutę:
 
@@ -1063,14 +1108,14 @@ Invoke-PlayerCharacterPUAssignment -Year YYYY -Month MM `
     -Confirm
 ```
 
-**Krok 5 — Ogłoszenie:**
+**Krok 5 - Ogłoszenie:**
 
 Poinformuj zespół o oficjalnym przełączeniu:
 - Od teraz wszystkie operacje przez nowy moduł `.robot.new`
 - Sesje w formacie Gen4
 - Stary `.robot/robot.ps1` nie jest już używany
 
-**Krok 6 — Tagowanie:**
+**Krok 6 - Tagowanie:**
 
 ```powershell
 git tag post-migration -m "Migracja na .robot.new zakończona"
@@ -1081,7 +1126,7 @@ git tag post-migration -m "Migracja na .robot.new zakończona"
 - [ ] Ostatni PU assignment przetestowany i poprawny
 - [ ] `Gracze.md` zamrożony (komentarz + commit)
 - [ ] Stary system oznaczony jako deprecated
-- [ ] Pierwsze samodzielne uruchomienie PU przez nowy system — sukces
+- [ ] Pierwsze samodzielne uruchomienie PU przez nowy system - sukces
 - [ ] Zespół poinformowany
 - [ ] Tag `post-migration` utworzony
 
@@ -1105,7 +1150,7 @@ Jeśli pojedyncza operacja (np. PU assignment) dała złe wyniki:
 git revert HEAD  # Cofnij ostatni commit
 ```
 
-Nowy system **nie modyfikuje** `Gracze.md` — stary system nadal ma dostęp do nienaruszonej bazy danych.
+Nowy system **nie modyfikuje** `Gracze.md` - stary system nadal ma dostęp do nienaruszonej bazy danych.
 
 #### Poziom 2: Rollback do stanu sprzed konkretnej fazy
 
@@ -1128,7 +1173,7 @@ git checkout pre-migration -- "Wątki/nazwa-pliku.md"
 
 #### Poziom 4: Pełny rollback do stanu sprzed migracji
 
-> **UWAGA**: Ta operacja jest **destrukcyjna** — wszystkie zmiany po tagu `pre-migration` zostaną utracone!
+> **UWAGA**: Ta operacja jest **destrukcyjna** - wszystkie zmiany po tagu `pre-migration` zostaną utracone!
 
 ```powershell
 git reset --hard pre-migration
@@ -1154,7 +1199,7 @@ Dzięki temu, że `Gracze.md` nigdy nie jest modyfikowany, **zawsze można wróc
 
 ### 13.1 Dla koordynatorów
 
-#### Podstawy — import modułu
+#### Podstawy - import modułu
 
 Za każdym razem gdy otwierasz nową sesję PowerShell:
 
@@ -1171,14 +1216,14 @@ Get-Command -Module robot
 
 #### Miesięczny przydział PU
 
-1. **Przed przydziałem — diagnostyka:**
+1. **Przed przydziałem - diagnostyka:**
 
 ```powershell
 $Diag = Test-PlayerCharacterPUAssignment -Year YYYY -Month MM
 $Diag | Format-List
 ```
 
-Jeśli `OK = $false` — napraw problemy przed kontynuowaniem.
+Jeśli `OK = $false` - napraw problemy przed kontynuowaniem.
 
 2. **Suchy przebieg (dry-run):**
 
@@ -1241,7 +1286,7 @@ Set-CurrencyEntity -Name "Korony NazwaPostaci" -Amount 150 -ValidFrom "2026-03"
 # Zmiana ilości (delta)
 Set-CurrencyEntity -Name "Korony NazwaPostaci" -AmountDelta +50 -ValidFrom "2026-03"
 
-# Transfer między postaciami (rejestracja w sesji — preferowana metoda)
+# Transfer między postaciami (rejestracja w sesji - preferowana metoda)
 # Użyj @Transfer w sesji (patrz sekcja dla narratorów)
 ```
 
@@ -1256,7 +1301,7 @@ Każda sesja powinna być zapisana w następującym formacie:
 ```markdown
 ### YYYY-MM-DD, Tytuł Sesji, Imię Narratora
 
-Treść narracyjna — opis sesji, wnioski, wydarzenia.
+Treść narracyjna - opis sesji, wnioski, wydarzenia.
 Ten tekst jest zachowywany ale nie parsowany automatycznie.
 
 - @Lokacje:
@@ -1301,7 +1346,7 @@ Zamiast ręcznych komend, preferowaną metodą transferu walut jest dyrektywa `@
 Format: `@Transfer: {ilość} {denominacja}, {źródło} -> {cel}`
 
 System automatycznie:
-- Rozpoznaje denominację (korony/talary/kogi — akceptowane formy odmiany)
+- Rozpoznaje denominację (korony/talary/kogi - akceptowane formy odmiany)
 - Znajduje encje walutowe źródła i celu
 - Odejmuje od źródła i dodaje do celu
 - Ostrzega jeśli encja walutowa nie istnieje
@@ -1314,12 +1359,12 @@ System automatycznie:
 
 Z perspektywy gracza **niewiele się zmienia**:
 
-- **Powiadomienia Discord** — wyglądają tak samo, nadal przychodzą na webhook gracza
-- **Karta postaci** — plik `.md` w `Postaci/Gracze/` nadal jest aktualizowany
-- **PU** — mechanizm przydziału pozostaje taki sam (1 bazowe + sesyjne, limit 5/miesiąc, nadmiar przenoszony)
-- **Nowe**: Waluta postaci jest teraz formalnie śledzona — gracz może zostać poproszony o podanie stanu walut
+- **Powiadomienia Discord** - wyglądają tak samo, nadal przychodzą na webhook gracza
+- **Karta postaci** - plik `.md` w `Postaci/Gracze/` nadal jest aktualizowany
+- **PU** - mechanizm przydziału pozostaje taki sam (1 bazowe + sesyjne, limit 5/miesiąc, nadmiar przenoszony)
+- **Nowe**: Waluta postaci jest teraz formalnie śledzona - gracz może zostać poproszony o podanie stanu walut
 
-#### Zgłaszanie alternatywne deklaracji — nowy format
+#### Zgłaszanie alternatywne deklaracji - nowy format
 
 Gracze korzystający z możliwości samodzielnego zgłaszania deklaracji w formacie repozytorium ([zgłaszanie alternatywne](https://nerthus.pl/Mechanika/Deklaracje/#zgłaszanie-alternatywne)) powinni stosować nowy format z prefiksem `@` przy polach metadanych:
 
@@ -1381,13 +1426,13 @@ Po zakończeniu wszystkich faz migracji, upewnij się że **wszystkie** poniższ
 | 2 | `Test-PlayerCharacterPUAssignment` zwraca `OK = $true` | [ ] |
 | 3 | Aktywne pliki sesji w formacie Gen4 | [ ] |
 | 4 | Waluty zarejestrowane | [ ] |
-| 5 | `Test-CurrencyReconciliation` — brak błędów krytycznych | [ ] |
+| 5 | `Test-CurrencyReconciliation` - brak błędów krytycznych | [ ] |
 | 6 | Min. 1 pełny cykl PU bez rozbieżności z starym systemem | [ ] |
 | 7 | Wszyscy aktywni narratorzy przeszkoleni z Gen4 | [ ] |
 | 8 | `Gracze.md` zamrożony (komentarz read-only) | [ ] |
 | 9 | Stary system `.robot/robot.ps1` oznaczony jako deprecated | [ ] |
 | 10 | Tagi git `pre-migration` i `post-migration` istnieją | [ ] |
-| 11 | Pierwszego samodzielny PU assignment przez nowy system — sukces | [ ] |
+| 11 | Pierwszego samodzielny PU assignment przez nowy system - sukces | [ ] |
 | 12 | Zespół poinformowany o przełączeniu | [ ] |
 
 ---
@@ -1410,15 +1455,15 @@ O: Tak. Stary system czyta `Gracze.md` który nigdy nie jest modyfikowany przez 
 
 **P: Czy nowy system zmienia pliki postaci (`Postaci/Gracze/*.md`)?**
 
-O: Tak — komenda `Set-PlayerCharacter` modyfikuje sekcje w plikach postaci (Stan, Przedmioty specjalne, Reputacja itp.). Treść sekcji „Opisane sesje" nigdy nie jest modyfikowana automatycznie.
+O: Tak - komenda `Set-PlayerCharacter` modyfikuje sekcje w plikach postaci (Stan, Przedmioty specjalne, Reputacja itp.). Treść sekcji „Opisane sesje" nigdy nie jest modyfikowana automatycznie.
 
 ### PU
 
-**P: PU assignment zatrzymuje się z błędem „UnresolvedPUCharacters" — co robić?**
+**P: PU assignment zatrzymuje się z błędem „UnresolvedPUCharacters" - co robić?**
 
 O: Jedna lub więcej nazw postaci w sesjach nie pasuje do żadnej zarejestrowanej postaci. Sprawdź literówki i brakujące aliasy. Komenda `Test-PlayerCharacterPUAssignment` wyświetli listę problematycznych nazw z lokalizacją w plikach sesji.
 
-**P: Sesja nie pojawia się w PU assignment — dlaczego?**
+**P: Sesja nie pojawia się w PU assignment - dlaczego?**
 
 O: Możliwe przyczyny:
 
@@ -1429,13 +1474,13 @@ O: Możliwe przyczyny:
 | Brak bloku PU | Sesja zawiera `- @PU:` lub `- PU:`? |
 | Już przetworzona | Nagłówek widnieje w `.robot/res/pu-sessions.md`? |
 
-**P: Wartość PU w wynikach różni się od oczekiwanej — dlaczego?**
+**P: Wartość PU w wynikach różni się od oczekiwanej - dlaczego?**
 
 O: Algorytm PU:
 1. `BasePU = 1 + sum(PU za sesje w danym miesiącu)`
 2. Jeśli `BasePU < 5` i istnieje nadmiar → uzupełnienie z nadmiaru (max do 5)
 3. Jeśli `BasePU > 5` → nadwyżka trafia do puli nadmiaru
-4. Przyznane PU = `min(BasePU + uzupełnienie, 5)` — **limit 5 na miesiąc**
+4. Przyznane PU = `min(BasePU + uzupełnienie, 5)` - **limit 5 na miesiąc**
 
 ### Waluty
 
@@ -1445,21 +1490,21 @@ O: Algorytm PU:
 Get-CurrencyReport -Owner "NazwaPostaci" | Format-Table Denomination, Balance
 ```
 
-**P: `Test-CurrencyReconciliation` zgłasza „AsymmetricTransaction" — co to znaczy?**
+**P: `Test-CurrencyReconciliation` zgłasza „AsymmetricTransaction" - co to znaczy?**
 
-O: W ramach jednej sesji, zmiany ilości danej denominacji nie sumują się do zera. Oznacza to, że waluta została stworzona lub zniszczona (celowo lub przez pomyłkę). Jeśli to zamierzone — zignoruj. Jeśli nie — sprawdź wpisy `@ilość` w bloku `@Zmiany` sesji.
+O: W ramach jednej sesji, zmiany ilości danej denominacji nie sumują się do zera. Oznacza to, że waluta została stworzona lub zniszczona (celowo lub przez pomyłkę). Jeśli to zamierzone - zignoruj. Jeśli nie - sprawdź wpisy `@ilość` w bloku `@Zmiany` sesji.
 
-**P: `Test-CurrencyReconciliation` zgłasza „OrphanedCurrency" — co to znaczy?**
+**P: `Test-CurrencyReconciliation` zgłasza „OrphanedCurrency" - co to znaczy?**
 
 O: Waluta należy do encji o statusie `Nieaktywny` lub `Usunięty`. Zdecyduj czy przenieść walutę do innej encji, czy oznaczyć ją jako nieaktywną.
 
 ### Sesje
 
-**P: Bloki `Objaśnienia`, `Efekty` itp. zniknęły po upgrade — czy to normalne?**
+**P: Bloki `Objaśnienia`, `Efekty` itp. zniknęły po upgrade - czy to normalne?**
 
-O: Nie — te bloki powinny być zachowane przy upgrade. Jeśli zniknęły, użyj `git diff` żeby sprawdzić co się zmieniło i przywróć brakujący fragment z `git checkout pre-migration -- "Wątki/plik.md"`.
+O: Nie - te bloki powinny być zachowane przy upgrade. Jeśli zniknęły, użyj `git diff` żeby sprawdzić co się zmieniło i przywróć brakujący fragment z `git checkout pre-migration -- "Wątki/plik.md"`.
 
-**P: Moja sesja ma dwóch narratorów — jak to zapisać?**
+**P: Moja sesja ma dwóch narratorów - jak to zapisać?**
 
 O: Użyj słowa „i" jako separatora:
 

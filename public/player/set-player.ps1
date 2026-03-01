@@ -4,13 +4,16 @@
 
     .DESCRIPTION
     This file contains Set-Player which writes @prfwebhook, @margonemid,
-    and @trigger tags to the player's entity entry in entities.md under
-    the ## Gracz section.
+    @trigger, and @alias tags to the player's entity entry in entities.md
+    under the ## Gracz section.
 
     If the player has no entity entry yet, one is created.
 
     Validates Discord webhook URL format (must match
     https://discord.com/api/webhooks/*).
+
+    Aliases are appended with deduplication (case-insensitive) - existing
+    aliases with the same value are not duplicated.
 
     Player renaming is not supported via entity overrides - entity names
     are identity keys.
@@ -40,6 +43,9 @@ function Set-Player {
 
         [Parameter(HelpMessage = "Trigger topics (restricted content)")]
         [string[]]$Triggers,
+
+        [Parameter(HelpMessage = "Player aliases (appended with deduplication)")]
+        [string[]]$Aliases,
 
         [Parameter(HelpMessage = "Path to entities.md file")]
         [string]$EntitiesFile
@@ -89,6 +95,28 @@ function Set-Player {
             foreach ($Trigger in $Triggers) {
                 if (-not [string]::IsNullOrWhiteSpace($Trigger)) {
                     $Lines.Insert($ChildEnd, "    - @trigger: $($Trigger.Trim())")
+                    $ChildEnd++
+                }
+            }
+        }
+    }
+
+    if ($Aliases) {
+        foreach ($Alias in $Aliases) {
+            if (-not [string]::IsNullOrWhiteSpace($Alias)) {
+                # Check if alias already exists (case-insensitive dedup)
+                $ExistingAlias = $null
+                for ($i = $Target.ChildrenStart; $i -lt $ChildEnd; $i++) {
+                    $AliasMatch = $script:TagPattern.Match($Lines[$i])
+                    if ($AliasMatch.Success -and $AliasMatch.Groups[1].Value.Trim().ToLowerInvariant() -eq 'alias') {
+                        if ([string]::Equals($AliasMatch.Groups[2].Value.Trim(), $Alias, [System.StringComparison]::OrdinalIgnoreCase)) {
+                            $ExistingAlias = $i
+                            break
+                        }
+                    }
+                }
+                if (-not $ExistingAlias) {
+                    $Lines.Insert($ChildEnd, "    - @alias: $Alias")
                     $ChildEnd++
                 }
             }
