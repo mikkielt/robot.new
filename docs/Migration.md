@@ -131,7 +131,7 @@ The new system is stricter about data validation. Issues that the old system sil
 - **Unresolved character names** - typos in session PU entries, fixed by correcting the name or adding an alias
 - **Malformed session dates** - dates like `2025-6-15` corrected to `2025-06-15`
 - **Duplicate PU entries** - same character listed multiple times in one session
-- **Characters with PU = BRAK** - decision to soft-delete or supply missing values
+- **Characters with PU = BRAK** - decision to mark as inactive or supply missing values
 - **Stale history entries** - old session headers in the processing log that no longer match existing sessions (informational, non-blocking)
 
 Additionally, a narrator report identifies raw narrator names from session headers that do not resolve to known players, allowing the coordinator to add normalization mappings.
@@ -307,7 +307,7 @@ The migration is designed to be reversible at every stage:
 | Situation | What happens | Recovery |
 |---|---|---|
 | **Unresolved character name in PU** | The entire PU assignment stops before any changes are made | Fix the character name in the session file (typo, missing alias) and retry |
-| **Session with unparseable date** | The session is skipped silently during PU assignment | Run the diagnostic tool to surface these sessions; fix the date format (must be `YYYY-MM-DD`) |
+| **Session with unparseable date** | The session is skipped silently during PU assignment | Run the diagnostic tool to surface these sessions; fix the date format (must be `YYYY-MM-DD`). If the header cannot be changed, add `- @Data: YYYY-MM-DD` to override the date |
 | **Duplicate session across files** | Sessions with identical headers are automatically merged - PU is counted once, not per copy | No action needed; this is handled automatically |
 | **Player has no webhook address** | PU is still calculated and applied, but the Discord notification for that player is skipped with a warning | Add the webhook address to the player's record and re-send manually if needed |
 | **Stale history entries** | The diagnostic tool flags session headers in the processing log that no longer match any session in the repository | Review flagged entries; they may indicate renamed or deleted session files |

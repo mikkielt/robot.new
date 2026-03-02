@@ -44,23 +44,23 @@ Entity files use structured Markdown:
 ```markdown
 ## Gracz
 
-* PlayerName
+* Roland Ironfist
     - @margonemid: 12345
     - @prfwebhook: https://discord.com/api/webhooks/...
     - @trigger: topic1
 
 ## Postać
 
-* CharacterName
-    - @należy_do: PlayerName
+* Crag Hack
+    - @należy_do: Roland Ironfist
     - @pu_startowe: 20
     - @pu_suma: 45.5
-    - @alias: AltName (2024-01:)
+    - @alias: Crag (2024-01:)
 
 ## Przedmiot
 
-* ItemName
-    - @należy_do: CharacterName
+* Miecz Sądu
+    - @należy_do: Crag Hack
 ```
 
 **Multi-file merge**: files are sorted by numeric key (extracted from `*-NNN-ent.md` filenames). `entities.md` has sort key `MaxValue` (processed first, lowest primacy). Lower numbers are processed last and have highest override primacy. Same-name entities across files have their histories concatenated, not replaced.
@@ -166,14 +166,14 @@ Detection order (per-section heuristic):
 `Get-Session` normalizes all four formats transparently:
 
 - **Location extraction** (`Get-SessionLocations`): Gen2 uses italic regex. Gen3/Gen4 use entity-resolution strategy first (all children resolve to `Lokacja` entities), then tag-based fallback (`Lokalizacj*` or `Lokacj*`). Leading `@` stripped via `$TestText`.
-- **List metadata** (`Get-SessionListMetadata`): Leading `@` stripped via `$MatchText = if ($LowerText.StartsWith('@')) { $LowerText.Substring(1) } else { $LowerText }` - enabling unified parsing for both `- PU:` and `- @PU:`.
+- **List metadata** (`Get-SessionListMetadata`): Leading `@` stripped via `$MatchText = if ($LowerText.StartsWith('@')) { $LowerText.Substring(1) } else { $LowerText }` - enabling unified parsing for both `- PU:` and `- @PU:`. Also extracts `@Data` date override (YYYY-MM-DD) and `@Narrator` canonical names.
 - **Plain-text log fallback** (`Get-SessionPlainTextLogs`): Applied when list-based `$Logs.Count -eq 0`, scanning for `Logi: <url>` patterns (Gen1/Gen2).
 
 ### 3.4 Gen4 Output
 
 New sessions are always Gen4 (`New-Session` -> `ConvertTo-SessionMetadata` -> `ConvertTo-Gen4MetadataBlock`).
 
-Canonical block order: `@Narrator` -> `@Lokacje` -> `@Logi` -> `@PU` -> `@Zmiany` -> `@Intel`.
+Canonical block order: `@Narrator` -> `@Data` -> `@Lokacje` -> `@Logi` -> `@PU` -> `@Zmiany` -> `@Intel`.
 
 Zmiany rendering: entity names at 4-space indent, `@tag: value` at 8-space indent.
 
@@ -217,6 +217,26 @@ Each line maps a raw narrator string (left side) to one or more canonical narrat
 **Phase 3 workflow**: The coordinator runs `Get-NarratorReport` to identify raw narrator names that do not resolve to known players. Unresolved names are added to `narrator-mappings.txt` with their canonical equivalents. The process is iterative: run report, add mappings, re-run until all names resolve.
 
 **Phase 4 workflow**: During session format upgrade, resolved narrator mappings can be persisted as `- @Narrator:` blocks in Gen4 metadata. When present, the `@Narrator` block overrides header-based narrator resolution while preserving the original `RawText`.
+
+### 3.8 Date Override (`@Data`)
+
+Sessions with malformed dates in headers (e.g., `2024-07-014`) cannot have their headers changed because headers are unique identifiers shared across multiple files. The `@Data` tag allows overriding the date parsed from the header without modifying the header itself.
+
+**Format** (inline or child list):
+
+```markdown
+### 2024-07-014, Oblężenie Steadwick, Solmyr
+
+- @Data: 2024-07-14
+```
+
+**Behavior**: When `@Data` is present, `Get-Session` uses the specified date instead of parsing the header. This rescues sessions that would otherwise be flagged as failed (no valid `yyyy-MM-dd` date in header). If the header already has a valid date, `@Data` replaces it. The `@Data` tag is excluded from mention detection.
+
+**Setting via command**:
+
+```powershell
+Set-Session -DateOverride '2024-07-14' -File 'Postaci/Gracze/Crag Hack.md'
+```
 
 ---
 

@@ -99,8 +99,8 @@ Z Twojej perspektywy jako gracza, codzienna rozgrywka i interakcje z systemem wy
 
 - Logi: https://link-do-logów
 - Lokalizacje:
-    - Mokradła
-    - Mokradła/Zajazd pod Zielonym Jednorożcem
+    - Deyja
+    - Deyja/Wieża Nekromantów
 - PU:
     - Sandro: 0.3
     - Thant: 0.3
@@ -116,8 +116,8 @@ Z Twojej perspektywy jako gracza, codzienna rozgrywka i interakcje z systemem wy
 - @Logi:
     - https://link-do-logów
 - @Lokacje:
-    - Mokradła
-    - Mokradła/Zajazd pod Zielonym Jednorożcem
+    - Deyja
+    - Deyja/Wieża Nekromantów
 - @PU:
     - Sandro: 0.3
     - Thant: 0.3
@@ -229,7 +229,7 @@ Nowy format pozwala na dodatkowe pola, których wcześniej nie było:
 |---|---|---|
 | `2026-3-15` zamiast `2026-03-15` | Sesja cicho pomijana | Zawsze dwie cyfry: miesiąc i dzień |
 | `Krag Hack` zamiast `Crag Hack` | Przydział PU zatrzymany | Sprawdź nazwę z rejestrem postaci |
-| Brak dwukropka po nazwie w PU | Wartość PU nierozpoznana | `NazwaPostaci: 0.3` - dwukropek obowiązkowy |
+| Brak dwukropka po nazwie w PU | Wartość PU nierozpoznana | `Crag Hack: 0.3` - dwukropek obowiązkowy |
 | 2 spacje zamiast 4 we wcięciu | Podelementy nierozpoznane | Używaj 4 spacji na poziom |
 
 ### Czego oczekujemy od narratorów
@@ -437,6 +437,16 @@ O: Intel to mechanizm wysyłania celowanych wiadomości do konkretnych osób, gr
 **P: Jak działa `@Transfer`?**
 
 O: `@Transfer` rejestruje transakcję walutową między postaciami. System automatycznie odejmuje walutę od jednej postaci i dodaje drugiej. Format: `@Transfer: ilość denominacja, źródło -> cel`.
+
+**P: Sesja ma błędną datę w nagłówku - jak to naprawić?**
+
+O: Nagłówki sesji są unikalnymi identyfikatorami i nie powinny być zmieniane. Dodaj tag `@Data` z poprawną datą w formacie YYYY-MM-DD. System użyje tej daty zamiast daty z nagłówka:
+
+```markdown
+### 2024-07-014, Oblężenie Steadwick, Solmyr
+
+- @Data: 2024-07-14
+```
 
 ### Dla koordynatorów
 

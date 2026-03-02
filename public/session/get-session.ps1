@@ -261,6 +261,7 @@ function Get-SessionListMetadata {
     $Intel        = [System.Collections.Generic.List[object]]::new()
     $Transfers    = [System.Collections.Generic.List[object]]::new()
     $Narrators    = [System.Collections.Generic.List[string]]::new()
+    $DateOverride = $null
 
     foreach ($ListItem in $SectionLists) {
         $ItemText  = $ListItem.Text
@@ -366,6 +367,28 @@ function Get-SessionListMetadata {
             }
         }
 
+        # Data: date override (YYYY-MM-DD) for sessions with malformed header dates
+        if ($MatchText.StartsWith('data') -and $MatchText.Length -gt 4 -and ($MatchText[4] -eq ':' -or $MatchText[4] -eq ' ')) {
+            # Inline value: "- @Data: 2024-07-14"
+            $DataColonIdx = $ItemText.IndexOf(':')
+            if ($DataColonIdx -ge 0) {
+                $DataInline = $ItemText.Substring($DataColonIdx + 1).Trim()
+                if ($DataInline.Length -gt 0) {
+                    $DateOverride = $DataInline
+                } else {
+                    # Child list item: "- @Data:\n    - 2024-07-14"
+                    foreach ($DataItem in $SectionLists) {
+                        if ($DataItem.ParentListItem -ne $ListItem) { continue }
+                        $DataVal = $DataItem.Text.Trim()
+                        if (-not [string]::IsNullOrWhiteSpace($DataVal)) {
+                            $DateOverride = $DataVal
+                            break
+                        }
+                    }
+                }
+            }
+        }
+
         # Transfer: currency convenience shorthand
         # Format: "- @Transfer: {amount} {denomination}, {source} -> {destination}"
         if ($MatchText.StartsWith('transfer') -and $MatchText.Length -gt 8 -and ($MatchText[8] -eq ':' -or $MatchText[8] -eq ' ')) {
@@ -405,12 +428,13 @@ function Get-SessionListMetadata {
     }
 
     return @{
-        Logs      = $Logs
-        PU        = $PU
-        Changes   = $Changes
-        Intel     = $Intel
-        Transfers = $Transfers
-        Narrators = $Narrators
+        Logs         = $Logs
+        PU           = $PU
+        Changes      = $Changes
+        Intel        = $Intel
+        Transfers    = $Transfers
+        Narrators    = $Narrators
+        DateOverride = $DateOverride
     }
 }
 
@@ -856,6 +880,7 @@ function Get-SessionMentions {
         if ($Lower.StartsWith('lokalizacj') -or $Lower.StartsWith('lokacj')) { $IsExcluded = $true }
         if ($Lower.StartsWith('zmiany') -and ($Lower.Length -eq 6 -or $Lower[6] -eq ':' -or $Lower[6] -eq ' ')) { $IsExcluded = $true }
         if ($Lower.StartsWith('intel') -and ($Lower.Length -eq 5 -or $Lower[5] -eq ':' -or $Lower[5] -eq ' ')) { $IsExcluded = $true }
+        if ($Lower.StartsWith('data') -and ($Lower.Length -eq 4 -or $Lower[4] -eq ':' -or $Lower[4] -eq ' ')) { $IsExcluded = $true }
 
         if ($IsExcluded) {
             [void]$ExcludedListItems.Add([System.Runtime.CompilerServices.RuntimeHelpers]::GetHashCode($LI))
@@ -1208,6 +1233,50 @@ function Get-Session {
             # Parse date from header (using cached regex match)
             $CachedMatch = if ($CachedDateMatches.ContainsKey($i)) { $CachedDateMatches[$i] } else { $null }
             $DateInfo = ConvertFrom-SessionHeader -Header $Header -DateRegex $DateRegex -Match $CachedMatch
+
+            # @Data override: scan for date override tag before failed-session check.
+            # This rescues sessions with malformed header dates (e.g. "2024-07-014").
+            $DateOverrideStr = $null
+            if ($Section.Lists) {
+                foreach ($LI in $Section.Lists) {
+                    if ($LI.Indent -ne 0) { continue }
+                    $DOTestText = if ($LI.Text.StartsWith('@')) { $LI.Text.Substring(1) } else { $LI.Text }
+                    $DOLower = $DOTestText.ToLowerInvariant()
+                    if ($DOLower.StartsWith('data') -and $DOLower.Length -gt 4 -and ($DOLower[4] -eq ':' -or $DOLower[4] -eq ' ')) {
+                        $DOColonIdx = $DOTestText.IndexOf(':')
+                        if ($DOColonIdx -ge 0) {
+                            $DOInline = $DOTestText.Substring($DOColonIdx + 1).Trim()
+                            if ($DOInline.Length -gt 0) {
+                                $DateOverrideStr = $DOInline
+                            } else {
+                                foreach ($DOChild in $Section.Lists) {
+                                    if ($DOChild.ParentListItem -eq $LI) {
+                                        $DateOverrideStr = $DOChild.Text.Trim()
+                                        break
+                                    }
+                                }
+                            }
+                        }
+                        break
+                    }
+                }
+            }
+            if ($DateOverrideStr) {
+                [datetime]$DOParsed = [datetime]::MinValue
+                if ([datetime]::TryParseExact($DateOverrideStr, "yyyy-MM-dd", [System.Globalization.CultureInfo]::InvariantCulture, [System.Globalization.DateTimeStyles]::None, [ref]$DOParsed)) {
+                    if ($null -eq $DateInfo) {
+                        $DateInfo = @{
+                            Date      = $DOParsed
+                            DateEnd   = $null
+                            DateStr   = $DateOverrideStr
+                            EndDayStr = $null
+                        }
+                    } else {
+                        $DateInfo.Date = $DOParsed
+                        $DateInfo.DateStr = $DateOverrideStr
+                    }
+                }
+            }
 
             if ($null -eq $DateInfo) {
                 # Header does not match session pattern - record as failed

@@ -90,6 +90,7 @@ but not parsed for metadata.
 | Field | Required | Description |
 |---|---|---|
 | `@Narrator` | Optional | Canonical narrator name override (replaces header-based narrator resolution) |
+| `@Data` | Optional | Date override in `YYYY-MM-DD` format (replaces date parsed from header) |
 | `@Lokacje` | Recommended | Where the session took place (one location per line) |
 | `@Logi` | Recommended | Link(s) to the session transcript |
 | `@PU` | Required for PU processing | Character name and PU value (e.g., `Crag Hack: 0.3`) |
@@ -102,7 +103,7 @@ Each PU entry is a character name followed by a colon and a decimal value:
 
 ```markdown
 - @PU:
-    - CharacterName: 0.3
+    - Crag Hack: 0.3
 ```
 
 - Use a **period** (`.`) as the decimal separator (commas are also accepted but not preferred)
@@ -115,13 +116,13 @@ Changes record permanent updates to the game world:
 
 ```markdown
 - @Zmiany:
-    - EntityName
-        - @tag: value
+    - Sandro
+        - @lokacja: Deyja
 ```
 
 Common tags:
-- `@lokacja: LocationName` - entity permanently moves to a new location
-- `@grupa: GroupName` - entity joins a group/faction
+- `@lokacja: Erathia` - entity permanently moves to a new location
+- `@grupa: Nekromanci` - entity joins a group/faction
 - `@status: Aktywny` / `Nieaktywny` / `Usunięty` - entity status change
 
 Changes are applied automatically with the session's date as the effective date.

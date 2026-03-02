@@ -677,14 +677,14 @@ function Show-BRAKCharacters {
     Write-SectionHeader "POSTACIE Z PU = BRAK ($($BRAKChars.Count))"
     foreach ($Item in $BRAKChars) {
         Write-Host "    $($Item.PlayerName) / $($Item.CharacterName) - brak wartości PU" -ForegroundColor Yellow
-        $Choice = Request-YesNo -Prompt "    Czy oznaczyć '$($Item.CharacterName)' jako usuniętą?" -Default $false
+        $Choice = Request-YesNo -Prompt "    Czy oznaczyć '$($Item.CharacterName)' jako nieaktywną?" -Default $false
         if ($Choice) {
             try {
-                Remove-PlayerCharacter -PlayerName $Item.PlayerName -CharacterName $Item.CharacterName -Confirm:$false
-                Write-StepOK "Oznaczono '$($Item.CharacterName)' jako usuniętą"
+                Set-PlayerCharacter -PlayerName $Item.PlayerName -CharacterName $Item.CharacterName -Status 'Nieaktywny' -Confirm:$false
+                Write-StepOK "Oznaczono '$($Item.CharacterName)' jako nieaktywną"
             }
             catch {
-                Write-StepError "Nie udało się usunąć: $($_.Exception.Message)"
+                Write-StepError "Nie udało się oznaczyć jako nieaktywną: $($_.Exception.Message)"
             }
         }
     }

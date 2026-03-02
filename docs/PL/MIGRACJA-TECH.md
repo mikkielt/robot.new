@@ -472,7 +472,7 @@ Otwórz plik sesji i popraw literówkę w nazwie postaci.
 Jeśli nazwa jest poprawna, ale jest to alternatywna forma (np. zdrobnienie, odmiana), zarejestruj ją jako alias:
 
 ```powershell
-Set-PlayerCharacter -PlayerName "NazwaGracza" -CharacterName "NazwaPostaci" -Aliases @("AlternatywnaNazwa")
+Set-PlayerCharacter -PlayerName "Roland Ironfist" -CharacterName "Crag Hack" -Aliases @("Crag")
 ```
 
 Po naprawie uruchom diagnostykę ponownie, aby potwierdzić:
@@ -509,10 +509,29 @@ if ($Diag.FailedSessionsWithPU.Count -gt 0) {
 
 **Jak naprawić:**
 
-Otwórz plik wskazany w `FilePath` i popraw nagłówek sesji do formatu:
+Jeśli nagłówek sesji można bezpiecznie zmienić, otwórz plik wskazany w `FilePath` i popraw nagłówek sesji do formatu:
 
 ```markdown
 ### YYYY-MM-DD, Tytuł Sesji, Imię Narratora
+```
+
+Jeśli nagłówek sesji **nie może być zmieniony** (jest unikalnym identyfikatorem i występuje w wielu plikach), użyj tagu `@Data` w metadanych sesji. Tag `@Data` nadpisuje datę z nagłówka, podobnie jak `@Narrator` nadpisuje narratora:
+
+```markdown
+### 2024-07-014, Oblężenie Steadwick, Solmyr
+
+Opis sesji...
+
+- @Data: 2024-07-14
+- @PU:
+    - Crag Hack: 0.3
+```
+
+Komenda do ustawienia `@Data`:
+
+```powershell
+Get-Session -IncludeFailed | Where-Object { $_.Header -eq '2024-07-014, Oblężenie Steadwick, Solmyr' } |
+    Set-Session -DateOverride '2024-07-14'
 ```
 
 ### 7.3 Duplikaty PU
@@ -529,9 +548,9 @@ Otwórz plik sesji i usuń zduplikowane wpisy PU (zachowaj poprawną wartość).
 
 ### 7.4 Wartości PU = BRAK
 
-Niektóre postacie w `Gracze.md` mają PU oznaczone jako `BRAK`. To zazwyczaj postacie nieaktywne lub usunięte. Podczas bootstrapu te wartości nie zostaną przeniesione do `entities.md` (pola będą puste).
+Niektóre postacie w `Gracze.md` mają PU oznaczone jako `BRAK`. To zazwyczaj postacie nieaktywne. Podczas bootstrapu te wartości nie zostaną przeniesione do `entities.md` (pola będą puste).
 
-**Decyzja**: Czy oznaczyć te postacie jako usunięte?
+**Decyzja**: Czy oznaczyć te postacie jako nieaktywne?
 
 ```powershell
 # Znajdź postacie bez PU
@@ -544,10 +563,10 @@ $Players | ForEach-Object {
 }
 ```
 
-Jeśli postać jest faktycznie usunięta:
+Jeśli postać jest faktycznie nieaktywna:
 
 ```powershell
-Remove-PlayerCharacter -PlayerName "NazwaGracza" -CharacterName "NazwaPostaci" -Confirm
+Set-PlayerCharacter -PlayerName "Roland Ironfist" -CharacterName "Crag Hack" -Status 'Nieaktywny'
 ```
 
 ### 7.5 Stale history entries
@@ -605,7 +624,7 @@ $Players | Where-Object { $_.PRFWebhook -like '*discordapp.com*' } | ForEach-Obj
 Oba formaty (`discordapp.com` i `discord.com`) działają, ale warto ujednolicić:
 
 ```powershell
-Set-Player -Name "NazwaGracza" -PRFWebhook "https://discord.com/api/webhooks/..."
+Set-Player -Name "Roland Ironfist" -PRFWebhook "https://discord.com/api/webhooks/..."
 ```
 
 ### Wzorzec pracy w Fazie 3
@@ -621,10 +640,10 @@ Set-Player -Name "NazwaGracza" -PRFWebhook "https://discord.com/api/webhooks/...
 ### Checklist Fazy 3
 
 - [ ] `UnresolvedCharacters` - wszystkie naprawione (literówki poprawione lub aliasy dodane)
-- [ ] `FailedSessionsWithPU` - wszystkie sesje z PU mają poprawne daty
+- [ ] `FailedSessionsWithPU` - wszystkie sesje z PU mają poprawne daty (naprawione nagłówki lub `@Data` override)
 - [ ] `DuplicateEntries` - brak duplikatów
 - [ ] `MalformedPU` - brak błędnych wartości PU
-- [ ] Postacie z `BRAK` PU - decyzja podjęta (soft-delete lub uzupełnienie)
+- [ ] Postacie z `BRAK` PU - decyzja podjęta (oznaczenie jako nieaktywne lub uzupełnienie)
 - [ ] `Test-PlayerCharacterPUAssignment` zwraca `OK = $true`
 - [ ] Nazwy narratorów rozwiązane (mapowania w `narrator-mappings.txt`)
 - [ ] Naprawki zacommitowane
@@ -835,14 +854,14 @@ Najłatwiejszy sposób rejestracji początkowego stanu walut graczy to utworzeni
 Sesja techniczna - rejestracja początkowego stanu walut postaci graczy.
 
 - @Zmiany:
-    - Korony NazwaPostaci1
+    - Korony Crag Hack
         - @generyczne_nazwy: Korony Elanckie
-        - @należy_do: NazwaPostaci1
+        - @należy_do: Crag Hack
         - @ilość: 50
         - @status: Aktywny
-    - Talary NazwaPostaci1
+    - Talary Crag Hack
         - @generyczne_nazwy: Talary Hirońskie
-        - @należy_do: NazwaPostaci1
+        - @należy_do: Crag Hack
         - @ilość: 200
         - @status: Aktywny
 ```
@@ -852,9 +871,9 @@ Sesja techniczna - rejestracja początkowego stanu walut postaci graczy.
 Dla mniejszej liczby postaci, użyj komend bezpośrednio:
 
 ```powershell
-New-CurrencyEntity -Denomination Korony -Owner "NazwaPostaci" -Amount 50
-New-CurrencyEntity -Denomination Talary -Owner "NazwaPostaci" -Amount 200
-New-CurrencyEntity -Denomination Kogi   -Owner "NazwaPostaci" -Amount 1500
+New-CurrencyEntity -Denomination Korony -Owner "Crag Hack" -Amount 50
+New-CurrencyEntity -Denomination Talary -Owner "Crag Hack" -Amount 200
+New-CurrencyEntity -Denomination Kogi   -Owner "Crag Hack" -Amount 1500
 ```
 
 **Wzór formularza do wysłania graczom:**
@@ -873,11 +892,11 @@ Narratorzy mogą posiadać „budżety" walut do rozdawania na sesjach. Te walut
 
 ```powershell
 # Utworzenie budżetu narratora
-New-CurrencyEntity -Denomination Korony -Owner "Narrator Dracon" -Amount 0
+New-CurrencyEntity -Denomination Korony -Owner "Narrator Catherine" -Amount 0
 
 # Dystrybucja ze skarbca do narratora
 Set-CurrencyEntity -Name "Korony Skarbiec Koordynatorów" -AmountDelta -500 -ValidFrom "2026-03"
-Set-CurrencyEntity -Name "Korony Narrator Dracon" -AmountDelta +500 -ValidFrom "2026-03"
+Set-CurrencyEntity -Name "Korony Narrator Catherine" -AmountDelta +500 -ValidFrom "2026-03"
 ```
 
 > **Ważne**: Dystrybucja administratora (skarbiec → narrator) to para komend `Set-CurrencyEntity` z przeciwnymi deltami. System nie linkuje ich automatycznie - jeśli zapomnisz jednej strony, `Test-CurrencyReconciliation` wykryje to przy najbliższym sprawdzeniu.
@@ -964,7 +983,7 @@ Narrtorzy powinni zacząć pisać nowe sesje w **formacie Gen4** (z prefiksem `@
 Przykład nowej sesji:
 
 ```markdown
-### 2026-03-15, Tytuł Sesji, Narrator
+### 2026-03-15, Obrona Zamku Steadwick, Catherine
 
 Treść narracyjna sesji.
 
@@ -988,7 +1007,7 @@ Treść narracyjna sesji.
 Twórz nowe postacie **wyłącznie przez nowy system**:
 
 ```powershell
-New-PlayerCharacter -PlayerName "NazwaGracza" -CharacterName "NazwaPostaci" -CharacterSheetUrl "https://..."
+New-PlayerCharacter -PlayerName "Roland Ironfist" -CharacterName "Kyrre" -CharacterSheetUrl "https://..."
 ```
 
 System automatycznie:
@@ -1002,13 +1021,13 @@ Aktualizacje postaci przez nowy system:
 
 ```powershell
 # Zmiana statusu
-Set-PlayerCharacter -PlayerName "Gracz" -CharacterName "Postać" -Status "Nieaktywny"
+Set-PlayerCharacter -PlayerName "Roland Ironfist" -CharacterName "Crag Hack" -Status "Nieaktywny"
 
 # Aktualizacja PU
-Set-PlayerCharacter -PlayerName "Gracz" -CharacterName "Postać" -PUSum 45.5
+Set-PlayerCharacter -PlayerName "Roland Ironfist" -CharacterName "Crag Hack" -PUSum 45.5
 
 # Dodanie aliasu
-Set-PlayerCharacter -PlayerName "Gracz" -CharacterName "Postać" -Aliases @("NowyAlias")
+Set-PlayerCharacter -PlayerName "Roland Ironfist" -CharacterName "Crag Hack" -Aliases @("Crag")
 ```
 
 ### Co monitorować
@@ -1246,19 +1265,19 @@ Invoke-PlayerCharacterPUAssignment -Year YYYY -Month MM `
 
 ```powershell
 # Nowy gracz
-New-Player -Name "NowyGracz" -MargonemID "1234567" -PRFWebhook "https://discord.com/api/webhooks/..."
+New-Player -Name "Gem" -MargonemID "1234567" -PRFWebhook "https://discord.com/api/webhooks/..."
 
 # Nowa postać
-New-PlayerCharacter -PlayerName "NowyGracz" -CharacterName "NowaPostać" -CharacterSheetUrl "https://..."
+New-PlayerCharacter -PlayerName "Gem" -CharacterName "Adrienne" -CharacterSheetUrl "https://..."
 
 # Aktualizacja danych gracza
-Set-Player -Name "Gracz" -PRFWebhook "https://discord.com/api/webhooks/nowy-webhook"
+Set-Player -Name "Roland Ironfist" -PRFWebhook "https://discord.com/api/webhooks/nowy-webhook"
 
 # Aktualizacja postaci
-Set-PlayerCharacter -PlayerName "Gracz" -CharacterName "Postać" -Aliases @("Alias1", "Alias2")
+Set-PlayerCharacter -PlayerName "Roland Ironfist" -CharacterName "Crag Hack" -Aliases @("Crag", "Barbarzyńca")
 
 # Usunięcie postaci (soft-delete)
-Remove-PlayerCharacter -PlayerName "Gracz" -CharacterName "Postać" -Confirm
+Remove-PlayerCharacter -PlayerName "Roland Ironfist" -CharacterName "Crag Hack" -Confirm
 ```
 
 #### Raportowanie walut
@@ -1268,7 +1287,7 @@ Remove-PlayerCharacter -PlayerName "Gracz" -CharacterName "Postać" -Confirm
 Get-CurrencyReport | Format-Table EntityName, Denomination, Balance, Owner
 
 # Raport dla konkretnego gracza
-Get-CurrencyReport -Owner "NazwaPostaci"
+Get-CurrencyReport -Owner "Crag Hack"
 
 # Rekoncyliacja
 Test-CurrencyReconciliation | Format-List
@@ -1278,13 +1297,13 @@ Test-CurrencyReconciliation | Format-List
 
 ```powershell
 # Nowa waluta
-New-CurrencyEntity -Denomination Korony -Owner "NazwaPostaci" -Amount 100
+New-CurrencyEntity -Denomination Korony -Owner "Sandro" -Amount 100
 
 # Zmiana ilości (wartość bezwzględna)
-Set-CurrencyEntity -Name "Korony NazwaPostaci" -Amount 150 -ValidFrom "2026-03"
+Set-CurrencyEntity -Name "Korony Sandro" -Amount 150 -ValidFrom "2026-03"
 
 # Zmiana ilości (delta)
-Set-CurrencyEntity -Name "Korony NazwaPostaci" -AmountDelta +50 -ValidFrom "2026-03"
+Set-CurrencyEntity -Name "Korony Sandro" -AmountDelta +50 -ValidFrom "2026-03"
 
 # Transfer między postaciami (rejestracja w sesji - preferowana metoda)
 # Użyj @Transfer w sesji (patrz sekcja dla narratorów)
@@ -1305,23 +1324,23 @@ Treść narracyjna - opis sesji, wnioski, wydarzenia.
 Ten tekst jest zachowywany ale nie parsowany automatycznie.
 
 - @Lokacje:
-    - NazwaLokacji1
-    - NazwaLokacji2
+    - Erathia
+    - Bracada
 - @Logi:
     - https://link-do-logów-sesji
 - @PU:
-    - NazwaPostaci1: 0.3
-    - NazwaPostaci2: 0.5
+    - Crag Hack: 0.3
+    - Gem: 0.5
 - @Zmiany:
-    - NazwaEncji
-        - @lokacja: NowaLokacja (YYYY-MM:)
+    - Sandro
+        - @lokacja: Deyja (YYYY-MM:)
         - @status: Aktywny (YYYY-MM:)
-        - @grupa: NowaGrupa (YYYY-MM:)
+        - @grupa: Nekromanci (YYYY-MM:)
 - @Intel:
-    - Grupa/NazwaGrupy: Wiadomość do członków
-    - Lokacja/NazwaLokacji: Wiadomość do obecnych
-    - NazwaOdbiorca: Prywatna wiadomość
-- @Transfer: 100 koron, ŹródłoPostać -> CelPostać
+    - Grupa/Nekromanci: Wiadomość do członków
+    - Lokacja/Erathia: Wiadomość do obecnych
+    - Solmyr: Prywatna wiadomość
+- @Transfer: 100 koron, Xeron -> Kyrre
 ```
 
 #### Najczęstsze błędy
@@ -1330,7 +1349,7 @@ Ten tekst jest zachowywany ale nie parsowany automatycznie.
 |---|---|---|
 | `2026-3-15` zamiast `2026-03-15` | Sesja cicho pomijana w PU | Zawsze dwie cyfry na miesiąc i dzień |
 | `Krag Hack: 0.3` zamiast `Crag Hack: 0.3` | PU assignment zatrzymany | Sprawdź nazwę postaci z rejestrem |
-| Brak `:` po nazwie postaci w PU | Wartość PU nie rozpoznana | `- NazwaPostaci: 0.3` (dwukropek obowiązkowy) |
+| Brak `:` po nazwie postaci w PU | Wartość PU nie rozpoznana | `- Crag Hack: 0.3` (dwukropek obowiązkowy) |
 | Tagi bez `@` w nowych sesjach | Parsowanie jako Gen3 zamiast Gen4 | Zawsze `@Lokacje`, `@PU`, `@Logi` itd. |
 | Wcięcie 2 spacje zamiast 4 | Podelementy nie rozpoznane | Używaj 4 spacji na każdy poziom wcięcia |
 
@@ -1377,8 +1396,8 @@ Gracze korzystający z możliwości samodzielnego zgłaszania deklaracji w forma
 
 - Logi: https://link-do-logów
 - Lokalizacje:
-    - Mokradła
-    - Mokradła/Zajazd pod Zielonym Jednorożcem
+    - Deyja
+    - Deyja/Wieża Nekromantów
 - PU:
     - Sandro: 0.3
     - Thant: 0.3
@@ -1394,8 +1413,8 @@ Gracze korzystający z możliwości samodzielnego zgłaszania deklaracji w forma
 - @Logi:
     - https://link-do-logów
 - @Lokacje:
-    - Mokradła
-    - Mokradła/Zajazd pod Zielonym Jednorożcem
+    - Deyja
+    - Deyja/Wieża Nekromantów
 - @PU:
     - Sandro: 0.3
     - Thant: 0.3
@@ -1487,7 +1506,7 @@ O: Algorytm PU:
 **P: Jak sprawdzić stan walut konkretnej postaci?**
 
 ```powershell
-Get-CurrencyReport -Owner "NazwaPostaci" | Format-Table Denomination, Balance
+Get-CurrencyReport -Owner "Crag Hack" | Format-Table Denomination, Balance
 ```
 
 **P: `Test-CurrencyReconciliation` zgłasza „AsymmetricTransaction" - co to znaczy?**

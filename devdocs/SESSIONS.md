@@ -45,7 +45,7 @@ New-Session (creation path)
 | Gen1 | START–2022 | None | `Logi: https://…` plain text | None | Fallback (no other match) |
 | Gen2 | 2022–2023 | `*Lokalizacja: A, B*` (italic) | `Logi: https://…` plain text | None | First non-empty line starts with `*Lokalizacj` |
 | Gen3 | 2024–2026 | `- Lokalizacje:` list item | `- Logi:` list item | `- PU:`, `- Zmiany:`, `- Efekty:` | Root list item with `pu` prefix (no `@`) |
-| Gen4 | 2026+ | `- @Lokacje:` list item | `- @Logi:` list item | `- @Narrator:`, `- @PU:`, `- @Zmiany:`, `- @Intel:` | Root list item starting with `@` + letter |
+| Gen4 | 2026+ | `- @Lokacje:` list item | `- @Logi:` list item | `- @Narrator:`, `- @Data:`, `- @PU:`, `- @Zmiany:`, `- @Intel:` | Root list item starting with `@` + letter |
 
 All four formats remain parseable. `Get-Session` auto-detects and normalizes transparently.
 
@@ -133,6 +133,25 @@ Behavior:
 - If the `@Narrator` block is absent, standard header-based resolution via `Resolve-Narrator` applies as before.
 
 This mechanism supports narrator normalization during migration: the `@Narrator` block provides a verified canonical name, while the original header text remains untouched.
+
+### 4.9 @Data Override
+
+When a `- @Data:` tag is present in session metadata, it overrides the date parsed from the session header. This rescues sessions with malformed header dates (e.g., `2024-07-014`) that cannot have their headers changed because headers are unique identifiers.
+
+Format (inline):
+```markdown
+### 2024-07-014, Oblężenie Steadwick, Solmyr
+
+- @Data: 2024-07-14
+```
+
+Behavior:
+- The date value must be in `YYYY-MM-DD` format. Invalid values are silently ignored.
+- When present, `@Data` replaces the header-parsed date in the session object's `Date` field.
+- If the header has no valid date at all, `@Data` provides the date and prevents the session from being recorded as failed.
+- `@Data` is excluded from mention detection.
+- In `Set-Session`, use `-DateOverride '2024-07-14'` to write the `@Data` block.
+- Example: `Set-Session -DateOverride '2024-07-14' -File 'Postaci/Gracze/Crag Hack.md'`
 
 ---
 
@@ -260,7 +279,7 @@ Optional `DateEnd` appended as `/dd` suffix (validated: same month/year, > Date)
 
 Delegates to `ConvertTo-SessionMetadata` which calls `ConvertTo-Gen4MetadataBlock` per field.
 
-**Canonical block order**: `@Narrator` -> `@Lokacje` -> `@Logi` -> `@PU` -> `@Zmiany` -> `@Transfer` -> `@Intel`
+**Canonical block order**: `@Narrator` -> `@Data` -> `@Lokacje` -> `@Logi` -> `@PU` -> `@Zmiany` -> `@Transfer` -> `@Intel`
 
 Returns a string - does **not** write to disk.
 

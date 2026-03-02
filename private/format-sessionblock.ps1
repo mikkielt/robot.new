@@ -33,6 +33,18 @@ function ConvertTo-Gen4MetadataBlock {
                 [void]$SB.Append("    - $Name")
             }
         }
+        'Data' {
+            # Single date value - render inline after colon
+            if ($Items.Count -eq 1) {
+                [void]$SB.Clear()
+                [void]$SB.Append("- @Data: $($Items[0])")
+            } else {
+                foreach ($D in $Items) {
+                    [void]$SB.Append($NL)
+                    [void]$SB.Append("    - $D")
+                }
+            }
+        }
         'Lokacje' {
             foreach ($Loc in $Items) {
                 [void]$SB.Append($NL)
@@ -86,6 +98,7 @@ function ConvertTo-Gen4MetadataBlock {
 function ConvertTo-SessionMetadata {
     param(
         [object]$Narrator,
+        [object]$DateOverride,
         [object]$Locations,
         [object]$Logs,
         [object]$PU,
@@ -94,10 +107,13 @@ function ConvertTo-SessionMetadata {
         [string]$NL = [System.Environment]::NewLine
     )
 
-    $Blocks = [System.Collections.Generic.List[string]]::new(6)
+    $Blocks = [System.Collections.Generic.List[string]]::new(7)
 
     $NarrBlock = ConvertTo-Gen4MetadataBlock -Tag 'Narrator' -Items $Narrator -NL $NL
     if ($NarrBlock) { $Blocks.Add($NarrBlock) }
+
+    $DataBlock = ConvertTo-Gen4MetadataBlock -Tag 'Data' -Items $DateOverride -NL $NL
+    if ($DataBlock) { $Blocks.Add($DataBlock) }
 
     $LocBlock = ConvertTo-Gen4MetadataBlock -Tag 'Lokacje' -Items $Locations -NL $NL
     if ($LocBlock) { $Blocks.Add($LocBlock) }

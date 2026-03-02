@@ -96,7 +96,7 @@ function Split-SessionSection {
     param([string[]]$Lines)
 
     $MetaTags = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
-    foreach ($T in @('narrator', 'pu', 'logi', 'lokalizacje', 'lokacje', 'zmiany', 'intel')) {
+    foreach ($T in @('narrator', 'data', 'pu', 'logi', 'lokalizacje', 'lokacje', 'zmiany', 'intel')) {
         [void]$MetaTags.Add($T)
     }
 
@@ -108,6 +108,7 @@ function Split-SessionSection {
     # Normalize raw tag name -> canonical key
     $TagKeyMap = @{
         'narrator'    = 'narrator'
+        'data'        = 'data'
         'lokalizacje' = 'locations'
         'lokacje'     = 'locations'
         'logi'        = 'logs'
@@ -256,6 +257,7 @@ function ConvertTo-Gen4FromRawBlock {
 
     $Gen4Tag = switch ($Tag) {
         'narrator'  { 'Narrator' }
+        'data'      { 'Data' }
         'locations' { 'Lokacje' }
         'logs'      { 'Logi' }
         'pu'        { 'PU' }
@@ -383,6 +385,9 @@ function Set-Session {
         [Parameter(HelpMessage = "Narrator canonical names for @Narrator metadata override")]
         [string[]]$Narrator,
 
+        [Parameter(HelpMessage = "Date override in YYYY-MM-DD format for @Data metadata")]
+        [string]$DateOverride,
+
         [Parameter(HelpMessage = "Intel targeting entries to set")]
         [object[]]$Intel,
 
@@ -448,12 +453,16 @@ function Set-Session {
                        elseif ($Properties -and $Properties.ContainsKey('Narrator')) { $Properties.Narrator }
                        else { $null }
 
+        $EffDateOverride = if ($PSBoundParameters.ContainsKey('DateOverride')) { $DateOverride }
+                           elseif ($Properties -and $Properties.ContainsKey('DateOverride')) { $Properties.DateOverride }
+                           else { $null }
+
         # Check if any changes requested
         $HasChanges = ($null -ne $EffLocations) -or ($null -ne $EffPU) -or ($null -ne $EffLogs) -or
                       ($null -ne $EffChanges) -or ($null -ne $EffIntel) -or ($null -ne $EffContent) -or
-                      ($null -ne $EffNarrator) -or $UpgradeFormat
+                      ($null -ne $EffNarrator) -or ($null -ne $EffDateOverride) -or $UpgradeFormat
         if (-not $HasChanges) {
-            Write-Warning 'No changes specified. Use -Locations, -PU, -Logs, -Changes, -Intel, -Content, -Properties, or -UpgradeFormat.'
+            Write-Warning 'No changes specified. Use -Locations, -PU, -Logs, -Changes, -Intel, -Content, -DateOverride, -Properties, or -UpgradeFormat.'
             return
         }
 
@@ -462,6 +471,7 @@ function Set-Session {
         # Metadata config: canonical key, Gen4 tag name, possible original keys in Split output
         $MetaConfig = @(
             @{ Key = 'narrator';  Gen4Tag = 'Narrator'; OrigKeys = @('narrator');                      Effective = $EffNarrator }
+            @{ Key = 'data';      Gen4Tag = 'Data';     OrigKeys = @('data');                          Effective = if ($EffDateOverride) { @($EffDateOverride) } else { $null } }
             @{ Key = 'locations'; Gen4Tag = 'Lokacje';  OrigKeys = @('locations', 'locations-italic'); Effective = $EffLocations }
             @{ Key = 'logs';      Gen4Tag = 'Logi';     OrigKeys = @('logs', 'logs-plain');            Effective = $EffLogs }
             @{ Key = 'pu';        Gen4Tag = 'PU';       OrigKeys = @('pu');                            Effective = $EffPU }
