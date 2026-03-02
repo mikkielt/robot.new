@@ -5,19 +5,19 @@
 The `Robot` module is a set of PowerShell functions designed for parsing, managing, and resolving lore and metadata from the Nerthus repository. It extracts structured information from Markdown files (such as players, characters, sessions, entities, and locations) and enriches it using Git history.
 
 ### Core Design Principles
+
 - **Minimal external dependencies**: The module relies on Git and native PowerShell/.NET features at runtime. [Pester](https://pester.dev/) (v5.0+) is required for the test suite.
 - **Cross-platform**: Compatible with Windows PowerShell 5.1 and PowerShell Core 7.0+.
 - **Performance-focused**: Uses .NET classes for file I/O, regex, and process execution for optimal performance.
 - **Streaming architecture**: Git output is parsed line-by-line from `StandardOutput` to avoid materializing large diffs into memory.
 
-## Getting Started
+## Prerequisites
 
-### Prerequisites
 - PowerShell 5.1+ (Windows) or PowerShell Core 7.0+ (cross-platform)
 - Git installed and available in `PATH`
 - This module must be added as a Git submodule to the lore repository (at `.robot.new/`)
 
-### Loading the Module
+## Loading the Module
 
 ```powershell
 Import-Module ./.robot.new/robot.psd1
@@ -91,7 +91,7 @@ $Diag = Test-PlayerCharacterPUAssignment
 if (-not $Diag.OK) { $Diag.UnresolvedCharacters | Format-Table }
 ```
 
-### Batch Processing Pattern
+## Batch Processing Pattern
 
 For resolving many names efficiently, pre-build the index and pass a shared cache:
 
@@ -103,52 +103,6 @@ foreach ($Name in $NamesToResolve) {
     $Result = Resolve-Name -Query $Name -Index $Index -Cache $Cache
 }
 ```
-
-## Module Structure
-
-### Module Core
-`robot.psd1`, `robot.psm1`
-
-### Directory Layout
-
-```
-.robot.new/
-├── public/          # Exported Verb-Noun functions (auto-discovered by robot.psm1)
-│   ├── player/      # Player & character CRUD
-│   ├── entity/      # Generic entity CRUD (NPC, Grupa, Lokacja, Przedmiot)
-│   ├── currency/    # Currency entity CRUD (denomination-aware)
-│   ├── session/     # Session lifecycle & git history
-│   ├── resolve/     # Name resolution
-│   ├── workflow/    # PU assignment pipeline & Discord
-│   └── reporting/   # Reports & validation
-├── private/         # Shared helpers, dot-sourced on demand (not exported)
-├── tests/           # Pester test suite
-│   └── fixtures/    # Test data files
-├── migration/       # Interactive migration wizard (.robot → .robot.new), 8-phase with state tracking
-├── templates/       # Markdown/text templates for entity creation, notifications, scaffolding
-├── docs/            # Documentation for narrators, coordinators, players
-│   └── PL/          # Polish-language guides (team migration handbook, technical walkthrough)
-└── devdocs/         # Technical documentation for developers
-```
-
-### Exported Functions (`public/`, 39)
-
-| Category | Subdirectory | Functions |
-|---|---|---|
-| Core data | `public/` | `Get-Markdown`, `Get-Entity`, `Get-EntityState`, `Get-NameIndex`, `Get-RepoRoot` |
-| Player & character | `public/player/` | `Get-Player`, `Get-PlayerCharacter`, `Get-NewPlayerCharacterPUCount`, `New-Player`, `New-PlayerCharacter`, `Set-Player`, `Set-PlayerCharacter`, `Remove-PlayerCharacter` |
-| Entity CRUD | `public/entity/` | `New-Entity`, `Set-Entity`, `Remove-Entity` |
-| Currency CRUD | `public/currency/` | `New-CurrencyEntity`, `Set-CurrencyEntity`, `Get-CurrencyEntity`, `Remove-CurrencyEntity` |
-| Session | `public/session/` | `Get-Session`, `Get-GitChangeLog`, `New-Session`, `Set-Session` |
-| Name resolution | `public/resolve/` | `Resolve-Name`, `Resolve-Narrator` |
-| Workflow | `public/workflow/` | `Get-VotingEligibility`, `Invoke-PlayerCharacterPUAssignment`, `Send-DiscordMessage` |
-| Reporting & validation | `public/reporting/` | `Get-ChangeLog`, `Get-CurrencyReport`, `Get-EntityHistory`, `Get-NamedLocationReport`, `Get-NarratorReport`, `Get-NotificationLog`, `Get-PUAssignmentLog`, `Get-TransactionLedger`, `Test-CurrencyReconciliation`, `Test-PlayerCharacterPUAssignment` |
-
-### Shared Helpers (`private/`, dot-sourced, non-exported)
-`entity-writehelpers.ps1`, `charfile-helpers.ps1`, `admin-config.ps1`, `admin-state.ps1`, `format-sessionblock.ps1`, `string-helpers.ps1`, `currency-helpers.ps1`, `parse-markdownfile.ps1`
-
-### Templates
-`templates/player-character-file.md.template`, `templates/player-entry.md.template`, `templates/entities-skeleton.md.template`, `templates/currency-entity.md.template`, `templates/pu-notification-base.txt.template`, `templates/pu-notification-overflow.txt.template`, `templates/pu-notification-remaining.txt.template`, `templates/pu-sessions-header.md.template`
 
 ## Testing
 
