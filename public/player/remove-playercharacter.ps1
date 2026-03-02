@@ -39,7 +39,7 @@ function Remove-PlayerCharacter {
     )
 
     if (-not $EntitiesFile) {
-        $EntitiesFile = [System.IO.Path]::Combine($PSScriptRoot, 'entities.md')
+        $EntitiesFile = [System.IO.Path]::Combine((Get-RepoRoot), '.robot.new', 'entities.md')
     }
 
     if (-not $ValidFrom) {

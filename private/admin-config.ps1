@@ -152,7 +152,7 @@ function Get-AdminConfig {
     $Config = @{
         RepoRoot       = $RepoRoot
         ModuleRoot     = $ModuleRoot
-        EntitiesFile   = if ($ManifestPaths.ContainsKey('EntitiesFile')) { $ManifestPaths['EntitiesFile'] } else { [System.IO.Path]::Combine($ModuleRoot, 'entities.md') }
+        EntitiesFile   = if ($ManifestPaths.ContainsKey('EntitiesFile')) { $ManifestPaths['EntitiesFile'] } else { [System.IO.Path]::Combine($RepoRoot, '.robot.new', 'entities.md') }
         TemplatesDir   = [System.IO.Path]::Combine($ModuleRoot, 'templates')
         ResDir         = if ($ManifestPaths.ContainsKey('ResDir')) { $ManifestPaths['ResDir'] } else { [System.IO.Path]::Combine($RepoRoot, '.robot', 'res') }
         CharactersDir  = if ($ManifestPaths.ContainsKey('CharactersDir')) { $ManifestPaths['CharactersDir'] } else { [System.IO.Path]::Combine($RepoRoot, 'Postaci', 'Gracze') }

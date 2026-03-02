@@ -312,7 +312,7 @@ function Invoke-EnsureEntityFile {
     )
 
     if (-not $Path) {
-        $Path = [System.IO.Path]::Combine($PSScriptRoot, 'entities.md')
+        $Path = [System.IO.Path]::Combine((Get-RepoRoot), '.robot.new', 'entities.md')
     }
 
     if (-not [System.IO.File]::Exists($Path)) {
@@ -451,7 +451,7 @@ function ConvertTo-EntitiesFromPlayers {
     )
 
     if (-not $OutputPath) {
-        $OutputPath = [System.IO.Path]::Combine($PSScriptRoot, 'entities.md')
+        $OutputPath = [System.IO.Path]::Combine((Get-RepoRoot), '.robot.new', 'entities.md')
     }
 
     if (-not $Players) {
