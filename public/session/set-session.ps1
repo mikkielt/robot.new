@@ -701,7 +701,26 @@ function Set-Session {
                 # Write with ShouldProcess
 
                 if ($PSCmdlet.ShouldProcess($FilePath, "Set-Session: modify session '$($Match.HeaderText)'")) {
+                    $HasHooks = Get-Command 'Invoke-PluginHook' -ErrorAction SilentlyContinue
+                    if ($HasHooks) {
+                        Invoke-PluginHook -Operation 'Set-Session' -Phase 'BeforeWrite' -Context @{
+                            Operation  = 'Set-Session'
+                            FilePath   = $FilePath
+                            HeaderText = $Match.HeaderText
+                            NewContent = $NewFileContent
+                        }
+                    }
+
                     [System.IO.File]::WriteAllText($FilePath, $NewFileContent, $UTF8NoBOM)
+
+                    if ($HasHooks) {
+                        Invoke-PluginHook -Operation 'Set-Session' -Phase 'AfterWrite' -Context @{
+                            Operation  = 'Set-Session'
+                            FilePath   = $FilePath
+                            HeaderText = $Match.HeaderText
+                            NewContent = $NewFileContent
+                        }
+                    }
                 }
             }
             catch {

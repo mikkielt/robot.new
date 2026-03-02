@@ -331,6 +331,7 @@ function Invoke-EnsureEntityFile {
 }
 
 # Helper: write updated lines to file (UTF-8 no BOM, preserve newline style)
+# Invokes BeforeWrite/AfterWrite plugin hooks when the plugin system is loaded.
 function Write-EntityFile {
     param(
         [string]$Path,
@@ -338,9 +339,29 @@ function Write-EntityFile {
         [string]$NL = "`n"
     )
 
+    $HasHooks = Get-Command 'Invoke-PluginHook' -ErrorAction SilentlyContinue
+
+    if ($HasHooks) {
+        Invoke-PluginHook -Operation 'Write-EntityFile' -Phase 'BeforeWrite' -Context @{
+            Operation = 'Write-EntityFile'
+            Path      = $Path
+            Lines     = $Lines
+            NL        = $NL
+        }
+    }
+
     $Content = [string]::Join($NL, $Lines)
     $UTF8NoBOM = [System.Text.UTF8Encoding]::new($false)
     [System.IO.File]::WriteAllText($Path, $Content, $UTF8NoBOM)
+
+    if ($HasHooks) {
+        Invoke-PluginHook -Operation 'Write-EntityFile' -Phase 'AfterWrite' -Context @{
+            Operation = 'Write-EntityFile'
+            Path      = $Path
+            Lines     = $Lines
+            NL        = $NL
+        }
+    }
 }
 
 # Helper: read entity file into lines and detect newline style
