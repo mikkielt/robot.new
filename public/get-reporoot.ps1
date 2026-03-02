@@ -17,6 +17,10 @@
     Also contains Get-ParentRepoRoot which locates the parent repository root when
     the module lives inside a Git submodule. Walks past the submodule boundary to find
     the enclosing repository. Used by manifest discovery (Find-DataManifest).
+
+    Module-level data:
+    - $DataDirectoryOverride: when set by Set-DataDirectory, Get-RepoRoot returns
+      this path instead of performing git traversal.
 #>
 
 function Get-RepoRoot {
@@ -28,6 +32,11 @@ function Get-RepoRoot {
         [Parameter(HelpMessage = "Override the module directory for testing. Defaults to `$script:ModuleRoot set at import time.")]
         [string]$ModuleRoot
     )
+
+    # Honour explicit override set by Set-DataDirectory
+    if ($script:DataDirectoryOverride) {
+        return $script:DataDirectoryOverride
+    }
 
     if (-not $ModuleRoot) {
         $ModuleRoot = $script:ModuleRoot
