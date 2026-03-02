@@ -1085,7 +1085,10 @@ function Get-Session {
         [object[]]$Entities,
 
         [Parameter(HelpMessage = "Pre-fetched player list from Get-Player")]
-        [object[]]$Players
+        [object[]]$Players,
+
+        [Parameter(HelpMessage = "Fetch and parse log content, attaching LogData to each session")]
+        [switch]$IncludeLogs
     )
 
     $RepoRoot = Get-RepoRoot
@@ -1482,6 +1485,23 @@ function Get-Session {
     if ($IncludeFailed -and $FailedSessions.Count -gt 0) {
         foreach ($F in $FailedSessions) {
             $Filtered.Add($F)
+        }
+    }
+
+    # Attach parsed log data if requested
+    if ($IncludeLogs) {
+        $LogIndex = if ($NameIndex) { $NameIndex } else { $null }
+        $LogResults = $Filtered | Get-SessionLog -Index $LogIndex -SkipFetch:$false
+        # Match results to sessions by positional index (same order as collect-then-emit)
+        $SessionsWithLogs = [System.Collections.Generic.List[object]]::new()
+        foreach ($S in $Filtered) {
+            if ($null -ne $S.Logs -and $S.Logs.Count -gt 0) {
+                $SessionsWithLogs.Add($S)
+            }
+        }
+        $LogResultArray = @($LogResults)
+        for ($i = 0; $i -lt $SessionsWithLogs.Count -and $i -lt $LogResultArray.Count; $i++) {
+            $SessionsWithLogs[$i] | Add-Member -NotePropertyName 'LogData' -NotePropertyValue $LogResultArray[$i].Logs -Force
         }
     }
 

@@ -596,6 +596,31 @@ $script:MenuRegistry = @(
         WorkflowFunction = 'Invoke-NameSearchWorkflow'
     }
 
+    # ─── Logi ────────────────────────────────────────────────────────────────
+
+    @{
+        ID       = 'fetch-logs'
+        Label    = 'Pobierz logi sesji'
+        Description = 'Masowe pobieranie logów z Pastebin do res/logs/'
+        Menu     = 'Raporty i Narzędzia'
+        Role     = 'K'
+        Mode     = 'Workflow'
+        WorkflowFunction = 'Invoke-FetchLogsWorkflow'
+        PreChecks = @('Wymaga połączenia z internetem', 'Throttling: 500ms między żądaniami')
+        InfoText = @('Pobiera logi z URL sesji do katalogu res/logs/')
+    }
+
+    @{
+        ID       = 'log-location-report'
+        Label    = 'Raport lokacji z logów'
+        Description = 'Analiza rozpoznawania lokacji w logach'
+        Menu     = 'Raporty i Narzędzia'
+        Role     = 'N'
+        Mode     = 'Workflow'
+        WorkflowFunction = 'Invoke-LogLocationReportWorkflow'
+        InfoText = @('Porównuje lokacje z logów z encjami w repozytorium')
+    }
+
     # ─── Migracja ─────────────────────────────────────────────────────────────
     # (Dynamic entries built by cli-wizard-migration.ps1 at runtime)
 

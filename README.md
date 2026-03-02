@@ -78,6 +78,19 @@ Get-CurrencyEntity -Denomination "Korony"
 $SessionText = New-Session -Date (Get-Date "2025-06-15") -Title "Ucieczka z Erathii" `
     -Narrator "Dracon" -Locations @("Erathia", "Steadwick")
 
+# Fetch and parse session logs
+$Sessions = Get-Session -MinDate "2024-01-01" -MaxDate "2024-12-31"
+$Logs = $Sessions | Get-SessionLog -SkipFetch
+$Logs[0].Logs[0].Speakers | Format-Table Raw, LineCount
+
+# Mass fetch logs from pastebin (CDN-safe throttling)
+$Sessions | Invoke-SessionLogFetch -DelayMs 500
+
+# Analyze location resolution quality
+$Index = Get-NameIndex -Players (Get-Player) -Entities (Get-Entity)
+$Report = $Logs | Get-NamedLogLocationReport -Index $Index
+$Report | Where-Object { $_.Summary.Unresolved -gt 0 }
+
 # Monthly PU assignment - compute only (dry run)
 $Results = Invoke-PlayerCharacterPUAssignment -Year 2025 -Month 1
 $Results | Format-Table CharacterName, PlayerName, BasePU, GrantedPU, NewPUSum
@@ -151,6 +164,7 @@ See [devdocs/TESTING.md](devdocs/TESTING.md) for test architecture, fixtures, lo
 | [ENTITIES](devdocs/ENTITIES.md) | Entity system: parsing, state merge, three-layer model, output schemas |
 | [ENTITY-WRITES](devdocs/ENTITY-WRITES.md) | Write operations: all five mutating commands, line-array primitives |
 | [GIT](devdocs/GIT.md) | Git integration: streaming changelog parser, repo detection |
+| [LOGS](devdocs/LOGS.md) | Session log pipeline: fetch, parse ChatLog/Prose, location analysis |
 | [MIGRATION](devdocs/MIGRATION.md) | Full migration reference: data model, all subsystems |
 | [NAME-RESOLUTION](devdocs/NAME-RESOLUTION.md) | Name resolution: index building, declension, stem alternation, Levenshtein |
 | [PARSER](devdocs/PARSER.md) | Markdown parser: RunspacePool architecture, single-pass scanner |

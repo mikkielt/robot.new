@@ -8,9 +8,9 @@
 
 This document covers the name resolution subsystem: `Get-NameIndex` (index construction), `Resolve-Name` (multi-stage lookup), and their supporting data structures (BK-tree, stem index, priority/ambiguity system).
 
-**Shared dependency**: `private/string-helpers.ps1` provides `Get-LevenshteinDistance`, dot-sourced by `public/resolve/resolve-name.ps1`, `public/get-nameindex.ps1`, and `public/reporting/get-namedlocationreport.ps1`.
+**Shared dependency**: `private/string-helpers.ps1` provides `Get-LevenshteinDistance`, dot-sourced by `public/resolve/resolve-name.ps1`, `public/get-nameindex.ps1`, `public/reporting/get-namedlocationreport.ps1`, and `public/reporting/get-namedloglocationreport.ps1`.
 
-**Not covered**: How name resolution is consumed by `Get-Session`, `Get-EntityState`, or `Resolve-Narrator` - see [SESSIONS.md](SESSIONS.md) and [ENTITIES.md](ENTITIES.md).
+**Not covered**: How name resolution is consumed by `Get-Session`, `Get-EntityState`, or `Resolve-Narrator` - see [SESSIONS.md](SESSIONS.md) and [ENTITIES.md](ENTITIES.md). Log location analysis - see [LOGS.md](LOGS.md).
 
 ---
 

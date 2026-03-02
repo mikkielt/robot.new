@@ -1,0 +1,18 @@
+ Steadwick
+[13:22] [Lokalny] Rozległo się pukanie do drzwi.
+[13:22] [Lokalny]
+Radnerak ledwo co usiadł i znowu ktoś zawaraca głowę.
+[13:22] [Lokalny] Karendar: Proszę!
+[13:23] [Lokalny] Drzwi otworzył zbrojny Roman.
+[13:24] [Lokalny] Gwardzista Roman: Kapitanie, jakiś Templehonf do Was.
+[13:24] [Lokalny] Karendar: Niech wejdzie.
+[13:25] [Lokalny] Adalabert Tempelhoff: Dzień dobry, Panie Radneraku.
+
+ Domostwo
+[13:30] [Lokalny] Karendar: Zapraszam, izba skromna, ale cóż zrobić.
+[13:31] [Lokalny] Adalabert Tempelhoff: Ha, lepsza, niż tamte namioty.
+[13:32] [Grupowy] Anward: Adalabert rozgląda się po izbie.
+
+ Koszary
+[14:00] [Lokalny] Karendar: Zatem do zobaczenia.
+[14:01] [Lokalny] Gwardzista Roman: Tak jest, kapitanie.
