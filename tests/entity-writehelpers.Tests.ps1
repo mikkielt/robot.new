@@ -167,7 +167,7 @@ Describe 'Invoke-EnsureEntityFile' {
         $Content | Should -BeLike '*## Postać*'
         $Content | Should -BeLike '*## Przedmiot*'
         $Content | Should -BeLike '*## NPC*'
-        $Content | Should -BeLike '*## Organizacja*'
+        $Content | Should -BeLike '*## Grupa*'
         $Content | Should -BeLike '*## Lokacja*'
     }
 

@@ -21,7 +21,7 @@
     - @lokacja: Targ Główny
     - @status: Aktywny
 
-## Organizacja
+## Grupa
 
 * Gildia Kupców
     - @lokacja: Steadwick

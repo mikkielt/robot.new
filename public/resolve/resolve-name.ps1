@@ -1,7 +1,7 @@
 <#
     .SYNOPSIS
     Generalized name resolution engine - resolves query strings to named objects (players, NPCs,
-    organizations, locations) via index lookup, Polish declension stripping, stem-alternation
+    groups, locations) via index lookup, Polish declension stripping, stem-alternation
     reversal, and Levenshtein fuzzy matching.
 
     .DESCRIPTION
@@ -101,7 +101,7 @@ function Get-StemAlternationCandidates {
 function Resolve-Name {
     <#
         .SYNOPSIS
-        Resolves a query string to a named object (player, NPC, organization, or location) using
+        Resolves a query string to a named object (player, NPC, group, or location) using
         index lookup, declension stripping, stem-alternation reversal, and Levenshtein fuzzy matching.
     #>
 
@@ -120,7 +120,7 @@ function Resolve-Name {
         [System.Collections.Generic.Dictionary[string, object]]$Index,
 
         [Parameter(HelpMessage = "Filter results to a specific entity type")]
-        [ValidateSet("Player", "NPC", "Organizacja", "Lokacja")]
+        [ValidateSet("Player", "NPC", "Grupa", "Lokacja")]
         [string]$OwnerType,
 
         [Parameter(HelpMessage = "Override maximum Levenshtein distance for fuzzy matching")]

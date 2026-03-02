@@ -344,7 +344,7 @@ Returns `$null` if items are empty/null - caller must check before including in 
 | Property | Type | Description |
 |---|---|---|
 | `Name` | string | Entity's canonical display name (nominative form) |
-| `Type` | string | Entity type: `Player`, `NPC`, `Organizacja`, `Lokacja`, `Gracz`, `Postać` |
+| `Type` | string | Entity type: `Player`, `NPC`, `Grupa`, `Lokacja`, `Gracz`, `Postać` |
 | `Owner` | object | Reference to the resolved owner object (Player or Entity) |
 
 ### Intel Object (`Session.Intel`)

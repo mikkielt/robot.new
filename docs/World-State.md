@@ -2,7 +2,7 @@
 
 ## Purpose
 
-This guide explains how the repository tracks the state of the game world - NPCs, organizations, locations, and player characters. It covers how world-state changes from sessions are recorded, how the system tracks things that change over time, and how to query the current or historical state of any entity.
+This guide explains how the repository tracks the state of the game world - NPCs, groups, locations, and player characters. It covers how world-state changes from sessions are recorded, how the system tracks things that change over time, and how to query the current or historical state of any entity.
 
 ## Scope
 
@@ -30,7 +30,7 @@ This guide explains how the repository tracks the state of the game world - NPCs
 
 ### Coordinator
 
-- Maintains the entity registry (NPCs, organizations, locations)
+- Maintains the entity registry (NPCs, groups, locations)
 - Creates, updates, and removes entities using dedicated commands
 - Reviews diagnostic reports for unresolved entity names
 - Manages currency reserves and distributes budgets to narrators
@@ -42,7 +42,7 @@ An entity is any named element of the game world that the system tracks. Each en
 | Entity type | What it represents | Examples |
 |---|---|---|
 | **NPC** | A non-player character | Sandro, Lord Haart |
-| **Organizacja** | A group, faction, or organization | Bractwo Miecza, Nekromanci |
+| **Grupa** | A group, faction, or organization | Bractwo Miecza, Nekromanci |
 | **Lokacja** | A place in the game world | Erathia, Bracada, Zamek Steadwick |
 | **Gracz** | A player (real person) | Roland, Catherine |
 | **Postać** | A player character | Crag Hack, Gem |
@@ -52,7 +52,7 @@ An entity is any named element of the game world that the system tracks. Each en
 
 ### Adding New Entities
 
-When a new NPC, organization, location, or item first appears in the game world, the coordinator registers it in the entity store. Each entity gets a type, a name, and optional starting properties (such as initial location or group membership).
+When a new NPC, group, location, or item first appears in the game world, the coordinator registers it in the entity store. Each entity gets a type, a name, and optional starting properties (such as initial location or group membership).
 
 Player and character entities are managed through the player registration process - see [Players.md](Players.md).
 
@@ -92,7 +92,7 @@ Every currency holding is recorded as a separate Przedmiot (item) in the entity 
 
 Each currency item specifies:
 
-- **Who owns it** - the character or organization that carries the coins
+- **Who owns it** - the character or group that carries the coins
 - **Or where it is** - if the coins are dropped at a location instead of carried
 - **How many coins** - the current count
 
@@ -149,9 +149,9 @@ The coordinator can review currency across the world at any time. Holdings can b
 
 The coordinator can directly create, adjust, or remove currency holdings outside of sessions:
 
-- **Creating** a new currency holding for a character or organization - the system auto-generates the entity name from the denomination and owner (e.g., "Korony Erdamon")
+- **Creating** a new currency holding for a character or group - the system auto-generates the entity name from the denomination and owner (e.g., "Korony Erdamon")
 - **Adjusting** a holding's quantity, either to a specific value or by adding/subtracting a delta
-- **Transferring** ownership to a different character or organization
+- **Transferring** ownership to a different character or group
 - **Dropping** currency at a location instead of carried by someone
 - **Removing** a holding - soft-delete with a warning if the balance is not zero
 
@@ -161,11 +161,11 @@ These actions are time-stamped and preserved in history, just like session chang
 
 Not all currency is in active gameplay. Coordinators maintain a reserve pool and distribute budgets to narrators before sessions. Narrators then award currency to player characters during gameplay.
 
-This out-of-game supply chain is modeled using an **organization** entity as the treasury (e.g., "Skarbiec Koordynatorów"). The coordinator creates currency holdings owned by the treasury, then distributes portions to narrators as needed.
+This out-of-game supply chain is modeled using a **group** entity as the treasury (e.g., "Skarbiec Koordynatorów"). The coordinator creates currency holdings owned by the treasury, then distributes portions to narrators as needed.
 
 **The distribution flow works like this:**
 
-1. **Coordinator creates the treasury** - a one-time setup. An Organizacja entity represents the currency reserve, with initial currency holdings for each denomination.
+1. **Coordinator creates the treasury** - a one-time setup. A Grupa entity represents the currency reserve, with initial currency holdings for each denomination.
 
 2. **Coordinator distributes to narrator** - before a session, the coordinator subtracts from the treasury's balance and adds to a narrator's budget. This happens outside any game session and is tracked through the entity history.
 

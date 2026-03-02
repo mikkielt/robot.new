@@ -19,7 +19,7 @@
     - $ValidityPattern: precompiled regex for parsing validity range syntax
 
     Get-Entity reads entity registry Markdown files and builds a unified collection of typed
-    entity objects (NPCs, organizations, locations, players). Entities carry time-scoped
+    entity objects (NPCs, groups, locations, players). Entities carry time-scoped
     aliases (@alias), location assignments and containment hierarchy (@lokacja), group
     memberships (@grupa), and generic key-value overrides (@<anything>).
 
@@ -329,8 +329,8 @@ function Get-Entity {
 
     $TypeMap = @{
         "npc"              = "NPC"
-        "organizacje"      = "Organizacja"
-        "organizacja"      = "Organizacja"
+        "grupy"            = "Grupa"
+        "grupa"            = "Grupa"
         "lokacje"          = "Lokacja"
         "lokacja"          = "Lokacja"
         "gracz"            = "Gracz"

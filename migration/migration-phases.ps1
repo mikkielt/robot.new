@@ -268,7 +268,7 @@ function Invoke-MigrationPhase1 {
 
     # Step 4: Verify required entity sections exist
     Write-Step -Number 4 -Text 'Sprawdzanie sekcji encji...'
-    $RequiredSections = @('## NPC', '## Organizacja', '## Lokacja', '## Przedmiot')
+    $RequiredSections = @('## NPC', '## Grupa', '## Lokacja', '## Przedmiot')
     $MissingSections = [System.Collections.Generic.List[string]]::new()
 
     if ([System.IO.File]::Exists($EntitiesPath)) {
@@ -1049,8 +1049,8 @@ function Invoke-MigrationPhase5 {
             Write-StepWarning '[SUCHY PRZEBIEG] Utworzyłbym skarbiec'
         } elseif (Request-YesNo -Prompt 'Czy utworzyć Skarbiec Koordynatorów?' -Default $true) {
             try {
-                New-Entity -Type 'Organizacja' -Name 'Skarbiec Koordynatorów' -Confirm:$false
-                Write-StepOK 'Utworzono organizację Skarbiec Koordynatorów'
+                New-Entity -Type 'Grupa' -Name 'Skarbiec Koordynatorów' -Confirm:$false
+                Write-StepOK 'Utworzono grupę Skarbiec Koordynatorów'
 
                 # Prompt for initial treasury reserves
                 Write-Host ''

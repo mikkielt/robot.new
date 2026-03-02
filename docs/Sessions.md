@@ -139,7 +139,7 @@ Intel entries send targeted messages to specific recipients via Discord:
 ```
 
 Targeting options:
-- `Grupa/Name` - all entities in the named group/organization
+- `Grupa/Name` - all entities in the named group
 - `Lokacja/Name` - all entities in the named location and sub-locations
 - `Name` - direct targeting (comma-separated for multiple recipients)
 

@@ -115,7 +115,7 @@ High-level orchestrator that ensures the entity exists, creating intermediate st
 
 ## NPC
 
-## Organizacja
+## Grupa
 
 ## Lokacja
 
@@ -208,14 +208,14 @@ Three precompiled regex patterns (`RegexOptions.Compiled`):
 
 ## 5. Generic Entity CRUD (`public/entity/`)
 
-These commands handle NPC, Organizacja, Lokacja, and Przedmiot entities. `Gracz` and `Postać` are excluded - they have specialized commands (§4) with domain-specific logic (PU, ownership, character files).
+These commands handle NPC, Grupa, Lokacja, and Przedmiot entities. `Gracz` and `Postać` are excluded - they have specialized commands (§4) with domain-specific logic (PU, ownership, character files).
 
 ### 5.1 `New-Entity`
 
 | Aspect | Detail |
 |---|---|
 | **Target** | `entities.md` under `## Type` section |
-| **Types** | `ValidateSet("NPC", "Organizacja", "Lokacja", "Przedmiot")` |
+| **Types** | `ValidateSet("NPC", "Grupa", "Lokacja", "Przedmiot")` |
 | **Tags written** | Any `@tag` via `-Tags` hashtable |
 | **Creation** | Creates entity via `Resolve-EntityTarget` |
 | **Duplicate detection** | Throws if entity already exists in the target section |

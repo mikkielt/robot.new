@@ -67,7 +67,7 @@ Level-2 headers define entity type sections, mapped via `$TypeMap`:
 | Section header | Entity type |
 |---|---|
 | `## NPC` | NPC |
-| `## Organizacja` | Organizacja |
+| `## Grupa` | Grupa |
 | `## Lokacja` | Lokacja |
 | `## Gracz` | Gracz |
 | `## Postać` | Postać |

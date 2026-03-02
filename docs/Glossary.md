@@ -13,7 +13,7 @@ This glossary maps English terms used in documentation to their Polish counterpa
 | Active Character | Aktywna postać | The character currently used by a player as their main one. |
 | Entity | Encja (element świata) | Any named world element, such as a person, place, group, or player. |
 | NPC | Postać niezależna (NPC) | A character not controlled by a player. |
-| Organization | Organizacja | A formal or informal group/faction in the game world. |
+| Group | Grupa | A formal or informal group/faction in the game world. |
 | Location | Lokacja | A place in the game world where events or characters can be present. |
 | Alias | Alias | An alternative name used for the same person, place, or group. |
 | Change | Zmiana | A recorded update to world state after a session. |
@@ -36,6 +36,6 @@ This glossary maps English terms used in documentation to their Polish counterpa
 | Kog (Copper) | Kog Skeltvorski | The lowest-value currency denomination. |
 | Template | Szablon | A configurable file skeleton used to generate entity entries, notifications, or data structures. Located in `.robot.new/templates/`. |
 | Data Manifest | Manifest danych | A `.robot-data.psd1` configuration file that tells the module where data files are located in the parent repository. Enables flexible file placement. |
-| Entity CRUD | Operacje CRUD na encjach | Commands for creating, reading, updating, and removing world entities (NPC, Organizacja, Lokacja, Przedmiot). |
-| Treasury | Skarbiec | An Organizacja entity representing the out-of-game currency reserve managed by coordinators. |
+| Entity CRUD | Operacje CRUD na encjach | Commands for creating, reading, updating, and removing world entities (NPC, Grupa, Lokacja, Przedmiot). |
+| Treasury | Skarbiec | A Grupa entity representing the out-of-game currency reserve managed by coordinators. |
 

@@ -34,6 +34,6 @@
 * Kupiec Orrin
     - @lokacja: Targ Główny
 
-## Organizacja
+## Grupa
 
 ## Lokacja

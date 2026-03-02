@@ -161,7 +161,7 @@ Describe 'Get-NameIndex - duplicate names across types' {
         $script:DupIdx = Get-NameIndex -Players @() -Entities $script:DupEntities
     }
 
-    It 'indexes duplicate name (Złoty Smok appears as NPC and Lokacja and Organizacja)' {
+    It 'indexes duplicate name (Złoty Smok appears as NPC and Lokacja and Grupa)' {
         $Entry = $script:DupIdx.Index['Złoty Smok']
         $Entry | Should -Not -BeNullOrEmpty
     }

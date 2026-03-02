@@ -14,7 +14,7 @@
 * Złoty Smok
     - @lokacja: Enroth (2024-01:)
 
-## Organizacja
+## Grupa
 
 * NPC Duplikat
     - @alias: Duplikat

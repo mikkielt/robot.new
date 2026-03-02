@@ -295,13 +295,13 @@ All mutating commands support `-WhatIf` / `-Confirm`. Remove has `ConfirmImpact 
 
 Not all currency is in active gameplay. Coordinators maintain a reserve pool (the "treasury") and distribute budgets to narrators before sessions. Narrators then award currency to player characters during sessions. This supply chain exists outside the normal `@Transfer` / `@Zmiany` session flow.
 
-### 11.2 Modeling with Organizacja Entities
+### 11.2 Modeling with Grupa Entities
 
-Out-of-game currency reserves are modeled as currency entities owned by an `Organizacja` entity representing the treasury:
+Out-of-game currency reserves are modeled as currency entities owned by a `Grupa` entity representing the treasury:
 
 ```powershell
-# One-time setup: create the treasury organization
-New-Entity -Type Organizacja -Name "Skarbiec Koordynatorów"
+# One-time setup: create the treasury group
+New-Entity -Type Grupa -Name "Skarbiec Koordynatorów"
 
 # Mint initial currency supply
 New-CurrencyEntity -Denomination Korony -Owner "Skarbiec Koordynatorów" -Amount 10000
@@ -312,7 +312,7 @@ New-CurrencyEntity -Denomination Kogi   -Owner "Skarbiec Koordynatorów" -Amount
 ### 11.3 Distribution Flow
 
 ```
-Skarbiec Koordynatorów (Organizacja)    ← total supply origin
+Skarbiec Koordynatorów (Grupa)    ← total supply origin
         │
         │  Set-CurrencyEntity -AmountDelta (admin distribution)
         ▼

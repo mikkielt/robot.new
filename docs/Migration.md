@@ -112,7 +112,7 @@ The coordinator secures the current state before any changes:
 
 The coordinator generates the new entity store from the existing player database. This is a one-time operation that reads all current player and character data and writes it into `entities.md`.
 
-The system creates one new file containing all players, their characters, and associated metadata (PU values, aliases, group memberships). The original player database remains untouched. Additional entity sections (NPC, Organization, Location, Item) are added for future use.
+The system creates one new file containing all players, their characters, and associated metadata (PU values, aliases, group memberships). The original player database remains untouched. Additional entity sections (NPC, Group, Location, Item) are added for future use.
 
 ### Phase 2 - Data Parity Validation
 
@@ -164,7 +164,7 @@ Non-location exclusions are stored in `.robot/res/location-exclusions.txt` and p
 
 The currency system is an entirely new capability. This phase sets up the initial state:
 
-1. **Coordinator treasury** - an organization entity (`Skarbiec Koordynatorow`) with initial reserves in three denominations:
+1. **Coordinator treasury** - a group entity (`Skarbiec Koordynatorow`) with initial reserves in three denominations:
    - **Korona** (gold) - 1 Korona = 100 Talarow
    - **Talar** (silver) - 1 Talar = 100 Kogow
    - **Kog** (copper) - base unit
@@ -227,7 +227,7 @@ The narrator documents each session using the current format:
 - **Locations** (`@Lokacje`): where the session took place
 - **Logs** (`@Logi`): link(s) to the session transcript
 - **PU awards** (`@PU`): each participating character and their earned PU value
-- **Changes** (`@Zmiany`): world-state updates applied to entities (NPCs, organizations, locations)
+- **Changes** (`@Zmiany`): world-state updates applied to entities (NPCs, groups, locations)
 - **Intel** (`@Intel`): targeted information sent to specific recipients (individuals, groups, or locations)
 - **Transfers** (`@Transfer`): currency transactions between characters
 

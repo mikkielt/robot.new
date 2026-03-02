@@ -20,7 +20,7 @@
     - @lokacja: Steadwick (2023-01:)
     - @status: Nieaktywny (2025-01:)
 
-## Organizacja
+## Grupa
 
 * Kupcy Erathii
     - @alias: Gildia Handlarzy

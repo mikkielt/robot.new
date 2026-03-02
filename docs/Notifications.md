@@ -62,12 +62,12 @@ Intel entries are added to the session metadata under `@Intel`:
 |---|---|---|
 | **Direct** | `Name` | The named entity (character, NPC, or player) |
 | **Multiple direct** | `Name1, Name2` | Each named entity receives the message |
-| **Group** | `Grupa/GroupName` | All entities that are members of the named organization at the session date |
+| **Group** | `Grupa/GroupName` | All entities that are members of the named group at the session date |
 | **Location** | `Lokacja/LocationName` | All entities present in the named location and its sub-locations at the session date |
 
 ### How targeting works
 
-- **Group targeting** (`Grupa/Nekromanci`): The system finds all entities with an active `@grupa` membership in the named organization at the time of the session. Each member receives the message.
+- **Group targeting** (`Grupa/Nekromanci`): The system finds all entities with an active `@grupa` membership in the named group at the time of the session. Each member receives the message.
 - **Location targeting** (`Lokacja/Erathia`): The system finds all entities with an active `@lokacja` in Erathia or any location contained within Erathia. This includes sub-locations.
 - **Direct targeting** (`Solmyr`): The system resolves the name to a specific entity and sends the message to that entity's webhook.
 
@@ -78,7 +78,7 @@ Messages are sent via Discord webhooks:
 2. For player characters, the owning player's webhook is used as a fallback
 3. If no webhook is found, the message is skipped (with a warning)
 
-Organizations, locations, and NPCs can also have their own webhook addresses configured.
+Groups, locations, and NPCs can also have their own webhook addresses configured.
 
 ## PU Notifications
 

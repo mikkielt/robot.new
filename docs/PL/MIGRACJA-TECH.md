@@ -331,7 +331,7 @@ Wygenerowany plik zawiera sekcje `## Gracz` i `## Postać`. Dodaj ręcznie lub p
 ```markdown
 ## NPC
 
-## Organizacja
+## Grupa
 
 ## Lokacja
 
@@ -807,13 +807,13 @@ System walut jest **całkowicie nową funkcjonalnością**. W starym systemie wa
 
 ### Krok 1 - Utworzenie skarbca koordynatorów
 
-Skarbiec to organizacja (Organizacja) reprezentująca ogólną rezerwę walut administrowaną przez koordynatorów:
+Skarbiec to grupa (Grupa) reprezentująca ogólną rezerwę walut administrowaną przez koordynatorów:
 
 ```powershell
 Import-Module ./.robot.new/robot.psd1 -Force
 
-# Utwórz organizację skarbca
-New-Entity -Type Organizacja -Name "Skarbiec Koordynatorów"
+# Utwórz grupę skarbca
+New-Entity -Type Grupa -Name "Skarbiec Koordynatorów"
 
 # Utwórz walutę w skarbcu (początkowe ilości - dostosuj do aktualnych rezerw)
 New-CurrencyEntity -Denomination Korony -Owner "Skarbiec Koordynatorów" -Amount 10000
@@ -1318,7 +1318,7 @@ Ten tekst jest zachowywany ale nie parsowany automatycznie.
         - @status: Aktywny (YYYY-MM:)
         - @grupa: NowaGrupa (YYYY-MM:)
 - @Intel:
-    - Grupa/NazwaOrganizacji: Wiadomość do członków
+    - Grupa/NazwaGrupy: Wiadomość do członków
     - Lokacja/NazwaLokacji: Wiadomość do obecnych
     - NazwaOdbiorca: Prywatna wiadomość
 - @Transfer: 100 koron, ŹródłoPostać -> CelPostać

@@ -87,7 +87,7 @@ Each index entry:
 | Field | Type | Description |
 |---|---|---|
 | `Owner` | object | Resolved entity (if not ambiguous) |
-| `OwnerType` | string | `"Player"`, `"NPC"`, `"Organizacja"`, `"Lokacja"`, `"Gracz"`, `"Postać"` |
+| `OwnerType` | string | `"Player"`, `"NPC"`, `"Grupa"`, `"Lokacja"`, `"Gracz"`, `"Postać"` |
 | `Owners` | object[] | All owners (if ambiguous) |
 | `Source` | string | Original full name the token came from |
 | `Priority` | int | 1 (full name) or 2 (word token) |
@@ -166,7 +166,7 @@ Built lazily - only if at least 1 token key exists. `Search-BKTree` handles a `$
 |---|---|---|
 | `Query` | string | Name to resolve |
 | `Index` | hashtable | Output of `Get-NameIndex` (or auto-built) |
-| `OwnerType` | string | Optional type filter: `"Player"`, `"NPC"`, `"Organizacja"`, `"Lokacja"` |
+| `OwnerType` | string | Optional type filter: `"Player"`, `"NPC"`, `"Grupa"`, `"Lokacja"` |
 | `Cache` | hashtable | Optional cross-call memoization cache |
 | `Players` | object[] | Pre-fetched players (for auto-building index) |
 | `Entities` | object[] | Pre-fetched entities (for auto-building index) |

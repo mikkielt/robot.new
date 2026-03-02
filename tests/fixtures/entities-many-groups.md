@@ -7,7 +7,7 @@
     - @grupa: Rada Starszych (2024-06:)
     - @grupa: Straż Nocna (2025-01:)
 
-## Organizacja
+## Grupa
 
 * Gildia Wojowników
     - @alias: Gildia

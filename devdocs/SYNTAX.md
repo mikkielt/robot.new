@@ -233,7 +233,7 @@ if ($FileName -ieq 'robot.psm1') { continue }
     [string]$Query,
 
     [Parameter(HelpMessage = "...")]
-    [ValidateSet("Player", "NPC", "Organizacja", "Lokacja")]
+    [ValidateSet("Player", "NPC", "Grupa", "Lokacja")]
     [string]$OwnerType
 )
 ```
@@ -379,7 +379,7 @@ Level-2 headers define entity type sections:
 
 ```markdown
 ## NPC
-## Organizacja
+## Grupa
 ## Lokacja
 ## Gracz
 ## Postać

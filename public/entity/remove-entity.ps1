@@ -33,7 +33,7 @@ function Remove-Entity {
         [string]$Name,
 
         [Parameter(HelpMessage = "Entity type (for disambiguation)")]
-        [ValidateSet("NPC", "Organizacja", "Lokacja", "Przedmiot")]
+        [ValidateSet("NPC", "Grupa", "Lokacja", "Przedmiot")]
         [string]$Type,
 
         [Parameter(HelpMessage = "Effective date for removal (YYYY-MM). Defaults to current month.")]
@@ -71,7 +71,7 @@ function Remove-Entity {
             }
         }
     } else {
-        $AllTypes = @('NPC', 'Organizacja', 'Lokacja', 'Przedmiot', 'Gracz', 'Postać')
+        $AllTypes = @('NPC', 'Grupa', 'Lokacja', 'Przedmiot', 'Gracz', 'Postać')
         foreach ($SearchType in $AllTypes) {
             $Section = Find-EntitySection -Lines $LinesArray -EntityType $SearchType
             if (-not $Section) { continue }

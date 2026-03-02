@@ -52,16 +52,16 @@ Describe 'New-Entity' {
     }
 
     It 'creates entity under correct section type' {
-        New-Entity -Type 'Organizacja' -Name 'Zakon Cieni' `
+        New-Entity -Type 'Grupa' -Name 'Zakon Cieni' `
             -EntitiesFile $script:EntFile
 
         $Content = [System.IO.File]::ReadAllText($script:EntFile)
-        # Verify entity is under ## Organizacja section
+        # Verify entity is under ## Grupa section
         $Lines = $Content.Split("`n")
         $OrgIdx = -1
         $EntityIdx = -1
         for ($i = 0; $i -lt $Lines.Count; $i++) {
-            if ($Lines[$i] -match '^## Organizacja') { $OrgIdx = $i }
+            if ($Lines[$i] -match '^## Grupa') { $OrgIdx = $i }
             if ($Lines[$i] -match '\*\s*Zakon Cieni') { $EntityIdx = $i }
         }
         $EntityIdx | Should -BeGreaterThan $OrgIdx

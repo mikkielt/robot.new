@@ -55,7 +55,7 @@ Set-PlayerCharacter -PlayerName "Solmyr" -CharacterName "Solmyr" `
 # Soft-delete a character
 Remove-PlayerCharacter -PlayerName "Solmyr" -CharacterName "OldChar"
 
-# Create a generic entity (NPC, Organizacja, Lokacja, Przedmiot)
+# Create a generic entity (NPC, Grupa, Lokacja, Przedmiot)
 New-Entity -Type NPC -Name "Lord Haart" -Tags @{ lokacja = "Erathia"; grupa = "Nekromanci" }
 
 # Update an entity's tags
@@ -115,7 +115,7 @@ foreach ($Name in $NamesToResolve) {
 .robot.new/
 ├── public/          # Exported Verb-Noun functions (auto-discovered by robot.psm1)
 │   ├── player/      # Player & character CRUD
-│   ├── entity/      # Generic entity CRUD (NPC, Organizacja, Lokacja, Przedmiot)
+│   ├── entity/      # Generic entity CRUD (NPC, Grupa, Lokacja, Przedmiot)
 │   ├── currency/    # Currency entity CRUD (denomination-aware)
 │   ├── session/     # Session lifecycle & git history
 │   ├── resolve/     # Name resolution

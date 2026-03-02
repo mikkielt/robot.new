@@ -263,7 +263,7 @@ function Get-NameIndex {
         Add-NamedObjectTokens -NamedObject $Player -OwnerType "Player" -Index $Index -StemIndex $StemIndex -MinTokenLength $MinTokenLength
     }
 
-    # Index all entities (NPCs, organizations, locations) if provided
+    # Index all entities (NPCs, groups, locations) if provided
     if ($Entities) {
         foreach ($Entity in $Entities) {
             Add-NamedObjectTokens -NamedObject $Entity -OwnerType $Entity.Type -Index $Index -StemIndex $StemIndex -MinTokenLength $MinTokenLength

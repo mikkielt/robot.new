@@ -32,8 +32,8 @@ $script:TagPattern           = [regex]::new('^\s+[-\*]\s+@([^:]+):\s*(.*)', [Sys
 # Section header -> entity type normalization (same map as Get-Entity)
 $script:EntityTypeMap = @{
     "npc"              = "NPC"
-    "organizacje"      = "Organizacja"
-    "organizacja"      = "Organizacja"
+    "grupy"            = "Grupa"
+    "grupa"            = "Grupa"
     "lokacje"          = "Lokacja"
     "lokacja"          = "Lokacja"
     "gracz"            = "Gracz"
@@ -49,7 +49,7 @@ $script:EntityTypeMap = @{
 # Reverse map: canonical type -> preferred section header text
 $script:TypeToHeader = @{
     "NPC"              = "NPC"
-    "Organizacja"      = "Organizacja"
+    "Grupa"            = "Grupa"
     "Lokacja"          = "Lokacja"
     "Gracz"            = "Gracz"
     "Postać"           = "Postać"

@@ -192,10 +192,10 @@ Describe 'Get-Entity' {
         $Erathia.Type | Should -Be 'Lokacja'
     }
 
-    It 'parses Organizacja type correctly' {
+    It 'parses Grupa type correctly' {
         $Kupcy = $script:Entities | Where-Object { $_.Name -eq 'Kupcy Erathii' }
         $Kupcy | Should -Not -BeNullOrEmpty
-        $Kupcy.Type | Should -Be 'Organizacja'
+        $Kupcy.Type | Should -Be 'Grupa'
     }
 
     It 'parses Postać type correctly' {
@@ -588,7 +588,7 @@ Describe 'Get-Entity - many groups' {
         $Groups | Should -Contain 'Straż Nocna'
     }
 
-    It 'parses organization aliases' {
+    It 'parses group aliases' {
         $E = $script:Entities | Where-Object { $_.Name -eq 'Gildia Wojowników' }
         $E.Names | Should -Contain 'Gildia'
     }
@@ -608,7 +608,7 @@ Describe 'Get-Entity - duplicate names across types' {
         $Types = ($script:Entities | Where-Object { $_.Name -eq 'NPC Duplikat' }).Type
         $Types | Should -Contain 'NPC'
         $Types | Should -Contain 'Lokacja'
-        $Types | Should -Contain 'Organizacja'
+        $Types | Should -Contain 'Grupa'
     }
 }
 
