@@ -258,6 +258,12 @@ function Show-FuzzySearch {
 
             $AbsIdx = $ViewOffset + $I
 
+            # Show "no results" on first line when query yields nothing
+            if ($I -eq 0 -and $Filtered.Count -eq 0 -and $QueryBuffer.Length -gt 0) {
+                Write-Host "      Brak wyników dla '$($QueryBuffer.ToString())'" -ForegroundColor (Get-CLIColor -Role 'Warning')
+                continue
+            }
+
             # Show scroll arrows on first/last visible line
             if ($I -eq 0 -and $HasMore_Above) {
                 Write-Host "    $([char]0x2191) " -NoNewline -ForegroundColor $DisabledColor

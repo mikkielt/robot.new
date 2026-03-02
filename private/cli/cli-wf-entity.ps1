@@ -135,6 +135,26 @@ function Invoke-NewEntityWorkflow {
             }
         }
 
+        # Redraw before value input - prevents screen overflow when fuzzy search follows arrow menu
+        [System.Console]::Clear()
+        Write-CLILine -Text 'Kreator nowej encji' -Color $AccentColor
+        Write-Host "  $Sep" -ForegroundColor $DisabledColor
+        Write-Host "  $('Typ'.PadRight(22))" -NoNewline -ForegroundColor $InfoColor
+        Write-Host $Type
+        Write-Host "  $('Nazwa'.PadRight(22))" -NoNewline -ForegroundColor $InfoColor
+        Write-Host $Name
+        Write-Host "  $('Tag'.PadRight(22))" -NoNewline -ForegroundColor $InfoColor
+        Write-Host "@$TagName"
+        if ($Tags.Count -gt 0) {
+            Write-Host ''
+            Write-CLILine -Text 'Dodane tagi:' -Color $InfoColor
+            foreach ($Key in $Tags.Keys) {
+                Write-Host "    $("@$Key".PadRight(20))" -NoNewline -ForegroundColor $DisabledColor
+                Write-Host $Tags[$Key]
+            }
+        }
+        Write-Host ''
+
         $TagValue = Invoke-WizardStep -Step $ValueStep -State $State
         if (-not $TagValue -or $TagValue -eq '__back__') { continue }
 
@@ -254,6 +274,24 @@ function Invoke-EditEntityWorkflow {
                 Condition = $null; Transform = $null; Default = $null
             }
         }
+
+        # Redraw before value input - prevents screen overflow when fuzzy search follows arrow menu
+        [System.Console]::Clear()
+        Write-CLILine -Text 'Edycja encji' -Color $AccentColor
+        Write-Host "  $Sep" -ForegroundColor $DisabledColor
+        Write-Host "  $('Encja'.PadRight(22))" -NoNewline -ForegroundColor $InfoColor
+        Write-Host "$($EntityObj.Name) [$($EntityObj.Type)]"
+        Write-Host "  $('Tag'.PadRight(22))" -NoNewline -ForegroundColor $InfoColor
+        Write-Host "@$TagName"
+        if ($Tags.Count -gt 0) {
+            Write-Host ''
+            Write-CLILine -Text 'Nowe/zmienione tagi:' -Color $InfoColor
+            foreach ($Key in $Tags.Keys) {
+                Write-Host "    $("@$Key".PadRight(20))" -NoNewline -ForegroundColor $AccentColor
+                Write-Host $Tags[$Key]
+            }
+        }
+        Write-Host ''
 
         $TagValue = Invoke-WizardStep -Step $ValueStep -State $State
         if (-not $TagValue -or $TagValue -eq '__back__') { continue }

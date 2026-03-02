@@ -681,7 +681,7 @@ function Show-Preview {
     $SuccessColor = Get-CLIColor -Role 'Success'
     $ErrorColor   = Get-CLIColor -Role 'Error'
 
-    # Check if function supports -WhatIf
+    # Check if function supports -WhatIf (needed for execution with -Confirm:$false)
     $Cmd = Get-Command $FunctionName -ErrorAction SilentlyContinue
     $SupportsWhatIf = $false
     if ($Cmd) {
@@ -715,35 +715,6 @@ function Show-Preview {
 
             Write-Host "    $Key`: " -NoNewline -ForegroundColor $AccentColor
             Write-Host $DisplayVal
-        }
-    }
-
-    # Run -WhatIf if supported
-    if ($SupportsWhatIf) {
-        Write-Host ''
-        Write-CLILine -Text 'Operacja wykona:' -Color $WarningColor
-
-        try {
-            # Build splat hashtable (remove nulls)
-            $SplatParams = @{}
-            foreach ($Key in $Parameters.Keys) {
-                if ($null -ne $Parameters[$Key]) {
-                    $SplatParams[$Key] = $Parameters[$Key]
-                }
-            }
-            $SplatParams['WhatIf'] = $true
-
-            $WhatIfOutput = & $FunctionName @SplatParams *>&1 | Out-String
-            if ($WhatIfOutput) {
-                foreach ($Line in $WhatIfOutput.Split("`n")) {
-                    if (-not [string]::IsNullOrWhiteSpace($Line)) {
-                        Write-Host "    $($Line.Trim())" -ForegroundColor $WarningColor
-                    }
-                }
-            }
-        }
-        catch {
-            Write-CLILine -Text "Błąd podglądu: $_" -Color $ErrorColor
         }
     }
 
