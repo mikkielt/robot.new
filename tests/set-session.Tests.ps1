@@ -77,7 +77,7 @@ Describe 'Set-Session' {
 
     It 'updates locations for a session' {
         $Path = Copy-FixtureToTemp -FixtureName 'sessions-gen3.md'
-        Set-Session -Date ([datetime]::new(2024, 6, 15)) -File $Path -Locations @('Steadwick', 'Enroth')
+        Set-Session -Date ([datetime]::new(2024, 6, 15)) -File $Path -Locations @('Steadwick', 'Enroth') -UpgradeFormat
         $Content = [System.IO.File]::ReadAllText($Path)
         $Content | Should -BeLike '*@Lokacje:*'
         $Content | Should -BeLike '*Steadwick*'
@@ -87,7 +87,7 @@ Describe 'Set-Session' {
     It 'updates PU values for a session' {
         $Path = Copy-FixtureToTemp -FixtureName 'sessions-gen3.md' -DestName 'ses-pu.md'
         $PU = @([PSCustomObject]@{ Character = 'Xeron Demonlord'; Value = 1.0 })
-        Set-Session -Date ([datetime]::new(2024, 6, 15)) -File $Path -PU $PU
+        Set-Session -Date ([datetime]::new(2024, 6, 15)) -File $Path -PU $PU -UpgradeFormat
         $Content = [System.IO.File]::ReadAllText($Path)
         $Content | Should -BeLike '*@PU:*'
         $Content | Should -BeLike '*Xeron Demonlord*'
@@ -118,7 +118,7 @@ Describe 'Set-Session' {
     It 'accepts Properties hashtable as alternative to individual params' {
         $Path = Copy-FixtureToTemp -FixtureName 'sessions-gen3.md' -DestName 'ses-props.md'
         $Props = @{ Locations = @('Enroth'); Content = 'New content via Properties' }
-        Set-Session -Date ([datetime]::new(2024, 6, 15)) -File $Path -Properties $Props
+        Set-Session -Date ([datetime]::new(2024, 6, 15)) -File $Path -Properties $Props -UpgradeFormat
         $Content = [System.IO.File]::ReadAllText($Path)
         $Content | Should -BeLike '*Enroth*'
         $Content | Should -BeLike '*New content via Properties*'
@@ -345,5 +345,50 @@ Describe 'Set-Session - Narrator parameter' {
         $Content = [System.IO.File]::ReadAllText($Path)
         $Content | Should -BeLike '*@Narrator:*'
         $Content | Should -BeLike '*Solmyr*'
+    }
+}
+
+Describe 'Set-Session - format safety guard' {
+    BeforeAll {
+        $script:TempDir = New-TestTempDir
+    }
+    AfterAll {
+        Remove-TestTempDir
+    }
+
+    It 'throws when setting metadata on Gen3 session without -UpgradeFormat' {
+        $Path = Copy-FixtureToTemp -FixtureName 'sessions-gen3.md' -DestName 'ses-guard-gen3.md'
+        { Set-Session -Date ([datetime]::new(2024, 6, 15)) -File $Path -Locations @('X') } |
+            Should -Throw '*UpgradeFormat*'
+    }
+
+    It 'throws when setting metadata on Gen2 session without -UpgradeFormat' {
+        $Path = Copy-FixtureToTemp -FixtureName 'sessions-gen2.md' -DestName 'ses-guard-gen2.md'
+        { Set-Session -Date ([datetime]::new(2023, 1, 15)) -File $Path -Locations @('X') } |
+            Should -Throw '*UpgradeFormat*'
+    }
+
+    It 'allows content-only changes on pre-Gen4 without -UpgradeFormat' {
+        $Path = Copy-FixtureToTemp -FixtureName 'sessions-gen3.md' -DestName 'ses-guard-content.md'
+        { Set-Session -Date ([datetime]::new(2024, 6, 15)) -File $Path -Content 'New body' } |
+            Should -Not -Throw
+    }
+
+    It 'allows metadata changes on Gen4 without -UpgradeFormat' {
+        $Path = Copy-FixtureToTemp -FixtureName 'sessions-gen4.md' -DestName 'ses-guard-gen4.md'
+        { Set-Session -Date ([datetime]::new(2026, 1, 10)) -File $Path -Locations @('NewPlace') } |
+            Should -Not -Throw
+    }
+
+    It 'allows metadata changes on pre-Gen4 when -UpgradeFormat specified' {
+        $Path = Copy-FixtureToTemp -FixtureName 'sessions-gen3.md' -DestName 'ses-guard-upgrade.md'
+        { Set-Session -Date ([datetime]::new(2024, 6, 15)) -File $Path -Locations @('X') -UpgradeFormat } |
+            Should -Not -Throw
+    }
+
+    It 'includes format name in error message' {
+        $Path = Copy-FixtureToTemp -FixtureName 'sessions-gen3.md' -DestName 'ses-guard-msg.md'
+        { Set-Session -Date ([datetime]::new(2024, 6, 15)) -File $Path -Locations @('X') } |
+            Should -Throw '*Gen3*'
     }
 }

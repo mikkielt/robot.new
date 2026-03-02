@@ -353,6 +353,30 @@ function ConvertFrom-PlainTextLog {
     return ConvertTo-Gen4MetadataBlock -Tag 'Logi' -Items $Urls.ToArray() -NL $NL
 }
 
+# Helper: derives format generation from Split-SessionSection MetaBlocks dictionary.
+# Returns 'Gen1', 'Gen2', 'Gen3', or 'Gen4'.
+function Get-FormatFromSplit {
+    param([System.Collections.Specialized.OrderedDictionary]$MetaBlocks)
+
+    if ($MetaBlocks.Count -eq 0) { return 'Gen1' }
+
+    if ($MetaBlocks.Contains('locations-italic')) { return 'Gen2' }
+
+    $StructuredKeys = @('locations', 'logs', 'pu', 'changes', 'narrator', 'data', 'intel')
+    foreach ($Key in $MetaBlocks.Keys) {
+        if ($Key -eq 'logs-plain') { continue }
+        if ($Key -in $StructuredKeys) {
+            $FirstLine = $MetaBlocks[$Key][0]
+            if ($FirstLine -match '^- @\w') { return 'Gen4' }
+            return 'Gen3'
+        }
+    }
+
+    if ($MetaBlocks.Contains('logs-plain')) { return 'Gen1' }
+
+    return 'Gen1'
+}
+
 function Set-Session {
     <#
         .SYNOPSIS
@@ -520,6 +544,23 @@ function Set-Session {
 
                 # Decompose section
                 $Split = Split-SessionSection -Lines $SectionLines
+
+                # Format safety guard: require -UpgradeFormat when modifying metadata on pre-Gen4 sessions
+                $SessionFormat = if ($PSCmdlet.ParameterSetName -eq 'Pipeline' -and $Session.Format) {
+                    $Session.Format
+                } else {
+                    Get-FormatFromSplit -MetaBlocks $Split.MetaBlocks
+                }
+
+                if ($SessionFormat -ne 'Gen4') {
+                    $HasMetadataChanges = ($null -ne $EffLocations) -or ($null -ne $EffPU) -or
+                                          ($null -ne $EffLogs) -or ($null -ne $EffChanges) -or
+                                          ($null -ne $EffIntel) -or ($null -ne $EffNarrator) -or
+                                          ($null -ne $EffDateOverride)
+                    if ($HasMetadataChanges -and -not $UpgradeFormat) {
+                        throw "Session '$($Match.HeaderText)' is in $SessionFormat format. Use -UpgradeFormat to convert metadata to Gen4."
+                    }
+                }
 
                 # UpgradeFormat: inject @Narrator from normalization file when no explicit narrator was provided
                 if ($UpgradeFormat -and $null -eq $EffNarrator -and -not $Split.MetaBlocks.Contains('narrator')) {
