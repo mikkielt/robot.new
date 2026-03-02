@@ -65,7 +65,7 @@ if (-not $SkipModuleImport) {
 # Load migration state
 $MigrationState = Get-MigrationState
 
-# Dispatches to the correct phase function
+# Registry-driven phase dispatch
 function Invoke-PhaseByNumber {
     param(
         [Parameter(Mandatory)] [int]$Phase,
@@ -73,21 +73,28 @@ function Invoke-PhaseByNumber {
         [switch]$WhatIf
     )
 
+    # Look up in registry
+    $Entry = $script:PhaseRegistry | Where-Object { $_.ID -eq $Phase } | Select-Object -First 1
+    if (-not $Entry) {
+        Write-Host ''
+        Write-Host "  $([char]0x2717) Nieznana faza: $Phase" -ForegroundColor Red
+        return
+    }
+
+    $FunctionName = $Entry.Function
+    $Cmd = Get-Command $FunctionName -ErrorAction SilentlyContinue
+    if (-not $Cmd) {
+        Write-Host ''
+        Write-Host "  $([char]0x2717) Funkcja '$FunctionName' nie jest dostępna." -ForegroundColor Red
+        return
+    }
+
     try {
-        switch ($Phase) {
-            0 { Invoke-MigrationPhase0 -State $State -WhatIf:$WhatIf }
-            1 { Invoke-MigrationPhase1 -State $State -WhatIf:$WhatIf }
-            2 { Invoke-MigrationPhase2 -State $State -WhatIf:$WhatIf }
-            3 { Invoke-MigrationPhase3 -State $State -WhatIf:$WhatIf }
-            4 { Invoke-MigrationPhase4 -State $State -WhatIf:$WhatIf }
-            5 { Invoke-MigrationPhase5 -State $State -WhatIf:$WhatIf }
-            6 { Invoke-MigrationPhase6 -State $State -WhatIf:$WhatIf }
-            7 { Invoke-MigrationPhase7 -State $State -WhatIf:$WhatIf }
-        }
+        & $FunctionName -State $State -WhatIf:$WhatIf
     }
     catch {
         Write-Host ''
-        Write-Host "  [XX] Błąd w Fazie $Phase`: $($_.Exception.Message)" -ForegroundColor Red
+        Write-Host "  $([char]0x2717) Błąd w Fazie $Phase`: $($_.Exception.Message)" -ForegroundColor Red
         Write-Host ''
         Write-Host '  Szczegóły:' -ForegroundColor DarkGray
         Write-Host "  $($_.ScriptStackTrace)" -ForegroundColor DarkGray
@@ -108,30 +115,64 @@ if ($Phase -ge 0) {
 
 # Main menu loop
 while ($true) {
-    Show-ProgressSummary -State $MigrationState
+    $Selection = Show-ProgressSummary -State $MigrationState
 
-    $ValidChoices = @('0', '1', '2', '3', '4', '5', '6', '7', 'D', 'R', 'Q')
-    $Choice = Request-UserChoice -Prompt 'Wybierz opcję:' -ValidChoices $ValidChoices
+    if ($script:CLIEngineAvailable -and $Selection) {
+        # Arrow-key menu mode: Show-ProgressSummary returned a selection ID
+        switch -Wildcard ($Selection) {
+            '__back__' {
+                Write-Host ''
+                Write-Host '  Do zobaczenia!' -ForegroundColor Cyan
+                Write-Host ''
+                exit 0
+            }
+            '__quit__' {
+                Write-Host ''
+                Write-Host '  Do zobaczenia!' -ForegroundColor Cyan
+                Write-Host ''
+                exit 0
+            }
+            'diagnostics' {
+                Invoke-QuickDiagnostics
+                Request-Confirmation
+            }
+            'report' {
+                Invoke-FullReport -State $MigrationState
+                Request-Confirmation
+            }
+            'phase-*' {
+                if ($Selection -match 'phase-(\d+)') {
+                    $PhaseNum = [int]$Matches[1]
+                    Invoke-PhaseByNumber -Phase $PhaseNum -State $MigrationState -WhatIf:$WhatIf
+                    Request-Confirmation -Text 'Naciśnij dowolny klawisz aby wrócić do menu...'
+                }
+            }
+        }
+    } else {
+        # Fallback: Read-Host numbered menu
+        $ValidChoices = @('0', '1', '2', '3', '4', '5', '6', '7', 'D', 'R', 'Q')
+        $Choice = Request-UserChoice -Prompt 'Wybierz opcję:' -ValidChoices $ValidChoices
 
-    switch ($Choice) {
-        'Q' {
-            Write-Host ''
-            Write-Host '  Do zobaczenia!' -ForegroundColor Cyan
-            Write-Host ''
-            exit 0
-        }
-        'D' {
-            Invoke-QuickDiagnostics
-            Request-Confirmation
-        }
-        'R' {
-            Invoke-FullReport -State $MigrationState
-            Request-Confirmation
-        }
-        default {
-            $PhaseNum = [int]$Choice
-            Invoke-PhaseByNumber -Phase $PhaseNum -State $MigrationState -WhatIf:$WhatIf
-            Request-Confirmation -Text 'Naciśnij Enter aby wrócić do menu...'
+        switch ($Choice) {
+            'Q' {
+                Write-Host ''
+                Write-Host '  Do zobaczenia!' -ForegroundColor Cyan
+                Write-Host ''
+                exit 0
+            }
+            'D' {
+                Invoke-QuickDiagnostics
+                Request-Confirmation
+            }
+            'R' {
+                Invoke-FullReport -State $MigrationState
+                Request-Confirmation
+            }
+            default {
+                $PhaseNum = [int]$Choice
+                Invoke-PhaseByNumber -Phase $PhaseNum -State $MigrationState -WhatIf:$WhatIf
+                Request-Confirmation -Text 'Naciśnij Enter aby wrócić do menu...'
+            }
         }
     }
 }

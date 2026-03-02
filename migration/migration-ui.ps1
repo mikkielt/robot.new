@@ -7,6 +7,13 @@
     via dot-sourcing. Provides color-coded, Polish-language output for the
     interactive migration process.
 
+    When the CLI engine (cli-engine.ps1) is available (i.e. loaded by
+    Invoke-RobotCLI), output functions use Get-CLIColor for background-adaptive
+    colorblind-friendly colors, and interactive prompts use arrow-key navigation.
+
+    When running standalone (migrate.ps1 executed directly), functions fall back
+    to hardcoded colors and Read-Host prompts - no dependency on the CLI engine.
+
     Helpers:
     - Write-PhaseHeader:     renders phase banner with status badge
     - Write-Step:            renders step-in-progress line
@@ -19,11 +26,38 @@
     - Write-PhaseSummary:    renders end-of-phase summary box
     - Write-SectionHeader:   renders sub-section header
     - Write-TableRow:        renders a formatted table row
-    - Request-UserChoice:    numeric menu selection with validation
-    - Request-YesNo:         Tak/Nie prompt with default
-    - Request-Confirmation:  press Enter to continue
-    - Show-ProgressSummary:  full migration status overview
+    - Request-UserChoice:    menu selection (arrow-key or fallback Read-Host)
+    - Request-YesNo:         Tak/Nie prompt (arrow-key or fallback Read-Host)
+    - Request-Confirmation:  press any key / Enter to continue
+    - Request-StringInput:   text input (character-by-character or fallback Read-Host)
+    - Request-NumericInput:  numeric input with validation
+    - Show-ProgressSummary:  full migration status overview (arrow-menu or fallback)
 #>
+
+# ── CLI engine detection ────────────────────────────────────────────────────
+# If Get-CLIColor is already defined (loaded by Invoke-RobotCLI), use it.
+# Otherwise fall back to hardcoded colors.
+
+$script:CLIEngineAvailable = [bool](Get-Command 'Get-CLIColor' -ErrorAction SilentlyContinue)
+
+function Resolve-MigrationColor {
+    param([Parameter(Mandatory)] [string]$Role)
+
+    if ($script:CLIEngineAvailable) {
+        return (Get-CLIColor -Role $Role)
+    }
+
+    # Fallback palette (standalone mode)
+    switch ($Role) {
+        'Accent'   { return 'Cyan' }
+        'Success'  { return 'Green' }
+        'Warning'  { return 'Yellow' }
+        'Error'    { return 'Red' }
+        'Disabled' { return 'DarkGray' }
+        'Info'     { return 'Blue' }
+        default    { return 'White' }
+    }
+}
 
 # Phase name lookup (Polish)
 $script:PhaseNames = @{
@@ -37,12 +71,14 @@ $script:PhaseNames = @{
     7 = 'Przełączenie (cutover)'
 }
 
-# Status display strings (Polish)
+# Status display strings (Polish) - uses semantic roles, not hardcoded colors
 $script:StatusDisplay = @{
-    'Completed'  = @{ Symbol = [char]0x2713; Text = 'Ukończono';       Color = 'Green'  }
-    'InProgress' = @{ Symbol = [char]0x25CF; Text = 'W toku';          Color = 'Yellow' }
-    'NotStarted' = @{ Symbol = [char]0x25CB; Text = 'Nie rozpoczęto';  Color = 'DarkGray' }
+    'Completed'  = @{ Symbol = [char]0x2713; Text = 'Ukończono';       Role = 'Success'  }
+    'InProgress' = @{ Symbol = [char]0x25CF; Text = 'W toku';          Role = 'Warning'  }
+    'NotStarted' = @{ Symbol = [char]0x25CB; Text = 'Nie rozpoczęto';  Role = 'Disabled' }
 }
+
+# ── Output helpers ──────────────────────────────────────────────────────────
 
 # Renders "=== FAZA N: Name ===" banner with status badge
 function Write-PhaseHeader {
@@ -54,18 +90,20 @@ function Write-PhaseHeader {
 
     $Name = $script:PhaseNames[$Phase]
     $StatusInfo = $script:StatusDisplay[$Status]
+    $AccentColor = Resolve-MigrationColor -Role 'Accent'
 
     Write-Host ''
-    Write-Host ('=' * 60) -ForegroundColor Cyan
-    Write-Host "  FAZA $Phase`: $Name" -ForegroundColor Cyan -NoNewline
+    Write-Host ('=' * 60) -ForegroundColor $AccentColor
+    Write-Host "  FAZA $Phase`: $Name" -ForegroundColor $AccentColor -NoNewline
     if ($StatusInfo) {
-        Write-Host "  $($StatusInfo.Symbol) $($StatusInfo.Text)" -ForegroundColor $StatusInfo.Color -NoNewline
+        $StatusColor = Resolve-MigrationColor -Role $StatusInfo.Role
+        Write-Host "  $($StatusInfo.Symbol) $($StatusInfo.Text)" -ForegroundColor $StatusColor -NoNewline
     }
     if ($Detail) {
-        Write-Host " ($Detail)" -ForegroundColor DarkGray -NoNewline
+        Write-Host " ($Detail)" -ForegroundColor (Resolve-MigrationColor -Role 'Disabled') -NoNewline
     }
     Write-Host ''
-    Write-Host ('=' * 60) -ForegroundColor Cyan
+    Write-Host ('=' * 60) -ForegroundColor $AccentColor
 }
 
 # Renders step-in-progress line
@@ -75,32 +113,32 @@ function Write-Step {
         [Parameter(Mandatory)] [string]$Text
     )
     Write-Host ''
-    Write-Host "  Krok $Number`: $Text" -ForegroundColor Cyan
+    Write-Host "  Krok $Number`: $Text" -ForegroundColor (Resolve-MigrationColor -Role 'Accent')
 }
 
 # Renders success step result
 function Write-StepOK {
     param([Parameter(Mandatory)] [string]$Text)
-    Write-Host "  [OK] $Text" -ForegroundColor Green
+    Write-Host "  $([char]0x2713) $Text" -ForegroundColor (Resolve-MigrationColor -Role 'Success')
 }
 
 # Renders warning step result
 function Write-StepWarning {
     param([Parameter(Mandatory)] [string]$Text)
-    Write-Host "  [!!] $Text" -ForegroundColor Yellow
+    Write-Host "  $([char]0x26A0) $Text" -ForegroundColor (Resolve-MigrationColor -Role 'Warning')
 }
 
 # Renders error step result
 function Write-StepError {
     param([Parameter(Mandatory)] [string]$Text)
-    Write-Host "  [XX] $Text" -ForegroundColor Red
+    Write-Host "  $([char]0x2717) $Text" -ForegroundColor (Resolve-MigrationColor -Role 'Error')
 }
 
 # Renders a sub-section header
 function Write-SectionHeader {
     param([Parameter(Mandatory)] [string]$Text)
     Write-Host ''
-    Write-Host "  --- $Text ---" -ForegroundColor White
+    Write-Host "  --- $Text ---"
 }
 
 # Renders checklist with checkboxes for a phase
@@ -111,13 +149,13 @@ function Write-ChecklistReport {
     )
 
     Write-Host ''
-    Write-Host "  $Title`:" -ForegroundColor White
+    Write-Host "  $Title`:"
     foreach ($Key in ($Checklist.Keys | Sort-Object)) {
         $Value = $Checklist[$Key]
         if ($Value -eq $true) {
-            Write-Host "    [$([char]0x2713)] $Key" -ForegroundColor Green
+            Write-Host "    $([char]0x2713) $Key" -ForegroundColor (Resolve-MigrationColor -Role 'Success')
         } else {
-            Write-Host "    [ ] $Key" -ForegroundColor DarkGray
+            Write-Host "    [ ] $Key" -ForegroundColor (Resolve-MigrationColor -Role 'Disabled')
         }
     }
 }
@@ -126,14 +164,14 @@ function Write-ChecklistReport {
 function Write-ActionRequired {
     param([Parameter(Mandatory)] [string]$Text)
     Write-Host ''
-    Write-Host "  WYMAGANE DZIAŁANIE:" -ForegroundColor Yellow
-    Write-Host "  $Text" -ForegroundColor Yellow
+    Write-Host "  WYMAGANE DZIAŁANIE:" -ForegroundColor (Resolve-MigrationColor -Role 'Warning')
+    Write-Host "  $Text" -ForegroundColor (Resolve-MigrationColor -Role 'Warning')
 }
 
 # Renders copy-paste command suggestion in DarkGray
 function Write-CommandHint {
     param([Parameter(Mandatory)] [string]$Command)
-    Write-Host "    $Command" -ForegroundColor DarkGray
+    Write-Host "    $Command" -ForegroundColor (Resolve-MigrationColor -Role 'Disabled')
 }
 
 # Renders end-of-phase summary box
@@ -148,22 +186,34 @@ function Write-PhaseSummary {
     $StatusInfo = $script:StatusDisplay[$Status]
 
     Write-Host ''
-    Write-Host ('+' + ('-' * 58) + '+') -ForegroundColor White
-    Write-Host ("| FAZA $Phase`: $Name".PadRight(59) + '|') -ForegroundColor White
-    Write-Host ('+' + ('-' * 58) + '+') -ForegroundColor White
+    Write-Host ('+' + ('-' * 58) + '+')
+    Write-Host ("| FAZA $Phase`: $Name".PadRight(59) + '|')
+    Write-Host ('+' + ('-' * 58) + '+')
 
     foreach ($Line in $Lines) {
-        $Color = 'White'
-        if ($Line.StartsWith('[OK]'))   { $Color = 'Green' }
-        if ($Line.StartsWith('[!!]'))   { $Color = 'Yellow' }
-        if ($Line.StartsWith('[XX]'))   { $Color = 'Red' }
-        Write-Host ("| $Line".PadRight(59) + '|') -ForegroundColor $Color
+        $Color = $null
+        if ($Line.StartsWith("$([char]0x2713)") -or $Line.StartsWith('[OK]')) {
+            $Color = Resolve-MigrationColor -Role 'Success'
+        }
+        elseif ($Line.StartsWith("$([char]0x26A0)") -or $Line.StartsWith('[!!]')) {
+            $Color = Resolve-MigrationColor -Role 'Warning'
+        }
+        elseif ($Line.StartsWith("$([char]0x2717)") -or $Line.StartsWith('[XX]')) {
+            $Color = Resolve-MigrationColor -Role 'Error'
+        }
+
+        if ($Color) {
+            Write-Host ("| $Line".PadRight(59) + '|') -ForegroundColor $Color
+        } else {
+            Write-Host ("| $Line".PadRight(59) + '|')
+        }
     }
 
+    $StatusColor = Resolve-MigrationColor -Role $StatusInfo.Role
     $StatusLine = "STATUS: $($StatusInfo.Text)"
-    Write-Host ('+' + ('-' * 58) + '+') -ForegroundColor White
-    Write-Host ("| $StatusLine".PadRight(59) + '|') -ForegroundColor $StatusInfo.Color
-    Write-Host ('+' + ('-' * 58) + '+') -ForegroundColor White
+    Write-Host ('+' + ('-' * 58) + '+')
+    Write-Host ("| $StatusLine".PadRight(59) + '|') -ForegroundColor $StatusColor
+    Write-Host ('+' + ('-' * 58) + '+')
 }
 
 # Renders a formatted table row with padding
@@ -171,7 +221,7 @@ function Write-TableRow {
     param(
         [string[]]$Columns,
         [int[]]$Widths,
-        [string]$Color = 'White'
+        [string]$Color
     )
 
     $SB = [System.Text.StringBuilder]::new(120)
@@ -179,19 +229,50 @@ function Write-TableRow {
         $Width = if ($I -lt $Widths.Count) { $Widths[$I] } else { 20 }
         [void]$SB.Append($Columns[$I].PadRight($Width))
     }
-    Write-Host "  $($SB.ToString())" -ForegroundColor $Color
+
+    if ($Color) {
+        Write-Host "  $($SB.ToString())" -ForegroundColor $Color
+    } else {
+        Write-Host "  $($SB.ToString())"
+    }
 }
 
-# Numeric menu selection with validation
+# ── Interactive prompts ─────────────────────────────────────────────────────
+# When CLI engine is available: arrow-key menus via Show-ArrowMenu / Read-ArrowKey
+# When standalone: Read-Host fallback
+
+# Menu selection with validation
 function Request-UserChoice {
     param(
         [Parameter(Mandatory)] [string]$Prompt,
         [Parameter(Mandatory)] [string[]]$ValidChoices
     )
 
+    if ($script:CLIEngineAvailable) {
+        # Build arrow-menu items from valid choices
+        $Items = [System.Collections.Generic.List[PSCustomObject]]::new()
+        foreach ($Choice in $ValidChoices) {
+            [void]$Items.Add([PSCustomObject]@{
+                ID          = $Choice
+                Label       = $Choice
+                Description = ''
+                RoleTag     = $null
+                InfoText    = $null
+                Disabled    = $false
+            })
+        }
+
+        $Selected = Show-ArrowMenu -Items $Items -Title $Prompt -ShowBack
+        if ($Selected -eq '__back__' -or $Selected -eq '__quit__') {
+            return 'Q'
+        }
+        return $Selected
+    }
+
+    # Fallback: Read-Host
     while ($true) {
         Write-Host ''
-        Write-Host "  $Prompt" -ForegroundColor White -NoNewline
+        Write-Host "  $Prompt" -NoNewline
         Write-Host ' ' -NoNewline
         $UserInput = Read-Host
         $Trimmed = $UserInput.Trim().ToUpperInvariant()
@@ -200,20 +281,37 @@ function Request-UserChoice {
             return $Trimmed
         }
 
-        Write-Host "  Nieprawidłowy wybór. Dostępne opcje: $($ValidChoices -join ', ')" -ForegroundColor Red
+        Write-Host "  Nieprawidłowy wybór. Dostępne opcje: $($ValidChoices -join ', ')" -ForegroundColor (Resolve-MigrationColor -Role 'Error')
     }
 }
 
-# Tak/Nie prompt with default
+# Tak/Nie prompt
 function Request-YesNo {
     param(
         [Parameter(Mandatory)] [string]$Prompt,
         [bool]$Default = $true
     )
 
+    if ($script:CLIEngineAvailable) {
+        $DefaultLabel = if ($Default) { 'Tak' } else { 'Nie' }
+        $Items = @(
+            [PSCustomObject]@{ ID = 'tak'; Label = 'Tak'; Description = ''; RoleTag = $null; InfoText = $null; Disabled = $false }
+            [PSCustomObject]@{ ID = 'nie'; Label = 'Nie'; Description = ''; RoleTag = $null; InfoText = $null; Disabled = $false }
+        )
+        $StartIndex = if ($Default) { 0 } else { 1 }
+        Write-Host ''
+        Write-Host "  $Prompt" -ForegroundColor (Resolve-MigrationColor -Role 'Accent')
+        $Selected = Show-ArrowMenu -Items $Items -Title '' -ShowBack
+        if ($Selected -eq '__back__' -or $Selected -eq '__quit__') {
+            return $false
+        }
+        return ($Selected -eq 'tak')
+    }
+
+    # Fallback: Read-Host
     $Hint = if ($Default) { '(Tak/nie)' } else { '(tak/Nie)' }
     Write-Host ''
-    Write-Host "  $Prompt $Hint " -ForegroundColor White -NoNewline
+    Write-Host "  $Prompt $Hint " -NoNewline
     $UserInput = Read-Host
 
     if ([string]::IsNullOrWhiteSpace($UserInput)) {
@@ -227,12 +325,18 @@ function Request-YesNo {
     return $false
 }
 
-# Press Enter to continue
+# Press any key / Enter to continue
 function Request-Confirmation {
-    param([string]$Text = 'Naciśnij Enter aby kontynuować...')
+    param([string]$Text = 'Naciśnij dowolny klawisz aby kontynuować...')
+
     Write-Host ''
-    Write-Host "  $Text" -ForegroundColor DarkGray -NoNewline
-    [void](Read-Host)
+    Write-Host "  $Text" -ForegroundColor (Resolve-MigrationColor -Role 'Disabled')
+
+    if ($script:CLIEngineAvailable) {
+        [void](Read-ArrowKey)
+    } else {
+        [void](Read-Host)
+    }
 }
 
 # Prompt for a string value
@@ -243,7 +347,10 @@ function Request-StringInput {
     )
 
     $Hint = if ($Default) { " [$Default]" } else { '' }
-    Write-Host "  $Prompt$Hint`: " -ForegroundColor White -NoNewline
+
+    # Always use Read-Host for string input (character-by-character input is
+    # only used in fuzzy search and wizard steps, not migration prompts)
+    Write-Host "  $Prompt$Hint`: " -NoNewline
     $UserInput = Read-Host
 
     if ([string]::IsNullOrWhiteSpace($UserInput)) {
@@ -261,7 +368,7 @@ function Request-NumericInput {
     )
 
     $Hint = if ($AllowSkip) { ' [Enter = pomiń]' } else { '' }
-    Write-Host "    $Prompt$Hint`: " -ForegroundColor White -NoNewline
+    Write-Host "    $Prompt$Hint`: " -NoNewline
     $UserInput = Read-Host
 
     if ([string]::IsNullOrWhiteSpace($UserInput)) {
@@ -274,7 +381,7 @@ function Request-NumericInput {
         return $Value
     }
 
-    Write-Host "    Nieprawidłowa wartość: '$UserInput' - oczekiwana liczba całkowita" -ForegroundColor Red
+    Write-Host "    Nieprawidłowa wartość: '$UserInput' - oczekiwana liczba całkowita" -ForegroundColor (Resolve-MigrationColor -Role 'Error')
     return $null
 }
 
@@ -283,28 +390,73 @@ function Show-ProgressSummary {
     param([Parameter(Mandatory)] [hashtable]$State)
 
     $DateStr = [datetime]::Now.ToString('yyyy-MM-dd')
+    $AccentColor = Resolve-MigrationColor -Role 'Accent'
 
+    if ($script:CLIEngineAvailable -and $script:PhaseRegistry) {
+        # Arrow-key menu mode: build items from registry and show as selectable list
+        # (Dispatch handled by migrate.ps1 using the returned selection)
+        Write-Host ''
+        Write-Host ('=' * 60) -ForegroundColor $AccentColor
+        Write-Host '  MIGRACJA .robot  →  .robot.new' -ForegroundColor $AccentColor
+        Write-Host "  Stan na: $DateStr" -ForegroundColor (Resolve-MigrationColor -Role 'Disabled')
+        Write-Host ('=' * 60) -ForegroundColor $AccentColor
+        Write-Host ''
+
+        $Items = [System.Collections.Generic.List[PSCustomObject]]::new()
+
+        foreach ($Phase in $script:PhaseRegistry) {
+            $PhaseStatus = Get-PhaseStatus -State $State -Phase $Phase.ID
+            $StatusInfo = $script:StatusDisplay[$PhaseStatus]
+            $StatusSymbol = if ($StatusInfo) { "$($StatusInfo.Symbol) " } else { '' }
+            $StatusText = if ($StatusInfo) { $StatusInfo.Text } else { '' }
+
+            [void]$Items.Add([PSCustomObject]@{
+                ID          = "phase-$($Phase.ID)"
+                Label       = "${StatusSymbol}Faza $($Phase.ID): $($Phase.Name)"
+                Description = $StatusText
+                RoleTag     = 'K'
+                InfoText    = $null
+                Disabled    = $false
+            })
+        }
+
+        # Extra menu items
+        [void]$Items.Add([PSCustomObject]@{
+            ID = 'diagnostics'; Label = 'Szybka diagnostyka'; Description = ''
+            RoleTag = $null; InfoText = $null; Disabled = $false
+        })
+        [void]$Items.Add([PSCustomObject]@{
+            ID = 'report'; Label = 'Pełny raport'; Description = ''
+            RoleTag = $null; InfoText = $null; Disabled = $false
+        })
+
+        $Selected = Show-ArrowMenu -Items $Items -Title 'Migracja' -ShowBack
+        return $Selected
+    }
+
+    # Fallback: classic numbered list
     Write-Host ''
-    Write-Host ('=' * 60) -ForegroundColor Cyan
-    Write-Host '  MIGRACJA .robot  →  .robot.new' -ForegroundColor Cyan
-    Write-Host "  Stan na: $DateStr" -ForegroundColor DarkGray
-    Write-Host ('=' * 60) -ForegroundColor Cyan
+    Write-Host ('=' * 60) -ForegroundColor $AccentColor
+    Write-Host '  MIGRACJA .robot  →  .robot.new' -ForegroundColor $AccentColor
+    Write-Host "  Stan na: $DateStr" -ForegroundColor (Resolve-MigrationColor -Role 'Disabled')
+    Write-Host ('=' * 60) -ForegroundColor $AccentColor
     Write-Host ''
 
     for ($I = 0; $I -le 7; $I++) {
         $PhaseStatus = Get-PhaseStatus -State $State -Phase $I
         $StatusInfo = $script:StatusDisplay[$PhaseStatus]
         $Name = $script:PhaseNames[$I]
+        $StatusColor = Resolve-MigrationColor -Role $StatusInfo.Role
 
         $PhaseLabel = "  [$I] $Name"
         $PaddedLabel = $PhaseLabel.PadRight(45)
 
-        Write-Host $PaddedLabel -NoNewline -ForegroundColor White
-        Write-Host "$($StatusInfo.Symbol) $($StatusInfo.Text)" -ForegroundColor $StatusInfo.Color
+        Write-Host $PaddedLabel -NoNewline
+        Write-Host "$($StatusInfo.Symbol) $($StatusInfo.Text)" -ForegroundColor $StatusColor
     }
 
     Write-Host ''
-    Write-Host '  [D] Szybka diagnostyka' -ForegroundColor DarkGray
-    Write-Host '  [R] Pełny raport' -ForegroundColor DarkGray
-    Write-Host '  [Q] Zakończ' -ForegroundColor DarkGray
+    Write-Host '  [D] Szybka diagnostyka' -ForegroundColor (Resolve-MigrationColor -Role 'Disabled')
+    Write-Host '  [R] Pełny raport' -ForegroundColor (Resolve-MigrationColor -Role 'Disabled')
+    Write-Host '  [Q] Zakończ' -ForegroundColor (Resolve-MigrationColor -Role 'Disabled')
 }
