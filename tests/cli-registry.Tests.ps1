@@ -15,6 +15,7 @@ BeforeAll {
     . (Join-Path $script:ModuleRoot 'private' 'cli' 'cli-primitives.ps1')
     . (Join-Path $script:ModuleRoot 'private' 'cli' 'cli-fuzzy.ps1')
     . (Join-Path $script:ModuleRoot 'private' 'cli' 'cli-display.ps1')
+    . (Join-Path $script:ModuleRoot 'private' 'cli' 'cli-help.ps1')
     . (Join-Path $script:ModuleRoot 'private' 'cli' 'cli-wizard.ps1')
     . (Join-Path $script:ModuleRoot 'private' 'cli' 'cli-registry.ps1')
     . (Join-Path $script:ModuleRoot 'private' 'cli' 'cli-routing.ps1')

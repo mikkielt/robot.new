@@ -77,8 +77,9 @@ function Invoke-MigrationPhase4 {
                     }
 
                     $Choice = Request-UserChoice `
-                        -Prompt "      [A] Dodaj alias  [M] Mapuj ręcznie  [P] Pomiń  [K] Kontynuuj >" `
-                        -ValidChoices @('A', 'M', 'P', 'K')
+                        -Prompt "Narrator: $($U.RawText)" `
+                        -ValidChoices @('A', 'M', 'P', 'K') `
+                        -Labels @{ 'A' = 'Dodaj alias do gracza'; 'M' = 'Mapuj ręcznie na kanoniczne nazwy'; 'P' = 'Pomiń tego narratora'; 'K' = 'Kontynuuj (zakończ przegląd)' }
 
                     if ($Choice -eq 'K') { break }
                     if ($Choice -eq 'P') { continue }

@@ -6,7 +6,7 @@
 
 ## 1. Scope
 
-This document covers the interactive CLI subsystem: `public/cli/invoke-robotcli.ps1` (entry point), the 17 private modules in `private/cli/` (UI primitives, fuzzy search, wizard auto-generation, menu registry, routing, display, workflows, migration integration), and the 4 test files in `tests/cli-*.Tests.ps1`.
+This document covers the interactive CLI subsystem: `public/cli/invoke-robotcli.ps1` (entry point), the 18 private modules in `private/cli/` (UI primitives, fuzzy search, context-sensitive help, wizard auto-generation, menu registry, routing, display, workflows, migration integration), and the 5 test files in `tests/cli-*.Tests.ps1`.
 
 **Not covered**: Individual public functions that wizards wrap (e.g., `New-Player`, `Set-Entity`). Migration phase implementations - see migration subsystem docs. Plugin system - see [PLUGINS.md](PLUGINS.md).
 
@@ -27,6 +27,9 @@ Invoke-RobotCLI (public/cli/invoke-robotcli.ps1)
     │
     ├── Layer 2: cli-display.ps1        (depends on L1)
     │       Show-DetailCard, Format-DetailValidityRange, Refresh-NavState
+    │
+    ├── Layer 2: cli-help.ps1           (depends on L1)
+    │       $script:HelpContent, Show-HelpScreen
     │
     ├── Layer 3: cli-wizard.ps1         (depends on L1 + L2)
     │   │   $script:CommonParams, Resolve-StepType, Invoke-Wizard
@@ -63,7 +66,7 @@ All files are dot-sourced on demand when `Invoke-RobotCLI` is called (not at mod
 
 ## 3. File Structure
 
-### 3.1 `private/cli/` (17 files)
+### 3.1 `private/cli/` (18 files)
 
 | File | Lines | Layer | Contents |
 |---|---|---|---|
@@ -71,6 +74,7 @@ All files are dot-sourced on demand when `Invoke-RobotCLI` is called (not at mod
 | `cli-menus.ps1` | — | 1 | `Show-ArrowMenu`, `Show-ResultTable` (dot-sourced by `cli-primitives.ps1`) |
 | `cli-fuzzy.ps1` | ~340 | 2 | Fuzzy search candidate generation, filtering, interactive picker |
 | `cli-display.ps1` | ~210 | 2 | Detail card rendering, validity range formatting, NavState refresh |
+| `cli-help.ps1` | ~120 | 2 | Help content dictionary (`$script:HelpContent`), `Show-HelpScreen` display function |
 | `cli-wizard.ps1` | ~650 | 3 | `$script:CommonParams`, step type resolution, `Invoke-Wizard`; dot-sources `cli-wizard-steps.ps1` and `cli-wizard-preview.ps1` |
 | `cli-wizard-steps.ps1` | — | 3 | `Invoke-WizardStep` (dot-sourced by `cli-wizard.ps1`) |
 | `cli-wizard-preview.ps1` | — | 3 | `Show-Preview` (dot-sourced by `cli-wizard.ps1`) |
@@ -88,7 +92,7 @@ All files are dot-sourced on demand when `Invoke-RobotCLI` is called (not at mod
 
 ### 3.2 Entry Point
 
-`public/cli/invoke-robotcli.ps1` exports `Invoke-RobotCLI`. It dot-sources all 17 CLI files in layer order (including the sub-files dot-sourced transitively by `cli-primitives.ps1`, `cli-wizard.ps1`, and `cli-wf-entity.ps1`), validates terminal compatibility, detects theme, pre-loads entity/player/name index data, and enters the main menu loop.
+`public/cli/invoke-robotcli.ps1` exports `Invoke-RobotCLI`. It dot-sources all 18 CLI files in layer order (including the sub-files dot-sourced transitively by `cli-primitives.ps1`, `cli-wizard.ps1`, and `cli-wf-entity.ps1`), validates terminal compatibility, detects theme, pre-loads entity/player/name index data, and enters the main menu loop.
 
 ### 3.3 Tests
 
@@ -98,6 +102,7 @@ All files are dot-sourced on demand when `Invoke-RobotCLI` is called (not at mod
 | `cli-wizard.Tests.ps1` | `CommonParams HashSet`, `Resolve-StepType` |
 | `cli-fuzzy.Tests.ps1` | `Filter-FuzzyCandidates`, `Get-FuzzySearchCandidates` |
 | `cli-registry.Tests.ps1` | `Menu Registry`, `Get-MenuCategories`, `Get-MenuItems`, `Get-RegistryEntry`, `Migration Phase Registry`, `Migration UI color resolution` |
+| `cli-help.Tests.ps1` | `Help Content` (completeness, key matching) |
 
 ---
 
@@ -125,7 +130,7 @@ All files are dot-sourced on demand when `Invoke-RobotCLI` is called (not at mod
 
 Input: `-Items` (array of `PSCustomObject` with `ID`, `Label`, `Description`, `RoleTag`, `InfoText`, `Disabled`), optional `-Title`, optional `-ShowBack`.
 
-Returns: selected item's `ID` string, `'__back__'` (Escape), or `'__quit__'` (Q key).
+Returns: selected item's `ID` string, `'__back__'` (Escape), `'__help__'` (H key), or `'__quit__'` (Q key).
 
 ### 4.3 Show-ResultTable (`cli-menus.ps1`)
 
@@ -291,7 +296,7 @@ Add a hashtable to `$script:MenuRegistry` in `cli-registry.ps1`:
 
 ### 8.3 Menu Loop
 
-`Show-MainMenu` renders top-level categories. `Show-SubMenu` renders items within a category. Both support Escape (back) and Q (quit). The Migracja category dynamically prepends migration phase items from `Get-MigrationMenuItems`.
+`Show-MainMenu` renders top-level categories. `Show-SubMenu` renders items within a category. Both support Escape (back), H (context-sensitive help), and Q (quit). The Migracja category dynamically prepends migration phase items from `Get-MigrationMenuItems`.
 
 ### 8.4 Migration Stubs
 
@@ -333,7 +338,7 @@ The `NavState` PSCustomObject is created by `Invoke-RobotCLI` and threaded throu
 Run all CLI tests:
 
 ```powershell
-Invoke-Pester tests/cli-primitives.Tests.ps1, tests/cli-wizard.Tests.ps1, tests/cli-fuzzy.Tests.ps1, tests/cli-registry.Tests.ps1
+Invoke-Pester tests/cli-primitives.Tests.ps1, tests/cli-wizard.Tests.ps1, tests/cli-fuzzy.Tests.ps1, tests/cli-registry.Tests.ps1, tests/cli-help.Tests.ps1
 ```
 
 Tests cover pure logic functions only. Interactive UI functions (`Show-ArrowMenu`, `Show-FuzzySearch`, `Invoke-WizardStep`, etc.) are not tested as they require a live terminal with `[Console]::ReadKey`.

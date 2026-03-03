@@ -275,6 +275,10 @@ function Show-SubMenu {
             [void]$State.BreadcrumbStack.Pop()
             return '__quit__'
         }
+        if ($Selected -eq '__help__') {
+            Show-HelpScreen -ContextKey $Category
+            continue
+        }
 
         # Handle migration phase items
         if ($Selected.StartsWith('migration-phase-')) {
@@ -325,6 +329,10 @@ function Show-MainMenu {
             Write-CLILine -Text 'Do zobaczenia!' -Color (Get-CLIColor -Role 'Accent')
             Write-Host ''
             return
+        }
+        if ($Selected -eq '__help__') {
+            Show-HelpScreen -ContextKey 'root'
+            continue
         }
 
         if ($Selected -eq '__refresh__') {

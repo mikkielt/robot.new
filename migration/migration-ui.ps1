@@ -246,16 +246,18 @@ function Write-TableRow {
 function Request-UserChoice {
     param(
         [Parameter(Mandatory)] [string]$Prompt,
-        [Parameter(Mandatory)] [string[]]$ValidChoices
+        [Parameter(Mandatory)] [string[]]$ValidChoices,
+        [hashtable]$Labels
     )
 
     if ($script:CLIEngineAvailable) {
         # Build arrow-menu items from valid choices
         $Items = [System.Collections.Generic.List[PSCustomObject]]::new()
         foreach ($Choice in $ValidChoices) {
+            $Label = if ($Labels -and $Labels.ContainsKey($Choice)) { $Labels[$Choice] } else { $Choice }
             [void]$Items.Add([PSCustomObject]@{
                 ID          = $Choice
-                Label       = $Choice
+                Label       = $Label
                 Description = ''
                 RoleTag     = $null
                 InfoText    = $null

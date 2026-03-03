@@ -162,6 +162,7 @@ function Show-ArrowMenu {
         [void]$HintParts.Add([char]0x2191 + [char]0x2193 + ' nawigacja')
         [void]$HintParts.Add('Enter wybierz')
         if ($ShowBack) { [void]$HintParts.Add('Esc wstecz') }
+        [void]$HintParts.Add('h pomoc')
         [void]$HintParts.Add('q zakończ')
         Write-Host "  $($HintParts -join '  |  ')" -ForegroundColor (Get-CLIColor -Role 'Disabled')
 
@@ -192,6 +193,9 @@ function Show-ArrowMenu {
                 return '__back__'
             }
             default {
+                if ($Key.KeyChar -eq 'h' -or $Key.KeyChar -eq 'H') {
+                    return '__help__'
+                }
                 # Check for 'q' key
                 if ($Key.KeyChar -eq 'q' -or $Key.KeyChar -eq 'Q') {
                     Write-Host ''

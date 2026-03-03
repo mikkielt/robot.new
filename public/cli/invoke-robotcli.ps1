@@ -46,6 +46,7 @@ function Invoke-RobotCLI {
     # Layer 2: Core systems (depend on primitives)
     . "$CLIRoot/cli-fuzzy.ps1"
     . "$CLIRoot/cli-display.ps1"
+    . "$CLIRoot/cli-help.ps1"
 
     # Layer 3: Wizard (depends on primitives + fuzzy + display)
     . "$CLIRoot/cli-wizard.ps1"
