@@ -87,6 +87,7 @@ Level-2 headers define entity type sections, mapped via `$TypeMap`:
 | `@ilość` | Temporal | `Quantity`, `QuantityHistory` | Item quantity (used for stackable items such as currency). Accepts integer values. In Zmiany blocks, supports `+N`/`-N` delta syntax to add/subtract from current quantity. |
 | `@plik` | Temporal | `FilePath`, `FilePathHistory` | Relative path to the entity's file (e.g. character `.md` file). Supports temporal ranges for entities whose file reference changes over time. Populated automatically by `New-PlayerCharacter` and during migration from `Gracze.md` link paths. |
 | `@nazwa_nerthus` | Temporal | `NerthusName`, `NerthusNameHistory` | RP override name for the entity. Active value added to `Names` for resolution. Scalar semantics: last-active-wins (like `@lokacja`). |
+| `@koordynaty` | Temporal | `Coordinates`, `CoordinateHistory` | Map tile coordinates as `X, Y` (32×32px tile units). Active value: `@{ X = [int]; Y = [int] }` or `$null` for interiors. Presence implies exterior location (has a world-map position). |
 | `@zawiera` | Non-temporal | `Contains` | Child containment declaration |
 | `@generyczne_nazwy` | Non-temporal | `GenericNames`, `Names` | Comma-delimited generic names for the entity (e.g. "Strażnik Miasta, Wartownik"). Added to `Names` for resolution. |
 | Any other `@tag` | Temporal | `Overrides[tag]` | Generic key-value storage |
@@ -244,6 +245,8 @@ Characters with `Status = 'Usunięty'` are excluded unless `-IncludeDeleted`.
 | `DoorHistory` | `List[object]` | Full door history |
 | `NerthusName` | string | Active RP override name (from `@nazwa_nerthus`; `$null` when absent) |
 | `NerthusNameHistory` | `List[object]` | NerthusName changes with validity ranges |
+| `Coordinates` | hashtable | Active map coordinates `@{ X = [int]; Y = [int] }` (from `@koordynaty`; `$null` for interiors) |
+| `CoordinateHistory` | `List[object]` | Coordinate changes with validity ranges (`X`, `Y`, `ValidFrom`, `ValidTo`, `Season`) |
 | `Contains` | `List[string]` | Child entity names |
 | `Overrides` | hashtable | Generic `@tag` -> value list dictionary |
 | `TypeHistory` | `List[object]` | Type changes with validity ranges |
@@ -339,4 +342,5 @@ Fixtures: `entities.md`, `entities-100-ent.md`, `entities-200-ent.md`, `sessions
 - [SESSIONS.md](SESSIONS.md) - Session Zmiany extraction
 - [NAME-RESOLUTION.md](NAME-RESOLUTION.md) - Name resolution used by `Get-EntityState`
 - [CURRENCY.md](CURRENCY.md) - Currency tracking system (denominations, @Transfer, reconciliation)
+- [LOCATION-GRAPH.md](LOCATION-GRAPH.md) - Location graph (coordinates, route edges, transition edges)
 - [MIGRATION.md](MIGRATION.md) - §1 Data Model Transition

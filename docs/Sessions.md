@@ -235,5 +235,6 @@ A properly recorded session:
 
 - [PU.md](PU.md) - Monthly PU assignment process
 - [Session-Logs.md](Session-Logs.md) - Session log fetching and location analysis
+- [Location-Graph.md](Location-Graph.md) - Location analysis from session routes
 - [Glossary](Glossary.md) - Term definitions
 - [Players.md](Players.md) - Player and character management

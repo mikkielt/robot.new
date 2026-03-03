@@ -318,7 +318,8 @@ function Invoke-MigrationPhase5 {
     if (-not $LocationReviewDone) {
         Write-Step -Number 7 -Text 'Raport lokalizacji - przegląd nazw...'
 
-        $LocationReport = Get-NamedLocationReport -Sessions $PostActive -Entities (Get-Entity)
+        $LocationReportResult = Get-NamedLocationReport -Sessions $PostActive -Entities (Get-Entity)
+        $LocationReport = $LocationReportResult.Locations
 
         # Load exclusions (non-locations marked by coordinator on previous runs)
         $ExclusionsPath = [System.IO.Path]::Combine($RepoRoot, '.robot', 'res', 'location-exclusions.txt')

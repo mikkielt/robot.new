@@ -18,7 +18,7 @@ This document covers the five read-only audit/reporting functions in `public/rep
 
 All functions are read-only. None modify entity files, session files, or state files.
 
-**Not covered**: Currency reporting (`Get-CurrencyReport`) and reconciliation (`Test-CurrencyReconciliation`) - see [CURRENCY.md](CURRENCY.md). PU diagnostic validation (`Test-PlayerCharacterPUAssignment`) - see [PU.md](PU.md). Named location analysis (`Get-NamedLocationReport`) - standalone reporting function.
+**Not covered**: Currency reporting (`Get-CurrencyReport`) and reconciliation (`Test-CurrencyReconciliation`) - see [CURRENCY.md](CURRENCY.md). PU diagnostic validation (`Test-PlayerCharacterPUAssignment`) - see [PU.md](PU.md). Named location analysis (`Get-NamedLocationReport`, `Get-LocationGraph`) - see [LOCATION-GRAPH.md](LOCATION-GRAPH.md).
 
 ---
 

@@ -245,6 +245,7 @@ function Get-Entity {
             $GenericNames       = [System.Collections.Generic.List[string]]::new()
             $FilePathHistory    = [System.Collections.Generic.List[object]]::new()
             $NerthusNameHistory = [System.Collections.Generic.List[object]]::new()
+            $CoordinateHistory  = [System.Collections.Generic.List[object]]::new()
             $Overrides          = @{}
 
             # Iterate child bullets belonging to this entity via lookup
@@ -379,6 +380,30 @@ function Get-Entity {
                             $Names.Add($Parsed.Text)
                         }
                     }
+                    '@koordynaty' {
+                        $Parsed = ConvertFrom-ValidityString -InputText $Value
+                        # Parse "X, Y" coordinate pair (tile units)
+                        $CoordParts = $Parsed.Text.Split(',')
+                        $CoordX = $null
+                        $CoordY = $null
+                        if ($CoordParts.Length -ge 2) {
+                            $XStr = $CoordParts[0].Trim()
+                            $YStr = $CoordParts[1].Trim()
+                            if ($XStr -match '^\-?\d+$' -and $YStr -match '^\-?\d+$') {
+                                $CoordX = [int]$XStr
+                                $CoordY = [int]$YStr
+                            }
+                        }
+                        if ($null -ne $CoordX) {
+                            $CoordinateHistory.Add([PSCustomObject]@{
+                                X         = $CoordX
+                                Y         = $CoordY
+                                ValidFrom = $Parsed.ValidFrom
+                                ValidTo   = $Parsed.ValidTo
+                                Season    = $Parsed.Season
+                            })
+                        }
+                    }
                     default {
                         # Any unrecognised @tag -> generic override (e.g. @pu_startowe, @info, @trigger)
                         $Parsed = ConvertFrom-ValidityString -InputText $EffectiveValue
@@ -414,6 +439,16 @@ function Get-Entity {
             $ActiveQuantity = Get-LastActiveValue  -History $QuantityHistory -PropertyName 'Quantity'  -ActiveOn $ActiveOn
             $ActiveFilePath = Get-LastActiveValue  -History $FilePathHistory -PropertyName 'FilePath'  -ActiveOn $ActiveOn
             $ActiveNerthusName = Get-LastActiveValue -History $NerthusNameHistory -PropertyName 'NerthusName' -ActiveOn $ActiveOn
+
+            # Resolve active coordinates from history
+            $ActiveCoordinates = $null
+            if ($CoordinateHistory.Count -gt 0) {
+                $ActiveCoordEntries = $CoordinateHistory.Where({ Test-TemporalActivity -Item $_ -ActiveOn $ActiveOn })
+                if ($ActiveCoordEntries.Count -gt 0) {
+                    $LastCoord = $ActiveCoordEntries[-1]
+                    $ActiveCoordinates = @{ X = $LastCoord.X; Y = $LastCoord.Y }
+                }
+            }
 
             # For locations with active doors, add path-qualified names for resolution
             if ($SectionType -eq 'Lokacja' -and $ActiveDoors.Count -gt 0) {
@@ -454,6 +489,7 @@ function Get-Entity {
                 # Merge file path and NerthusName histories
                 $Existing.FilePathHistory.AddRange($FilePathHistory)
                 $Existing.NerthusNameHistory.AddRange($NerthusNameHistory)
+                $Existing.CoordinateHistory.AddRange($CoordinateHistory)
 
                 # Recompute active scalar properties from merged histories
                 if ($SectionType -ne "Entity") { $Existing.Type = $SectionType }
@@ -481,6 +517,15 @@ function Get-Entity {
 
                 $MergedNerthusName = Get-LastActiveValue -History $Existing.NerthusNameHistory -PropertyName 'NerthusName' -ActiveOn $ActiveOn
                 if ($MergedNerthusName) { $Existing.NerthusName = $MergedNerthusName }
+
+                # Recompute active coordinates from merged history
+                if ($Existing.CoordinateHistory.Count -gt 0) {
+                    $MergedCoordEntries = $Existing.CoordinateHistory.Where({ Test-TemporalActivity -Item $_ -ActiveOn $ActiveOn })
+                    if ($MergedCoordEntries.Count -gt 0) {
+                        $LastCoord = $MergedCoordEntries[-1]
+                        $Existing.Coordinates = @{ X = $LastCoord.X; Y = $LastCoord.Y }
+                    }
+                }
 
                 # Recompute door-path names after merge
                 if ($Existing.Type -eq 'Lokacja' -and $Existing.Doors.Count -gt 0) {
@@ -516,6 +561,8 @@ function Get-Entity {
                     FilePathHistory    = $FilePathHistory
                     NerthusName        = $ActiveNerthusName
                     NerthusNameHistory = $NerthusNameHistory
+                    Coordinates        = $ActiveCoordinates
+                    CoordinateHistory  = $CoordinateHistory
                     Contains           = $ContainsList
                 }
                 $EntityMap[$EntityKey] = $Entity

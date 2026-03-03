@@ -1,0 +1,32 @@
+ AvLee
+[10:00] [Lokalny] Narrator: Spokojny poranek w elfim królestwie.
+[10:01] [Lokalny] Gelu: Dziś patrolujemy zachodni trakt.
+[10:02] [Lokalny] Kyrre: Razem, jak zwykle.
+
+ Twierdza Elfów p.1
+[10:15] [Lokalny] Narrator: Weszli do twierdzy.
+[10:16] [Lokalny] Gelu: Raporty z patroli są na stole.
+[10:17] [Lokalny] Kyrre: Sprawdzę zbrojownię.
+
+ Twierdza Elfów p.2
+[10:30] [Lokalny] Narrator: Na wyższym piętrze mieściła się zbrojownia.
+[10:31] [Lokalny] Kyrre: Łuki wymagają konserwacji.
+[10:32] [Lokalny] Gelu: Zajmij się tym, ja idę dalej.
+
+ Twierdza Elfów p.1
+[10:45] [Lokalny] Narrator: Gelu wrócił na dół.
+[10:46] [Lokalny] Gelu: Raporty przeczytane, ruszamy.
+
+ AvLee
+[11:00] [Lokalny] Narrator: Opuścili twierdzę.
+[11:01] [Lokalny] Gelu: Na zachód, przez las.
+
+ AvLee
+[11:30] [Lokalny] Narrator: Głębiej w lesie.
+[11:31] [Lokalny] Gelu: Ślady orków na ścieżce!
+[11:32] [Lokalny] Kyrre: Niedobrze. Ile ich może być?
+
+ Piekielna Grota
+[12:00] [Lokalny] Narrator: Magiczny portal przeniósł ich w zupełnie inne miejsce.
+[12:01] [Lokalny] Gelu: Gdzie my jesteśmy?!
+[12:02] [Lokalny] Kyrre: To chyba Piekielna Grota...

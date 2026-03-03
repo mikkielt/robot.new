@@ -102,6 +102,10 @@ Two strategies, tried in order:
 2. **Tag-based fallback** (all formats): Look for root list items matching `Lokalizacj*` or `Lokacj*`. Leading `@` stripped.
 3. **Italic extraction** (Gen2): Regex on `*Lokalizacja: A, B*` pattern.
 
+#### Route Edges
+
+Location values may contain `->` separators indicating movement routes (e.g., `Steadwick -> Przełęcz Gryfów -> Zamek Gryfów`). `Get-NamedLocationReport` splits these and extracts **RouteEdges** — ordered pairs of consecutive segments — preserving traversal direction. The report output is `[PSCustomObject]@{ Locations; RouteEdges }` where `RouteEdges` is `@{ Source; Target; SessionDate; Header; FilePath }`.
+
 ### 4.6 Metadata Extraction (`Get-SessionListMetadata`)
 
 Parses structured list items for Gen3/Gen4 sessions. Leading `@` is stripped via:
@@ -446,4 +450,5 @@ Fixtures: `sessions-gen1.md`, `sessions-gen2.md`, `sessions-gen3.md`, `sessions-
 - [CURRENCY.md](CURRENCY.md) - Currency tracking system (@Transfer processing, reconciliation)
 - [LOGS.md](LOGS.md) - Session log pipeline (fetching, parsing, location analysis)
 - [PARSER.md](PARSER.md) - Underlying Markdown parser
+- [LOCATION-GRAPH.md](LOCATION-GRAPH.md) - Location graph (route edges from session metadata)
 - [MIGRATION.md](MIGRATION.md) - §3 Session Format Transition

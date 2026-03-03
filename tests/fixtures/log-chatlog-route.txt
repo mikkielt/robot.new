@@ -1,0 +1,23 @@
+ Steadwick
+[13:10] [Lokalny] Narrator: Poranek w zamku Steadwick.
+[13:11] [Lokalny] Crag Hack: Zbierajcie się, ruszamy!
+[13:12] [Lokalny] Gem: Mam już wszystko spakowane.
+
+ Koszary Steadwicku
+[13:20] [Lokalny] Narrator: Drużyna zatrzymała się w koszarach.
+[13:21] [Lokalny] Crag Hack: Potrzebujemy zapasów od kwatermistrza.
+[13:22] [Lokalny] Gem: Te miecze wyglądają na dobre.
+
+ Droga przez Erathię
+[13:40] [Lokalny] Narrator: Opuścili miasto i ruszyli traktem.
+[13:41] [Lokalny] Crag Hack: Las gęstnieje.
+[13:42] [Grupowy] Gem: Gem rozgląda się wokół.
+
+ Przełęcz Behemotów
+[14:00] [Lokalny] Narrator: Ścieżka wiła się przez skaliste wzgórza.
+[14:01] [Lokalny] Crag Hack: Widzę ślady behemotów.
+[14:02] [Lokalny] Gem: Lepiej ominą je szerokim łukiem.
+
+ AvLee
+[14:30] [Lokalny] Narrator: Dotarli do granic elfiego królestwa.
+[14:31] [Lokalny] Crag Hack: Elfowie pewnie nas już widzą.

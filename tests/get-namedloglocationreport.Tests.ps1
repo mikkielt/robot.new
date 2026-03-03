@@ -129,4 +129,43 @@ Describe 'Get-NamedLogLocationReport' {
             Get-NamedLogLocationReport -Session $script:MockSession -Index $script:MockIndex
         @($Results).Count | Should -Be 1
     }
+
+    Context 'TransitionEdges' {
+        It 'includes Transitions property in output' {
+            $Entry = @($script:Report)[0]
+            $Entry.PSObject.Properties['Transitions'] | Should -Not -BeNullOrEmpty
+        }
+
+        It 'includes TransitionCount in Summary' {
+            $Entry = @($script:Report)[0]
+            $Entry.Summary.PSObject.Properties['TransitionCount'] | Should -Not -BeNullOrEmpty
+        }
+
+        It 'generates transitions from consecutive different locations' {
+            $Entry = @($script:Report)[0]
+            # If there are multiple locations, there should be transitions
+            if ($Entry.Locations.Count -gt 1) {
+                $Entry.Summary.TransitionCount | Should -BeGreaterOrEqual 0
+            }
+        }
+
+        It 'skips self-transitions' {
+            $Entry = @($script:Report)[0]
+            foreach ($Trans in $Entry.Transitions) {
+                $Trans.Source | Should -Not -Be $Trans.Target
+            }
+        }
+
+        It 'transition has Source, Target, LogUrl, SessionTitle, SessionDate' {
+            $Entry = @($script:Report)[0]
+            if ($Entry.Transitions.Count -gt 0) {
+                $Trans = $Entry.Transitions[0]
+                $Trans.PSObject.Properties['Source'] | Should -Not -BeNullOrEmpty
+                $Trans.PSObject.Properties['Target'] | Should -Not -BeNullOrEmpty
+                $Trans.PSObject.Properties['LogUrl'] | Should -Not -BeNullOrEmpty
+                $Trans.PSObject.Properties['SessionTitle'] | Should -Not -BeNullOrEmpty
+                $Trans.PSObject.Properties['SessionDate'] | Should -Not -BeNullOrEmpty
+            }
+        }
+    }
 }

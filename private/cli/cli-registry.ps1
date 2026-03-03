@@ -549,6 +549,17 @@ $script:MenuRegistry = @(
         Headers  = @('Lokacja', 'Wystąpienia', 'Encja')
         Widths   = @(25, 12, 20)
         InfoText = @('Ile razy każda lokacja pojawiła się w sesjach.')
+        DataTransform = { param($R) $R.Locations }
+    }
+
+    @{
+        ID               = 'location-graph'
+        Label            = 'Graf lokacji'
+        Description      = 'Unified graf relacji między lokacjami'
+        Menu             = 'Raporty i Narzędzia'
+        Mode             = 'Workflow'
+        WorkflowFunction = 'Invoke-LocationGraphWorkflow'
+        InfoText         = @('Buduje graf lokacji z encji, tras sesyjnych i logów.')
     }
 
     @{

@@ -344,3 +344,93 @@ function Invoke-MigrationFullReport {
     Write-CLILine -Text 'Naciśnij dowolny klawisz...' -Color (Get-CLIColor -Role 'Disabled')
     [void](Read-ArrowKey)
 }
+
+# ── Location Graph Workflow ──────────────────────────────────────────────────
+
+function Invoke-LocationGraphWorkflow {
+    param([object]$State, [hashtable]$Entry)
+
+    $AccentColor   = Get-CLIColor -Role 'Accent'
+    $DisabledColor = Get-CLIColor -Role 'Disabled'
+    $WarningColor  = Get-CLIColor -Role 'Warning'
+
+    Write-CLILine -Text 'Graf lokacji' -Color $AccentColor
+    Write-Host ''
+
+    # Date range (optional)
+    $MinDateStep = [PSCustomObject]@{
+        Name = 'MinDate'; Label = 'Od daty (opcjonalne)'; StepType = 'date'; Required = $false
+        Source = $null; Options = $null; SubSteps = $null; EntrySource = $null
+        Condition = $null; Transform = $null; Default = $null
+    }
+    $MinDate = Invoke-WizardStep -Step $MinDateStep -State $State
+    if ($MinDate -eq '__back__') { return }
+
+    # Include movement edges?
+    $IncludeMovement = $false
+    $MoveStep = [PSCustomObject]@{
+        Name = 'IncludeMovement'; Label = 'Dołączyć krawędzie ruchu z logów?'; StepType = 'choice'; Required = $false
+        Source = $null; Options = @('Nie', 'Tak'); SubSteps = $null; EntrySource = $null
+        Condition = $null; Transform = $null; Default = 'Nie'
+    }
+    $MoveChoice = Invoke-WizardStep -Step $MoveStep -State $State
+    if ($MoveChoice -eq '__back__') { return }
+    if ($MoveChoice -eq 'Tak') { $IncludeMovement = $true }
+
+    Write-Host '  Budowanie grafu lokacji...' -ForegroundColor $DisabledColor
+
+    try {
+        $GraphParams = @{ Quiet = $true }
+        if ($MinDate) { $GraphParams['MinDate'] = $MinDate }
+        if ($IncludeMovement) { $GraphParams['IncludeMovementEdges'] = $true }
+
+        $Graph = Get-LocationGraph @GraphParams
+
+        if (-not $Graph -or $Graph.Summary.NodeCount -eq 0) {
+            Write-CLILine -Text 'Brak danych do wyświetlenia.' -Color $WarningColor
+            Write-Host ''
+            Write-CLILine -Text 'Naciśnij dowolny klawisz...' -Color $DisabledColor
+            [void](Read-ArrowKey)
+            return
+        }
+
+        # Display summary
+        $S = $Graph.Summary
+        Write-Host ''
+        Write-CLILine -Text "  Węzły:  $($S.NodeCount) (rozwiązane: $($S.ResolvedNodes), nierozwiązane: $($S.UnresolvedNodes))" -Color $AccentColor
+        Write-CLILine -Text "  Krawędzie: $($S.EdgeCount) (zawieranie: $($S.ContainmentEdges), drzwi: $($S.DoorEdges), trasy: $($S.RouteEdges), ruch: $($S.MovementEdges), wnioskowane: $($S.InferredEdges))" -Color $AccentColor
+        Write-CLILine -Text "  Exterior: $($S.ExteriorNodes)  Interior: $($S.InteriorNodes)" -Color $AccentColor
+        if ($S.PossiblyStaleEdges -gt 0) {
+            Write-CLILine -Text "  Potencjalnie nieaktualne krawędzie: $($S.PossiblyStaleEdges)" -Color $WarningColor
+        }
+        Write-Host ''
+
+        # Show nodes in table
+        $NodeData = $Graph.Nodes | Sort-Object -Property { $_.InDegree + $_.OutDegree } -Descending
+        $TableData = $NodeData | ForEach-Object {
+            [PSCustomObject]@{
+                Name       = $_.Name
+                Degree     = "$($_.InDegree)/$($_.OutDegree)"
+                Coords     = if ($_.Coordinates) { "$($_.Coordinates.X), $($_.Coordinates.Y)" } else { '-' }
+                Entity     = if ($_.EntityMatch) { $_.EntityMatch.Name } else { '-' }
+            }
+        }
+
+        $SelectedRow = Show-ResultTable -Data @($TableData) `
+            -Columns @('Name', 'Degree', 'Coords', 'Entity') `
+            -Headers @('Lokacja', 'In/Out', 'Koordynaty', 'Encja') `
+            -Widths @(25, 8, 12, 20) `
+            -Title 'Graf lokacji - węzły'
+
+        if ($SelectedRow) {
+            Show-DetailCard -Row $SelectedRow -Title 'Szczegóły węzła'
+        }
+    }
+    catch {
+        Write-CLILine -Text "Błąd: $_" -Color (Get-CLIColor -Role 'Error')
+        Write-Host ''
+    }
+
+    Write-CLILine -Text 'Naciśnij dowolny klawisz...' -Color $DisabledColor
+    [void](Read-ArrowKey)
+}

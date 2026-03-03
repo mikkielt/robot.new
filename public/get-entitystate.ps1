@@ -268,6 +268,32 @@ function Get-EntityState {
                         })
                         [void]$TargetEntity.Names.Add($Parsed.Text)
                     }
+                    '@koordynaty' {
+                        if (-not $TargetEntity.CoordinateHistory) {
+                            $TargetEntity.CoordinateHistory = [System.Collections.Generic.List[object]]::new()
+                        }
+                        $CoordParts = $Parsed.Text.Split(',')
+                        $CoordX = $null
+                        $CoordY = $null
+                        if ($CoordParts.Length -ge 2) {
+                            $XStr = $CoordParts[0].Trim()
+                            $YStr = $CoordParts[1].Trim()
+                            if ($XStr -match '^\-?\d+$' -and $YStr -match '^\-?\d+$') {
+                                $CoordX = [int]$XStr
+                                $CoordY = [int]$YStr
+                            }
+                        }
+                        if ($null -ne $CoordX) {
+                            $TargetEntity.CoordinateHistory.Add([PSCustomObject]@{
+                                X         = $CoordX
+                                Y         = $CoordY
+                                ValidFrom = $Parsed.ValidFrom
+                                ValidTo   = $Parsed.ValidTo
+                                Season    = $Parsed.Season
+                            })
+                            $TargetEntity.Coordinates = @{ X = $CoordX; Y = $CoordY }
+                        }
+                    }
                     default {
                         # Generic override (e.g. @pu_startowe, @info, @trigger)
                         $PropName = $TagEntry.Tag.Substring(1)  # strip leading '@'

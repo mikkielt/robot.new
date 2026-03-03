@@ -356,4 +356,5 @@ The world-state tracking system ensures:
 - [Sessions.md](Sessions.md) - How to record session changes
 - [Players.md](Players.md) - Player and character management
 - [Notifications.md](Notifications.md) - How Intel targeting uses entity data
+- [Location-Graph.md](Location-Graph.md) - Location analysis and connection graph
 - [Glossary](Glossary.md) - Term definitions

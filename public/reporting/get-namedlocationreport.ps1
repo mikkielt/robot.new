@@ -66,6 +66,7 @@ function Get-NamedLocationReport {
     # 2. Extract raw location data
     # Each occurrence: raw string + session metadata
     $RawOccurrences = [System.Collections.Generic.List[object]]::new()
+    $RouteEdges     = [System.Collections.Generic.List[object]]::new()
     $RouteSplitRegex = [regex]::new('\s*->\s*|\s+- \s*')
 
     foreach ($Session in $Sessions) {
@@ -78,6 +79,23 @@ function Get-NamedLocationReport {
 
             # Split route separators (-> and  -  patterns) into individual locations
             $Segments = $RouteSplitRegex.Split($RawLoc)
+
+            # Extract route edges from consecutive segments
+            $CleanedSegments = [System.Collections.Generic.List[string]]::new()
+            foreach ($Seg in $Segments) {
+                $Cleaned = $Seg.Trim().TrimEnd('*').Trim()
+                if ($Cleaned.Length -eq 0 -or $Cleaned -eq 'Brak') { continue }
+                $CleanedSegments.Add($Cleaned)
+            }
+            for ($i = 0; $i -lt $CleanedSegments.Count - 1; $i++) {
+                $RouteEdges.Add([PSCustomObject]@{
+                    Source      = $CleanedSegments[$i]
+                    Target      = $CleanedSegments[$i + 1]
+                    SessionDate = $DateStr
+                    Header      = $Session.Header
+                    FilePath    = $Session.FilePath
+                })
+            }
 
             foreach ($Seg in $Segments) {
                 $Cleaned = $Seg.Trim().TrimEnd('*').Trim()
@@ -94,7 +112,7 @@ function Get-NamedLocationReport {
         }
     }
 
-    if ($RawOccurrences.Count -eq 0) { return @() }
+    if ($RawOccurrences.Count -eq 0) { return [PSCustomObject]@{ Locations = @(); RouteEdges = @() } }
 
     # Parse slash paths & build hierarchy
     # ParentOf: normalized-child -> Set of normalized-parent names
@@ -563,8 +581,14 @@ function Get-NamedLocationReport {
 
     # Sort by occurrence count descending
     $Sorted = $Report | Sort-Object -Property OccurrenceCount -Descending
+    $Result = @($Sorted)
 
-    return @($Sorted)
+    # Attach RouteEdges as a property on the result array for backward compatibility
+    $Result = [PSCustomObject]@{
+        Locations  = $Result
+        RouteEdges = @($RouteEdges)
+    }
+    return $Result
 
     } finally { $script:SuppressWarnings = $PrevSuppress }
 }

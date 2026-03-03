@@ -295,23 +295,35 @@ For each LocationSegment in each parsed log:
     Locations    = @(
         @{
             Raw           = 'Opuszczony dom'      # Original header from log
-            Resolved      = 'Dom Radneraka'        # Canonical entity name (or $null)
+            Resolved      = 'Wieża Obserwacyjna'        # Canonical entity name (or $null)
             Stage         = $null                   # Resolution stage (future use)
             InSessionMeta = $false                  # Present in session @Lokalizacje?
             NearMatches   = @(                      # Close entities if unresolved
-                @{ Name = 'Dom Radneraka'; Distance = 5 }
+                @{ Name = 'Wieża Obserwacyjna'; Distance = 5 }
             )
             LogUrl        = 'https://...'
             StartLine     = 0
             EndLine       = 15
         }
     )
+    Transitions  = @(                               # Movement edges from consecutive segments
+        @{
+            Source       = 'Wieża Obserwacyjna'           # Resolved (or Raw if unresolved)
+            Target       = 'Steadwick'
+            SourceRaw    = 'Opuszczony dom'
+            TargetRaw    = 'Steadwick'
+            LogUrl       = 'https://...'
+            SessionTitle = 'Test Session'
+            SessionDate  = [datetime]
+        }
+    )
     Summary = @{
-        Total      = 3
-        Resolved   = 2
-        Unresolved = 1
-        InMeta     = 2
-        NotInMeta  = 1
+        Total           = 3
+        Resolved        = 2
+        Unresolved      = 1
+        InMeta          = 2
+        NotInMeta       = 1
+        TransitionCount = 1
     }
 }
 ```
@@ -360,4 +372,5 @@ Date range -> `Get-Session | Get-SessionLog -SkipFetch` -> `Get-NamedLogLocation
 
 - [SESSIONS.md](SESSIONS.md) - Session parsing pipeline (produces `.Logs` URLs consumed by this subsystem)
 - [NAME-RESOLUTION.md](NAME-RESOLUTION.md) - Name resolution used for speaker and location matching
+- [LOCATION-GRAPH.md](LOCATION-GRAPH.md) - Location graph (transition edges from log location segments)
 - [DISCORD.md](DISCORD.md) - Discord messaging (separate notification subsystem)

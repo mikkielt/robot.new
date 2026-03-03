@@ -102,4 +102,5 @@ This helps narrators and coordinators ensure that location names in transcripts 
 ## Related Documents
 
 - [Sessions.md](Sessions.md) - How to write session entries with log URLs
+- [Location-Graph.md](Location-Graph.md) - Location graph and movement analysis
 - [Troubleshooting.md](Troubleshooting.md) - General data quality diagnostics

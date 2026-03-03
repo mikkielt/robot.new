@@ -14,10 +14,12 @@
     - Compares against the source session's @Lokalizacje metadata
     - Flags unresolved locations and provides near-match candidates
 
-    Dot-sources string-helpers.ps1 for Get-LevenshteinDistance.
+    Dot-sources string-helpers.ps1 for Get-LevenshteinDistance and
+    location-helpers.ps1 for Get-MapBaseName (map suffix stripping).
 #>
 
 . "$script:ModuleRoot/private/string-helpers.ps1"
+. "$script:ModuleRoot/private/location-helpers.ps1"
 
 function Get-NamedLogLocationReport {
     <#
@@ -59,7 +61,10 @@ function Get-NamedLogLocationReport {
         [hashtable]$Cache,
 
         [Parameter(HelpMessage = "Maximum near-match candidates for unresolved locations")]
-        [int]$MaxNearMatches = 3
+        [int]$MaxNearMatches = 3,
+
+        [Parameter(HelpMessage = "Suppress warning output to stderr")]
+        [switch]$Quiet
     )
 
     begin {
@@ -75,6 +80,10 @@ function Get-NamedLogLocationReport {
     }
 
     end {
+        $PrevSuppress = $script:SuppressWarnings
+        if ($Quiet) { $script:SuppressWarnings = $true }
+        try {
+
         if ($CollectedLogs.Count -eq 0) { return }
 
         # Build session lookup by index (if sessions provided separately)
@@ -140,6 +149,7 @@ function Get-NamedLogLocationReport {
                     # Resolve via Resolve-Name (all stages including fuzzy)
                     $Resolved = $null
                     $Stage = $null
+                    $StrippedName = $null
                     $ResolveParams = @{ Query = $Raw }
                     if ($Index.ContainsKey('Index') -and $null -ne $Index['Index'])         { $ResolveParams['Index']     = $Index['Index'] }
                     if ($Index.ContainsKey('StemIndex') -and $null -ne $Index['StemIndex']) { $ResolveParams['StemIndex'] = $Index['StemIndex'] }
@@ -151,7 +161,22 @@ function Get-NamedLogLocationReport {
                         $Stage = $ResolveResult.Stage
                         $ResolvedCount++
                     } else {
-                        $UnresolvedCount++
+                        # Fallback: strip map suffixes (p.N, s.N, sala, etc.) and retry
+                        $BaseCandidates = Get-MapBaseName -Name $Raw
+                        foreach ($Candidate in $BaseCandidates) {
+                            $ResolveParams['Query'] = $Candidate
+                            $ResolveResult = Resolve-Name @ResolveParams
+                            if ($null -ne $ResolveResult) {
+                                $Resolved = $ResolveResult.Name
+                                $Stage = 'MapStrip'
+                                $StrippedName = $Candidate
+                                $ResolvedCount++
+                                break
+                            }
+                        }
+                        if ($null -eq $Resolved) {
+                            $UnresolvedCount++
+                        }
                     }
 
                     # Check if in session metadata
@@ -188,6 +213,7 @@ function Get-NamedLogLocationReport {
                     $LocationEntries.Add([PSCustomObject]@{
                         Raw           = $Raw
                         Resolved      = $Resolved
+                        StrippedName  = $StrippedName
                         Stage         = $Stage
                         InSessionMeta = $InSessionMeta
                         NearMatches   = $NearMatches
@@ -201,20 +227,46 @@ function Get-NamedLogLocationReport {
             $SessionTitle = if ($null -ne $SourceSession) { $SourceSession.Title } else { $null }
             $SessionDate = if ($null -ne $SourceSession) { $SourceSession.Date } else { $null }
 
+            # Build transition edges from consecutive location segments
+            $Transitions = [System.Collections.Generic.List[object]]::new()
+            if ($LocationEntries.Count -gt 1) {
+                for ($i = 0; $i -lt $LocationEntries.Count - 1; $i++) {
+                    $SourceLoc = $LocationEntries[$i]
+                    $TargetLoc = $LocationEntries[$i + 1]
+                    # Skip self-transitions
+                    $SrcName = if ($SourceLoc.Resolved) { $SourceLoc.Resolved } else { $SourceLoc.Raw }
+                    $TgtName = if ($TargetLoc.Resolved) { $TargetLoc.Resolved } else { $TargetLoc.Raw }
+                    if ([string]::Equals($SrcName, $TgtName, [System.StringComparison]::OrdinalIgnoreCase)) { continue }
+                    $Transitions.Add([PSCustomObject]@{
+                        Source       = $SrcName
+                        Target       = $TgtName
+                        SourceRaw    = $SourceLoc.Raw
+                        TargetRaw    = $TargetLoc.Raw
+                        LogUrl       = $SourceLoc.LogUrl
+                        SessionTitle = $SessionTitle
+                        SessionDate  = $SessionDate
+                    })
+                }
+            }
+
             $Results.Add([PSCustomObject]@{
                 SessionTitle = $SessionTitle
                 SessionDate  = $SessionDate
                 Locations    = [PSCustomObject[]]$LocationEntries.ToArray()
+                Transitions  = [PSCustomObject[]]$Transitions.ToArray()
                 Summary      = [PSCustomObject]@{
-                    Total      = $TotalCount
-                    Resolved   = $ResolvedCount
-                    Unresolved = $UnresolvedCount
-                    InMeta     = $InMetaCount
-                    NotInMeta  = $NotInMetaCount
+                    Total           = $TotalCount
+                    Resolved        = $ResolvedCount
+                    Unresolved      = $UnresolvedCount
+                    InMeta          = $InMetaCount
+                    NotInMeta       = $NotInMetaCount
+                    TransitionCount = $Transitions.Count
                 }
             })
         }
 
         return $Results
+
+        } finally { $script:SuppressWarnings = $PrevSuppress }
     }
 }
