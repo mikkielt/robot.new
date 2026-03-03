@@ -47,46 +47,4 @@ Menu-driven interface with fuzzy search, wizards, and role-based filtering (Coor
 
 ## Documentation
 
-### User Guides (`docs/`)
-
-| Document | Topic |
-|---|---|
-| [Sessions](docs/Sessions.md) | Session recording format (Gen1–Gen4) |
-| [Session-Logs](docs/Session-Logs.md) | Log fetching, caching, and location analysis |
-| [Session-Integrity](docs/Session-Integrity.md) | Content hash verification |
-| [PU](docs/PU.md) | Monthly PU assignment and overflow pools |
-| [Players](docs/Players.md) | Player and character lifecycle |
-| [World-State](docs/World-State.md) | Entity tracking and temporal scoping |
-| [Notifications](docs/Notifications.md) | Intel targeting and Discord notifications |
-| [Auditing](docs/Auditing.md) | Audit trail and reporting |
-| [CLI](docs/CLI.md) | Interactive CLI usage |
-| [Voting](docs/Voting.md) | Voting eligibility |
-| [Troubleshooting](docs/Troubleshooting.md) | Common issues and recovery |
-| [Migration](docs/Migration.md) | Transition from legacy system |
-| [Glossary](docs/Glossary.md) | Domain terminology |
-| [MIGRACJA](docs/PL/MIGRACJA.md) | Migration handbook (Polish) |
-| [MIGRACJA-TECH](docs/PL/MIGRACJA-TECH.md) | Technical migration walkthrough (Polish) |
-
-### Developer Reference (`devdocs/`)
-
-| Document | Topic |
-|---|---|
-| [SYNTAX](devdocs/SYNTAX.md) | Code style, naming, entity file syntax |
-| [PARSER](devdocs/PARSER.md) | Markdown parser architecture |
-| [ENTITIES](devdocs/ENTITIES.md) | Entity parsing, state merge, three-layer model |
-| [ENTITY-WRITES](devdocs/ENTITY-WRITES.md) | Write operations and line-array primitives |
-| [SESSIONS](devdocs/SESSIONS.md) | Session pipeline, format detection, dedup |
-| [SESSION-INTEGRITY](devdocs/SESSION-INTEGRITY.md) | Hash-based session content verification |
-| [LOGS](devdocs/LOGS.md) | Log fetch, ChatLog/Prose parsing, location analysis |
-| [PU](devdocs/PU.md) | PU algorithm specification, overflow pools |
-| [CURRENCY](devdocs/CURRENCY.md) | Currency system, denominations, reconciliation |
-| [NAME-RESOLUTION](devdocs/NAME-RESOLUTION.md) | Index building, declension, fuzzy matching |
-| [CHARFILE](devdocs/CHARFILE.md) | Character file format and reputation parsing |
-| [CONFIG-STATE](devdocs/CONFIG-STATE.md) | Configuration resolution and state files |
-| [GIT](devdocs/GIT.md) | Git integration and streaming changelog parser |
-| [DISCORD](devdocs/DISCORD.md) | Discord webhooks and notification dispatch |
-| [PLUGINS](devdocs/PLUGINS.md) | Plugin system, hooks, and config resolution |
-| [CLI](devdocs/CLI.md) | CLI registry, menus, wizards |
-| [AUDITING](devdocs/AUDITING.md) | Reporting commands and output schemas |
-| [MIGRATION](devdocs/MIGRATION.md) | Migration phases (0–8) and data model transition |
-| [TESTING](devdocs/TESTING.md) | Test fixtures, loading patterns, mock strategies |
+`devdocs/` contains internal documentation for module development and maintenance. `docs/` contains user-facing documentation for players and coordinators.
