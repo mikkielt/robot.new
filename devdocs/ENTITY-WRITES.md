@@ -151,7 +151,7 @@ Three precompiled regex patterns (`RegexOptions.Compiled`):
 |---|---|
 | **Target 1** | `entities.md` `## Postać` section |
 | **Target 2** | `Postaci/Gracze/<Name>.md` (character file) |
-| **Entity tags** | `@pu_startowe`, `@pu_nadmiar`, `@pu_suma`, `@pu_zdobyte`, `@alias`, `@status` |
+| **Entity tags** | `@pu_startowe`, `@pu_nadmiar`, `@pu_suma`, `@pu_zdobyte`, `@alias`, `@status`, `@plik` |
 | **PU derivation** | If SUMA given + ZDOBYTE missing -> `ZDOBYTE = SUMA - STARTOWE`. Converse applies. |
 | **Creation** | Creates entity entry with `@należy_do: <PlayerName>` if missing |
 | **Aliases** | Additive (existing preserved, new appended if not duplicate) |
@@ -181,7 +181,7 @@ Three precompiled regex patterns (`RegexOptions.Compiled`):
 | **Target 1** | `entities.md` `## Postać` section (new entry) |
 | **Target 2** | `entities.md` `## Gracz` section (ensures player exists) |
 | **Target 3** | `Postaci/Gracze/<Name>.md` (character file from template) |
-| **Tags** | `@należy_do`, `@pu_startowe` |
+| **Tags** | `@należy_do`, `@plik`, `@pu_startowe` |
 | **Duplicate detection** | Throws if character already exists |
 | **PU start** | Uses `Get-NewPlayerCharacterPUCount` as fallback when `InitialPUStart` not specified (minimum 20) |
 | **Template** | `player-character-file.md.template` with `{CharacterSheetUrl}`, `{Triggers}`, `{AdditionalInfo}` placeholders |
@@ -318,7 +318,7 @@ One-time function that generates a complete `entities.md` from `Get-Player` outp
 
 1. Reads all players (optionally pre-fetched, or calls `Get-Player -Entities @()` to avoid circular dependency)
 2. Generates `## Gracz` section: `* PlayerName` with `@margonemid`, `@prfwebhook`, `@trigger`
-3. Generates `## Postać` section: `* CharacterName` with `@należy_do`, `@alias`, `@pu_startowe`, `@pu_nadmiar`, `@pu_suma`, `@pu_zdobyte`, `@info`
+3. Generates `## Postać` section: `* CharacterName` with `@należy_do`, `@plik` (URL-decoded from `Gracze.md` link), `@alias`, `@pu_startowe`, `@pu_nadmiar`, `@pu_suma`, `@pu_zdobyte`, `@info`
 4. PU values formatted with `([decimal]).ToString('G', InvariantCulture)`
 5. Output: UTF-8 no BOM, `StringBuilder` with 4096 initial capacity
 

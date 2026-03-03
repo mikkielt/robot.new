@@ -85,6 +85,7 @@ Level-2 headers define entity type sections, mapped via `$TypeMap`:
 | `@grupa` | Temporal | `Groups`, `GroupHistory` | Group/faction membership |
 | `@status` | Temporal | `Status`, `StatusHistory` | `Aktywny`/`Nieaktywny`/`Usunięty` |
 | `@ilość` | Temporal | `Quantity`, `QuantityHistory` | Item quantity (used for stackable items such as currency). Accepts integer values. In Zmiany blocks, supports `+N`/`-N` delta syntax to add/subtract from current quantity. |
+| `@plik` | Non-temporal | `FilePath` | Relative path to the entity's file (e.g. character `.md` file). Populated automatically by `New-PlayerCharacter` and during migration from `Gracze.md` link paths. |
 | `@zawiera` | Non-temporal | `Contains` | Child containment declaration |
 | `@generyczne_nazwy` | Non-temporal | `GenericNames`, `Names` | Comma-delimited generic names for the entity (e.g. "Strażnik Miasta, Wartownik"). Added to `Names` for resolution. |
 | Any other `@tag` | Temporal | `Overrides[tag]` | Generic key-value storage |
@@ -222,6 +223,7 @@ Characters with `Status = 'Usunięty'` are excluded unless `-IncludeDeleted`.
 | `StatusHistory` | `List[object]` | Status changes with validity ranges |
 | `Quantity` | string | Active quantity (for stackable items such as currency) |
 | `QuantityHistory` | `List[object]` | Quantity changes with validity ranges |
+| `FilePath` | string | Relative path to the entity's file (from `@plik`; `$null` when absent) |
 | `GenericNames` | `List[string]` | Generic names for the entity (from `@generyczne_nazwy`) |
 | `Doors` | string[] | Active physical access connections |
 | `DoorHistory` | `List[object]` | Full door history |
@@ -248,7 +250,7 @@ Characters with `Status = 'Usunięty'` are excluded unless `-IncludeDeleted`.
 | `Name` | string | Character name |
 | `IsActive` | bool | Whether this is the player's active character |
 | `Aliases` | string[] | Alternative names |
-| `Path` | string | Markdown file path |
+| `Path` | string | Relative path to character file (from `Gracze.md` link or `@plik` entity tag) |
 | `PUExceeded` | decimal? | PU exceeded/overflow value |
 | `PUStart` | decimal? | Starting PU value |
 | `PUSum` | decimal? | Total PU value |
@@ -264,7 +266,7 @@ Characters with `Status = 'Usunięty'` are excluded unless `-IncludeDeleted`.
 | `Name` | string | Character name |
 | `IsActive` | bool | Whether this is the player's active character |
 | `Aliases` | string[] | Alternative names |
-| `Path` | string | Markdown file path |
+| `Path` | string | Relative path to character file (from `Gracze.md` link or `@plik` entity tag) |
 | `PUExceeded` | decimal? | PU exceeded/overflow value |
 | `PUStart` | decimal? | Starting PU value |
 | `PUSum` | decimal? | Total PU value |
