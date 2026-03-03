@@ -145,7 +145,7 @@ function Invoke-MigrationPhase3 {
     if (-not $WhatIf) { Save-MigrationState -State $State }
 }
 
-# Display characters with PU=BRAK and offer to soft-delete them
+# Display characters with PU=BRAK and offer to soft-delete them all at once
 function Show-BRAKCharacters {
     param([Parameter(Mandatory)] [hashtable]$State)
 
@@ -168,14 +168,17 @@ function Show-BRAKCharacters {
     Write-SectionHeader "POSTACIE Z PU = BRAK ($($BRAKChars.Count))"
     foreach ($Item in $BRAKChars) {
         Write-Host "    $($Item.PlayerName) / $($Item.CharacterName) - brak wartości PU" -ForegroundColor Yellow
-        $Choice = Request-YesNo -Prompt "    Czy oznaczyć '$($Item.CharacterName)' jako nieaktywną?" -Default $false
-        if ($Choice) {
+    }
+
+    $Choice = Request-YesNo -Prompt "    Czy chcesz oznaczyć te postacie jako nieaktywne?" -Default $false
+    if ($Choice) {
+        foreach ($Item in $BRAKChars) {
             try {
                 Set-PlayerCharacter -PlayerName $Item.PlayerName -CharacterName $Item.CharacterName -Status 'Nieaktywny' -Confirm:$false
                 Write-StepOK "Oznaczono '$($Item.CharacterName)' jako nieaktywną"
             }
             catch {
-                Write-StepError "Nie udało się oznaczyć jako nieaktywną: $($_.Exception.Message)"
+                Write-StepError "Nie udało się oznaczyć '$($Item.CharacterName)' jako nieaktywną: $($_.Exception.Message)"
             }
         }
     }

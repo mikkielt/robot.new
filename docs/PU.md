@@ -147,6 +147,8 @@ When a new character is created for an existing player, starting PU is determine
 - Formula: half of the total earned PU plus 20, rounded down
 - New players with no prior characters start at 20 PU
 - Characters with no recorded starting PU are excluded from the calculation
+- Characters with status **Usunięty** (removed) are excluded from the calculation
+- Characters with status **Nieaktywny** (inactive) are included — their earned PU still counts
 
 **Example:** A player has two characters with 30 and 10 earned PU. New character starts with: floor((30 + 10) / 2 + 20) = floor(40) = 40 PU.
 

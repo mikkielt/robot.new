@@ -6,8 +6,14 @@
     This file contains Get-NewPlayerCharacterPUCount which computes the starting
     PU value for a new character using the legacy-compatible formula:
 
-        Include only characters with PUStart > 0
+        Include only characters with PUStart > 0 and status != Usunięty
         PU = Floor((Sum(PUTaken) / 2) + 20)
+
+    Characters with @status: Usunięty are excluded from the calculation.
+    Characters with @status: Nieaktywny are included (their PU still counts).
+
+    When Entities are provided, entity status is resolved for each character.
+    Without Entities, status-based filtering is skipped (backward-compatible).
 
     This is a pure computation function with no side effects.
     Used by New-PlayerCharacter as a fallback when InitialPUStart is not
@@ -25,7 +31,10 @@ function Get-NewPlayerCharacterPUCount {
         [string]$PlayerName,
 
         [Parameter(HelpMessage = "Pre-fetched player list from Get-Player")]
-        [object[]]$Players
+        [object[]]$Players,
+
+        [Parameter(HelpMessage = "Pre-fetched entity list from Get-Entity for status resolution")]
+        [object[]]$Entities
     )
 
     if (-not $Players) {
@@ -45,12 +54,31 @@ function Get-NewPlayerCharacterPUCount {
         throw "Player '$PlayerName' not found."
     }
 
-    # Filter to characters with PUStart > 0
+    # Build entity status lookup if entities are available
+    $EntityStatusLookup = $null
+    if ($Entities) {
+        $EntityStatusLookup = [System.Collections.Generic.Dictionary[string, string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+        foreach ($Entity in $Entities) {
+            if ($Entity.Type -eq 'Postać' -and $Entity.Status) {
+                $EntityStatusLookup[$Entity.Name] = $Entity.Status
+            }
+        }
+    }
+
+    # Filter to characters with PUStart > 0, excluding Usunięty
     $PUTakenSum = [decimal]0
     $IncludedCount = 0
     $ExcludedCharacters = [System.Collections.Generic.List[string]]::new()
 
     foreach ($Character in $TargetPlayer.Characters) {
+        # Skip removed characters (Usunięty) when entity data is available
+        if ($EntityStatusLookup -and $EntityStatusLookup.ContainsKey($Character.Name)) {
+            if ($EntityStatusLookup[$Character.Name] -eq 'Usunięty') {
+                $ExcludedCharacters.Add($Character.Name)
+                continue
+            }
+        }
+
         if ($null -ne $Character.PUStart -and $Character.PUStart -gt 0) {
             if ($null -ne $Character.PUTaken) {
                 $PUTakenSum += $Character.PUTaken

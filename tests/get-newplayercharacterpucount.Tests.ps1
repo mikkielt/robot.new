@@ -66,4 +66,26 @@ Describe 'Get-NewPlayerCharacterPUCount' {
         $Result.PU | Should -Be 20
         $Result.IncludedCharacters | Should -Be 0
     }
+
+    It 'excludes characters with status Usunięty when Entities are provided' {
+        $MockEntities = @(
+            [PSCustomObject]@{ Name = 'Xeron Demonlord'; Type = 'Postać'; Status = 'Usunięty' }
+            [PSCustomObject]@{ Name = 'Kyrre'; Type = 'Postać'; Status = 'Aktywny' }
+        )
+        $Result = Get-NewPlayerCharacterPUCount -PlayerName 'Solmyr' -Players $script:Players -Entities $MockEntities
+        $Result.ExcludedCharacters | Should -Contain 'Xeron Demonlord'
+        # Only Kyrre included: PUTaken=2, Floor(2/2 + 20) = 21
+        $Result.PU | Should -Be 21
+        $Result.IncludedCharacters | Should -Be 1
+    }
+
+    It 'includes characters with status Nieaktywny when Entities are provided' {
+        $MockEntities = @(
+            [PSCustomObject]@{ Name = 'Xeron Demonlord'; Type = 'Postać'; Status = 'Nieaktywny' }
+            [PSCustomObject]@{ Name = 'Kyrre'; Type = 'Postać'; Status = 'Aktywny' }
+        )
+        $Result = Get-NewPlayerCharacterPUCount -PlayerName 'Solmyr' -Players $script:Players -Entities $MockEntities
+        $Result.ExcludedCharacters | Should -Not -Contain 'Xeron Demonlord'
+        $Result.IncludedCharacters | Should -Be 2
+    }
 }

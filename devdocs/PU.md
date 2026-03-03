@@ -378,6 +378,7 @@ Implemented in `Get-NewPlayerCharacterPUCount`. Used by `New-PlayerCharacter` as
 
 ```
 IncludedCharacters = all characters of this player where PUStart > 0
+                     AND status != Usunięty (when Entities are provided)
                      (null PUStart treated as excluded)
 PUTakenSum         = Sum(PUTaken) across IncludedCharacters
                      (null PUTaken contributes 0)
@@ -387,6 +388,10 @@ NewPUStart         = Floor((PUTakenSum / 2) + 20)
 The result is always at least 20 (players with no qualifying characters get `Floor(0/2 + 20) = 20`).
 
 This matches the rules document formula: *(Zdobyte PU Gracza na wszystkich postaciach) / 2 + 20*, rounded down.
+
+**Status-based filtering**: When the optional `Entities` parameter is provided, characters with `@status: Usunięty` are excluded from the calculation. Characters with `@status: Nieaktywny` are included - their earned PU still counts toward new character calculations. Without `Entities`, status-based filtering is skipped (backward-compatible).
+
+**Parameters:** `PlayerName` (mandatory), `Players` (optional pre-fetched player list), `Entities` (optional pre-fetched entity list for status resolution).
 
 **Return object:**
 
