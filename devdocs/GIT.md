@@ -27,7 +27,7 @@ Companion function for submodule environments. Walks upward from `Get-RepoRoot` 
 - Starts from `Get-RepoRoot` result (the submodule root)
 - Moves one directory up to exit the submodule
 - Continues upward until a `.git` directory is found (the parent repo root)
-- Used by `Find-DataManifest` to determine the search ceiling for `.robot-data.psd1`
+- No longer used by `Find-DataManifest` (which now checks a fixed path); remains available for callers that need the parent repo boundary
 - Not exported by the module (non Verb-Noun name); must be dot-sourced directly for testing
 
 ---

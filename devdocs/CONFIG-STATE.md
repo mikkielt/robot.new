@@ -19,7 +19,7 @@ This document covers `private/admin-config.ps1` (configuration resolution, path 
 | `Get-AdminConfig` | Returns a hashtable with all resolved paths and config values |
 | `Resolve-ConfigValue` | Priority-chain resolver for a single config key |
 | `Get-AdminTemplate` | Loads and renders template files with placeholder substitution |
-| `Find-DataManifest` | Scans upward from module root to find `.robot-data.psd1` manifest |
+| `Find-DataManifest` | Checks for `.robot/robot-data.psd1` at a fixed path within the repo root |
 
 ### 2.2 Priority Chain (`Resolve-ConfigValue`)
 
@@ -46,7 +46,7 @@ The local config file is loaded via `Import-PowerShellDataFile` with try-catch p
 | `CharactersDir` | `Postaci/Gracze/` | Character files directory |
 | `PlayersFile` | `Gracze.md` | Legacy player database |
 
-Paths are resolved from `.robot-data.psd1` manifest when available (see §2.5), falling back to the hardcoded values above. This ensures backward compatibility when no manifest exists.
+Paths are resolved from `.robot/robot-data.psd1` manifest when available (see §2.5), falling back to the hardcoded values above. This ensures backward compatibility when no manifest exists.
 
 Additional config values:
 - `BotUsername` - Discord bot display name (resolved but not used by PU assignment, which hardcodes `"Bothen"`)
@@ -67,7 +67,7 @@ No advanced template engine - pure string `.Replace()` calls by the consumer.
 
 ### 2.5 Manifest-Based Data Discovery (`Find-DataManifest`)
 
-The module is a git submodule inside a parent lore repository. Coordinators may place data files anywhere in the parent repository. `Find-DataManifest` enables this flexibility by scanning for a `.robot-data.psd1` manifest file.
+The module is a git submodule inside a parent lore repository. Coordinators may place data files in non-default locations. `Find-DataManifest` enables this flexibility by checking for a `.robot/robot-data.psd1` manifest file at a fixed path inside the repo root.
 
 **Manifest format** (PowerShell data file):
 
@@ -84,15 +84,15 @@ Paths in the manifest are relative to the manifest file's directory. The module 
 
 **Discovery algorithm**:
 
-1. Start at the module root (`$PSScriptRoot` parent)
-2. Walk upward using `Get-ParentRepoRoot` (from `public/get-reporoot.ps1`) to find the parent repository root - the first `.git` directory above the submodule boundary
-3. Scan from RepoRoot upward to the parent repo root for `.robot-data.psd1`
+1. Resolve `RepoRoot` via `Get-RepoRoot` (or accept override for testing)
+2. Construct the fixed path: `{RepoRoot}/.robot/robot-data.psd1`
+3. If the file exists, parse it and cache the result
 4. If not found, fall back to hardcoded paths (backward compatible)
 5. Cache the resolved manifest and its directory in `$script:CachedManifest` / `$script:CachedManifestDir`
 
 **Caching**: Per-session. Once discovered, the manifest is not re-scanned. This avoids repeated directory traversal.
 
-**`Get-ParentRepoRoot`**: Companion function in `public/get-reporoot.ps1`. Walks upward from `Get-RepoRoot` past the submodule `.git` to find the enclosing repository root. Uses `Get-Command` guard to handle cases where the function is not yet loaded.
+**`Get-ParentRepoRoot`**: Companion function in `public/get-reporoot.ps1`. Walks upward from `Get-RepoRoot` past the submodule `.git` to find the enclosing repository root. No longer used by `Find-DataManifest` (which uses a fixed path), but remains available for callers that need the parent repo boundary.
 
 **`Get-AdminConfig` integration**: When `Find-DataManifest` returns a manifest, `Get-AdminConfig` uses its paths. When no manifest exists, all paths resolve identically to the hardcoded defaults. Zero breaking changes.
 
@@ -256,8 +256,8 @@ Loaded via `Import-PowerShellDataFile` with error handling. Missing file is not 
 |---|---|
 | Missing `local.config.psd1` | Not an error; priority chain continues |
 | Missing template file | Throws error |
-| Missing `.robot-data.psd1` manifest | Not an error; falls back to hardcoded paths |
-| Manifest found in parent repo | Paths resolved relative to manifest directory, cached per session |
+| Missing `.robot/robot-data.psd1` manifest | Not an error; falls back to hardcoded paths |
+| Manifest found at fixed path | Paths resolved relative to `.robot/` directory, cached per session |
 | Negative UTC offset | Formatted correctly (e.g., `UTC-05:00`) |
 | Missing `.robot/res/` directory | Created automatically by `Add-AdminHistoryEntry` |
 | Duplicate session headers in history | Deduplicated by `HashSet` on read |

@@ -35,7 +35,7 @@ This glossary maps English terms used in documentation to their Polish counterpa
 | Talar (Silver) | Talar Hiroński | A mid-value currency denomination. 1 Talar = 100 Kogów. |
 | Kog (Copper) | Kog Skeltvorski | The lowest-value currency denomination. |
 | Template | Szablon | A configurable file skeleton used to generate entity entries, notifications, or data structures. Located in `.robot.new/templates/`. |
-| Data Manifest | Manifest danych | A `.robot-data.psd1` configuration file that tells the module where data files are located in the parent repository. Enables flexible file placement. |
+| Data Manifest | Manifest danych | A `.robot/robot-data.psd1` configuration file that tells the module where data files are located in the parent repository. Located at a fixed path within the repository. |
 | Entity CRUD | Operacje CRUD na encjach | Commands for creating, reading, updating, and removing world entities (NPC, Grupa, Lokacja, Przedmiot). |
 | Treasury | Skarbiec | A Grupa entity representing the out-of-game currency reserve managed by coordinators. |
 

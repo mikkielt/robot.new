@@ -87,7 +87,7 @@ function Add-AdminHistoryEntry {
 
         # Load admin-config helpers if not already available
         if (-not (Get-Command 'Get-AdminTemplate' -ErrorAction SilentlyContinue)) {
-            . "$PSScriptRoot/admin-config.ps1"
+            . ([System.IO.Path]::Combine($PSScriptRoot, 'admin-config.ps1'))
         }
 
         $Preamble = Get-AdminTemplate -Name 'pu-sessions-header.md.template'

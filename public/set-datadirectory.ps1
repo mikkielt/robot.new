@@ -10,7 +10,7 @@
 
     When -Path is given, subsequent calls to Get-RepoRoot return that path instead
     of performing git traversal. The data manifest cache is also cleared so that
-    Find-DataManifest re-scans from the new root on next use.
+    Find-DataManifest re-checks the fixed path from the new root on next use.
 
     When -Reset is given, the override is removed and Get-RepoRoot reverts to its
     standard .git-based detection logic. The manifest cache is cleared as well.

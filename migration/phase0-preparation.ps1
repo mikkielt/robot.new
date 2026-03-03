@@ -4,7 +4,7 @@
 
     .DESCRIPTION
     Verifies clean git state, creates safety tag, checks PU state file,
-    submodule registration, module import, and .robot-data.psd1 manifest.
+    submodule registration, module import, and .robot/robot-data.psd1 manifest.
 
     Dependencies: migration-ui.ps1, migration-state.ps1, robot module imported.
 #>
@@ -109,9 +109,9 @@ function Invoke-MigrationPhase0 {
         $AllOK = $false
     }
 
-    # Step 6: Ensure .robot-data.psd1 manifest exists
-    Write-Step -Number 6 -Text 'Sprawdzanie manifestu .robot-data.psd1...'
-    $ManifestPath = [System.IO.Path]::Combine($RepoRoot, '.robot-data.psd1')
+    # Step 6: Ensure .robot/robot-data.psd1 manifest exists
+    Write-Step -Number 6 -Text 'Sprawdzanie manifestu .robot/robot-data.psd1...'
+    $ManifestPath = [System.IO.Path]::Combine($RepoRoot, '.robot', 'robot-data.psd1')
     if ([System.IO.File]::Exists($ManifestPath)) {
         try {
             $ManifestData = Import-PowerShellDataFile -Path $ManifestPath
@@ -128,11 +128,15 @@ function Invoke-MigrationPhase0 {
         }
     } else {
         if ($WhatIf) {
-            Write-StepWarning '[SUCHY PRZEBIEG] Utworzyłbym manifest .robot-data.psd1'
+            Write-StepWarning '[SUCHY PRZEBIEG] Utworzyłbym manifest .robot/robot-data.psd1'
         } else {
+            $ManifestDir = [System.IO.Path]::GetDirectoryName($ManifestPath)
+            if (-not [System.IO.Directory]::Exists($ManifestDir)) {
+                [void][System.IO.Directory]::CreateDirectory($ManifestDir)
+            }
             $ManifestContent = "@{`n    EntitiesFile = 'entities.md'`n}`n"
             [System.IO.File]::WriteAllText($ManifestPath, $ManifestContent, [System.Text.UTF8Encoding]::new($false))
-            Write-StepOK 'Utworzono manifest .robot-data.psd1 (EntitiesFile → entities.md)'
+            Write-StepOK 'Utworzono manifest .robot/robot-data.psd1 (EntitiesFile → entities.md)'
         }
     }
     Update-PhaseChecklist -State $State -Phase 0 -Item 'ManifestCreated' -Value $true
@@ -144,7 +148,7 @@ function Invoke-MigrationPhase0 {
             '[OK] Repozytorium czyste',
             '[OK] Tag pre-migration istnieje',
             '[OK] Moduł załadowany',
-            '[OK] Manifest .robot-data.psd1 gotowy'
+            '[OK] Manifest .robot/robot-data.psd1 gotowy'
         )
     } else {
         Set-PhaseInProgress -State $State -Phase 0

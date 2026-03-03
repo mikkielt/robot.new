@@ -23,6 +23,10 @@
     all access is permitted. Designed for trusted small-team environments.
 #>
 
+# Session-scoped cache for RBAC config (local.config.psd1 with Roles/RoleScopes)
+$script:CachedRbacConfig     = $null
+$script:CachedRbacConfigPath = $null
+
 function Invoke-PluginHook {
     param(
         [Parameter(Mandatory)]
@@ -85,6 +89,7 @@ function Test-PluginScope {
     if (-not $User) {
         $User = [System.Environment]::GetEnvironmentVariable('ROBOT_USER')
         if (-not $User) {
+            $GitProc = $null
             try {
                 $GitProc = [System.Diagnostics.Process]::new()
                 $GitProc.StartInfo.FileName = 'git'
@@ -97,6 +102,9 @@ function Test-PluginScope {
                 $GitProc.WaitForExit()
                 if ($GitUser) { $User = $GitUser }
             } catch { }
+            finally {
+                if ($GitProc) { $GitProc.Dispose() }
+            }
         }
     }
 
@@ -110,7 +118,17 @@ function Test-PluginScope {
     if (-not [System.IO.File]::Exists($CoreLocalPath)) { return $true }
 
     $CoreLocal = $null
-    try { $CoreLocal = Import-PowerShellDataFile -Path $CoreLocalPath } catch { return $true }
+    if ($script:CachedRbacConfigPath -and
+        [string]::Equals($script:CachedRbacConfigPath, $CoreLocalPath, 'Ordinal') -and
+        $script:CachedRbacConfig) {
+        $CoreLocal = $script:CachedRbacConfig
+    } else {
+        try {
+            $CoreLocal = Import-PowerShellDataFile -Path $CoreLocalPath
+            $script:CachedRbacConfigPath = $CoreLocalPath
+            $script:CachedRbacConfig     = $CoreLocal
+        } catch { return $true }
+    }
 
     if (-not $CoreLocal.Roles -or -not $CoreLocal.RoleScopes) { return $true }
 

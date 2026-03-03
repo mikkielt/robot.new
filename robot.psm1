@@ -52,7 +52,8 @@ $FunctionFiles = [System.IO.Directory]::GetFiles($ModuleRoot, '*.ps1', [System.I
 # Verb-Noun pattern regex for exported functions (case-insensitive)
 $VerbNounPattern = [regex]::new('^(Get|Set|New|Remove|Resolve|Test|Invoke|Send|Export)-\w+$', [System.Text.RegularExpressions.RegexOptions]::IgnoreCase)
 
-$ExportedFunctions = [System.Collections.Generic.List[string]]::new()
+$ExportedFunctions = [System.Collections.Generic.HashSet[string]]::new(
+    [System.StringComparer]::OrdinalIgnoreCase)
 
 # Path fragment used to detect files inside plugins/ (platform-aware)
 $PluginsDirSep = [System.IO.Path]::DirectorySeparatorChar + 'plugins' + [System.IO.Path]::DirectorySeparatorChar
@@ -82,7 +83,7 @@ foreach ($FilePath in $FunctionFiles) {
         continue
     }
 
-    $ExportedFunctions.Add($FuncName)
+    [void]$ExportedFunctions.Add($FuncName)
 }
 
 # ── PHASE 2: Plugin Loading ─────────────────────────────────────────────────
@@ -204,7 +205,7 @@ if ([System.IO.Directory]::Exists($PluginsDir)) {
                     continue
                 }
 
-                $ExportedFunctions.Add($FuncName)
+                [void]$ExportedFunctions.Add($FuncName)
             }
         }
 
@@ -324,11 +325,11 @@ function Get-LoadedPlugins {
     return $Results
 }
 
-$ExportedFunctions.Add('Get-PluginConfig')
-$ExportedFunctions.Add('Get-LoadedPlugins')
+[void]$ExportedFunctions.Add('Get-PluginConfig')
+[void]$ExportedFunctions.Add('Get-LoadedPlugins')
 
 # ── PHASE 4: Export ─────────────────────────────────────────────────────────
 
 if ($ExportedFunctions.Count -gt 0) {
-    Export-ModuleMember -Function $ExportedFunctions
+    Export-ModuleMember -Function @($ExportedFunctions)
 }

@@ -65,7 +65,7 @@ When reading data (e.g. `Get-Player`), the system merges both sources in memory 
 
 ### Data Manifest
 
-The file `.robot-data.psd1` at the repository root tells the module where to find `entities.md`. Without it, some commands would default to writing inside the `.robot.new` directory instead of the repository root. The migration script creates this manifest automatically during Phase 0.
+The file `.robot/robot-data.psd1` tells the module where to find `entities.md`. Without it, some commands would default to writing inside the `.robot.new` directory instead of the repository root. The migration script creates this manifest automatically during Phase 0.
 
 ### Session Format Generations
 
@@ -106,7 +106,7 @@ The coordinator secures the current state before any changes:
 3. **Verify PU state file** - the processing history file (`pu-sessions.md`) is preserved and continues to be used
 4. **Verify submodule** - `.robot.new` must be registered as a git submodule
 5. **Verify module** - confirm all commands are available (~32 exported)
-6. **Create data manifest** - `.robot-data.psd1` at the repository root ensures all commands write to the correct `entities.md` location
+6. **Create data manifest** - `.robot/robot-data.psd1` ensures all commands write to the correct `entities.md` location
 
 ### Phase 1 - Bootstrap Entity Store
 

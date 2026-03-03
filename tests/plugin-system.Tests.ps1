@@ -429,6 +429,12 @@ Describe 'Invoke-PluginHook' {
 # ── Test-PluginScope ──────────────────────────────────────────────────────
 
 Describe 'Test-PluginScope' {
+    BeforeEach {
+        # Reset RBAC config cache between tests so each test starts fresh
+        $script:CachedRbacConfig     = $null
+        $script:CachedRbacConfigPath = $null
+    }
+
     It 'returns $true when no user identity available (permissive default)' {
         # Temporarily unset ROBOT_USER and mock git to return nothing
         $OldRobotUser = [System.Environment]::GetEnvironmentVariable('ROBOT_USER')

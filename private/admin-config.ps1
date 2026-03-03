@@ -9,7 +9,7 @@
 
     Contains:
     - Resolve-ConfigValue:   priority-chain resolution for a single config key
-    - Find-DataManifest:     scans for .robot-data.psd1 manifest up to parent repo root
+    - Find-DataManifest:     checks for .robot/robot-data.psd1 at a fixed path within the repo root
     - Get-AdminConfig:       resolves config values from parameter/env/config file/manifest
     - Get-AdminTemplate:     loads and renders template files with variable substitution
 
@@ -19,8 +19,8 @@
     3. Local config file (.robot.new/local.config.psd1, git-ignored)
     4. Fail with clear error message
 
-    Data manifest (.robot-data.psd1) provides path overrides relative to its location.
-    Searched from RepoRoot upward to parent git root, cached per session.
+    Data manifest (.robot/robot-data.psd1) provides path overrides relative to its location.
+    Located at a fixed path {RepoRoot}/.robot/robot-data.psd1, cached per session.
 
     Templates live in .robot.new/templates/ as standalone .md.template files.
     Rendering uses simple {VariableName} placeholder substitution.
@@ -63,16 +63,13 @@ function Resolve-ConfigValue {
 $script:CachedManifest = $null
 $script:CachedManifestDir = $null
 
-# Scans for .robot-data.psd1 from RepoRoot upward to parent git root.
+# Checks for .robot/robot-data.psd1 at a fixed path within RepoRoot.
 # Returns @{ Manifest = hashtable; ManifestDir = string } or $null.
 # Result is cached per session.
 function Find-DataManifest {
     [CmdletBinding()] param(
         [Parameter(HelpMessage = "Override the repo root for testing")]
         [string]$RepoRoot,
-
-        [Parameter(HelpMessage = "Override the parent repo root for testing")]
-        [string]$ParentRepoRoot,
 
         [Parameter(HelpMessage = "Skip cache and rescan")]
         [switch]$Force
@@ -86,36 +83,22 @@ function Find-DataManifest {
         $RepoRoot = Get-RepoRoot
     }
 
-    if (-not $ParentRepoRoot) {
-        if (Get-Command 'Get-ParentRepoRoot' -ErrorAction SilentlyContinue) {
-            $ParentRepoRoot = Get-ParentRepoRoot -RepoRoot $RepoRoot
-        }
+    $ManifestDir  = [System.IO.Path]::Combine($RepoRoot, '.robot')
+    $ManifestPath = [System.IO.Path]::Combine($ManifestDir, 'robot-data.psd1')
+
+    if (-not [System.IO.File]::Exists($ManifestPath)) {
+        return $null
     }
 
-    $ManifestName = '.robot-data.psd1'
-    $StopDir = if ($ParentRepoRoot) { [System.IO.Path]::GetDirectoryName($ParentRepoRoot) } else { $RepoRoot }
-
-    $CurrentDir = $RepoRoot
-    while ($true) {
-        $ManifestPath = [System.IO.Path]::Combine($CurrentDir, $ManifestName)
-        if ([System.IO.File]::Exists($ManifestPath)) {
-            try {
-                $Data = Import-PowerShellDataFile -Path $ManifestPath
-                $script:CachedManifest = $Data
-                $script:CachedManifestDir = $CurrentDir
-                return @{ Manifest = $Data; ManifestDir = $CurrentDir }
-            } catch {
-                [System.Console]::Error.WriteLine("[WARN Find-DataManifest] Failed to parse $ManifestPath : $_")
-            }
-        }
-
-        if ($CurrentDir -eq $StopDir -or $CurrentDir -eq [System.IO.Path]::GetPathRoot($CurrentDir)) {
-            break
-        }
-        $CurrentDir = [System.IO.Path]::GetDirectoryName($CurrentDir)
+    try {
+        $Data = Import-PowerShellDataFile -Path $ManifestPath
+        $script:CachedManifest    = $Data
+        $script:CachedManifestDir = $ManifestDir
+        return @{ Manifest = $Data; ManifestDir = $ManifestDir }
+    } catch {
+        [System.Console]::Error.WriteLine("[WARN Find-DataManifest] Failed to parse $ManifestPath : $_")
+        return $null
     }
-
-    return $null
 }
 
 # Returns a hashtable with all resolved admin config values

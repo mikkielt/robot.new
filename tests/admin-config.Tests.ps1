@@ -62,28 +62,32 @@ Describe 'Find-DataManifest' {
     }
 
     It 'returns null when no manifest exists' {
-        $Result = Find-DataManifest -RepoRoot $script:TempDir -ParentRepoRoot $script:TempDir -Force
+        $Result = Find-DataManifest -RepoRoot $script:TempDir -Force
         $Result | Should -BeNullOrEmpty
     }
 
-    It 'finds manifest in repo root' {
+    It 'finds manifest at fixed .robot/ path' {
+        $RobotDir = Join-Path $script:TempDir '.robot'
+        [void][System.IO.Directory]::CreateDirectory($RobotDir)
         $ManifestContent = "@{ EntitiesFile = 'data/entities.md' }"
-        Write-TestFile -Path (Join-Path $script:TempDir '.robot-data.psd1') -Content $ManifestContent
+        Write-TestFile -Path (Join-Path $RobotDir 'robot-data.psd1') -Content $ManifestContent
 
-        $Result = Find-DataManifest -RepoRoot $script:TempDir -ParentRepoRoot $script:TempDir -Force
+        $Result = Find-DataManifest -RepoRoot $script:TempDir -Force
         $Result | Should -Not -BeNullOrEmpty
         $Result.Manifest.EntitiesFile | Should -Be 'data/entities.md'
-        $Result.ManifestDir | Should -Be $script:TempDir
+        $Result.ManifestDir | Should -Be $RobotDir
     }
 
     It 'caches result across calls' {
+        $RobotDir = Join-Path $script:TempDir '.robot'
+        [void][System.IO.Directory]::CreateDirectory($RobotDir)
         $ManifestContent = "@{ PlayersFile = 'Gracze.md' }"
-        Write-TestFile -Path (Join-Path $script:TempDir '.robot-data.psd1') -Content $ManifestContent
+        Write-TestFile -Path (Join-Path $RobotDir 'robot-data.psd1') -Content $ManifestContent
 
-        $Result1 = Find-DataManifest -RepoRoot $script:TempDir -ParentRepoRoot $script:TempDir -Force
+        $Result1 = Find-DataManifest -RepoRoot $script:TempDir -Force
         # Remove the file - cached result should still be returned
-        [System.IO.File]::Delete((Join-Path $script:TempDir '.robot-data.psd1'))
-        $Result2 = Find-DataManifest -RepoRoot $script:TempDir -ParentRepoRoot $script:TempDir
+        [System.IO.File]::Delete((Join-Path $RobotDir 'robot-data.psd1'))
+        $Result2 = Find-DataManifest -RepoRoot $script:TempDir
         $Result2.Manifest.PlayersFile | Should -Be 'Gracze.md'
     }
 }
