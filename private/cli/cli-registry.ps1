@@ -49,7 +49,7 @@ $script:MenuRegistry = @(
     @{
         ID       = 'new-session'
         Label    = 'Nowa sesja'
-        Description = 'Kreator nowej sesji Gen4'
+        Description = 'Stwórz nową sesję krok po kroku'
         Function = 'New-Session'
         Menu     = 'Sesje'
         Role     = 'N'
@@ -75,35 +75,37 @@ $script:MenuRegistry = @(
             'Logs'      = @{ Type = 'multitext'; Label = 'URL logów sesji' }
             'Content'   = @{ Type = 'text'; Label = 'Treść sesji' }
         }
+        InfoText = @('Kreator prowadzi krok po kroku: data, narrator, lokacje, PU, zmiany, powiadomienia.')
     }
 
     @{
         ID       = 'edit-session'
         Label    = 'Edytuj sesję'
-        Description = 'Zmiana metadanych sesji'
+        Description = 'Zmień dane istniejącej sesji'
         Function = 'Set-Session'
         Menu     = 'Sesje'
         Role     = 'N'
         Mode     = 'Workflow'
         WorkflowFunction = 'Invoke-EditSessionWorkflow'
+        InfoText = @('Pozwala zmienić datę, narratora, lokacje i inne dane sesji.')
     }
 
     @{
         ID       = 'validate-session'
         Label    = 'Walidacja sesji'
-        Description = 'Sprawdzenie poprawności sesji'
+        Description = 'Sprawdź poprawność nazw i dat w sesji'
         Menu     = 'Sesje'
         Role     = 'N'
         Mode     = 'Workflow'
         WorkflowFunction = 'Invoke-SessionValidation'
-        PreChecks = @('Format daty', 'Nazwy postaci w PU', 'Nazwy encji w Zmiany', 'Nazwy lokacji')
-        InfoText = @('Sprawdzi: daty, nazwy postaci, nazwy encji, lokacje')
+        PreChecks = @('Czy daty są w poprawnym formacie', 'Czy nazwy postaci w sekcji PU są rozpoznawalne', 'Czy nazwy elementów w sekcji Zmian są rozpoznawalne', 'Czy podane lokacje istnieją')
+        InfoText = @('Sprawdzi: czy daty są poprawne, czy nazwy postaci i elementów świata są rozpoznawalne.')
     }
 
     @{
         ID       = 'browse-sessions'
         Label    = 'Przeglądaj sesje'
-        Description = 'Lista sesji z filtrowaniem'
+        Description = 'Przeglądaj listę sesji'
         Function = 'Get-Session'
         Menu     = 'Sesje'
         Mode     = 'Query'
@@ -117,12 +119,13 @@ $script:MenuRegistry = @(
             'MinDate' = @{ Type = 'date'; Label = 'Od daty'; Required = $false }
             'MaxDate' = @{ Type = 'date'; Label = 'Do daty'; Required = $false }
         }
+        InfoText = @('Możesz filtrować po dacie. Wybierz wiersz, aby zobaczyć szczegóły.')
     }
 
     @{
         ID       = 'git-changelog'
         Label    = 'Historia zmian (git)'
-        Description = 'Logi git z repozytorium'
+        Description = 'Historia zmian w repozytorium'
         Function = 'Get-GitChangeLog'
         Menu     = 'Sesje'
         Mode     = 'Query'
@@ -136,6 +139,7 @@ $script:MenuRegistry = @(
             'MinDate' = @{ Type = 'text'; Label = 'Od daty (RRRR-MM-DD)'; Required = $false }
             'MaxDate' = @{ Type = 'text'; Label = 'Do daty (RRRR-MM-DD)'; Required = $false }
         }
+        InfoText = @('Pokazuje historię zapisów w repozytorium z datami i autorami.')
     }
 
     # ─── Gracze i Postacie ────────────────────────────────────────────────────
@@ -143,7 +147,7 @@ $script:MenuRegistry = @(
     @{
         ID       = 'new-player'
         Label    = 'Nowy gracz'
-        Description = 'Rejestracja nowego gracza'
+        Description = 'Dodaj nowego gracza do kampanii'
         Function = 'New-Player'
         Menu     = 'Gracze i Postacie'
         Role     = 'K'
@@ -153,12 +157,13 @@ $script:MenuRegistry = @(
             'Triggers' = @{ Type = 'multitext'; Label = 'Triggery (po jednym)' }
             'EntitiesFile' = @{ Hidden = $true }
         }
+        InfoText = @('Kreator poprosi o nazwę gracza i wyzwalacze powiadomień.')
     }
 
     @{
         ID       = 'new-character'
         Label    = 'Nowa postać'
-        Description = 'Kreator nowej postaci z walutą'
+        Description = 'Stwórz postać (opcjonalnie z walutą)'
         Function = 'New-PlayerCharacter'
         Menu     = 'Gracze i Postacie'
         Role     = 'K'
@@ -170,23 +175,25 @@ $script:MenuRegistry = @(
             'NoCharacterFile' = @{ Hidden = $true }
             'EntitiesFile' = @{ Hidden = $true }
         }
+        InfoText = @('Kreator poprosi o gracza, nazwę postaci i opcjonalnie walutę startową.')
     }
 
     @{
         ID       = 'edit-character'
         Label    = 'Edytuj postać'
-        Description = 'Zmiana danych postaci'
+        Description = 'Zmień dane istniejącej postaci'
         Function = 'Set-PlayerCharacter'
         Menu     = 'Gracze i Postacie'
         Role     = 'K'
         Mode     = 'Workflow'
         WorkflowFunction = 'Invoke-EditCharacterWorkflow'
+        InfoText = @('Wybierz postać, a potem zmień jej dane.')
     }
 
     @{
         ID       = 'edit-player'
         Label    = 'Edytuj gracza'
-        Description = 'Zmiana danych gracza'
+        Description = 'Zmień dane gracza'
         Function = 'Set-Player'
         Menu     = 'Gracze i Postacie'
         Role     = 'K'
@@ -196,12 +203,13 @@ $script:MenuRegistry = @(
             'Aliases'  = @{ Type = 'multitext'; Label = 'Aliasy (po jednym)' }
             'EntitiesFile' = @{ Hidden = $true }
         }
+        InfoText = @('Zmień wyzwalacze powiadomień lub alternatywne nazwy gracza.')
     }
 
     @{
         ID       = 'remove-character'
         Label    = 'Usuń postać'
-        Description = 'Oznaczenie postaci jako usuniętej'
+        Description = 'Oznacz postać jako nieaktywną'
         Function = 'Remove-PlayerCharacter'
         Menu     = 'Gracze i Postacie'
         Role     = 'K'
@@ -210,12 +218,13 @@ $script:MenuRegistry = @(
             'CharacterName' = @{ Type = 'fuzzy'; Source = 'characters' }
             'EntitiesFile'  = @{ Hidden = $true }
         }
+        InfoText = @('Postać zostanie oznaczona jako nieaktywna. Dane nie zostaną usunięte.')
     }
 
     @{
         ID       = 'browse-players'
         Label    = 'Przeglądaj graczy'
-        Description = 'Lista graczy i postaci'
+        Description = 'Przeglądaj graczy i ich postacie'
         Function = 'Get-Player'
         Menu     = 'Gracze i Postacie'
         Mode     = 'Query'
@@ -232,15 +241,17 @@ $script:MenuRegistry = @(
             }
         }
         DetailFunction = 'Show-PlayerCard'
+        InfoText = @('Wybierz gracza z listy, aby zobaczyć jego postacie.')
     }
 
     @{
         ID       = 'character-card'
         Label    = 'Karta postaci'
-        Description = 'Szczegółowy widok postaci'
+        Description = 'Wyświetl kartę postaci'
         Menu     = 'Gracze i Postacie'
         Mode     = 'Workflow'
         WorkflowFunction = 'Invoke-CharacterCardWorkflow'
+        InfoText = @('Wyświetla wszystkie informacje o postaci w jednym widoku.')
     }
 
     # ─── Encje ────────────────────────────────────────────────────────────────
@@ -248,29 +259,31 @@ $script:MenuRegistry = @(
     @{
         ID       = 'new-entity'
         Label    = 'Nowa encja'
-        Description = 'Kreator nowej encji (NPC/Grupa/Lokacja/Przedmiot)'
+        Description = 'Stwórz NPC, lokację, grupę lub przedmiot'
         Function = 'New-Entity'
         Menu     = 'Encje'
         Role     = 'K'
         Mode     = 'Workflow'
         WorkflowFunction = 'Invoke-NewEntityWorkflow'
+        InfoText = @('Wybierz typ (NPC, Lokacja, Grupa, Przedmiot), podaj nazwę i dodaj właściwości.')
     }
 
     @{
         ID       = 'edit-entity'
         Label    = 'Edytuj encję'
-        Description = 'Zmiana tagów encji'
+        Description = 'Zmień właściwości elementu świata gry'
         Function = 'Set-Entity'
         Menu     = 'Encje'
         Role     = 'K'
         Mode     = 'Workflow'
         WorkflowFunction = 'Invoke-EditEntityWorkflow'
+        InfoText = @('Wybierz element, a potem zmień jego właściwości.')
     }
 
     @{
         ID       = 'remove-entity'
         Label    = 'Usuń encję'
-        Description = 'Oznaczenie encji jako usuniętej'
+        Description = 'Oznacz element jako nieaktywny'
         Function = 'Remove-Entity'
         Menu     = 'Encje'
         Role     = 'K'
@@ -278,12 +291,13 @@ $script:MenuRegistry = @(
             'Name' = @{ Type = 'fuzzy'; Source = 'entities' }
             'EntitiesFile' = @{ Hidden = $true }
         }
+        InfoText = @('Element zostanie oznaczony jako nieaktywny. Dane nie zostaną usunięte.')
     }
 
     @{
         ID       = 'browse-entities'
         Label    = 'Przeglądaj encje'
-        Description = 'Lista encji z filtrem typu'
+        Description = 'Przeglądaj elementy świata gry'
         Function = 'Get-Entity'
         Menu     = 'Encje'
         Mode     = 'Query'
@@ -291,25 +305,28 @@ $script:MenuRegistry = @(
         Headers  = @('Nazwa', 'Typ', 'Status')
         Widths   = @(30, 15, 12)
         DetailFunction = 'Show-EntityCard'
+        InfoText = @('Wybierz element z listy, aby zobaczyć jego kartę z pełnymi informacjami.')
     }
 
     @{
         ID       = 'entity-history'
         Label    = 'Historia encji'
-        Description = 'Chronologia zmian encji'
+        Description = 'Historia zmian elementu z sesji'
         Function = 'Get-EntityHistory'
         Menu     = 'Encje'
         Mode     = 'Workflow'
         WorkflowFunction = 'Invoke-EntityHistoryWorkflow'
+        InfoText = @('Pokazuje, jak element zmieniał się w kolejnych sesjach.')
     }
 
     @{
         ID       = 'search-entity'
         Label    = 'Szukaj'
-        Description = 'Wyszukiwanie encji po nazwie'
+        Description = 'Szukaj elementu po nazwie'
         Menu     = 'Encje'
         Mode     = 'Workflow'
         WorkflowFunction = 'Invoke-EntitySearchWorkflow'
+        InfoText = @('Wpisz początek nazwy — nie musisz znać dokładnej pisowni.')
     }
 
     # ─── Waluta ───────────────────────────────────────────────────────────────
@@ -317,7 +334,7 @@ $script:MenuRegistry = @(
     @{
         ID       = 'new-currency'
         Label    = 'Nowa waluta'
-        Description = 'Utworzenie encji walutowej'
+        Description = 'Utwórz nowy zapis walutowy'
         Function = 'New-CurrencyEntity'
         Menu     = 'Waluta'
         Role     = 'K'
@@ -326,12 +343,13 @@ $script:MenuRegistry = @(
             'Owner'        = @{ Type = 'fuzzy'; Source = 'entities' }
             'EntitiesFile' = @{ Hidden = $true }
         }
+        InfoText = @('Utwórz zapis walutowy, np. sakiewkę postaci, z wybranym nominałem.')
     }
 
     @{
         ID       = 'set-currency-balance'
         Label    = 'Zmień saldo'
-        Description = 'Zmiana ilości waluty'
+        Description = 'Zmień ilość waluty'
         Function = 'Set-CurrencyEntity'
         Menu     = 'Waluta'
         Role     = 'K'
@@ -341,22 +359,24 @@ $script:MenuRegistry = @(
             'Owner'    = @{ Hidden = $true }
             'Location' = @{ Hidden = $true }
         }
+        InfoText = @('Zmień ilość waluty bezpośrednio (np. po znalezieniu skarbu).')
     }
 
     @{
         ID       = 'transfer-currency'
         Label    = 'Przelej walutę'
-        Description = 'Transfer walutowy między encjami'
+        Description = 'Przenieś walutę między właścicielami'
         Menu     = 'Waluta'
         Role     = 'K'
         Mode     = 'Workflow'
         WorkflowFunction = 'Invoke-CurrencyTransferWorkflow'
+        InfoText = @('Przenieś walutę z jednego właściciela do drugiego.')
     }
 
     @{
         ID       = 'move-currency-location'
         Label    = 'Zmień lokalizację'
-        Description = 'Przeniesienie waluty do lokacji'
+        Description = 'Przenieś walutę do innego miejsca'
         Function = 'Set-CurrencyEntity'
         Menu     = 'Waluta'
         Role     = 'K'
@@ -368,12 +388,13 @@ $script:MenuRegistry = @(
             'AmountDelta' = @{ Hidden = $true }
             'Owner'       = @{ Hidden = $true }
         }
+        InfoText = @('Zmień miejsce przechowywania waluty (np. z sakiewki do skarbca).')
     }
 
     @{
         ID       = 'remove-currency'
         Label    = 'Usuń walutę'
-        Description = 'Usunięcie encji walutowej'
+        Description = 'Usuń zapis walutowy'
         Function = 'Remove-CurrencyEntity'
         Menu     = 'Waluta'
         Role     = 'K'
@@ -381,40 +402,44 @@ $script:MenuRegistry = @(
             'Name' = @{ Type = 'fuzzy'; Source = 'currency' }
             'EntitiesFile' = @{ Hidden = $true }
         }
+        InfoText = @('Trwale usuwa zapis walutowy.')
     }
 
     @{
         ID       = 'browse-currency'
         Label    = 'Salda walut'
-        Description = 'Przegląd sald walutowych'
+        Description = 'Przegląd aktualnych stanów walut'
         Function = 'Get-CurrencyEntity'
         Menu     = 'Waluta'
         Mode     = 'Query'
         Columns  = @('EntityName', 'Denomination', 'Balance', 'Owner')
         Headers  = @('Nazwa', 'Nominał', 'Saldo', 'Właściciel')
         Widths   = @(28, 18, 8, 20)
+        InfoText = @('Lista wszystkich walut z aktualnymi saldami.')
     }
 
     @{
         ID       = 'currency-report'
         Label    = 'Raport walutowy'
-        Description = 'Zestawienie walut'
+        Description = 'Zestawienie walut wg właściciela'
         Function = 'Get-CurrencyReport'
         Menu     = 'Waluta'
         Mode     = 'Query'
         Columns  = @('Owner', 'Denomination', 'Balance')
         Headers  = @('Właściciel', 'Nominał', 'Saldo')
         Widths   = @(25, 20, 10)
+        InfoText = @('Zestawienie walut pogrupowane według właścicieli.')
     }
 
     @{
         ID       = 'currency-reconciliation'
         Label    = 'Uzgodnienie'
-        Description = 'Walidacja spójności walut'
+        Description = 'Sprawdź poprawność walut'
         Menu     = 'Waluta'
         Role     = 'K'
         Mode     = 'Workflow'
         WorkflowFunction = 'Invoke-CurrencyReconciliationDisplay'
+        InfoText = @('Sprawdza, czy salda walut zgadzają się z historią transakcji.')
     }
 
     # ─── PU ───────────────────────────────────────────────────────────────────
@@ -422,60 +447,63 @@ $script:MenuRegistry = @(
     @{
         ID       = 'pu-assignment'
         Label    = 'Przydział miesięczny'
-        Description = 'Naliczenie PU za okres'
+        Description = 'Nalicz PU za wybrany miesiąc'
         Function = 'Invoke-PlayerCharacterPUAssignment'
         Menu     = 'PU'
         Role     = 'K'
         Mode     = 'Workflow'
         WorkflowFunction = 'Invoke-PUAssignmentWorkflow'
-        PreChecks = @('Nazwy postaci', 'Daty sesji', 'Duplikaty', 'PU nadmiarowe')
-        InfoText = @('Sprawdzi nazwy postaci, daty sesji, duplikaty, PU nadmiarowe')
+        PreChecks = @('Czy nazwy postaci są rozpoznawalne', 'Czy daty sesji są poprawne', 'Czy nie ma zduplikowanych wpisów', 'Czy nadmiarowe PU się zgadzają')
+        InfoText = @('Najpierw podgląd (nic nie zostanie zapisane), potem zatwierdzenie.')
     }
 
     @{
         ID       = 'pre-pu-diagnostics'
         Label    = 'Diagnostyka przed przydziałem'
-        Description = 'Sprawdzenie gotowości do przydziału PU'
+        Description = 'Sprawdź gotowość do przydziału PU'
         Menu     = 'PU'
         Role     = 'K'
         Mode     = 'Workflow'
         WorkflowFunction = 'Invoke-PrePUDiagnostics'
-        PreChecks = @('Walidacja nazw postaci', 'Sprawdzenie dat sesji', 'Spójność PU', 'Raport problemów')
-        InfoText = @('Sprawdzi: walidacja nazw, dat sesji, spójność PU, raport problemów')
+        PreChecks = @('Czy nazwy postaci są rozpoznawalne', 'Czy daty sesji są poprawne', 'Czy PU są poprawne i spójne', 'Raport ewentualnych problemów')
+        InfoText = @('Sprawdzi: nazwy postaci, daty sesji, poprawność PU. Pokaże raport problemów.')
     }
 
     @{
         ID       = 'pu-history'
         Label    = 'Historia przydziałów'
-        Description = 'Dziennik naliczonych PU'
+        Description = 'Dziennik dotychczasowych przydziałów'
         Function = 'Get-PUAssignmentLog'
         Menu     = 'PU'
         Mode     = 'Query'
         Columns  = @('ProcessedAt', 'SessionCount', 'Timezone')
         Headers  = @('Przetworzono', 'Sesje', 'Strefa')
         Widths   = @(25, 10, 15)
+        InfoText = @('Lista dotychczasowych przydziałów z datami i liczbą sesji.')
     }
 
     @{
         ID       = 'voting-eligibility'
         Label    = 'Uprawnienia głosowania'
-        Description = 'Status uprawnień graczy'
+        Description = 'Kto może głosować'
         Function = 'Get-VotingEligibility'
         Menu     = 'PU'
         Mode     = 'Query'
         Columns  = @('PlayerName', 'VotingEligible', 'PU')
         Headers  = @('Gracz', 'Uprawniony', 'PU')
         Widths   = @(20, 12, 10)
+        InfoText = @('Pokazuje, którzy gracze spełniają warunki do głosowania.')
     }
 
     @{
         ID       = 'pu-diagnostics'
         Label    = 'Diagnostyka PU'
-        Description = 'Szczegółowy raport spójności PU'
+        Description = 'Szczegółowy raport poprawności PU'
         Menu     = 'PU'
         Role     = 'K'
         Mode     = 'Workflow'
         WorkflowFunction = 'Invoke-PUDiagnosticsDisplay'
+        InfoText = @('Szczegółowy raport: nierozpoznane nazwy, duplikaty, niespójności.')
     }
 
     # ─── Raporty i Narzędzia ─────────────────────────────────────────────────
@@ -483,7 +511,7 @@ $script:MenuRegistry = @(
     @{
         ID       = 'changelog'
         Label    = 'Log zmian'
-        Description = 'Zmiany stanów encji z sesji'
+        Description = 'Zmiany w świecie gry z sesji'
         Function = 'Get-ChangeLog'
         Menu     = 'Raporty i Narzędzia'
         Mode     = 'Query'
@@ -494,106 +522,115 @@ $script:MenuRegistry = @(
             'MinDate' = @{ Type = 'date'; Label = 'Od daty'; Required = $false }
             'MaxDate' = @{ Type = 'date'; Label = 'Do daty'; Required = $false }
         }
+        InfoText = @('Pokazuje zmiany właściwości elementów świata gry z kolejnych sesji.')
     }
 
     @{
         ID       = 'narrator-report'
         Label    = 'Raport narratorów'
-        Description = 'Statystyki narratorów'
+        Description = 'Statystyki prowadzących sesje'
         Function = 'Get-NarratorReport'
         Menu     = 'Raporty i Narzędzia'
         Mode     = 'Query'
         Columns  = @('NormalizedText', 'OccurrenceCount', 'Confidence')
         Headers  = @('Narrator', 'Liczba sesji', 'Pewność')
         Widths   = @(25, 15, 12)
+        InfoText = @('Ile sesji poprowadził każdy narrator.')
     }
 
     @{
         ID       = 'location-report'
         Label    = 'Raport lokacji'
-        Description = 'Statystyki użycia lokacji'
+        Description = 'Jak często używano poszczególnych lokacji'
         Function = 'Get-NamedLocationReport'
         Menu     = 'Raporty i Narzędzia'
         Mode     = 'Query'
         Columns  = @('Name', 'OccurrenceCount', 'EntityMatch')
         Headers  = @('Lokacja', 'Wystąpienia', 'Encja')
         Widths   = @(25, 12, 20)
+        InfoText = @('Ile razy każda lokacja pojawiła się w sesjach.')
     }
 
     @{
         ID       = 'notification-log'
         Label    = 'Powiadomienia'
-        Description = 'Dziennik powiadomień'
+        Description = 'Dziennik wysłanych powiadomień'
         Function = 'Get-NotificationLog'
         Menu     = 'Raporty i Narzędzia'
         Mode     = 'Query'
         Columns  = @('Date', 'TargetName', 'Directive', 'RecipientCount')
         Headers  = @('Data', 'Cel', 'Typ', 'Odbiorców')
         Widths   = @(12, 20, 12, 10)
+        InfoText = @('Historia wysłanych powiadomień z datami i odbiorcami.')
     }
 
     @{
         ID       = 'transaction-ledger'
         Label    = 'Transakcje'
-        Description = 'Księga transakcji walutowych'
+        Description = 'Księga przelewów walutowych'
         Function = 'Get-TransactionLedger'
         Menu     = 'Raporty i Narzędzia'
         Mode     = 'Query'
         Columns  = @('Date', 'Source', 'Destination', 'Amount', 'Denomination')
         Headers  = @('Data', 'Źródło', 'Cel', 'Kwota', 'Waluta')
         Widths   = @(12, 18, 18, 8, 15)
+        InfoText = @('Pełna lista przelewów walutowych z kwotami i stronami.')
     }
 
     @{
         ID       = 'intel-preview'
         Label    = 'Podgląd Intel'
-        Description = 'Podgląd routingu informacji'
+        Description = 'Kto otrzyma wiadomości z sesji'
         Menu     = 'Raporty i Narzędzia'
         Role     = 'N/K'
         Mode     = 'Workflow'
         WorkflowFunction = 'Invoke-IntelPreviewWorkflow'
-        InfoText = @('Pokaże: kto otrzyma jakie wiadomości z sesji')
+        InfoText = @('Pokaże, kto otrzyma jakie wiadomości na podstawie wybranej sesji.')
     }
 
     @{
         ID       = 'discord-pu-notification'
         Label    = 'Discord: Powiadomienie PU'
-        Description = 'Ponowne wysłanie powiadomienia PU'
+        Description = 'Wyślij ponownie powiadomienie PU'
         Function = 'Send-DiscordMessage'
         Menu     = 'Raporty i Narzędzia'
         Role     = 'K'
         Mode     = 'Workflow'
         WorkflowFunction = 'Invoke-DiscordPUNotificationWorkflow'
+        InfoText = @('Ponownie wysyła powiadomienie PU na Discord (np. po awarii).')
     }
 
     @{
         ID       = 'discord-announcement'
         Label    = 'Discord: Ogłoszenie'
-        Description = 'Strukturalne ogłoszenie na Discord'
+        Description = 'Opublikuj ogłoszenie na Discordzie'
         Function = 'Send-DiscordMessage'
         Menu     = 'Raporty i Narzędzia'
         Role     = 'K'
         Mode     = 'Workflow'
         WorkflowFunction = 'Invoke-DiscordAnnouncementWorkflow'
+        InfoText = @('Opublikuj sformatowane ogłoszenie na kanale Discord.')
     }
 
     @{
         ID       = 'discord-custom'
         Label    = 'Discord: Wiadomość'
-        Description = 'Dowolna wiadomość na Discord'
+        Description = 'Wyślij dowolną wiadomość na Discord'
         Function = 'Send-DiscordMessage'
         Menu     = 'Raporty i Narzędzia'
         Role     = 'K'
         Overrides = @{}
+        InfoText = @('Wyślij dowolną wiadomość na wybrany kanał Discord.')
     }
 
     @{
         ID       = 'name-search'
         Label    = 'Szukaj nazwy'
-        Description = 'Wyszukiwanie po nazwie (z fuzzy matching)'
+        Description = 'Wyszukaj po nazwie (przybliżone)'
         Menu     = 'Raporty i Narzędzia'
         Mode     = 'Workflow'
         WorkflowFunction = 'Invoke-NameSearchWorkflow'
+        InfoText = @('Wyszukaj dowolny element świata gry po nazwie — przybliżone dopasowanie.')
     }
 
     # ─── Logi ────────────────────────────────────────────────────────────────
@@ -601,24 +638,24 @@ $script:MenuRegistry = @(
     @{
         ID       = 'fetch-logs'
         Label    = 'Pobierz logi sesji'
-        Description = 'Masowe pobieranie logów z Pastebin do res/logs/'
+        Description = 'Pobierz zapisy rozmów z sesji'
         Menu     = 'Raporty i Narzędzia'
         Role     = 'K'
         Mode     = 'Workflow'
         WorkflowFunction = 'Invoke-FetchLogsWorkflow'
-        PreChecks = @('Wymaga połączenia z internetem', 'Throttling: 500ms między żądaniami')
-        InfoText = @('Pobiera logi z URL sesji do katalogu res/logs/')
+        PreChecks = @('Wymaga połączenia z internetem', 'Pobieranie odbywa się z przerwą między zapytaniami')
+        InfoText = @('Pobiera zapisy rozmów z adresów URL podanych w sesjach. Wymaga internetu.')
     }
 
     @{
         ID       = 'log-location-report'
         Label    = 'Raport lokacji z logów'
-        Description = 'Analiza rozpoznawania lokacji w logach'
+        Description = 'Porównaj lokacje w logach z elementami gry'
         Menu     = 'Raporty i Narzędzia'
         Role     = 'N'
         Mode     = 'Workflow'
         WorkflowFunction = 'Invoke-LogLocationReportWorkflow'
-        InfoText = @('Porównuje lokacje z logów z encjami w repozytorium')
+        InfoText = @('Porównuje lokacje z zapisów rozmów z lokacjami zarejestrowanymi w świecie gry.')
     }
 
     # ─── Migracja ─────────────────────────────────────────────────────────────
@@ -627,20 +664,22 @@ $script:MenuRegistry = @(
     @{
         ID       = 'migration-quick-check'
         Label    = 'Szybka diagnostyka'
-        Description = 'Podsumowanie stanu migracji'
+        Description = 'Ile zostało do zrobienia'
         Menu     = 'Migracja'
         Role     = 'K'
         Mode     = 'Workflow'
         WorkflowFunction = 'Invoke-MigrationQuickCheck'
+        InfoText = @('Szybki podgląd: które fazy migracji zostały ukończone.')
     }
 
     @{
         ID       = 'migration-full-report'
         Label    = 'Pełny raport'
-        Description = 'Szczegółowy raport migracji'
+        Description = 'Szczegółowy raport postępu'
         Menu     = 'Migracja'
         Role     = 'K'
         Mode     = 'Workflow'
         WorkflowFunction = 'Invoke-MigrationFullReport'
+        InfoText = @('Pełny raport z wynikami każdej fazy migracji.')
     }
 )
