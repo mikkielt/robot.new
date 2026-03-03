@@ -222,6 +222,29 @@ Antagarich (continent)
 
 This hierarchy is used for location-based Intel targeting - a message sent to "Lokacja/Erathia" reaches everyone in Erathia and all its sub-locations.
 
+### Nerthus Names
+
+Locations in Margonem have game-assigned names, but the Nerthus RP server uses its own names for many locations. Use `@nazwa_nerthus` to record the RP override name:
+
+```markdown
+* Gwiżdżąca Grota
+    - @nazwa_nerthus: Kryjówka Craga Hacka (2024-01:)
+```
+
+The entity's `Name` stays as the Margonem game name. The Nerthus name is added to the entity's searchable names, so both names resolve to the same entity.
+
+### Multi-ID Locations
+
+A single location entity can map to many Margonem numeric IDs (one per floor or variant). Record each ID as a separate `@margonemid` line:
+
+```markdown
+* Gwiżdżąca Grota
+    - @margonemid: 2135
+    - @margonemid: 2136
+    - @margonemid: 2137
+    - @margonemid: 2138
+```
+
 ### Aliases
 
 Entities can have alternative names (aliases) that the system recognizes. For example, "Sandro" might also be known as "Mroczny Mag" or "Lich z Deyji".
@@ -280,6 +303,10 @@ Each property change has a validity period:
 - **Always active** - no dates specified (e.g., an entity's original name)
 - **Open-ended** - starts on a date, no end (e.g., `(2025-06:)` = from June 2025 onward)
 - **Bounded** - starts and ends on specific dates (e.g., `(2024-01:2024-06)` = January to June 2024)
+- **Seasonal** - active only during a specific season (e.g., `(zima)` = active in winter)
+- **Date + seasonal** - both date range and season must match (e.g., `(2024-01:, lato)` = from January 2024, but only in summer)
+
+Season keywords (Polish): `wiosna` (spring, Mar-May), `lato` (summer, Jun-Aug), `jesień` (autumn, Sep-Nov), `zima` (winter, Dec-Feb).
 
 The most recent active value wins for single-value properties (like location). For multi-value properties (like group memberships), all active values are collected.
 

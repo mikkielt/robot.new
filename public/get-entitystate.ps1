@@ -143,6 +143,7 @@ function Get-EntityState {
                         Text      = $Parsed.Text
                         ValidFrom = $Session.Date
                         ValidTo   = $null
+                        Season    = $Parsed.Season
                     }
                 }
 
@@ -152,6 +153,7 @@ function Get-EntityState {
                             Location  = $Parsed.Text
                             ValidFrom = $Parsed.ValidFrom
                             ValidTo   = $Parsed.ValidTo
+                            Season    = $Parsed.Season
                         })
                     }
                     '@drzwi' {
@@ -159,6 +161,7 @@ function Get-EntityState {
                             Location  = $Parsed.Text
                             ValidFrom = $Parsed.ValidFrom
                             ValidTo   = $Parsed.ValidTo
+                            Season    = $Parsed.Season
                         })
                     }
                     '@typ' {
@@ -166,6 +169,7 @@ function Get-EntityState {
                             Type      = $Parsed.Text
                             ValidFrom = $Parsed.ValidFrom
                             ValidTo   = $Parsed.ValidTo
+                            Season    = $Parsed.Season
                         })
                     }
                     '@należy_do' {
@@ -173,6 +177,7 @@ function Get-EntityState {
                             OwnerName = $Parsed.Text
                             ValidFrom = $Parsed.ValidFrom
                             ValidTo   = $Parsed.ValidTo
+                            Season    = $Parsed.Season
                         })
                     }
                     '@grupa' {
@@ -180,6 +185,7 @@ function Get-EntityState {
                             Group     = $Parsed.Text
                             ValidFrom = $Parsed.ValidFrom
                             ValidTo   = $Parsed.ValidTo
+                            Season    = $Parsed.Season
                         })
                     }
                     '@alias' {
@@ -187,6 +193,7 @@ function Get-EntityState {
                             Text      = $Parsed.Text
                             ValidFrom = $Parsed.ValidFrom
                             ValidTo   = $Parsed.ValidTo
+                            Season    = $Parsed.Season
                         })
                         [void]$TargetEntity.Names.Add($Parsed.Text)
                     }
@@ -201,6 +208,7 @@ function Get-EntityState {
                             Status    = $Parsed.Text
                             ValidFrom = $Parsed.ValidFrom
                             ValidTo   = $Parsed.ValidTo
+                            Season    = $Parsed.Season
                         })
                     }
                     '@ilość' {
@@ -222,6 +230,7 @@ function Get-EntityState {
                             Quantity  = $QtyText
                             ValidFrom = $Parsed.ValidFrom
                             ValidTo   = $Parsed.ValidTo
+                            Season    = $Parsed.Season
                         })
                     }
                     '@generyczne_nazwy' {
@@ -244,7 +253,20 @@ function Get-EntityState {
                             FilePath  = $Parsed.Text
                             ValidFrom = $Parsed.ValidFrom
                             ValidTo   = $Parsed.ValidTo
+                            Season    = $Parsed.Season
                         })
+                    }
+                    '@nazwa_nerthus' {
+                        if (-not $TargetEntity.NerthusNameHistory) {
+                            $TargetEntity.NerthusNameHistory = [System.Collections.Generic.List[object]]::new()
+                        }
+                        $TargetEntity.NerthusNameHistory.Add([PSCustomObject]@{
+                            NerthusName = $Parsed.Text
+                            ValidFrom   = $Parsed.ValidFrom
+                            ValidTo     = $Parsed.ValidTo
+                            Season      = $Parsed.Season
+                        })
+                        [void]$TargetEntity.Names.Add($Parsed.Text)
                     }
                     default {
                         # Generic override (e.g. @pu_startowe, @info, @trigger)
@@ -344,6 +366,7 @@ function Get-EntityState {
         if ($Entity.StatusHistory -and $Entity.StatusHistory.Count -gt 0) { $Entity.StatusHistory.Sort($DateComparer) }
         if ($Entity.QuantityHistory -and $Entity.QuantityHistory.Count -gt 0) { $Entity.QuantityHistory.Sort($DateComparer) }
         if ($Entity.FilePathHistory -and $Entity.FilePathHistory.Count -gt 0) { $Entity.FilePathHistory.Sort($DateComparer) }
+        if ($Entity.NerthusNameHistory -and $Entity.NerthusNameHistory.Count -gt 0) { $Entity.NerthusNameHistory.Sort($DateComparer) }
 
         # Recompute active scalar/array values from merged + sorted histories
         $Entity.Location = Get-LastActiveValue -History $Entity.LocationHistory -PropertyName 'Location'  -ActiveOn $ActiveOn
@@ -367,6 +390,11 @@ function Get-EntityState {
         if ($Entity.FilePathHistory -and $Entity.FilePathHistory.Count -gt 0) {
             $MergedFilePath = Get-LastActiveValue -History $Entity.FilePathHistory -PropertyName 'FilePath' -ActiveOn $ActiveOn
             if ($MergedFilePath) { $Entity.FilePath = $MergedFilePath }
+        }
+
+        if ($Entity.NerthusNameHistory -and $Entity.NerthusNameHistory.Count -gt 0) {
+            $MergedNerthusName = Get-LastActiveValue -History $Entity.NerthusNameHistory -PropertyName 'NerthusName' -ActiveOn $ActiveOn
+            if ($MergedNerthusName) { $Entity.NerthusName = $MergedNerthusName }
         }
     }
 

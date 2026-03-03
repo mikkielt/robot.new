@@ -6,15 +6,18 @@
     This file contains shared temporal utility functions extracted from get-entity.ps1:
 
     Helpers:
-    - ConvertFrom-ValidityString: splits "Value (2025-02:)" into { Text, ValidFrom, ValidTo }
+    - ConvertFrom-ValidityString: splits "Value (2025-02:)" into { Text, ValidFrom, ValidTo, Season }
     - Resolve-PartialDate:        expands partial dates (YYYY, YYYY-MM) to full datetime values
-    - Test-TemporalActivity:      checks if an item falls within an -ActiveOn date window
+    - Resolve-SeasonForDate:      returns Polish season name for a given date
+    - Test-TemporalActivity:      checks if an item falls within an -ActiveOn date window (date + season)
     - Get-NestedBulletText:       collects text from child bullets that pass temporal filtering
     - Get-LastActiveValue:        returns the last active entry from a history list
     - Get-AllActiveValues:        returns all active entries from a history list as string[]
 
     Module-level data:
-    - $ValidityPattern: precompiled regex for parsing validity range syntax
+    - $ValidityPattern:    precompiled regex for parsing validity range syntax
+    - $SeasonKeywords:     HashSet of valid Polish season keywords
+    - $DateRangePattern:   precompiled regex for detecting date range components
 
     These helpers are used by Get-Entity, Get-EntityState, Get-Session (via
     Resolve-IntelTargets), and various reporting commands. They are dot-sourced
@@ -22,34 +25,107 @@
     module loader.
 #>
 
-# Precompiled regex - shared across all ConvertFrom-ValidityString calls
-$script:ValidityPattern = [regex]::new('^(.*?)(?:\s*\(([^:)]*):([^)]*)\))?$', [System.Text.RegularExpressions.RegexOptions]::Compiled)
+# Precompiled regex - captures text and optional parenthetical content
+$script:ValidityPattern = [regex]::new('^(.*?)(?:\s*\(([^)]+)\))?$', [System.Text.RegularExpressions.RegexOptions]::Compiled)
+
+# Date range component detector - matches start:end patterns
+$script:DateRangePattern = [regex]::new('^([^:]*):(.*)$', [System.Text.RegularExpressions.RegexOptions]::Compiled)
+
+# Valid Polish season keywords (case-insensitive matching via OrdinalIgnoreCase)
+$script:SeasonKeywords = [System.Collections.Generic.HashSet[string]]::new(
+    [string[]]@('wiosna', 'lato', 'jesień', 'zima'),
+    [System.StringComparer]::OrdinalIgnoreCase)
 
 # Helper: parse temporal validity range
-# Splits text like "Value (2025-02:)" or "Value (:2025-01)" into structured
-# components. Handles partial dates (YYYY, YYYY-MM, YYYY-MM-DD). Start dates
-# resolve to first day of period, end dates to last day.
-# Returns hashtable: @{ Text; ValidFrom; ValidTo }
+# Splits text like "Value (2025-02:)" or "Value (:2025-01)" or "Value (zima)"
+# or "Value (2024-01:, zima)" into structured components.
+# Handles partial dates (YYYY, YYYY-MM, YYYY-MM-DD). Start dates resolve to
+# first day of period, end dates to last day.
+# Season keywords: wiosna, lato, jesień, zima (Polish, case-insensitive).
+# Returns hashtable: @{ Text; ValidFrom; ValidTo; Season }
 function ConvertFrom-ValidityString {
     param([string]$InputText)
 
     $Match = $script:ValidityPattern.Match($InputText.Trim())
 
     if (-not $Match.Success) {
-        return @{ Text = $InputText.Trim(); ValidFrom = $null; ValidTo = $null }
+        return @{ Text = $InputText.Trim(); ValidFrom = $null; ValidTo = $null; Season = $null }
     }
 
-    $Name     = $Match.Groups[1].Value.Trim()
-    $StartStr = $Match.Groups[2].Value.Trim()
-    $EndStr   = $Match.Groups[3].Value.Trim()
+    $Name       = $Match.Groups[1].Value.Trim()
+    $ParenGroup = $Match.Groups[2]
 
-    $ValidFrom = Resolve-PartialDate -DateStr $StartStr -IsEnd $false
-    $ValidTo   = Resolve-PartialDate -DateStr $EndStr   -IsEnd $true
+    if (-not $ParenGroup.Success) {
+        # No parenthetical content
+        return @{ Text = $Name; ValidFrom = $null; ValidTo = $null; Season = $null }
+    }
 
+    $ParenContent = $ParenGroup.Value.Trim()
+
+    # Check for comma-separated components (season + date range in any order)
+    if ($ParenContent.Contains(',')) {
+        $Parts = $ParenContent.Split(',')
+        $Season    = $null
+        $DatePart  = $null
+
+        foreach ($Part in $Parts) {
+            $Trimmed = $Part.Trim()
+            if ($script:SeasonKeywords.Contains($Trimmed)) {
+                $Season = $Trimmed.ToLowerInvariant()
+            } else {
+                $DatePart = $Trimmed
+            }
+        }
+
+        # Parse date range part if found
+        $ValidFrom = $null
+        $ValidTo   = $null
+        if ($DatePart) {
+            $DateMatch = $script:DateRangePattern.Match($DatePart)
+            if ($DateMatch.Success) {
+                $ValidFrom = Resolve-PartialDate -DateStr $DateMatch.Groups[1].Value.Trim() -IsEnd $false
+                $ValidTo   = Resolve-PartialDate -DateStr $DateMatch.Groups[2].Value.Trim() -IsEnd $true
+            }
+        }
+
+        return @{
+            Text      = $Name
+            ValidFrom = $ValidFrom
+            ValidTo   = $ValidTo
+            Season    = $Season
+        }
+    }
+
+    # Single component: season keyword, date range, or literal text
+    if ($script:SeasonKeywords.Contains($ParenContent)) {
+        # Season-only
+        return @{
+            Text      = $Name
+            ValidFrom = $null
+            ValidTo   = $null
+            Season    = $ParenContent.ToLowerInvariant()
+        }
+    }
+
+    $DateMatch = $script:DateRangePattern.Match($ParenContent)
+    if ($DateMatch.Success) {
+        # Date range only (existing behavior)
+        $ValidFrom = Resolve-PartialDate -DateStr $DateMatch.Groups[1].Value.Trim() -IsEnd $false
+        $ValidTo   = Resolve-PartialDate -DateStr $DateMatch.Groups[2].Value.Trim() -IsEnd $true
+        return @{
+            Text      = $Name
+            ValidFrom = $ValidFrom
+            ValidTo   = $ValidTo
+            Season    = $null
+        }
+    }
+
+    # Not temporal - restore parenthetical as literal text (backward compat)
     return @{
-        Text      = $Name
-        ValidFrom = $ValidFrom
-        ValidTo   = $ValidTo
+        Text      = "$Name ($ParenContent)"
+        ValidFrom = $null
+        ValidTo   = $null
+        Season    = $null
     }
 }
 
@@ -89,10 +165,38 @@ function Resolve-PartialDate {
     }
 }
 
+# Helper: resolve season name for a given date
+# Default meteorological mapping: Mar-May=wiosna, Jun-Aug=lato, Sep-Nov=jesień, Dec-Feb=zima.
+# Custom mapping from $script:CachedSeasonMapping (loaded from local.config.psd1) overrides defaults.
+function Resolve-SeasonForDate {
+    param(
+        [Parameter(Mandatory)]
+        [datetime]$Date
+    )
+
+    # Check for custom mapping from local.config.psd1
+    if ($script:CachedSeasonMapping) {
+        foreach ($Entry in $script:CachedSeasonMapping.GetEnumerator()) {
+            $Months = $Entry.Value
+            if ($Months -contains $Date.Month) {
+                return $Entry.Key
+            }
+        }
+    }
+
+    # Default meteorological seasons
+    switch ($Date.Month) {
+        { $_ -ge 3 -and $_ -le 5 }  { return 'wiosna' }
+        { $_ -ge 6 -and $_ -le 8 }  { return 'lato' }
+        { $_ -ge 9 -and $_ -le 11 } { return 'jesień' }
+        default                       { return 'zima' }
+    }
+}
+
 # Helper: temporal activity check
 # Returns $true when $Item falls within the -ActiveOn window. Items without
 # validity bounds are always active. When $ActiveOn is $null (not supplied),
-# every item is considered active.
+# every item is considered active. Also checks seasonal constraint when present.
 function Test-TemporalActivity {
     param(
         [object]$Item,
@@ -102,6 +206,15 @@ function Test-TemporalActivity {
     if ($null -eq $ActiveOn)                                  { return $true }
     if ($Item.ValidFrom -and $ActiveOn -lt $Item.ValidFrom)   { return $false }
     if ($Item.ValidTo   -and $ActiveOn -gt $Item.ValidTo)     { return $false }
+
+    # Season check: if item has a Season constraint, verify it matches the ActiveOn date
+    if ($Item.Season) {
+        $CurrentSeason = Resolve-SeasonForDate -Date $ActiveOn
+        if (-not [string]::Equals($Item.Season, $CurrentSeason, [System.StringComparison]::OrdinalIgnoreCase)) {
+            return $false
+        }
+    }
+
     return $true
 }
 

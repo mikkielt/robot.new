@@ -403,6 +403,7 @@ function Get-NamedLocationReport {
                     EntityName  = if ($Owner -and $Owner.Name) { $Owner.Name } else { $CanonName }
                     EntityCN    = if ($Owner -and $Owner.CN) { $Owner.CN } else { $null }
                     EntityType  = 'Lokacja'
+                    NerthusName = if ($Owner -and $Owner.PSObject.Properties['NerthusName']) { $Owner.NerthusName } else { $null }
                     MatchStage  = $MatchStage
                     IsAmbiguous = if ($MatchEntry.Ambiguous) { $true } else { $false }
                 }
@@ -411,6 +412,7 @@ function Get-NamedLocationReport {
                     EntityName  = if ($AnyTypeMatch.Name) { $AnyTypeMatch.Name } else { $CanonName }
                     EntityCN    = if ($AnyTypeMatch.CN) { $AnyTypeMatch.CN } else { $null }
                     EntityType  = if ($AnyTypeMatch.Type) { $AnyTypeMatch.Type } else { 'Unknown' }
+                    NerthusName = if ($AnyTypeMatch.PSObject.Properties['NerthusName']) { $AnyTypeMatch.NerthusName } else { $null }
                     MatchStage  = 'Fuzzy'
                     IsAmbiguous = $false
                 }

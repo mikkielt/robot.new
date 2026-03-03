@@ -419,6 +419,20 @@ Values support optional `(YYYY-MM:YYYY-MM)` or `(YYYY-MM:)` or `(:YYYY-MM)` suff
 
 Partial dates are supported: `YYYY` (full year), `YYYY-MM` (full month), `YYYY-MM-DD` (exact day).
 
+### Seasonal Markers
+
+Values can include season keywords alongside or instead of date ranges. Polish keywords: `wiosna`, `lato`, `jesień`, `zima` (case-insensitive).
+
+```markdown
+- @tlo: ithan-zima.png (zima)              # Season only - active in winter
+- @lokacja: Targowisko (2024-01:, lato)    # Date range + season
+- @alias: Jaskinia Mrozu (zima)            # Seasonal alias
+```
+
+When both date range and season are specified, the value is active only when **both** conditions are met. Default meteorological mapping: Mar-May=wiosna, Jun-Aug=lato, Sep-Nov=jesień, Dec-Feb=zima. Configurable via `local.config.psd1` `SeasonMapping` key.
+
+Non-recognized parenthetical content (no colon and not a season keyword) is treated as literal text for backward compatibility.
+
 ### Recognized @Tags — Entity-Level
 
 Tags with dedicated handling in the entity parser (`get-entity.ps1`):
@@ -436,7 +450,18 @@ Tags with dedicated handling in the entity parser (`get-entity.ps1`):
 | `@ilość` | Quantity for Przedmiot entities | Yes |
 | `@plik` | Path to character file for Postać entities | Yes |
 | `@generyczne_nazwy` | Comma-separated generic names (added to Names collection) | No |
-| Any other | Generic override stored in Overrides dictionary (e.g. `@info`, `@stan`, `@margonemid`, `@prfwebhook`, `@pu_startowe`, `@pu_suma`, `@pu_zdobyte`, `@pu_nadmiar`, `@region`) | Yes (via Overrides) |
+| `@nazwa_nerthus` | RP override name for the entity (added to Names for resolution). Scalar: last-active-wins | Yes |
+| Any other | Generic override stored in Overrides dictionary (e.g. `@info`, `@stan`, `@margonemid`, `@rozmiar_mapy`, `@tlo`, `@prfwebhook`, `@pu_startowe`, `@pu_suma`, `@pu_zdobyte`, `@pu_nadmiar`, `@region`) | Yes (via Overrides) |
+
+### Override Tag Conventions for Locations
+
+These tags are stored as generic overrides (in `Overrides` dictionary) but have established conventions:
+
+| Tag | Description | Example |
+|---|---|---|
+| `@margonemid` | Margonem numeric map ID. Multi-valued: one line per floor/variant | `@margonemid: 117` |
+| `@rozmiar_mapy` | Tile grid dimensions (WxH) | `@rozmiar_mapy: 32x32` |
+| `@tlo` | Background image reference. Supports seasonal markers | `@tlo: ithan-zima.png (zima)` |
 
 ### Recognized @Tags — Session-Level (Gen4 Metadata)
 

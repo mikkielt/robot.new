@@ -79,13 +79,14 @@ Level-2 headers define entity type sections, mapped via `$TypeMap`:
 |---|---|---|---|
 | `@alias` | Temporal | `Aliases`, `Names` | Alternative names with validity ranges |
 | `@lokacja` | Temporal | `Location`, `LocationHistory` | Location assignment / containment |
-| `@drzwi` | Temporal | `Doors`, `DoorHistory` | Physical access connections |
+| `@drzwi` | Temporal | `Doors`, `DoorHistory` | Physical access connections. For Lokacja entities, active doors generate path-qualified names in `Names` (e.g. "Steadwick/Grota") |
 | `@typ` | Temporal | `Type`, `TypeHistory` | Entity type override |
 | `@należy_do` | Temporal | `Owner`, `OwnerHistory` | Ownership (entity -> player) |
 | `@grupa` | Temporal | `Groups`, `GroupHistory` | Group/faction membership |
 | `@status` | Temporal | `Status`, `StatusHistory` | `Aktywny`/`Nieaktywny`/`Usunięty` |
 | `@ilość` | Temporal | `Quantity`, `QuantityHistory` | Item quantity (used for stackable items such as currency). Accepts integer values. In Zmiany blocks, supports `+N`/`-N` delta syntax to add/subtract from current quantity. |
 | `@plik` | Temporal | `FilePath`, `FilePathHistory` | Relative path to the entity's file (e.g. character `.md` file). Supports temporal ranges for entities whose file reference changes over time. Populated automatically by `New-PlayerCharacter` and during migration from `Gracze.md` link paths. |
+| `@nazwa_nerthus` | Temporal | `NerthusName`, `NerthusNameHistory` | RP override name for the entity. Active value added to `Names` for resolution. Scalar semantics: last-active-wins (like `@lokacja`). |
 | `@zawiera` | Non-temporal | `Contains` | Child containment declaration |
 | `@generyczne_nazwy` | Non-temporal | `GenericNames`, `Names` | Comma-delimited generic names for the entity (e.g. "Strażnik Miasta, Wartownik"). Added to `Names` for resolution. |
 | Any other `@tag` | Temporal | `Overrides[tag]` | Generic key-value storage |
@@ -97,6 +98,19 @@ Format: `(YYYY-MM:YYYY-MM)`, `(YYYY-MM:)`, `(:YYYY-MM)`, or absent (always activ
 Partial dates resolved via `Resolve-PartialDate`:
 - Start bound -> first day of period (`YYYY-01-01`, `YYYY-MM-01`)
 - End bound -> last day of period (`YYYY-12-31`, `YYYY-MM-{DaysInMonth}`)
+
+**Seasonal markers**: `(zima)`, `(lato)`, `(wiosna)`, `(jesień)` — or combined with date ranges: `(2024-01:, zima)`. All history entry objects include a `Season` property (`$null` when not seasonal). `Test-TemporalActivity` checks both date bounds and season match.
+
+### 3.5a Door-Path Name Generation
+
+For Lokacja entities with active `@drzwi` entries, path-qualified names are generated and added to `Names`:
+
+```
+Gwiżdżąca Grota with @drzwi: Steadwick and @drzwi: Czerwona Twierdza
+-> Names: { "Gwiżdżąca Grota", "Steadwick/Gwiżdżąca Grota", "Czerwona Twierdza/Gwiżdżąca Grota" }
+```
+
+These path-qualified names enable session `@Lokacje` references like "Steadwick/Gwiżdżąca Grota" to resolve to the correct entity via the name index. CN remains single-valued (`Resolve-EntityCN` unchanged).
 
 ### 3.6 Parent-Child Lookup Optimization
 
@@ -228,6 +242,8 @@ Characters with `Status = 'Usunięty'` are excluded unless `-IncludeDeleted`.
 | `GenericNames` | `List[string]` | Generic names for the entity (from `@generyczne_nazwy`) |
 | `Doors` | string[] | Active physical access connections |
 | `DoorHistory` | `List[object]` | Full door history |
+| `NerthusName` | string | Active RP override name (from `@nazwa_nerthus`; `$null` when absent) |
+| `NerthusNameHistory` | `List[object]` | NerthusName changes with validity ranges |
 | `Contains` | `List[string]` | Child entity names |
 | `Overrides` | hashtable | Generic `@tag` -> value list dictionary |
 | `TypeHistory` | `List[object]` | Type changes with validity ranges |

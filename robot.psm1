@@ -29,6 +29,24 @@ $ModuleRoot = $PSScriptRoot
 
 $script:SuppressWarnings = $false
 
+# ── Season Mapping ────────────────────────────────────────────────────────
+# Loaded from local.config.psd1 SeasonMapping key. Used by Resolve-SeasonForDate
+# in temporal-helpers.ps1. Null means use default meteorological mapping.
+
+$script:CachedSeasonMapping = $null
+
+$LocalConfigPath = [System.IO.Path]::Combine($ModuleRoot, 'local.config.psd1')
+if ([System.IO.File]::Exists($LocalConfigPath)) {
+    try {
+        $LocalCfg = Import-PowerShellDataFile -Path $LocalConfigPath
+        if ($LocalCfg.SeasonMapping) {
+            $script:CachedSeasonMapping = $LocalCfg.SeasonMapping
+        }
+    } catch {
+        # Non-fatal: local config is optional
+    }
+}
+
 function Write-RobotWarning {
     param([Parameter(Mandatory)] [string]$Message)
     if (-not $script:SuppressWarnings) {
