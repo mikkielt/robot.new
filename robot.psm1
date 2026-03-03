@@ -68,10 +68,13 @@ foreach ($FilePath in $FunctionFiles) {
 # ── PHASE 2: Plugin Loading ─────────────────────────────────────────────────
 
 # Module-scoped plugin state
-$script:LoadedPlugins = @{}             # Name -> manifest hashtable
-$script:HookRegistry  = @{}             # "Operation:Phase" -> sorted list of handlers
-$script:PluginConfigs = @{}             # Name -> resolved config hashtable
-$script:ModuleRoot    = $ModuleRoot     # Expose to plugin helpers
+$script:LoadedPlugins        = @{}             # Name -> manifest hashtable
+$script:HookRegistry         = @{}             # "Operation:Phase" -> sorted list of handlers
+$script:PluginConfigs        = @{}             # Name -> resolved config hashtable
+$script:PluginMenuItems      = [System.Collections.Generic.List[hashtable]]::new()  # CLI menu entries from plugins
+$script:PluginMenuCategories = [System.Collections.Generic.List[string]]::new()     # New CLI categories from plugins
+$script:PluginHelpContent    = @{}             # Category -> List[hashtable] of help entries from plugins
+$script:ModuleRoot           = $ModuleRoot     # Expose to plugin helpers
 
 $PluginsDir = [System.IO.Path]::Combine($ModuleRoot, 'plugins')
 
@@ -200,6 +203,35 @@ if ([System.IO.Directory]::Exists($PluginsDir)) {
             }
         }
 
+        # Register CLI menu items
+        if ($Manifest.MenuItems) {
+            foreach ($MenuItem in $Manifest.MenuItems) {
+                $MenuItem['_PluginName'] = $PluginName
+                [void]$script:PluginMenuItems.Add($MenuItem)
+            }
+        }
+
+        # Register CLI menu categories
+        if ($Manifest.MenuCategories) {
+            foreach ($Cat in $Manifest.MenuCategories) {
+                if (-not $script:PluginMenuCategories.Contains($Cat)) {
+                    [void]$script:PluginMenuCategories.Add($Cat)
+                }
+            }
+        }
+
+        # Collect CLI help content
+        if ($Manifest.HelpContent) {
+            foreach ($HelpKey in $Manifest.HelpContent.Keys) {
+                if (-not $script:PluginHelpContent.ContainsKey($HelpKey)) {
+                    $script:PluginHelpContent[$HelpKey] = [System.Collections.Generic.List[hashtable]]::new()
+                }
+                $HelpEntry = $Manifest.HelpContent[$HelpKey].Clone()
+                $HelpEntry['_PluginName'] = $PluginName
+                [void]$script:PluginHelpContent[$HelpKey].Add($HelpEntry)
+            }
+        }
+
         $script:LoadedPlugins[$PluginName] = $Manifest
 
         Write-Verbose "Loaded plugin: $PluginName v$($Manifest.Version)"
@@ -254,14 +286,17 @@ function Get-LoadedPlugins {
                 $script:PluginConfigs[$Entry.Key]
             } else { @{} }
 
+            $MenuItemCount = ($script:PluginMenuItems | Where-Object { $_['_PluginName'] -eq $Entry.Key }).Count
+
             $Results.Add([PSCustomObject]@{
-                Name        = $Entry.Key
-                Version     = $Manifest.Version
-                Description = $Manifest.Description
-                Author      = $Manifest.Author
-                Functions   = if ($Manifest.ExportedFunctions) { $Manifest.ExportedFunctions } else { @() }
-                HookCount   = if ($Manifest.Hooks) { $Manifest.Hooks.Count } else { 0 }
-                ConfigKeys  = @($Config.Keys)
+                Name          = $Entry.Key
+                Version       = $Manifest.Version
+                Description   = $Manifest.Description
+                Author        = $Manifest.Author
+                Functions     = if ($Manifest.ExportedFunctions) { $Manifest.ExportedFunctions } else { @() }
+                HookCount     = if ($Manifest.Hooks) { $Manifest.Hooks.Count } else { 0 }
+                MenuItemCount = $MenuItemCount
+                ConfigKeys    = @($Config.Keys)
             })
         }
     }

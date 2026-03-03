@@ -582,3 +582,92 @@ Describe 'Get-PluginConfig' {
         $Result.Count | Should -Be 0
     }
 }
+
+# ── Plugin CLI Metadata Extraction ────────────────────────────────────────
+
+Describe 'Plugin CLI metadata extraction' {
+    BeforeAll {
+        # CLI metadata variables are module-internal ($script: scope in robot.psm1).
+        # We test the extraction pipeline by simulating the Phase 2c loop logic
+        # from robot.psm1 on a manifest with MenuItems/MenuCategories/HelpContent.
+
+        $script:PluginMenuItems      = [System.Collections.Generic.List[hashtable]]::new()
+        $script:PluginMenuCategories = [System.Collections.Generic.List[string]]::new()
+        $script:PluginHelpContent    = @{}
+    }
+
+    It 'extracts MenuItems from manifest into PluginMenuItems' {
+        $Manifest = @{
+            Name       = 'test-cli-plugin'
+            MenuItems  = @(
+                @{ ID = 'test:action'; Label = 'Test'; Menu = 'Encje'; Function = 'Get-Entity' }
+            )
+        }
+
+        foreach ($MenuItem in $Manifest.MenuItems) {
+            $MenuItem['_PluginName'] = $Manifest.Name
+            [void]$script:PluginMenuItems.Add($MenuItem)
+        }
+
+        $script:PluginMenuItems.Count | Should -Be 1
+        $script:PluginMenuItems[0].ID | Should -Be 'test:action'
+        $script:PluginMenuItems[0]['_PluginName'] | Should -Be 'test-cli-plugin'
+    }
+
+    It 'extracts MenuCategories from manifest into PluginMenuCategories' {
+        $Manifest = @{
+            Name           = 'test-cli-plugin'
+            MenuCategories = @('Plugin Tools')
+        }
+
+        foreach ($Cat in $Manifest.MenuCategories) {
+            if (-not $script:PluginMenuCategories.Contains($Cat)) {
+                [void]$script:PluginMenuCategories.Add($Cat)
+            }
+        }
+
+        $script:PluginMenuCategories | Should -Contain 'Plugin Tools'
+    }
+
+    It 'does not duplicate categories from multiple manifest reads' {
+        $CountBefore = $script:PluginMenuCategories.Count
+
+        # Simulate same category from another manifest
+        $Cat = 'Plugin Tools'
+        if (-not $script:PluginMenuCategories.Contains($Cat)) {
+            [void]$script:PluginMenuCategories.Add($Cat)
+        }
+
+        $script:PluginMenuCategories.Count | Should -Be $CountBefore
+    }
+
+    It 'extracts HelpContent from manifest into PluginHelpContent' {
+        $Manifest = @{
+            Name        = 'test-cli-plugin'
+            HelpContent = @{
+                'Plugin Tools' = @{
+                    Title = 'Plugin Tools - Pomoc'
+                    Body  = @('Help line 1')
+                }
+            }
+        }
+
+        foreach ($HelpKey in $Manifest.HelpContent.Keys) {
+            if (-not $script:PluginHelpContent.ContainsKey($HelpKey)) {
+                $script:PluginHelpContent[$HelpKey] = [System.Collections.Generic.List[hashtable]]::new()
+            }
+            $HelpEntry = $Manifest.HelpContent[$HelpKey].Clone()
+            $HelpEntry['_PluginName'] = $Manifest.Name
+            [void]$script:PluginHelpContent[$HelpKey].Add($HelpEntry)
+        }
+
+        $script:PluginHelpContent.ContainsKey('Plugin Tools') | Should -BeTrue
+        $script:PluginHelpContent['Plugin Tools'][0].Title | Should -Be 'Plugin Tools - Pomoc'
+        $script:PluginHelpContent['Plugin Tools'][0]['_PluginName'] | Should -Be 'test-cli-plugin'
+    }
+
+    It 'Get-LoadedPlugins returns empty list when no plugins loaded' {
+        $Result = Get-LoadedPlugins
+        $Result | Should -HaveCount 0
+    }
+}

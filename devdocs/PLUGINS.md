@@ -59,6 +59,8 @@ plugins/
     │   └── Get-MyReport.ps1
     ├── private/                 # Optional: internal helpers (not exported)
     │   └── Format-MyOutput.ps1
+    ├── cli/                     # Optional: CLI workflow files (dot-sourced at Layer 6.5)
+    │   └── cli-wf-myplugin.ps1
     ├── templates/               # Optional: template files
     │   └── my-report.md.template
     ├── tests/                   # Optional: Pester test files
@@ -96,6 +98,9 @@ plugins/
 | `Config` | hashtable | `@{}` | Declared configuration keys (see SS 7) |
 | `Scopes` | string[] | `@()` | RBAC scopes required by this plugin (see SS 8) |
 | `DependsOn` | string[] | `@()` | Plugin names that must load first |
+| `MenuItems` | hashtable[] | `@()` | CLI menu entries to register (see SS 10.7) |
+| `MenuCategories` | string[] | `@()` | New CLI top-level categories to add to `MenuOrder` |
+| `HelpContent` | hashtable | `@{}` | CLI help entries keyed by category name (see SS 10.7) |
 
 ### 4.3 Complete Example
 
@@ -137,6 +142,21 @@ plugins/
         }
     }
     Scopes            = @('entity:write')
+    MenuCategories    = @()
+    MenuItems         = @(
+        @{
+            ID       = 'llm-validator:report'
+            Label    = 'Raport walidacji LLM'
+            Menu     = 'Encje'
+            Mode     = 'Workflow'
+            WorkflowFunction = 'Invoke-LLMReportWorkflow'
+        }
+    )
+    HelpContent       = @{
+        'Encje' = @{
+            Body = @('Raport walidacji LLM - pokazuje wyniki walidacji encji przez LLM.')
+        }
+    }
 }
 ```
 
@@ -158,8 +178,11 @@ Step-by-step sequence executed during module import:
    - Dot-source `public/*.ps1` Verb-Noun functions into module scope (private helpers are loaded on-demand by plugin functions, same as core)
    - **Collision detection**: if a function name already exists (core or prior plugin), warn to stderr and skip the conflicting function
    - Register hooks from manifest `Hooks` array (see SS 6)
+   - Extract CLI metadata: `MenuItems` → `$script:PluginMenuItems`, `MenuCategories` → `$script:PluginMenuCategories`, `HelpContent` → `$script:PluginHelpContent` (each item tagged with `_PluginName`)
 7. **Sort** all registered hooks by priority (ascending, lower = earlier)
 8. **Single `Export-ModuleMember`** at end of `robot.psm1` exports core functions + all plugin public functions
+
+CLI metadata is not merged into the live registry at import time. It is stored in module-scoped lists and merged later by `Merge-PluginMenuItems` when `Invoke-RobotCLI` starts (see [CLI.md](CLI.md) SS 8.1).
 
 ### 5.2 Functions
 
@@ -402,7 +425,7 @@ Test-PluginScope -RequiredScope 'entity:write'
 
 | Function | Signature | Output |
 |---|---|---|
-| `Get-LoadedPlugins` | `Get-LoadedPlugins` | Array of `@{ Name; Version; Description; Author; ExportedFunctions; Hooks; Config; Scopes; DependsOn; LoadOrder }` |
+| `Get-LoadedPlugins` | `Get-LoadedPlugins` | Array of `@{ Name; Version; Description; Author; Functions; HookCount; MenuItemCount; ConfigKeys }` |
 | `Get-PluginConfig` | `Get-PluginConfig -PluginName <string>` | Resolved config hashtable for the named plugin, or empty hashtable `@{}` if not loaded |
 
 `Get-LoadedPlugins` returns metadata for all successfully loaded plugins in load order. Useful for diagnostics and tooling.
@@ -417,6 +440,7 @@ Test-PluginScope -RequiredScope 'entity:write'
 mkdir plugins/my-plugin
 mkdir plugins/my-plugin/public
 mkdir plugins/my-plugin/private
+mkdir plugins/my-plugin/cli        # Optional: CLI workflow files
 mkdir plugins/my-plugin/tests
 ```
 
@@ -475,7 +499,58 @@ Describe 'my-plugin' {
 }
 ```
 
-### 10.6 Configure as Git Submodule
+### 10.6 Add CLI Menu Items (Optional)
+
+Plugins can register menu items, categories, and help content for the interactive CLI. These are declared in the manifest and merged into the CLI at startup by `Merge-PluginMenuItems` (see [CLI.md](CLI.md) SS 8.1).
+
+**Menu items** — each item is a hashtable following the same schema as core registry entries (see [CLI.md](CLI.md) SS 7.1):
+
+```powershell
+MenuItems = @(
+    @{
+        ID       = 'my-plugin:my-action'    # Use plugin-name: prefix to avoid collisions
+        Label    = 'Moja akcja'
+        Menu     = 'Encje'                  # Must be in MenuOrder (core or plugin-added)
+        Mode     = 'Wizard'                 # Wizard (default), Query, or Workflow
+        Function = 'Invoke-MyAction'        # Required for Wizard/Query mode
+    }
+    @{
+        ID               = 'my-plugin:my-workflow'
+        Label            = 'Moje zadanie'
+        Menu             = 'My Tools'       # Plugin-added category
+        Mode             = 'Workflow'
+        WorkflowFunction = 'Invoke-MyWorkflow'  # Required for Workflow mode
+    }
+)
+```
+
+**Categories** — declare new top-level categories before referencing them in menu items:
+
+```powershell
+MenuCategories = @('My Tools')
+```
+
+**Help content** — provide help text for categories. For existing categories, only `Body` is needed (appended). For new categories, both `Title` and `Body` are required:
+
+```powershell
+HelpContent = @{
+    'My Tools' = @{
+        Title = 'My Tools - Pomoc'
+        Body  = @('Line 1 of help text', 'Line 2 of help text')
+    }
+    'Encje' = @{
+        Body = @('Additional help from my plugin.')  # Appended to existing help
+    }
+}
+```
+
+**Workflow files** — if a menu item uses `Mode = 'Workflow'`, the workflow function must be available at CLI runtime. Place workflow functions in `cli/*.ps1` files inside the plugin directory — these are dot-sourced at Layer 6.5 during CLI startup:
+
+```
+plugins/my-plugin/cli/cli-wf-myplugin.ps1
+```
+
+### 10.7 Configure as Git Submodule
 
 ```bash
 cd plugins/
@@ -696,6 +771,15 @@ The parent module tracks a specific commit of each plugin submodule. Bumping req
 | Hook handler function not found | Warns to stderr at invocation time. Hook skipped; subsequent hooks still run. |
 | Missing required config (no value resolved) | Warns to stderr with config key name and plugin name. Plugin loads but config key is `$null`. |
 | No RBAC config (`Roles`/`RoleScopes` absent) | `Test-PluginScope` returns `$true` for all scopes. Fully permissive. |
+| Menu item missing `ID`, `Label`, or `Menu` | Warns to stderr with plugin name. Item skipped; other items still merge. |
+| Menu item ID collides with existing entry | Warns to stderr. Item skipped; existing entry preserved. |
+| Menu item references unknown category | Warns to stderr. Item skipped. Declare the category in `MenuCategories` first. |
+| Wizard item missing `Function` | Warns to stderr. Item skipped. |
+| Workflow item missing `WorkflowFunction` | Warns to stderr. Item skipped. |
+| Query item `Columns`/`Headers` count mismatch | Warns to stderr. Item skipped. |
+| Help entry for new category missing `Title` or `Body` | Warns to stderr. Entry skipped. |
+| Plugin `cli/` directory does not exist | Not an error. No plugin CLI files loaded for that plugin. |
+| Plugin `cli/*.ps1` file fails to load | Warns to stderr with file path and error. Other CLI files still load. |
 
 ---
 
@@ -703,7 +787,8 @@ The parent module tracks a specific commit of each plugin submodule. Bumping req
 
 | Test file | Coverage |
 |---|---|
-| `tests/plugin-system.Tests.ps1` | Resolve-PluginLoadOrder (ordering, missing deps, circular deps), Resolve-PluginConfig (env var, local config, namespaced, defaults, priority), Invoke-PluginHook (fast path, priority ordering, BeforeWrite rejection, AfterWrite error logging, missing handlers), Test-PluginScope (permissive default, role matching, scope hierarchy), Get-LoadedPlugins, Get-PluginConfig |
+| `tests/plugin-system.Tests.ps1` | Resolve-PluginLoadOrder (ordering, missing deps, circular deps), Resolve-PluginConfig (env var, local config, namespaced, defaults, priority), Invoke-PluginHook (fast path, priority ordering, BeforeWrite rejection, AfterWrite error logging, missing handlers), Test-PluginScope (permissive default, role matching, scope hierarchy), Get-LoadedPlugins, Get-PluginConfig, Plugin CLI metadata extraction (MenuItems, MenuCategories, HelpContent) |
+| `tests/cli-registry.Tests.ps1` | Merge-PluginMenuItems (valid merge, collision detection, mode validation, category merge, help merge) |
 
 Plugin-specific tests reside in each plugin's `tests/` directory. Run plugin tests separately:
 

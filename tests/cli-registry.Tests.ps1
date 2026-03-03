@@ -156,6 +156,312 @@ Describe 'Get-RegistryEntry' {
     }
 }
 
+# ── Merge-PluginMenuItems ──────────────────────────────────────────────────
+
+Describe 'Merge-PluginMenuItems' {
+    BeforeEach {
+        # Snapshot registry/order/help state before each test
+        $script:OrigMenuRegistry = $script:MenuRegistry.Clone()
+        $script:OrigMenuOrder    = $script:MenuOrder.Clone()
+        $script:OrigHelpContent  = @{}
+        foreach ($K in $script:HelpContent.Keys) {
+            $script:OrigHelpContent[$K] = @{
+                Title = $script:HelpContent[$K].Title
+                Body  = [string[]]$script:HelpContent[$K].Body.Clone()
+            }
+        }
+
+        # Clear plugin state
+        $script:PluginMenuItems      = [System.Collections.Generic.List[hashtable]]::new()
+        $script:PluginMenuCategories = [System.Collections.Generic.List[string]]::new()
+        $script:PluginHelpContent    = @{}
+    }
+
+    AfterEach {
+        # Restore original state
+        $script:MenuRegistry = $script:OrigMenuRegistry
+        $script:MenuOrder    = $script:OrigMenuOrder
+        $script:HelpContent  = $script:OrigHelpContent
+    }
+
+    It 'does nothing when no plugin items exist' {
+        $CountBefore = $script:MenuRegistry.Count
+        Merge-PluginMenuItems
+        $script:MenuRegistry.Count | Should -Be $CountBefore
+    }
+
+    It 'merges a valid Wizard-mode item into the registry' {
+        [void]$script:PluginMenuItems.Add(@{
+            ID          = 'test-plugin:wizard-action'
+            Label       = 'Test Action'
+            Description = 'A test wizard action'
+            Menu        = 'Encje'
+            Function    = 'Get-Entity'
+            _PluginName = 'test-plugin'
+        })
+
+        $CountBefore = $script:MenuRegistry.Count
+        Merge-PluginMenuItems
+        $script:MenuRegistry.Count | Should -Be ($CountBefore + 1)
+
+        $Entry = Get-RegistryEntry -ID 'test-plugin:wizard-action'
+        $Entry | Should -Not -BeNullOrEmpty
+        $Entry.Label | Should -Be 'Test Action'
+    }
+
+    It 'merges a valid Query-mode item into the registry' {
+        [void]$script:PluginMenuItems.Add(@{
+            ID          = 'test-plugin:query-action'
+            Label       = 'Test Query'
+            Menu        = 'Encje'
+            Mode        = 'Query'
+            Function    = 'Get-Entity'
+            Columns     = @('Name', 'Type')
+            Headers     = @('Nazwa', 'Typ')
+            _PluginName = 'test-plugin'
+        })
+
+        Merge-PluginMenuItems
+
+        $Entry = Get-RegistryEntry -ID 'test-plugin:query-action'
+        $Entry | Should -Not -BeNullOrEmpty
+        $Entry.Mode | Should -Be 'Query'
+    }
+
+    It 'merges a valid Workflow-mode item into the registry' {
+        [void]$script:PluginMenuItems.Add(@{
+            ID               = 'test-plugin:workflow-action'
+            Label            = 'Test Workflow'
+            Menu             = 'Encje'
+            Mode             = 'Workflow'
+            WorkflowFunction = 'Invoke-TestWorkflow'
+            _PluginName      = 'test-plugin'
+        })
+
+        Merge-PluginMenuItems
+
+        $Entry = Get-RegistryEntry -ID 'test-plugin:workflow-action'
+        $Entry | Should -Not -BeNullOrEmpty
+        $Entry.WorkflowFunction | Should -Be 'Invoke-TestWorkflow'
+    }
+
+    It 'skips items with duplicate IDs and warns' {
+        [void]$script:PluginMenuItems.Add(@{
+            ID          = 'new-session'   # already exists in core registry
+            Label       = 'Duplicate'
+            Menu        = 'Sesje'
+            Function    = 'New-Session'
+            _PluginName = 'test-plugin'
+        })
+
+        $OldErr = [System.Console]::Error
+        $ErrWriter = [System.IO.StringWriter]::new()
+        [System.Console]::SetError($ErrWriter)
+        try {
+            $CountBefore = $script:MenuRegistry.Count
+            Merge-PluginMenuItems
+            $script:MenuRegistry.Count | Should -Be $CountBefore
+        } finally {
+            [System.Console]::SetError($OldErr)
+        }
+
+        $Stderr = $ErrWriter.ToString()
+        $Stderr | Should -BeLike "*menu ID 'new-session' already exists*"
+    }
+
+    It 'skips items with missing required fields and warns' {
+        [void]$script:PluginMenuItems.Add(@{
+            ID          = 'test-plugin:no-label'
+            Menu        = 'Encje'
+            Function    = 'Get-Entity'
+            _PluginName = 'test-plugin'
+        })
+
+        $OldErr = [System.Console]::Error
+        $ErrWriter = [System.IO.StringWriter]::new()
+        [System.Console]::SetError($ErrWriter)
+        try {
+            $CountBefore = $script:MenuRegistry.Count
+            Merge-PluginMenuItems
+            $script:MenuRegistry.Count | Should -Be $CountBefore
+        } finally {
+            [System.Console]::SetError($OldErr)
+        }
+
+        $Stderr = $ErrWriter.ToString()
+        $Stderr | Should -BeLike '*missing ID, Label, or Menu*'
+    }
+
+    It 'skips items referencing unknown categories and warns' {
+        [void]$script:PluginMenuItems.Add(@{
+            ID          = 'test-plugin:bad-category'
+            Label       = 'Bad Category'
+            Menu        = 'NonExistentCategory'
+            Function    = 'Get-Entity'
+            _PluginName = 'test-plugin'
+        })
+
+        $OldErr = [System.Console]::Error
+        $ErrWriter = [System.IO.StringWriter]::new()
+        [System.Console]::SetError($ErrWriter)
+        try {
+            $CountBefore = $script:MenuRegistry.Count
+            Merge-PluginMenuItems
+            $script:MenuRegistry.Count | Should -Be $CountBefore
+        } finally {
+            [System.Console]::SetError($OldErr)
+        }
+
+        $Stderr = $ErrWriter.ToString()
+        $Stderr | Should -BeLike "*menu category 'NonExistentCategory' not in MenuOrder*"
+    }
+
+    It 'skips Wizard items missing Function and warns' {
+        [void]$script:PluginMenuItems.Add(@{
+            ID          = 'test-plugin:no-function'
+            Label       = 'No Function'
+            Menu        = 'Encje'
+            _PluginName = 'test-plugin'
+        })
+
+        $OldErr = [System.Console]::Error
+        $ErrWriter = [System.IO.StringWriter]::new()
+        [System.Console]::SetError($ErrWriter)
+        try {
+            $CountBefore = $script:MenuRegistry.Count
+            Merge-PluginMenuItems
+            $script:MenuRegistry.Count | Should -Be $CountBefore
+        } finally {
+            [System.Console]::SetError($OldErr)
+        }
+
+        $Stderr = $ErrWriter.ToString()
+        $Stderr | Should -BeLike "*Wizard item*missing Function*"
+    }
+
+    It 'skips Workflow items missing WorkflowFunction and warns' {
+        [void]$script:PluginMenuItems.Add(@{
+            ID               = 'test-plugin:no-wf'
+            Label            = 'No Workflow'
+            Menu             = 'Encje'
+            Mode             = 'Workflow'
+            _PluginName      = 'test-plugin'
+        })
+
+        $OldErr = [System.Console]::Error
+        $ErrWriter = [System.IO.StringWriter]::new()
+        [System.Console]::SetError($ErrWriter)
+        try {
+            $CountBefore = $script:MenuRegistry.Count
+            Merge-PluginMenuItems
+            $script:MenuRegistry.Count | Should -Be $CountBefore
+        } finally {
+            [System.Console]::SetError($OldErr)
+        }
+
+        $Stderr = $ErrWriter.ToString()
+        $Stderr | Should -BeLike "*Workflow item*missing WorkflowFunction*"
+    }
+
+    It 'skips Query items with Columns/Headers count mismatch and warns' {
+        [void]$script:PluginMenuItems.Add(@{
+            ID          = 'test-plugin:bad-query'
+            Label       = 'Bad Query'
+            Menu        = 'Encje'
+            Mode        = 'Query'
+            Function    = 'Get-Entity'
+            Columns     = @('Name', 'Type')
+            Headers     = @('Nazwa')
+            _PluginName = 'test-plugin'
+        })
+
+        $OldErr = [System.Console]::Error
+        $ErrWriter = [System.IO.StringWriter]::new()
+        [System.Console]::SetError($ErrWriter)
+        try {
+            $CountBefore = $script:MenuRegistry.Count
+            Merge-PluginMenuItems
+            $script:MenuRegistry.Count | Should -Be $CountBefore
+        } finally {
+            [System.Console]::SetError($OldErr)
+        }
+
+        $Stderr = $ErrWriter.ToString()
+        $Stderr | Should -BeLike "*Columns/Headers count mismatch*"
+    }
+
+    It 'merges new categories into MenuOrder' {
+        [void]$script:PluginMenuCategories.Add('Narzędzia pluginu')
+        [void]$script:PluginMenuItems.Add(@{
+            ID          = 'test-plugin:action'
+            Label       = 'Plugin Action'
+            Menu        = 'Narzędzia pluginu'
+            Function    = 'Get-Entity'
+            _PluginName = 'test-plugin'
+        })
+
+        Merge-PluginMenuItems
+        $script:MenuOrder | Should -Contain 'Narzędzia pluginu'
+
+        $Entry = Get-RegistryEntry -ID 'test-plugin:action'
+        $Entry | Should -Not -BeNullOrEmpty
+    }
+
+    It 'merges help content for new categories' {
+        [void]$script:PluginMenuCategories.Add('Test Category')
+        $script:PluginHelpContent['Test Category'] = [System.Collections.Generic.List[hashtable]]::new()
+        [void]$script:PluginHelpContent['Test Category'].Add(@{
+            Title       = 'Test Category - Pomoc'
+            Body        = @('Line 1', 'Line 2')
+            _PluginName = 'test-plugin'
+        })
+
+        Merge-PluginMenuItems
+
+        $script:HelpContent.ContainsKey('Test Category') | Should -BeTrue
+        $script:HelpContent['Test Category'].Title | Should -Be 'Test Category - Pomoc'
+        $script:HelpContent['Test Category'].Body.Count | Should -Be 2
+    }
+
+    It 'appends help body lines to existing categories' {
+        $OrigBodyCount = $script:HelpContent['Encje'].Body.Count
+
+        $script:PluginHelpContent['Encje'] = [System.Collections.Generic.List[hashtable]]::new()
+        [void]$script:PluginHelpContent['Encje'].Add(@{
+            Body        = @('Plugin help line 1', 'Plugin help line 2')
+            _PluginName = 'test-plugin'
+        })
+
+        Merge-PluginMenuItems
+
+        # Original lines + blank separator + 2 plugin lines
+        $script:HelpContent['Encje'].Body.Count | Should -Be ($OrigBodyCount + 3)
+        $script:HelpContent['Encje'].Body[-1] | Should -Be 'Plugin help line 2'
+    }
+
+    It 'warns on new category help missing Title or Body' {
+        [void]$script:PluginMenuCategories.Add('Broken Help')
+        $script:PluginHelpContent['Broken Help'] = [System.Collections.Generic.List[hashtable]]::new()
+        [void]$script:PluginHelpContent['Broken Help'].Add(@{
+            Title       = 'Only Title, No Body'
+            _PluginName = 'test-plugin'
+        })
+
+        $OldErr = [System.Console]::Error
+        $ErrWriter = [System.IO.StringWriter]::new()
+        [System.Console]::SetError($ErrWriter)
+        try {
+            Merge-PluginMenuItems
+        } finally {
+            [System.Console]::SetError($OldErr)
+        }
+
+        $Stderr = $ErrWriter.ToString()
+        $Stderr | Should -BeLike "*help for 'Broken Help' missing Title or Body*"
+        $script:HelpContent.ContainsKey('Broken Help') | Should -BeFalse
+    }
+}
+
 # ── Migration Phase Registry ───────────────────────────────────────────────
 
 Describe 'Migration Phase Registry' {

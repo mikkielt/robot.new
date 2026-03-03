@@ -43,7 +43,11 @@ Invoke-RobotCLI (public/cli/invoke-robotcli.ps1)
     │
     ├── Layer 5: cli-routing.ps1        (depends on all above)
     │       Get-MenuCategories, Get-MenuItems, Get-RegistryEntry,
+    │       Merge-PluginMenuItems,
     │       Invoke-MenuAction, Invoke-QueryAction, Show-SubMenu, Show-MainMenu
+    │
+    ├── Layer 5.5: Plugin menu merge    (merges plugin items/categories/help)
+    │       Merge-PluginMenuItems called after routing is loaded
     │
     ├── Layer 6: Workflows (depend on L1–L3)
     │   ├── cli-wf-session.ps1          Session edit + validation
@@ -55,6 +59,9 @@ Invoke-RobotCLI (public/cli/invoke-robotcli.ps1)
     │   ├── cli-wf-pu.ps1               PU assignment + diagnostics
     │   ├── cli-wf-discord.ps1          Discord PU notification + announcement
     │   └── cli-wf-reporting.ps1        Intel preview, name search, migration reports
+    │
+    ├── Layer 6.5: Plugin CLI workflows  (dot-source plugin cli/*.ps1)
+    │       Per loaded plugin: dot-source all .ps1 files from plugins/<name>/cli/
     │
     └── Layer 7: cli-wizard-migration.ps1 (overrides stubs from L5)
             Get-MigrationMenuItems, Invoke-MigrationPhaseAction
@@ -79,7 +86,7 @@ All files are dot-sourced on demand when `Invoke-RobotCLI` is called (not at mod
 | `cli-wizard-steps.ps1` | — | 3 | `Invoke-WizardStep` (dot-sourced by `cli-wizard.ps1`) |
 | `cli-wizard-preview.ps1` | — | 3 | `Show-Preview` (dot-sourced by `cli-wizard.ps1`) |
 | `cli-registry.ps1` | ~600 | 4 | Menu order array, menu registry (39 entries, pure data) |
-| `cli-routing.ps1` | ~360 | 5 | Menu helpers, action dispatch, query execution, main/sub menu loops |
+| `cli-routing.ps1` | ~480 | 5 | Menu helpers, plugin menu merge, action dispatch, query execution, main/sub menu loops |
 | `cli-wf-session.ps1` | ~150 | 6 | `Invoke-EditSessionWorkflow`, `Invoke-SessionValidation` |
 | `cli-wf-player.ps1` | ~400 | 6 | `Invoke-NewPlayerWorkflow`, `Invoke-NewCharacterWorkflow`, `Invoke-EditCharacterWorkflow`, `Invoke-CharacterCardWorkflow`, `Show-CharacterCard`, `Show-PlayerCard` |
 | `cli-wf-entity.ps1` | ~480 | 6 | `Invoke-NewEntityWorkflow`, `Invoke-EditEntityWorkflow`, `Invoke-EntityHistoryWorkflow`, `Invoke-EntitySearchWorkflow`; dot-sources `cli-display-entity.ps1` |
@@ -92,7 +99,7 @@ All files are dot-sourced on demand when `Invoke-RobotCLI` is called (not at mod
 
 ### 3.2 Entry Point
 
-`public/cli/invoke-robotcli.ps1` exports `Invoke-RobotCLI`. It dot-sources all 18 CLI files in layer order (including the sub-files dot-sourced transitively by `cli-primitives.ps1`, `cli-wizard.ps1`, and `cli-wf-entity.ps1`), validates terminal compatibility, detects theme, pre-loads entity/player/name index data, and enters the main menu loop.
+`public/cli/invoke-robotcli.ps1` exports `Invoke-RobotCLI`. It dot-sources all 18 CLI files in layer order (including the sub-files dot-sourced transitively by `cli-primitives.ps1`, `cli-wizard.ps1`, and `cli-wf-entity.ps1`), calls `Merge-PluginMenuItems` to integrate plugin-declared menu items/categories/help into CLI state (Layer 5.5), dot-sources plugin `cli/*.ps1` workflow files (Layer 6.5), validates terminal compatibility, detects theme, pre-loads entity/player/name index data, and enters the main menu loop.
 
 ### 3.3 Tests
 
@@ -101,7 +108,7 @@ All files are dot-sourced on demand when `Invoke-RobotCLI` is called (not at mod
 | `cli-primitives.Tests.ps1` | `Get-CLIColor`, `Resolve-CLITheme`, `Banner art` |
 | `cli-wizard.Tests.ps1` | `CommonParams HashSet`, `Resolve-StepType` |
 | `cli-fuzzy.Tests.ps1` | `Filter-FuzzyCandidates`, `Get-FuzzySearchCandidates` |
-| `cli-registry.Tests.ps1` | `Menu Registry`, `Get-MenuCategories`, `Get-MenuItems`, `Get-RegistryEntry`, `Migration Phase Registry`, `Migration UI color resolution` |
+| `cli-registry.Tests.ps1` | `Menu Registry`, `Get-MenuCategories`, `Get-MenuItems`, `Get-RegistryEntry`, `Merge-PluginMenuItems`, `Migration Phase Registry`, `Migration UI color resolution` |
 | `cli-help.Tests.ps1` | `Help Content` (completeness, key matching) |
 
 ---
@@ -275,7 +282,20 @@ Add a hashtable to `$script:MenuRegistry` in `cli-registry.ps1`:
 
 ## 8. Routing & Dispatch (`cli-routing.ps1`)
 
-### 8.1 Action Dispatch
+### 8.1 Plugin Menu Merge
+
+`Merge-PluginMenuItems` is called once during CLI startup (Layer 5.5), after routing is loaded. It reads the module-scoped plugin data (`$script:PluginMenuItems`, `$script:PluginMenuCategories`, `$script:PluginHelpContent`) that was populated during `robot.psm1` Phase 2 plugin loading, and merges them into the CLI's live state:
+
+1. **Categories** — appends plugin-declared categories to `$script:MenuOrder` (duplicates skipped)
+2. **Menu items** — appends validated items to `$script:MenuRegistry` with collision detection:
+   - Required fields: `ID`, `Label`, `Menu`
+   - ID must not collide with existing registry entries
+   - `Menu` must reference a category already in `$script:MenuOrder`
+   - Mode-specific validation: Wizard requires `Function`, Workflow requires `WorkflowFunction`, Query requires matching `Columns`/`Headers` counts
+   - Invalid items are skipped with a warning to stderr
+3. **Help content** — for existing categories, appends body lines (blank separator + plugin lines); for new categories, adds the full help entry (requires both `Title` and `Body`)
+
+### 8.2 Action Dispatch
 
 `Invoke-MenuAction -ItemID <string> -State <NavState>` looks up the registry entry and dispatches by mode:
 
@@ -285,7 +305,7 @@ Add a hashtable to `$script:MenuRegistry` in `cli-registry.ps1`:
 | `Query` | `Invoke-QueryAction -Entry $Entry -State $State` |
 | `Workflow` | `& $Entry.WorkflowFunction -State $State -Entry $Entry` |
 
-### 8.2 Query Pipeline
+### 8.3 Query Pipeline
 
 `Invoke-QueryAction` executes:
 
@@ -296,11 +316,11 @@ Add a hashtable to `$script:MenuRegistry` in `cli-registry.ps1`:
 5. Apply `ColumnResolvers` for computed columns
 6. Loop: `Show-ResultTable` → select row → `DetailFunction` or `Show-DetailCard` → back
 
-### 8.3 Menu Loop
+### 8.4 Menu Loop
 
 `Show-MainMenu` renders top-level categories. `Show-SubMenu` renders items within a category. Both support Escape (back), H (context-sensitive help), and Q (quit). The Migracja category dynamically prepends migration phase items from `Get-MigrationMenuItems`.
 
-### 8.4 Migration Stubs
+### 8.5 Migration Stubs
 
 `cli-routing.ps1` defines stub functions `Get-MigrationMenuItems` (returns empty) and `Invoke-MigrationPhaseAction` (shows "not loaded" message). These are overridden by `cli-wizard-migration.ps1` when migration files are available.
 

@@ -75,6 +75,8 @@ The breadcrumb at the top of the screen shows your current location (e.g., `Robo
 
 Each category shows the number of available actions. Select a category to see its items.
 
+Plugins can add their own menu items to existing categories or introduce entirely new categories. Plugin-provided items appear alongside core items and work the same way (wizard, query, or workflow).
+
 ## Common Tasks
 
 ### Creating a New Session

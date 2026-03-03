@@ -19,14 +19,16 @@
     - No external dependencies (pure PowerShell + .NET classes)
 
     Loading order (later layers depend on earlier ones):
-    1. Primitives  - colors, arrow menu, result table (leaf, no CLI deps)
-    2. Fuzzy       - fuzzy search (depends on primitives)
-    3. Display     - detail card, NavState refresh (depends on primitives)
-    4. Wizard      - auto-gen wizard system (depends on primitives + fuzzy + display)
-    5. Registry    - menu entries, pure data
-    6. Routing     - menu dispatch + main/sub loops (depends on all above)
-    7. Workflows   - domain-specific composite operations
-    8. Migration   - phase integration (overrides stubs from routing)
+    1. Primitives     - colors, arrow menu, result table (leaf, no CLI deps)
+    2. Fuzzy          - fuzzy search (depends on primitives)
+    3. Display        - detail card, NavState refresh (depends on primitives)
+    4. Wizard         - auto-gen wizard system (depends on primitives + fuzzy + display)
+    5. Registry       - menu entries, pure data
+    6. Routing        - menu dispatch + main/sub loops (depends on all above)
+    6.5 Plugin merge  - merge plugin menu items, categories, help into CLI state
+    7. Workflows      - domain-specific composite operations
+    7.5 Plugin CLI    - dot-source plugin cli/*.ps1 workflow files
+    8. Migration      - phase integration (overrides stubs from routing)
 #>
 
 function Invoke-RobotCLI {
@@ -57,11 +59,34 @@ function Invoke-RobotCLI {
     # Layer 5: Routing (depends on all above)
     . "$CLIRoot/cli-routing.ps1"
 
+    # Layer 5.5: Merge plugin menu items, categories, and help into CLI state
+    Merge-PluginMenuItems
+
     # Layer 6: Workflows (depend on primitives, fuzzy, wizard, display)
     foreach ($WF in @('cli-wf-session','cli-wf-player','cli-wf-entity',
                        'cli-wf-currency','cli-wf-pu','cli-wf-discord','cli-wf-reporting')) {
         $WFPath = [System.IO.Path]::Combine($CLIRoot, "$WF.ps1")
         if ([System.IO.File]::Exists($WFPath)) { . $WFPath }
+    }
+
+    # Layer 6.5: Plugin CLI workflows (dot-source cli/*.ps1 from loaded plugins)
+    if ($script:LoadedPlugins) {
+        foreach ($PluginEntry in $script:LoadedPlugins.GetEnumerator()) {
+            $PluginCLIDir = [System.IO.Path]::Combine(
+                $script:ModuleRoot, 'plugins', $PluginEntry.Key, 'cli')
+            if ([System.IO.Directory]::Exists($PluginCLIDir)) {
+                $CLIFiles = [System.IO.Directory]::GetFiles($PluginCLIDir, '*.ps1')
+                foreach ($CLIFile in $CLIFiles) {
+                    try {
+                        . $CLIFile
+                    }
+                    catch {
+                        [System.Console]::Error.WriteLine(
+                            "[WARN Invoke-RobotCLI] Failed to load plugin CLI file '$CLIFile': $_")
+                    }
+                }
+            }
+        }
     }
 
     # Layer 7: Migration integration (overrides stubs from routing)
