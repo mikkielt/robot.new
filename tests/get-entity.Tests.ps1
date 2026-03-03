@@ -314,6 +314,17 @@ Describe 'Get-Entity' {
         $Orrin = $script:Entities | Where-Object { $_.Name -eq 'Kupiec Orrin' }
         $Orrin.GenericNames.Count | Should -Be 0
     }
+
+    It 'parses @plik into FilePath property' {
+        $Xeron = $script:Entities | Where-Object { $_.Name -eq 'Xeron Demonlord' }
+        $Xeron | Should -Not -BeNullOrEmpty
+        $Xeron.FilePath | Should -Be 'Postaci/Gracze/Xeron Demonlord.md'
+    }
+
+    It 'initializes FilePath as null when no @plik tag present' {
+        $Kyrre = $script:Entities | Where-Object { $_.Name -eq 'Kyrre' }
+        $Kyrre.FilePath | Should -BeNullOrEmpty
+    }
 }
 
 Describe 'Get-NestedBulletText' {

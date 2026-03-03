@@ -62,6 +62,9 @@ function Set-PlayerCharacter {
         [ValidateSet("Aktywny", "Nieaktywny", "Usunięty")]
         [string]$Status,
 
+        [Parameter(HelpMessage = "Relative path to character file (sets @plik tag)")]
+        [string]$FilePath,
+
         # --- Character file properties (write to .md file) ---
 
         [Parameter(HelpMessage = "Character sheet URL")]
@@ -180,6 +183,10 @@ function Set-PlayerCharacter {
     if ($PSBoundParameters.ContainsKey('Status')) {
         $DateStr = (Get-Date).ToString('yyyy-MM')
         $ChildEnd = Set-EntityTag -Lines $Lines -ChildrenStart $Target.ChildrenStart -ChildrenEnd $ChildEnd -TagName 'status' -Value "$Status ($DateStr`:)"
+    }
+
+    if ($PSBoundParameters.ContainsKey('FilePath') -and -not [string]::IsNullOrWhiteSpace($FilePath)) {
+        $ChildEnd = Set-EntityTag -Lines $Lines -ChildrenStart $Target.ChildrenStart -ChildrenEnd $ChildEnd -TagName 'plik' -Value $FilePath
     }
 
     # Write entities.md with ShouldProcess

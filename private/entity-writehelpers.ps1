@@ -504,6 +504,12 @@ function ConvertTo-EntitiesFromPlayers {
             [void]$SB.Append("    - @należy_do: $($Player.Name)")
             [void]$SB.Append("`n")
 
+            if (-not [string]::IsNullOrWhiteSpace($Character.Path)) {
+                $DecodedPath = [System.Uri]::UnescapeDataString($Character.Path)
+                [void]$SB.Append("    - @plik: $DecodedPath")
+                [void]$SB.Append("`n")
+            }
+
             if ($Character.Aliases -and $Character.Aliases.Count -gt 0) {
                 foreach ($Alias in $Character.Aliases) {
                     if (-not [string]::IsNullOrWhiteSpace($Alias)) {

@@ -61,6 +61,9 @@ function New-PlayerCharacter {
         [Parameter(HelpMessage = "Initial additional notes entries")]
         [string[]]$AdditionalNotes,
 
+        [Parameter(HelpMessage = "Relative path to character file for @plik tag (auto-computed if omitted)")]
+        [string]$FilePath,
+
         [Parameter(HelpMessage = "Path to entities.md file")]
         [string]$EntitiesFile
     )
@@ -109,9 +112,15 @@ function New-PlayerCharacter {
 
     # Create character entry under ## Postać
     # Load default tags from player-entry.md.template
+    $RelCharPath = if ($PSBoundParameters.ContainsKey('FilePath') -and -not [string]::IsNullOrWhiteSpace($FilePath)) {
+        $FilePath
+    } else {
+        "Postaci/Gracze/$CharacterName.md"
+    }
     $TemplateVars = @{
         CharacterName = $CharacterName
         PlayerName    = $PlayerName
+        FilePath      = $RelCharPath
         PUStart       = $PUStartStr
     }
     $RenderedEntry = Get-AdminTemplate -Name 'player-entry.md.template' -Variables $TemplateVars

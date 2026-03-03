@@ -295,7 +295,7 @@ function Get-Player {
                 Name           = $Entity.Name
                 IsActive       = $false
                 Aliases        = [System.Collections.Generic.List[string]]::new()
-                Path           = ""
+                Path           = if ($Entity.FilePath) { $Entity.FilePath } else { "" }
                 PUExceeded     = $null
                 PUStart        = $null
                 PUSum          = $null
@@ -313,6 +313,9 @@ function Get-Player {
         }
 
         # Apply character properties
+        if ($Entity.FilePath -and [string]::IsNullOrWhiteSpace($TargetChar.Path)) {
+            $TargetChar.Path = $Entity.FilePath
+        }
         if ($Entity.Overrides.ContainsKey("pu_startowe")) { $TargetChar.PUStart = [math]::Round([decimal]$Entity.Overrides["pu_startowe"][-1], 2) }
         if ($Entity.Overrides.ContainsKey("pu_nadmiar")) { $TargetChar.PUExceeded = [math]::Round([decimal]$Entity.Overrides["pu_nadmiar"][-1], 2) }
         if ($Entity.Overrides.ContainsKey("pu_suma")) { $TargetChar.PUSum = [math]::Round([decimal]$Entity.Overrides["pu_suma"][-1], 2) }

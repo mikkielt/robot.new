@@ -68,6 +68,13 @@ Describe 'Set-PlayerCharacter - entity tags' {
         $Content = [System.IO.File]::ReadAllText($Path)
         $Content | Should -BeLike '*@status: Nieaktywny*'
     }
+
+    It 'writes @plik tag via FilePath parameter' {
+        $Path = Copy-FixtureToTemp -FixtureName 'entities.md' -DestName 'ent-plik.md'
+        Set-PlayerCharacter -PlayerName 'Solmyr' -CharacterName 'Xeron Demonlord' -FilePath 'Postaci/Gracze/Xeron Demonlord.md' -EntitiesFile $Path
+        $Content = [System.IO.File]::ReadAllText($Path)
+        $Content | Should -BeLike '*@plik: Postaci/Gracze/Xeron Demonlord.md*'
+    }
 }
 
 Describe 'Set-PlayerCharacter - character file updates' {

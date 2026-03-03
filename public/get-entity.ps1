@@ -389,6 +389,7 @@ function Get-Entity {
             $StatusHistory   = [System.Collections.Generic.List[object]]::new()
             $QuantityHistory = [System.Collections.Generic.List[object]]::new()
             $GenericNames    = [System.Collections.Generic.List[string]]::new()
+            $FilePath        = $null
             $Overrides       = @{}
 
             # Iterate child bullets belonging to this entity via lookup
@@ -493,6 +494,9 @@ function Get-Entity {
                             }
                         }
                     }
+                    '@plik' {
+                        $FilePath = $Value
+                    }
                     default {
                         # Any unrecognised @tag -> generic override (e.g. @pu_startowe, @info, @trigger)
                         $Parsed = ConvertFrom-ValidityString -InputText $EffectiveValue
@@ -556,6 +560,9 @@ function Get-Entity {
                 foreach ($GN in $GenericNames) { [void]$Existing.Names.Add($GN) }
                 $Existing.Contains.AddRange($ContainsList)
 
+                # Merge file path (last occurrence wins)
+                if ($FilePath) { $Existing.FilePath = $FilePath }
+
                 # Recompute active scalar properties from merged histories
                 if ($SectionType -ne "Entity") { $Existing.Type = $SectionType }
                 $MergedType = Get-LastActiveValue -History $Existing.TypeHistory -PropertyName 'Type' -ActiveOn $ActiveOn
@@ -600,6 +607,7 @@ function Get-Entity {
                     Quantity        = $ActiveQuantity
                     QuantityHistory = $QuantityHistory
                     GenericNames    = $GenericNames
+                    FilePath        = $FilePath
                     Contains        = $ContainsList
                 }
                 $EntityMap[$EntityKey] = $Entity

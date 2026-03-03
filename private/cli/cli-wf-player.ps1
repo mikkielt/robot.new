@@ -75,6 +75,7 @@ function Invoke-NewCharacterWorkflow {
             'AdditionalNotes'    = @{ Type = 'multitext'; Label = 'Dodatkowe notatki' }
             'NoCharacterFile' = @{ Hidden = $true }
             'EntitiesFile'    = @{ Hidden = $true }
+            'FilePath'        = @{ Hidden = $true }
         }
     }
 
@@ -146,6 +147,7 @@ function Invoke-EditCharacterWorkflow {
             'CharacterName' = @{ Hidden = $true }
             'EntitiesFile'  = @{ Hidden = $true }
             'CharacterFile' = @{ Hidden = $true }
+            'FilePath'      = @{ Label = 'Ścieżka do pliku postaci (względna)' }
             'SpecialItems'  = @{ Type = 'multitext'; Label = 'Przedmioty specjalne (po jednym)' }
             'Aliases'       = @{ Type = 'multitext'; Label = 'Aliasy (po jednym)' }
             'AdditionalNotes' = @{ Type = 'multitext'; Label = 'Dodatkowe notatki (po jednym)' }

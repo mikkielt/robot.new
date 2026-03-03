@@ -59,6 +59,7 @@
 
 * Xeron Demonlord
     - @należy_do: Solmyr
+    - @plik: Postaci/Gracze/Xeron Demonlord.md
     - @alias: Xeron
     - @alias: XD
     - @pu_startowe: 20

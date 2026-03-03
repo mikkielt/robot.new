@@ -46,6 +46,7 @@ Describe 'New-PlayerCharacter' {
         $Content = [System.IO.File]::ReadAllText($Path)
         $Content | Should -BeLike '*NewHero*'
         $Content | Should -BeLike '*@należy_do: Kilgor*'
+        $Content | Should -BeLike '*@plik: Postaci/Gracze/NewHero.md*'
         $Content | Should -BeLike '*@pu_startowe: 20*'
     }
 

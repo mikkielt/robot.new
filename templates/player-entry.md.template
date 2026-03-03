@@ -1,3 +1,4 @@
 * {CharacterName}
     - @należy_do: {PlayerName}
+    - @plik: {FilePath}
     - @pu_startowe: {PUStart}

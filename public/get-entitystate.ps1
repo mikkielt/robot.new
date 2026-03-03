@@ -229,6 +229,9 @@ function Get-EntityState {
                             }
                         }
                     }
+                    '@plik' {
+                        $TargetEntity.FilePath = $Parsed.Text
+                    }
                     default {
                         # Generic override (e.g. @pu_startowe, @info, @trigger)
                         $PropName = $TagEntry.Tag.Substring(1)  # strip leading '@'

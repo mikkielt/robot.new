@@ -453,6 +453,36 @@ Describe 'ConvertTo-EntitiesFromPlayers' {
         $Content | Should -BeLike '*Erdamon*'
         $Content | Should -BeLike '*Dracon*'
     }
+
+    It 'writes @plik tag with URL-decoded character path' {
+        $Players = @(
+            [PSCustomObject]@{
+                Name = 'Kilgor'; MargonemID = $null; PRFWebhook = $null; Triggers = @()
+                Characters = @(
+                    [PSCustomObject]@{ Name = 'Xeron Demonlord'; Aliases = @(); Path = 'Postaci/Gracze/Xeron%20Demonlord.md'; PUStart = 20; PUExceeded = $null; PUSum = $null; PUTaken = $null; AdditionalInfo = @() }
+                )
+            }
+        )
+        $OutputPath = Join-Path $script:TempDir 'ent-plik.md'
+        ConvertTo-EntitiesFromPlayers -OutputPath $OutputPath -Players $Players
+        $Content = [System.IO.File]::ReadAllText($OutputPath)
+        $Content | Should -BeLike '*@plik: Postaci/Gracze/Xeron Demonlord.md*'
+    }
+
+    It 'does not write @plik when character Path is empty' {
+        $Players = @(
+            [PSCustomObject]@{
+                Name = 'Kilgor'; MargonemID = $null; PRFWebhook = $null; Triggers = @()
+                Characters = @(
+                    [PSCustomObject]@{ Name = 'Xeron'; Aliases = @(); Path = ''; PUStart = 20; PUExceeded = $null; PUSum = $null; PUTaken = $null; AdditionalInfo = @() }
+                )
+            }
+        )
+        $OutputPath = Join-Path $script:TempDir 'ent-no-plik.md'
+        ConvertTo-EntitiesFromPlayers -OutputPath $OutputPath -Players $Players
+        $Content = [System.IO.File]::ReadAllText($OutputPath)
+        $Content | Should -Not -BeLike '*@plik*'
+    }
 }
 
 Describe 'Resolve-EntityTarget - additional coverage' {
