@@ -36,7 +36,8 @@ function Get-PUAssignmentLog {
     )
 
     if (-not $Path) {
-        $Path = Join-Path (Get-Location) '.robot/res/pu-sessions.md'
+        $Config = Get-AdminConfig
+        $Path = [System.IO.Path]::Combine($Config.ResDir, 'pu-sessions.md')
     }
 
     if (-not [System.IO.File]::Exists($Path)) {
