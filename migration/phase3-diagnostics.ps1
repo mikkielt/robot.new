@@ -25,7 +25,7 @@ function Invoke-MigrationPhase3 {
     Write-PhaseHeader -Phase 3 -Status $PhaseStatus
 
     Write-Step -Number 1 -Text 'Uruchamianie diagnostyki...'
-    $Diag = Test-PlayerCharacterPUAssignment
+    $Diag = Test-PlayerCharacterPUAssignment -ExcludeDirectory $script:MigrationExcludeDirs
 
     if ($Diag.OK) {
         Write-StepOK 'Diagnostyka: OK - brak problemów'
@@ -51,7 +51,8 @@ function Invoke-MigrationPhase3 {
     if (-not $NarratorNormDone) {
         Write-Step -Number 2 -Text 'Diagnostyka narratorów...'
 
-        $NarrReport = Get-NarratorReport -UnresolvedOnly
+        $NarrSessions = Get-Session -ExcludeDirectory $script:MigrationExcludeDirs
+        $NarrReport = Get-NarratorReport -Sessions $NarrSessions -UnresolvedOnly
         # Filter to Confidence = None and no existing mapping
         $UnresolvedNarrators = @($NarrReport | Where-Object { $_.Confidence -eq 'None' -and -not $_.HasMapping })
         $UnresolvedNarratorCount = $UnresolvedNarrators.Count

@@ -28,7 +28,7 @@ function Invoke-MigrationPhase4 {
 
     # Step 1: Show current session format distribution
     Write-Step -Number 1 -Text 'Sprawdzanie dystrybucji formatów sesji...'
-    $AllSessions = Get-Session
+    $AllSessions = Get-Session -ExcludeDirectory $script:MigrationExcludeDirs
     $FormatGroups = $AllSessions | Group-Object Format | Sort-Object Name
     foreach ($Group in $FormatGroups) {
         Write-Host "    $($Group.Name): $($Group.Count) sesji" -ForegroundColor DarkGray
@@ -246,7 +246,7 @@ function Invoke-MigrationPhase4 {
 
     # Step 6: Verify post-upgrade format distribution
     Write-Step -Number 5 -Text 'Weryfikacja po upgrade...'
-    $PostSessions = Get-Session
+    $PostSessions = Get-Session -ExcludeDirectory $script:MigrationExcludeDirs
     $PostActive = $PostSessions | Where-Object { $_.Date -and $_.Date -ge $Cutoff }
     $StillNonGen4 = ($PostActive | Where-Object { $_.Format -ne 'Gen4' } | Measure-Object).Count
 

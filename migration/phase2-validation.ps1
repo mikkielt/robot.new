@@ -4,7 +4,8 @@
 
     .DESCRIPTION
     Loads players/characters, spot-checks PU values, verifies aliases and
-    webhooks, runs full PU diagnostics. No mutations performed.
+    webhooks, runs full PU diagnostics. Optionally marks webhook-less
+    active players as inactive.
 
     Dependencies: migration-ui.ps1, migration-state.ps1, migration-shared.ps1,
                   robot module imported.
@@ -76,30 +77,81 @@ function Invoke-MigrationPhase2 {
     Write-StepOK "Postaci z aliasami: $AliasCount"
     Update-PhaseChecklist -State $State -Phase 2 -Item 'AliasesChecked' -Value $true
 
-    # Step 5: Check players missing Discord webhooks
-    Write-Step -Number 5 -Text 'Sprawdzanie webhooków...'
+    # Step 5: Check players missing Discord webhooks (only Active players)
+    Write-Step -Number 5 -Text 'Sprawdzanie webhooków (aktywni gracze)...'
+
+    # Build player status lookup from entity data (use config-resolved path
+    # so the manifest-redirected entities.md is read, not the submodule default)
+    $PlayerStatusMap = @{}
+    $EntitiesConfig = Get-AdminConfig
+    foreach ($E in (Get-Entity -Path $EntitiesConfig.EntitiesFile)) {
+        if ([string]::Equals($E.Type, 'Gracz', [System.StringComparison]::OrdinalIgnoreCase)) {
+            $PlayerStatusMap[$E.Name] = $E.Status
+        }
+    }
+
     $NoWebhook = [System.Collections.Generic.List[string]]::new()
+    $SkippedInactive = 0
     foreach ($Player in $Players) {
+        $PlayerStatus = $PlayerStatusMap[$Player.Name]
+        if (-not $PlayerStatus) { $PlayerStatus = 'Aktywny' }
+
+        if (-not [string]::Equals($PlayerStatus, 'Aktywny', [System.StringComparison]::OrdinalIgnoreCase)) {
+            $SkippedInactive++
+            continue
+        }
+
         if ([string]::IsNullOrWhiteSpace($Player.PRFWebhook) -or $Player.PRFWebhook -eq 'BRAK') {
             $NoWebhook.Add($Player.Name)
         }
     }
+
     if ($NoWebhook.Count -gt 0) {
-        Write-StepWarning "Graczy bez webhooka: $($NoWebhook.Count)"
+        Write-StepWarning "Aktywnych graczy bez webhooka: $($NoWebhook.Count)"
+        if ($SkippedInactive -gt 0) {
+            Write-Host "    (pominięto $SkippedInactive nieaktywnych graczy)" -ForegroundColor DarkGray
+        }
         foreach ($Name in ($NoWebhook | Select-Object -First 5)) {
             Write-Host "    - $Name" -ForegroundColor DarkGray
         }
         if ($NoWebhook.Count -gt 5) {
             Write-Host "    ... (i $($NoWebhook.Count - 5) więcej)" -ForegroundColor DarkGray
         }
+
+        # Offer to mark webhook-less active players as inactive
+        $WebhooksResolved = $false
+        if (-not $WhatIf) {
+            $MarkInactive = Request-YesNo -Prompt 'Czy chcesz oznaczyć ich jako nieaktywnych?' -Default $false
+            if ($MarkInactive) {
+                $MarkedCount = 0
+                foreach ($PlayerName in $NoWebhook) {
+                    try {
+                        Set-Entity -Name $PlayerName -Tags @{ status = 'Nieaktywny' } -Confirm:$false
+                        $MarkedCount++
+                    }
+                    catch {
+                        Write-StepError "Nie udało się oznaczyć '$PlayerName': $($_.Exception.Message)"
+                    }
+                }
+                if ($MarkedCount -gt 0) {
+                    Write-StepOK "Oznaczono $MarkedCount graczy jako nieaktywnych"
+                    $WebhooksResolved = ($MarkedCount -eq $NoWebhook.Count)
+                }
+            }
+        }
     } else {
-        Write-StepOK 'Wszyscy gracze mają webhook'
+        $WebhooksResolved = $true
+        $OkMsg = 'Wszyscy aktywni gracze mają webhook'
+        if ($SkippedInactive -gt 0) {
+            $OkMsg += " (pominięto $SkippedInactive nieaktywnych)"
+        }
+        Write-StepOK $OkMsg
     }
     Update-PhaseChecklist -State $State -Phase 2 -Item 'WebhooksChecked' -Value $true
 
     # Step 6: Run full PU diagnostics
     Write-Step -Number 6 -Text 'Uruchamianie diagnostyki PU...'
-    $Diag = Test-PlayerCharacterPUAssignment
+    $Diag = Test-PlayerCharacterPUAssignment -ExcludeDirectory $script:MigrationExcludeDirs
     Show-DiagnosticResults -Diagnostics $Diag
     Update-PhaseChecklist -State $State -Phase 2 -Item 'DiagnosticsRun' -Value $true
     Update-PhaseChecklist -State $State -Phase 2 -Item 'DiagnosticsOK' -Value $Diag.OK
@@ -110,8 +162,10 @@ function Invoke-MigrationPhase2 {
         "[OK] PU zweryfikowane (wyrywkowo)",
         "[OK] Aliasy: $AliasCount postaci"
     )
-    if ($NoWebhook.Count -gt 0) {
-        $SummaryLines += "[!!] Graczy bez webhooka: $($NoWebhook.Count)"
+    if ($NoWebhook.Count -gt 0 -and -not $WebhooksResolved) {
+        $SummaryLines += "[!!] Aktywnych graczy bez webhooka: $($NoWebhook.Count)"
+    } elseif ($NoWebhook.Count -gt 0 -and $WebhooksResolved) {
+        $SummaryLines += "[OK] Gracze bez webhooka oznaczeni jako nieaktywni ($($NoWebhook.Count))"
     }
     if ($Diag.OK) {
         $SummaryLines += '[OK] Diagnostyka PU: OK'

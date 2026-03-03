@@ -1121,6 +1121,15 @@ function Get-Session {
             $ExcludePrefixes.Add($ModuleRootNorm)
         }
 
+        # When Set-DataDirectory points to a different repo, the module may also
+        # exist as a submodule inside SearchDir under the same leaf name.
+        $ModuleLeafName = [System.IO.Path]::GetFileName($script:ModuleRoot.TrimEnd($Sep))
+        $ModuleInSearchDir = [System.IO.Path]::Combine($SearchDir, $ModuleLeafName) + $Sep
+        if (-not $ModuleInSearchDir.Equals($ModuleRootNorm, [System.StringComparison]::OrdinalIgnoreCase) -and
+            [System.IO.Directory]::Exists($ModuleInSearchDir.TrimEnd($Sep))) {
+            $ExcludePrefixes.Add($ModuleInSearchDir)
+        }
+
         # Add user-specified exclusions
         foreach ($Dir in $ExcludeDirectory) {
             if ([System.IO.Directory]::Exists($Dir)) {

@@ -39,7 +39,7 @@ function Invoke-MigrationPhase6 {
 
     # Dashboard section 1: PU diagnostics
     Write-SectionHeader 'Diagnostyka PU'
-    $Diag = Test-PlayerCharacterPUAssignment
+    $Diag = Test-PlayerCharacterPUAssignment -ExcludeDirectory $script:MigrationExcludeDirs
     if ($Diag.OK) {
         Write-StepOK 'Test-PlayerCharacterPUAssignment: OK'
     } else {
@@ -53,7 +53,7 @@ function Invoke-MigrationPhase6 {
     Write-SectionHeader 'Symulacja PU (bieżący miesiąc)'
     $Now = [datetime]::Now
     try {
-        $PUResults = Invoke-PlayerCharacterPUAssignment -Year $Now.Year -Month $Now.Month -WhatIf 2>$null
+        $PUResults = Invoke-PlayerCharacterPUAssignment -Year $Now.Year -Month $Now.Month -ExcludeDirectory $script:MigrationExcludeDirs -WhatIf 2>$null
         if ($PUResults -and $PUResults.Count -gt 0) {
             Write-TableRow -Columns @('Postać', 'Przyznane PU', 'Nadmiar', 'Wyk. nadmiar') -Widths @(25, 15, 12, 15) -Color 'White'
             Write-Host ('  ' + ('-' * 67)) -ForegroundColor DarkGray
@@ -75,7 +75,7 @@ function Invoke-MigrationPhase6 {
 
     # Dashboard section 3: Recent session format check
     Write-SectionHeader 'Format sesji'
-    $RecentSessions = Get-Session | Where-Object { $_.Date -and $_.Date -ge [datetime]::Now.AddMonths(-2) }
+    $RecentSessions = Get-Session -ExcludeDirectory $script:MigrationExcludeDirs | Where-Object { $_.Date -and $_.Date -ge [datetime]::Now.AddMonths(-2) }
     $NonGen4Recent = $RecentSessions | Where-Object { $_.Format -ne 'Gen4' }
     $NonGen4Count = ($NonGen4Recent | Measure-Object).Count
     if ($NonGen4Count -eq 0) {

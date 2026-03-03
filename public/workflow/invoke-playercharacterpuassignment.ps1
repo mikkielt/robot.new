@@ -67,7 +67,10 @@ function Invoke-PlayerCharacterPUAssignment {
         [switch]$AppendToLog,
 
         [Parameter(HelpMessage = "Run currency reconciliation checks after PU calculation")]
-        [switch]$ReconcileCurrency
+        [switch]$ReconcileCurrency,
+
+        [Parameter(HelpMessage = "Directories to exclude from session file scanning")]
+        [string[]]$ExcludeDirectory
     )
 
     $Config = Get-AdminConfig
@@ -115,7 +118,7 @@ function Invoke-PlayerCharacterPUAssignment {
         $SessionResults = [System.Collections.Generic.List[object]]::new()
         foreach ($FilePath in $ChangedFiles) {
             try {
-                $FileSessions = Get-Session -File $FilePath -MinDate $MinDate -MaxDate $MaxDate
+                $FileSessions = Get-Session -File $FilePath -MinDate $MinDate -MaxDate $MaxDate -ExcludeDirectory $ExcludeDirectory
                 if ($FileSessions) {
                     if ($FileSessions -is [System.Collections.IEnumerable] -and $FileSessions -isnot [string]) {
                         foreach ($SessionItem in $FileSessions) { $SessionResults.Add($SessionItem) }
@@ -129,7 +132,7 @@ function Invoke-PlayerCharacterPUAssignment {
         }
         $SessionResults
     } else {
-        Get-Session -MinDate $MinDate -MaxDate $MaxDate
+        Get-Session -MinDate $MinDate -MaxDate $MaxDate -ExcludeDirectory $ExcludeDirectory
     }
 
     # Filter to sessions with PU entries

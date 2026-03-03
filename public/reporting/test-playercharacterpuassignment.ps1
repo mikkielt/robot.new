@@ -55,7 +55,10 @@ function Test-PlayerCharacterPUAssignment {
         [datetime]$MinDate,
 
         [Parameter(HelpMessage = "End date for custom date range")]
-        [datetime]$MaxDate
+        [datetime]$MaxDate,
+
+        [Parameter(HelpMessage = "Directories to exclude from session file scanning")]
+        [string[]]$ExcludeDirectory
     )
 
     # Default: last 2 months (legacy parity)
@@ -73,6 +76,7 @@ function Test-PlayerCharacterPUAssignment {
     if ($Month) { $AssignParams['Month'] = $Month }
     if ($PSBoundParameters.ContainsKey('MinDate')) { $AssignParams['MinDate'] = $MinDate }
     if ($PSBoundParameters.ContainsKey('MaxDate')) { $AssignParams['MaxDate'] = $MaxDate }
+    if ($ExcludeDirectory) { $AssignParams['ExcludeDirectory'] = $ExcludeDirectory }
 
     # Run compute-only (no switches) - WhatIf:$true prevents any ShouldProcess writes.
     # Invoke- now throws on unresolved characters (fail-early), so we catch and
@@ -109,6 +113,7 @@ function Test-PlayerCharacterPUAssignment {
         $SessionParams['MinDate'] = $MinDate
         $SessionParams['MaxDate'] = $MaxDate
     }
+    if ($ExcludeDirectory) { $SessionParams['ExcludeDirectory'] = $ExcludeDirectory }
 
     $AllSessions = Get-Session @SessionParams
 
@@ -200,7 +205,9 @@ function Test-PlayerCharacterPUAssignment {
     if ($HistoryHeaders.Count -gt 0) {
         # Build a set of all known session headers across the full repo
         # (not date-filtered - stale detection needs the complete picture)
-        $AllRepoSessions = Get-Session
+        $GetAllParams = @{}
+        if ($ExcludeDirectory) { $GetAllParams['ExcludeDirectory'] = $ExcludeDirectory }
+        $AllRepoSessions = Get-Session @GetAllParams
         $KnownHeaders = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
         foreach ($S in $AllRepoSessions) {
             $H = $S.Header.Trim()

@@ -127,13 +127,12 @@ function Clear-MenuArea {
         [int]$StartRow,
         [int]$LineCount
     )
-    $Width = [System.Console]::WindowWidth
-    $Blank = ' ' * $Width
+    $Blank = ' ' * ([System.Console]::WindowWidth - 1)
     for ($I = 0; $I -lt $LineCount; $I++) {
-        [System.Console]::SetCursorPosition(0, $StartRow + $I)
-        [System.Console]::Write($Blank)
+        $Host.UI.RawUI.CursorPosition = [System.Management.Automation.Host.Coordinates]::new(0, $StartRow + $I)
+        Write-Host $Blank -NoNewline
     }
-    [System.Console]::SetCursorPosition(0, $StartRow)
+    $Host.UI.RawUI.CursorPosition = [System.Management.Automation.Host.Coordinates]::new(0, $StartRow)
 }
 
 # ── Show-Banner ──────────────────────────────────────────────────────────────
@@ -243,14 +242,14 @@ function Show-ArrowMenu {
     }
     $MaxLabelWidth = [Math]::Min($MaxLabelWidth + 4, [System.Console]::WindowWidth - 20)
 
-    # Initial render
-    $MenuStartRow = [System.Console]::CursorTop
+    # Initial render — use PSHost cursor tracking for Write-Host consistency
+    $MenuStartRow = $Host.UI.RawUI.CursorPosition.Y
 
     while ($true) {
         $CurrentIndex = $SelectableIndices[$SelectedPos]
 
         # Move to menu start position
-        [System.Console]::SetCursorPosition(0, $MenuStartRow)
+        $Host.UI.RawUI.CursorPosition = [System.Management.Automation.Host.Coordinates]::new(0, $MenuStartRow)
 
         $AccentColor  = Get-CLIColor -Role 'Accent'
         $DisabledColor = Get-CLIColor -Role 'Disabled'
@@ -277,9 +276,9 @@ function Show-ArrowMenu {
             $Desc = if ($Item.Description) { $Item.Description } else { '' }
 
             # Clear line first
-            $Width = [System.Console]::WindowWidth
-            [System.Console]::Write((' ' * $Width))
-            [System.Console]::SetCursorPosition(0, $MenuStartRow + $LinesRendered)
+            $Host.UI.RawUI.CursorPosition = [System.Management.Automation.Host.Coordinates]::new(0, $MenuStartRow + $LinesRendered)
+            Write-Host (' ' * ([System.Console]::WindowWidth - 1)) -NoNewline
+            $Host.UI.RawUI.CursorPosition = [System.Management.Automation.Host.Coordinates]::new(0, $MenuStartRow + $LinesRendered)
 
             if ($IsDisabled) {
                 Write-Host "  $Pointer " -NoNewline -ForegroundColor $DisabledColor
@@ -320,9 +319,9 @@ function Show-ArrowMenu {
             Write-Host ''
             $LinesRendered++
             foreach ($ILine in $InfoLines) {
-                $ClearStr = ' ' * [System.Console]::WindowWidth
-                [System.Console]::Write($ClearStr)
-                [System.Console]::SetCursorPosition(0, $MenuStartRow + $LinesRendered)
+                $Host.UI.RawUI.CursorPosition = [System.Management.Automation.Host.Coordinates]::new(0, $MenuStartRow + $LinesRendered)
+                Write-Host (' ' * ([System.Console]::WindowWidth - 1)) -NoNewline
+                $Host.UI.RawUI.CursorPosition = [System.Management.Automation.Host.Coordinates]::new(0, $MenuStartRow + $LinesRendered)
                 Write-CLILine -Text "$([char]0x2139) $ILine" -Color $InfoColor
                 $LinesRendered++
                 $CurrentInfoLines++
@@ -334,25 +333,30 @@ function Show-ArrowMenu {
             $ExtraLines = $PrevInfoLines - $CurrentInfoLines
             if (-not $InfoText) { $ExtraLines++ }  # account for the blank line
             for ($C = 0; $C -lt $ExtraLines + 1; $C++) {
-                $ClearStr = ' ' * [System.Console]::WindowWidth
-                [System.Console]::SetCursorPosition(0, $MenuStartRow + $LinesRendered + $C)
-                [System.Console]::Write($ClearStr)
+                $Host.UI.RawUI.CursorPosition = [System.Management.Automation.Host.Coordinates]::new(0, $MenuStartRow + $LinesRendered + $C)
+                Write-Host (' ' * ([System.Console]::WindowWidth - 1)) -NoNewline
             }
         }
         $PrevInfoLines = $CurrentInfoLines
 
         # Footer hints
         $HintRow = $MenuStartRow + $Items.Count + $CurrentInfoLines + 2
-        [System.Console]::SetCursorPosition(0, $HintRow)
-        $HintClear = ' ' * [System.Console]::WindowWidth
-        [System.Console]::Write($HintClear)
-        [System.Console]::SetCursorPosition(0, $HintRow)
+        $Host.UI.RawUI.CursorPosition = [System.Management.Automation.Host.Coordinates]::new(0, $HintRow)
+        Write-Host (' ' * ([System.Console]::WindowWidth - 1)) -NoNewline
+        $Host.UI.RawUI.CursorPosition = [System.Management.Automation.Host.Coordinates]::new(0, $HintRow)
         $HintParts = [System.Collections.Generic.List[string]]::new()
         [void]$HintParts.Add([char]0x2191 + [char]0x2193 + ' nawigacja')
         [void]$HintParts.Add('Enter wybierz')
         if ($ShowBack) { [void]$HintParts.Add('Esc wstecz') }
         [void]$HintParts.Add('q zakończ')
         Write-Host "  $($HintParts -join '  |  ')" -ForegroundColor (Get-CLIColor -Role 'Disabled')
+
+        # Compensate if the terminal scrolled during rendering
+        $CursorAfterRender = $Host.UI.RawUI.CursorPosition.Y
+        $ExpectedAfterRender = $HintRow + 1
+        if ($CursorAfterRender -lt $ExpectedAfterRender) {
+            $MenuStartRow -= ($ExpectedAfterRender - $CursorAfterRender)
+        }
 
         # Read input
         $Key = Read-ArrowKey

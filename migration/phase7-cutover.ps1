@@ -28,7 +28,7 @@ function Invoke-MigrationPhase7 {
 
     # Step 1: Run final PU diagnostics (must pass to proceed)
     Write-Step -Number 1 -Text 'Ostateczna diagnostyka...'
-    $Diag = Test-PlayerCharacterPUAssignment
+    $Diag = Test-PlayerCharacterPUAssignment -ExcludeDirectory $script:MigrationExcludeDirs
     if ($Diag.OK) {
         Write-StepOK 'Diagnostyka: OK'
         Update-PhaseChecklist -State $State -Phase 7 -Item 'FinalDiagnostics' -Value $true
@@ -87,7 +87,7 @@ function Invoke-MigrationPhase7 {
     Write-CommandHint "Invoke-PlayerCharacterPUAssignment -Year $Year -Month $Month -WhatIf"
 
     try {
-        $DryResults = Invoke-PlayerCharacterPUAssignment -Year $Year -Month $Month -WhatIf 2>$null
+        $DryResults = Invoke-PlayerCharacterPUAssignment -Year $Year -Month $Month -ExcludeDirectory $script:MigrationExcludeDirs -WhatIf 2>$null
         if ($DryResults -and $DryResults.Count -gt 0) {
             Write-Host ''
             foreach ($Result in $DryResults) {
@@ -105,6 +105,7 @@ function Invoke-MigrationPhase7 {
         if (Request-YesNo -Prompt 'Czy wykonać właściwy przydział PU z powiadomieniami Discord?' -Default $false) {
             try {
                 Invoke-PlayerCharacterPUAssignment -Year $Year -Month $Month `
+                    -ExcludeDirectory $script:MigrationExcludeDirs `
                     -UpdatePlayerCharacters `
                     -SendToDiscord `
                     -AppendToLog `

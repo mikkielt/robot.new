@@ -57,6 +57,9 @@ if (-not $SkipModuleImport) {
     }
 }
 
+# Exclude .robot.new/ from session and data scanning during migration
+$script:MigrationExcludeDirs = @($ModuleRoot)
+
 # Dot-source helper files
 . ([System.IO.Path]::Combine($MigrationRoot, 'migration-ui.ps1'))
 . ([System.IO.Path]::Combine($MigrationRoot, 'migration-state.ps1'))

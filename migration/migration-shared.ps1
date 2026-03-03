@@ -96,7 +96,7 @@ function Invoke-QuickDiagnostics {
     Write-Host ('=' * 60) -ForegroundColor $AccentColor
 
     Write-Step -Number 1 -Text 'Diagnostyka PU...'
-    $Diag = Test-PlayerCharacterPUAssignment
+    $Diag = Test-PlayerCharacterPUAssignment -ExcludeDirectory $script:MigrationExcludeDirs
     Show-DiagnosticResults -Diagnostics $Diag
 
     Write-Step -Number 2 -Text 'Rekoncyliacja walut...'
@@ -113,7 +113,7 @@ function Invoke-QuickDiagnostics {
     }
 
     Write-Step -Number 3 -Text 'Format sesji...'
-    $Sessions = Get-Session
+    $Sessions = Get-Session -ExcludeDirectory $script:MigrationExcludeDirs
     $FormatGroups = $Sessions | Group-Object Format | Sort-Object Name
     foreach ($Group in $FormatGroups) {
         Write-Host "    $($Group.Name): $($Group.Count)" -ForegroundColor (Resolve-MigrationColor -Role 'Disabled')
