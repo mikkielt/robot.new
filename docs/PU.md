@@ -97,6 +97,17 @@ For each character with PU entries in the batch:
 >
 > Base PU = 1 + 5.0 = 6.0. Exceeds cap by 1.0. Granted PU = 5.00. Overflow stored = 1.00 (available next month).
 
+**Example - overflow accumulation across months:**
+
+> **Month 1**: Crag Hack earned 5.5 PU across sessions, overflow pool is 0.00.
+> Base PU = 1 + 5.5 = 6.5. Exceeds cap by 1.5. Granted PU = 5.00, overflow stored = 1.50.
+>
+> **Month 2**: Crag Hack earned 4.5 PU across sessions, overflow pool is 1.50.
+> Base PU = 1 + 4.5 = 5.5. Exceeds cap by 0.5. Granted PU = 5.00, overflow stored = 1.50 + 0.50 = 2.00.
+>
+> **Month 3**: Crag Hack earned only 0.5 PU, overflow pool is 2.00.
+> Base PU = 1 + 0.5 = 1.5. Below cap — supplement from overflow: min(5.0 − 1.5, 2.00) = 2.00. Granted PU = 3.50, overflow remaining = 0.00.
+
 ### Step 6 - Apply Results (Coordinator Confirms)
 
 When the coordinator approves, three things happen:

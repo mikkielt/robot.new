@@ -50,6 +50,25 @@ Run the diagnostic tool:
    - **Unregistered character:** Ask the coordinator to register the character
 4. Retry the PU assignment
 
+**Understanding name matching:**
+
+The system attempts several strategies to match a name before giving up:
+
+1. **Exact match** — the name matches a registered character name or alias exactly (case-insensitive)
+2. **Declension** — Polish grammatical forms are accounted for (e.g., "Craga" for "Crag", "Sandry" for "Sandra")
+3. **Stem alternation** — common Polish consonant changes are tried (e.g., "k" ↔ "c", "g" ↔ "dz")
+4. **Fuzzy match** — small typos (1–2 character differences) are tolerated for longer names
+
+**When matching may fail despite a valid name:**
+
+- **Very short names** (2–3 characters) — fuzzy matching requires the name to be long enough to allow edit distance tolerance
+- **Unusual declension patterns** — some proper names with irregular Polish forms may not be handled automatically
+- **Name collisions** — if a name closely resembles multiple entities, the system may not resolve it confidently
+
+**Adding an alias to fix persistent failures:**
+
+If a name form consistently fails to resolve, ask the coordinator to add it as an alias to the character's entity entry. After the alias is registered, the system will match it exactly on future runs. You can verify the fix by running the diagnostic tool — previously unresolved names should now pass.
+
 ### 2. Session with Broken Date
 
 **Symptom:** A session is silently skipped during PU processing - no error, but the PU is not awarded.

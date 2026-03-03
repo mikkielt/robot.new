@@ -345,9 +345,48 @@ Low-level webhook sender. POSTs JSON payload (`content`, optional `username`) to
 
 ---
 
-## 9. Migration Steps
+## 9. Migration Phase Pipeline
 
-### 9.1 Bootstrap Entity Store
+The automated migration is orchestrated by `migration/migrate.ps1` (`Invoke-PhaseByNumber`). Nine phases run sequentially, with state checkpointing in `.robot/res/migration-state.json`. Each phase is idempotent.
+
+### 9.1 Phase Overview
+
+| Phase | Function | File | Purpose |
+|---|---|---|---|
+| 0 | `Invoke-MigrationPhase0` | `phase0-preparation.ps1` | Data manifest creation, prerequisite checks |
+| 1 | `Invoke-MigrationPhase1` | `phase1-bootstrap.ps1` | Bootstrap entity store from `Gracze.md` via `ConvertTo-EntitiesFromPlayers` |
+| 2 | `Invoke-MigrationPhase2` | `phase2-session-hashes.ps1` | Generate baseline SHA256 hashes for all session headers (`Set-SessionHash -Full`) |
+| 3 | `Invoke-MigrationPhase3` | `phase2-validation.ps1` | Validate entity parity between legacy and new stores |
+| 4 | `Invoke-MigrationPhase4` | `phase3-diagnostics.ps1` | Run PU diagnostics and narrator normalization |
+| 5 | `Invoke-MigrationPhase5` | `phase4-session-upgrade.ps1` | Upgrade session formats from Gen1/2/3 to Gen4 |
+| 6 | `Invoke-MigrationPhase6` | `phase5-currency.ps1` | Currency entity creation and reconciliation |
+| 7 | `Invoke-MigrationPhase7` | `phase6-parallel.ps1` | Parallel operations (entity sharding, batch processing) |
+| 8 | `Invoke-MigrationPhase8` | `phase7-cutover.ps1` | Final diagnostics, freeze `Gracze.md`, first standalone PU run |
+
+### 9.2 Migration Files
+
+| File | Purpose |
+|---|---|
+| `migrate.ps1` | Entry point and phase dispatcher (`Invoke-PhaseByNumber`) |
+| `migration-state.ps1` | State read/write (`Get-MigrationState`, `Save-MigrationState`) |
+| `migration-shared.ps1` | Shared diagnostics (`Invoke-QuickDiagnostics`, `Show-DiagnosticResults`) |
+| `migration-ui.ps1` | UI helpers (`Write-PhaseHeader`, `Write-Step`, `Write-StepOK`, etc.) |
+| `narrator-normalization.ps1` | Narrator mapping I/O (`Import-NarratorMappings`, `Export-NarratorMappings`) |
+| `phase*.ps1` | Individual phase implementations |
+
+### 9.3 Phase 2: Session Hash Baseline
+
+Runs `Set-SessionHash -Full` to compute SHA256 content hashes for all headers in repository Markdown files. This captures the pre-mutation baseline before any validation, repair, or format-upgrade phases modify session content. The hash store is created in `{ResDir}/session-hashes/` and enables `Test-SessionIntegrity` to detect content tampering later. See [SESSION-INTEGRITY.md](SESSION-INTEGRITY.md).
+
+### 9.4 Phase 8: Cutover
+
+Runs final PU diagnostics (must pass to proceed), freezes `Gracze.md` with a read-only comment header, marks the legacy system as deprecated, executes the first standalone PU assignment, creates a post-migration git tag, and displays an announcement template.
+
+## 10. Manual Migration Steps
+
+These commands can be run independently outside the automated phase pipeline:
+
+### 10.1 Bootstrap Entity Store
 
 ```powershell
 Import-Module ./.robot.new/robot.psd1
@@ -355,11 +394,11 @@ Import-Module ./.robot.new/robot.psd1
 ConvertTo-EntitiesFromPlayers -OutputPath ./.robot.new/entities.md
 ```
 
-### 9.2 Switch to Entity-Based Writes
+### 10.2 Switch to Entity-Based Writes
 
 All CRUD operations now use `Set-Player`, `Set-PlayerCharacter`, `New-Player`, `New-PlayerCharacter`, `Remove-PlayerCharacter`. These write to `entities.md` exclusively.
 
-### 9.3 Upgrade Session Formats
+### 10.3 Upgrade Session Formats
 
 ```powershell
 Get-Session | Where-Object { $_.Format -ne 'Gen4' } | Set-Session -UpgradeFormat
@@ -372,20 +411,20 @@ Get-Session -File 'Wątki/some-thread.md' | Set-Session -UpgradeFormat
 
 Non-metadata blocks (`Objaśnienia`, `Efekty`, etc.) and body text are preserved.
 
-### 9.4 Validate Parity
+### 10.4 Validate Parity
 
 Compare pre/post outputs of:
 - `Get-Player` (merged data from both sources)
 - `Get-Session` (auto-detects all formats)
 - `Get-PlayerCharacter -IncludeState` (three-layer merge)
 
-### 9.5 Monitor Warnings
+### 10.5 Monitor Warnings
 
 Unresolved names in `Get-EntityState` / narrator resolution should be cleaned up by adding missing `Gracz` / entity entries.
 
 ---
 
-## 10. Transition Invariants
+## 11. Transition Invariants
 
 1. **`Gracze.md` is never mutated** by any module command.
 2. **All new mutable state** persists in `entities.md` (and `*-NNN-ent.md`).
@@ -397,7 +436,7 @@ Unresolved names in `Get-EntityState` / narrator resolution should be cleaned up
 
 ---
 
-## 11. Module Structure
+## 12. Module Structure
 
 ### Exported Commands (Verb-Noun, auto-loaded by `robot.psm1`)
 
@@ -448,3 +487,13 @@ Unresolved names in `Get-EntityState` / narrator resolution should be cleaned up
 | `robot.psm1` | Module loader (auto-discovers Verb-Noun `.ps1` files) |
 | `templates/*.md.template` | Character file and player entry templates |
 | `local.config.psd1` | Local config (git-ignored) |
+
+---
+
+## 13. Related Documents
+
+- [ENTITIES.md](ENTITIES.md) - Entity data model migrated from `Gracze.md`
+- [SESSIONS.md](SESSIONS.md) - Session format generations (Gen1–Gen4)
+- [SESSION-INTEGRITY.md](SESSION-INTEGRITY.md) - Session hash baseline (Phase 2)
+- [CURRENCY.md](CURRENCY.md) - Currency entities created during Phase 5
+- [PU.md](PU.md) - PU history migration

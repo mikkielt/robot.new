@@ -21,7 +21,11 @@ Get-Session ──> session objects with .Logs URLs
                     │
                     ▼
               Get-SessionLog
-                ├── log-fetchhelpers.ps1 (URL normalization, disk cache, HTTP fetch)
+                ├── log-fetchhelpers.ps1
+                │     ├── Normalize-LogUrl (pastebin URL normalization, http→https)
+                │     ├── ConvertTo-LogFileName (URL → cache filename)
+                │     ├── Invoke-LogFetch (single fetch with disk cache)
+                │     └── Invoke-LogBatchFetch (sequential batch with throttle)
                 ├── parse-logcontent.ps1 (format detection, ChatLog/Prose parsers)
                 └── Resolve-Name (optional speaker/location resolution)
                     │
@@ -349,3 +353,11 @@ Date range -> `Get-Session | Get-SessionLog -SkipFetch` -> `Get-NamedLogLocation
 | `tests/invoke-sessionlogfetch.Tests.ps1` | Tests | 3 tests: mass fetch workflow |
 | `tests/fixtures/log-chatlog.txt` | Fixture | ChatLog format sample |
 | `tests/fixtures/log-prose.txt` | Fixture | Prose format sample |
+
+---
+
+## 11. Related Documents
+
+- [SESSIONS.md](SESSIONS.md) - Session parsing pipeline (produces `.Logs` URLs consumed by this subsystem)
+- [NAME-RESOLUTION.md](NAME-RESOLUTION.md) - Name resolution used for speaker and location matching
+- [DISCORD.md](DISCORD.md) - Discord messaging (separate notification subsystem)

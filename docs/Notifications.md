@@ -108,6 +108,25 @@ For each character, the notification includes:
 
 PU notifications are sent with the bot name "Bothen".
 
+## Manual Announcements
+
+The coordinator can send a one-off announcement to any Discord channel via webhook, independent of PU or Intel processing.
+
+### When to use
+
+- Campaign-wide announcements (rule changes, schedule updates)
+- Ad-hoc messages that are not tied to a specific session
+- Re-sending a previously failed notification to a specific webhook
+
+### How it works
+
+1. The coordinator provides a target webhook URL
+2. Enter a title and message body
+3. The system shows a preview for confirmation
+4. On confirmation, the message is sent immediately
+
+The announcement is formatted with the title in bold, followed by the message body. It is a one-time send with no automatic retry - if the delivery fails, the coordinator sees an error and can retry manually.
+
 ## What Happens When Things Go Wrong
 
 ### Missing webhook address

@@ -157,6 +157,52 @@ The system reads four format generations. Sessions written before 2026 do not ne
 
 When writing new sessions, always use the current format (with `@` prefix).
 
+### Format Comparison (Gen3 → Gen4)
+
+The main difference between Gen3 (2024–2026) and Gen4 (current) is the `@` prefix on metadata tags. Here is the same session in both formats:
+
+**Gen3 (old):**
+
+```markdown
+### 2025-03-15, Oblężenie Steadwick, Catherine
+
+Opis sesji...
+
+- Lokalizacje:
+    - Steadwick
+    - Bracada
+- Logi:
+    - https://pastebin.com/abc123
+- PU:
+    - Crag Hack: 0.3
+    - Gem: 0.5
+- Zmiany:
+    - Crag Hack
+        - @lokacja: Steadwick
+```
+
+**Gen4 (current):**
+
+```markdown
+### 2025-03-15, Oblężenie Steadwick, Catherine
+
+Opis sesji...
+
+- @Lokacje:
+    - Steadwick
+    - Bracada
+- @Logi:
+    - https://pastebin.com/abc123
+- @PU:
+    - Crag Hack: 0.3
+    - Gem: 0.5
+- @Zmiany:
+    - Crag Hack
+        - @lokacja: Steadwick
+```
+
+Key differences: Gen4 uses `@Lokacje` (not `Lokalizacje`), `@Logi` (not `Logi`), `@PU` (not `PU`), and `@Zmiany` (not `Zmiany`). Entity-level tags inside `@Zmiany` always used the `@` prefix in both formats.
+
 ## Sessions Across Multiple Files
 
 The same session may appear in multiple Markdown files (e.g., a location log file and a thread file). This is handled automatically:
@@ -188,5 +234,6 @@ A properly recorded session:
 ## Related Documents
 
 - [PU.md](PU.md) - Monthly PU assignment process
+- [Session-Logs.md](Session-Logs.md) - Session log fetching and location analysis
 - [Glossary](Glossary.md) - Term definitions
 - [Players.md](Players.md) - Player and character management

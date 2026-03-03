@@ -419,18 +419,39 @@ Values support optional `(YYYY-MM:YYYY-MM)` or `(YYYY-MM:)` or `(:YYYY-MM)` suff
 
 Partial dates are supported: `YYYY` (full year), `YYYY-MM` (full month), `YYYY-MM-DD` (exact day).
 
-### Recognized @Tags
+### Recognized @Tags — Entity-Level
 
-| Tag           | Description                                      |
-|---------------|--------------------------------------------------|
-| `@alias`      | Time-scoped alternative name                     |
-| `@lokacja`    | Time-scoped location assignment / containment     |
-| `@drzwi`      | Time-scoped physical access connection            |
-| `@zawiera`    | Declares child containment (no temporal scope)    |
-| `@typ`        | Time-scoped entity type override                  |
-| `@należy_do`  | Time-scoped ownership (entity -> player)           |
-| `@grupa`      | Time-scoped group/faction membership              |
-| Any other     | Generic override stored in Overrides dictionary   |
+Tags with dedicated handling in the entity parser (`get-entity.ps1`):
+
+| Tag | Description | Temporal? |
+|---|---|---|
+| `@alias` | Alternative name (added to Names collection when active) | Yes |
+| `@lokacja` | Location assignment / containment hierarchy | Yes |
+| `@drzwi` | Physical access connection (fallback when no `@lokacja`) | Yes |
+| `@zawiera` | Declares child containment | No |
+| `@typ` | Entity type override | Yes |
+| `@należy_do` | Ownership (entity → player) | Yes |
+| `@grupa` | Group/faction membership | Yes |
+| `@status` | Entity lifecycle state (Aktywny/Nieaktywny/Usunięty), defaults to Aktywny | Yes |
+| `@ilość` | Quantity for Przedmiot entities | Yes |
+| `@plik` | Path to character file for Postać entities | No |
+| `@generyczne_nazwy` | Comma-separated generic names (added to Names collection) | No |
+| Any other | Generic override stored in Overrides dictionary (e.g. `@info`, `@stan`, `@margonemid`, `@prfwebhook`, `@pu_startowe`, `@pu_suma`, `@pu_zdobyte`, `@pu_nadmiar`, `@region`) | Yes (via Overrides) |
+
+### Recognized @Tags — Session-Level (Gen4 Metadata)
+
+Gen4 sessions use `@`-prefixed block items inside the session section, parsed by `session-parsehelpers.ps1`:
+
+| Tag | Description |
+|---|---|
+| `@Lokacje` | Location list (plural form) |
+| `@PU` | Skill point awards (nested `- CharName: value` items) |
+| `@Logi` | Session log URLs |
+| `@Zmiany` | Entity change directives (nested `- EntityName` / `- @tag: value` items) |
+| `@Intel` | Targeted intelligence messages for specific entities |
+| `@Transfer` | Currency transfer directives (`{amount} {denomination}, {source} -> {destination}`) |
+| `@Narrator` | Narrator name override (when header narrator differs from canonical name) |
+| `@Data` | Date override for malformed or placeholder headers |
 
 ### Multi-line Values
 

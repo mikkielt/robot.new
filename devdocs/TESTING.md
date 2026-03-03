@@ -77,47 +77,181 @@ private/charfile-helpers.ps1         ->  tests/charfile-helpers.Tests.ps1
 
 ```
 tests/
-├── .pesterconfig.psd1              # Pester configuration
-├── TestHelpers.ps1                 # Shared utilities
-├── Robot.Tests.ps1                 # Module-level tests
-├── get-entity.Tests.ps1            # Per-function tests
+├── .pesterconfig.psd1                              # Pester configuration
+├── TestHelpers.ps1                                 # Shared utilities
+├── Robot.Tests.ps1                                 # Module-level tests
+│
+│   # Infrastructure & config
+├── admin-config.Tests.ps1
+├── admin-state.Tests.ps1
+├── get-reporoot.Tests.ps1
+├── get-markdown.Tests.ps1
+├── parse-markdownfile.Tests.ps1
+│
+│   # Entity data access
+├── get-entity.Tests.ps1
 ├── get-entitystate.Tests.ps1
-├── get-session.Tests.ps1
-├── new-entity.Tests.ps1            # Generic entity CRUD
+├── get-nameindex.Tests.ps1
+├── resolve-name.Tests.ps1
+│
+│   # Entity CRUD
+├── new-entity.Tests.ps1
 ├── set-entity.Tests.ps1
 ├── remove-entity.Tests.ps1
-├── new-currencyentity.Tests.ps1    # Currency entity CRUD
+├── entity-writehelpers.Tests.ps1
+├── entity-status.Tests.ps1
+├── przedmiot-entity.Tests.ps1
+│
+│   # Currency
+├── new-currencyentity.Tests.ps1
 ├── set-currencyentity.Tests.ps1
 ├── get-currencyentity.Tests.ps1
 ├── remove-currencyentity.Tests.ps1
-├── ... (one per source file)
+├── currency-entity.Tests.ps1
+├── currency-helpers.Tests.ps1
+├── get-currencyreport.Tests.ps1
+├── test-currencyreconciliation.Tests.ps1
+│
+│   # Sessions
+├── get-session.Tests.ps1
+├── set-session.Tests.ps1
+├── new-session.Tests.ps1
+├── format-sessionblock.Tests.ps1
+├── resolve-narrator.Tests.ps1
+├── get-sessionlog.Tests.ps1
+├── invoke-sessionlogfetch.Tests.ps1
+├── test-sessionintegrity.Tests.ps1
+│
+│   # Player & character
+├── get-player.Tests.ps1
+├── get-playercharacter.Tests.ps1
+├── get-playercharacter-state.Tests.ps1
+├── new-player.Tests.ps1
+├── new-playercharacter.Tests.ps1
+├── set-player.Tests.ps1
+├── set-playercharacter.Tests.ps1
+├── set-playercharacter-charfile.Tests.ps1
+├── remove-playercharacter.Tests.ps1
+├── charfile-helpers.Tests.ps1
+│
+│   # PU & workflow
+├── get-newplayercharacterpucount.Tests.ps1
+├── invoke-playercharacterpuassignment.Tests.ps1
+├── test-playercharacterpuassignment.Tests.ps1
+├── get-gitchangelog.Tests.ps1
+├── send-discordmessage.Tests.ps1
+│
+│   # Reporting & auditing
+├── get-changelog.Tests.ps1
+├── get-entityhistory.Tests.ps1
+├── get-notificationlog.Tests.ps1
+├── get-puassignmentlog.Tests.ps1
+├── get-transactionledger.Tests.ps1
+├── get-narratorreport.Tests.ps1
+├── get-namedloglocationreport.Tests.ps1
+│
+│   # CLI
+├── cli-fuzzy.Tests.ps1
+├── cli-help.Tests.ps1
+├── cli-primitives.Tests.ps1
+├── cli-registry.Tests.ps1
+├── cli-wizard.Tests.ps1
+│
+│   # Plugins & migration
+├── plugin-system.Tests.ps1
+├── narrator-normalization.Tests.ps1
+│
 └── fixtures/
-    ├── Gracze.md                   # Player database fixture
-    ├── entities.md                 # Entity registry fixture
-    ├── entities-100-ent.md         # Override file (primacy 100)
-    ├── entities-200-ent.md         # Override file (primacy 200)
-    ├── entities-generic-crud.md    # Generic CRUD test fixture (all 6 entity types)
-    ├── entities-currency-crud.md   # Currency CRUD test fixture (3 currency entities)
-    ├── sessions-gen1.md            # Gen1 format sessions
-    ├── sessions-gen2.md            # Gen2 format sessions
-    ├── sessions-gen3.md            # Gen3 format sessions
-    ├── sessions-gen4.md            # Gen4 format sessions
-    ├── sessions-duplicate.md       # Deduplication test data
-    ├── sessions-zmiany.md          # Zmiany override test data
-    ├── sessions-failed.md          # Malformed dates with valid content
-    ├── minimal-entity.md           # Minimal entity for write tests
-    ├── pu-sessions.md              # Pre-processed session history
-    ├── local.config.psd1           # Config fixture
-    └── templates/
-        ├── player-character-file.md.template
-        ├── player-entry.md.template
-        ├── entities-skeleton.md.template
-        ├── currency-entity.md.template
-        ├── pu-notification-base.txt.template
-        ├── pu-notification-overflow.txt.template
-        ├── pu-notification-remaining.txt.template
-        └── pu-sessions-header.md.template
+    │   # Player database
+    ├── Gracze.md                                   # Standard player DB
+    ├── Gracze-brak-pu.md                           # Player DB with missing PU
+    ├── Gracze-many-characters.md                   # Player DB with many characters
+    ├── Gracze-no-characters.md                     # Player DB with no characters
+    │
+    │   # Entity registry
+    ├── entities.md                                 # Standard entity registry
+    ├── entities-100-ent.md                         # Override file (primacy 100)
+    ├── entities-200-ent.md                         # Override file (primacy 200)
+    ├── entities-brak-pu.md                         # Missing PU scenario
+    ├── entities-changes.md                         # Zmiany test data
+    ├── entities-currency-crud.md                   # Currency CRUD (3 entities)
+    ├── entities-currency-edge.md                   # Currency edge cases
+    ├── entities-currency-update.md                 # Currency update scenarios
+    ├── entities-deep-locations.md                  # Nested location hierarchy
+    ├── entities-drzwi-typ.md                       # @drzwi/@typ tag tests
+    ├── entities-duplicate-names.md                 # Duplicate name handling
+    ├── entities-empty-sections.md                  # Empty section headers
+    ├── entities-generic-crud.md                    # Generic CRUD (all 6 types)
+    ├── entities-many-aliases.md                    # Multiple aliases per entity
+    ├── entities-many-characters.md                 # Many characters scenario
+    ├── entities-many-groups.md                     # Many groups scenario
+    ├── entities-multi-transfer.md                  # Multiple transfers
+    ├── entities-multiline-info.md                  # Multi-line entity info
+    ├── entities-overlapping-temporal.md            # Overlapping temporal ranges
+    ├── entities-przedmiot-existing.md              # Pre-existing Przedmiot entries
+    ├── entities-remove-pc.md                       # Character removal test
+    ├── entities-status-basic.md                    # Basic status transitions
+    ├── entities-status-default.md                  # Default status handling
+    ├── entities-status-przedmiot.md                # Przedmiot status handling
+    ├── entities-status-transitions.md              # Complex status transitions
+    ├── entities-unicode-names.md                   # Unicode entity names
+    ├── entities-unresolved.md                      # Unresolved references
+    │
+    │   # Session fixtures
+    ├── sessions-gen1.md                            # Gen1 format
+    ├── sessions-gen2.md                            # Gen2 format
+    ├── sessions-gen2-multi-loc.md                  # Gen2 with multiple locations
+    ├── sessions-gen3.md                            # Gen3 format
+    ├── sessions-gen4.md                            # Gen4 format
+    ├── sessions-gen4-full.md                       # Gen4 with all metadata tags
+    ├── sessions-changes.md                         # Session with Zmiany block
+    ├── sessions-co-narrator.md                     # Co-narrated sessions
+    ├── sessions-code-fence.md                      # Code fences in content
+    ├── sessions-date-range.md                      # Multi-day date ranges
+    ├── sessions-deep-zmiany.md                     # Complex nested Zmiany
+    ├── sessions-duplicate.md                       # Deduplication test data
+    ├── sessions-empty-body.md                      # Sessions with empty body
+    ├── sessions-failed.md                          # Malformed dates
+    ├── sessions-many.md                            # Large session count
+    ├── sessions-multi-transfer.md                  # Multiple @Transfer lines
+    ├── sessions-narrator-override.md               # Narrator mapping overrides
+    ├── sessions-no-metadata.md                     # Sessions without metadata
+    ├── sessions-unicode.md                         # Unicode in session content
+    ├── sessions-unresolved.md                      # Unresolved references
+    ├── sessions-zmiany.md                          # Zmiany override test data
+    ├── sessions-integrity/                         # Session integrity check fixtures
+    │   ├── base.md
+    │   ├── duplicate-pu.md
+    │   ├── format-anomaly.md
+    │   ├── future-dated.md
+    │   ├── malformed.md
+    │   └── modified.md
+    │
+    │   # Character files
+    ├── charfile-anglebracket.md                    # Angle bracket edge case
+    ├── charfile-empty.md                           # Empty character file
+    ├── charfile-empty-reputation.md                # Empty reputation section
+    ├── charfile-full.md                            # Full character file
+    ├── charfile-missing-sections.md                # Missing sections
+    ├── charfile-multilinestan.md                   # Multi-line stan
+    ├── charfile-rich.md                            # Rich content character
+    ├── charfile-set-pc.md                          # Set-PlayerCharacter test data
+    ├── charfile-unicode.md                         # Unicode in character data
+    │
+    │   # Other
+    ├── minimal-entity.md                           # Minimal entity for writes
+    ├── pu-sessions.md                              # PU session history
+    ├── pu-sessions-sample.md                       # Sample PU history
+    ├── local.config.psd1                           # Config fixture
+    ├── log-chatlog.txt                             # Chat log fixture
+    ├── log-prose.txt                               # Prose log fixture
+    │
+    └── templates/                                  # Template subset (2 of 8)
+        ├── player-character-file.md.template       # Character file skeleton
+        └── player-entry.md.template                # Character entry in entities.md
 ```
+
+> **Note**: The `templates/` fixture directory contains only the 2 templates used by write tests (`New-PlayerCharacter`). The remaining 6 production templates (in the module's `templates/` dir) are not duplicated; tests that need them reference the module root directly.
 
 ---
 

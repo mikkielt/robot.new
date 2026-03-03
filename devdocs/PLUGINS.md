@@ -174,6 +174,33 @@ Input: array of parsed manifests. Output: manifests sorted so that dependencies 
 
 Algorithm: Kahn's topological sort. If a cycle is detected, warns to stderr and skips the cycled plugins. If a dependency references a plugin that was not discovered, warns to stderr and skips the dependent plugin. Independent plugins are always loaded regardless of other plugins' dependency issues.
 
+### 5.4 `Resolve-PluginConfig`
+
+Resolves all declared config keys for a single plugin through the priority chain.
+
+**Parameters**:
+
+| Parameter | Type | Description |
+|---|---|---|
+| `Manifest` | hashtable | Parsed `plugin.psd1` manifest (must have `Name` and `Config` keys) |
+| `PluginDir` | string | Absolute path to the plugin's directory |
+| `ModuleRoot` | string | Absolute path to the `.robot.new/` module root |
+
+**Algorithm**:
+
+1. Return empty `@{}` if manifest has no `Config` section
+2. Load plugin-level `local.config.psd1` (if exists)
+3. Load core `local.config.psd1` (if exists)
+4. For each declared config key:
+   - Priority 1: Environment variable (`$Def.EnvVar`)
+   - Priority 2: Plugin's own `local.config.psd1` (direct key match)
+   - Priority 3: Core `local.config.psd1` with namespaced key (`PluginName.Key`)
+   - Priority 4: Manifest default value (`$Def.Default`)
+   - Priority 5: If `Required = $true` and no value resolved, warn to stderr
+5. Return resolved hashtable mapping config keys to their values
+
+**Return value**: `[hashtable]` — keys are config key names, values are resolved config values (or `$null` if unresolved).
+
 ---
 
 ## 6. Lifecycle Hook System

@@ -285,16 +285,28 @@ Returns a string - does **not** write to disk.
 
 ---
 
-## 10. Shared Rendering (`private/format-sessionblock.ps1`)
+## 10. File Map
 
-### 10.1 Functions
+### 10.1 Session Helper Files
+
+| File | Functions |
+|---|---|
+| `public/session/get-session.ps1` | `Get-Session`, `Get-SessionFormat`, `ConvertFrom-SessionHeader`, `Merge-SessionGroup` |
+| `public/session/set-session.ps1` | `Set-Session` |
+| `public/session/new-session.ps1` | `New-Session` |
+| `private/session-parsehelpers.ps1` | `Get-SessionTitle`, `Get-SessionLocations`, `Get-SessionListMetadata`, `Get-SessionPlainTextLogs` |
+| `private/session-decomposehelpers.ps1` | `Find-SessionInFile`, `Split-SessionSection`, `ConvertTo-Gen4FromRawBlock`, `ConvertFrom-ItalicLocation`, `ConvertFrom-PlainTextLog`, `Get-FormatFromSplit` |
+| `private/session-intelhelpers.ps1` | `Resolve-EntityWebhook`, `Test-LocationMatch`, `Resolve-IntelTargets`, `Get-SessionMentions` |
+| `private/format-sessionblock.ps1` | `ConvertTo-Gen4MetadataBlock`, `ConvertTo-SessionMetadata` |
+
+### 10.2 Shared Rendering (`private/format-sessionblock.ps1`)
 
 | Function | Purpose |
 |---|---|
 | `ConvertTo-Gen4MetadataBlock` | Renders a single `@`-prefixed block (switch dispatch by tag) |
 | `ConvertTo-SessionMetadata` | Renders all blocks in canonical order, joined with blank lines |
 
-### 10.2 Rendering Rules
+### 10.3 Rendering Rules
 
 | Tag | Item format |
 |---|---|
@@ -432,5 +444,6 @@ Fixtures: `sessions-gen1.md`, `sessions-gen2.md`, `sessions-gen3.md`, `sessions-
 - [PU.md](PU.md) - PU computation from session data
 - [ENTITIES.md](ENTITIES.md) - Entity state merging from session Zmiany
 - [CURRENCY.md](CURRENCY.md) - Currency tracking system (@Transfer processing, reconciliation)
+- [LOGS.md](LOGS.md) - Session log pipeline (fetching, parsing, location analysis)
 - [PARSER.md](PARSER.md) - Underlying Markdown parser
 - [MIGRATION.md](MIGRATION.md) - §3 Session Format Transition
