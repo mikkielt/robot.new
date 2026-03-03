@@ -94,7 +94,8 @@ function Invoke-MigrationPhase5 {
                     }
                 }
 
-                $DedupChoice = Request-UserChoice -Prompt 'Rozwiązać konflikty przez upgrade do Gen4? (T=tak, S=suchy przebieg, N=nie)' -ValidChoices @('T', 'S', 'N')
+                $DedupChoice = Request-UserChoice -Prompt 'Rozwiązać konflikty przez upgrade do Gen4?' -ValidChoices @('T', 'S', 'N') `
+                    -Labels @{ 'T' = 'Tak, zaktualizuj'; 'S' = 'Suchy przebieg (dry run)'; 'N' = 'Nie, pomiń' }
 
                 if ($DedupChoice -eq 'N') {
                     Write-Host '  Pominięto rozwiązywanie konfliktów formatu.' -ForegroundColor DarkGray
@@ -194,7 +195,8 @@ function Invoke-MigrationPhase5 {
 
     # Step 5: Prompt for upgrade action
     Write-Step -Number 4 -Text 'Upgrade sesji...'
-    $Choice = Request-UserChoice -Prompt 'Czy zaktualizować aktywne sesje do Gen4? (T=tak, S=suchy przebieg, N=nie)' -ValidChoices @('T', 'S', 'N')
+    $Choice = Request-UserChoice -Prompt 'Czy zaktualizować aktywne sesje do Gen4?' -ValidChoices @('T', 'S', 'N') `
+        -Labels @{ 'T' = 'Tak, zaktualizuj'; 'S' = 'Suchy przebieg (dry run)'; 'N' = 'Nie, pomiń' }
 
     if ($Choice -eq 'N') {
         Write-Host '  Pominięto upgrade sesji.' -ForegroundColor DarkGray
@@ -356,8 +358,9 @@ function Invoke-MigrationPhase5 {
                 }
 
                 $Choice = Request-UserChoice `
-                    -Prompt "      [P] Pomiń  [N] Nie-lokacja  [K] Kontynuuj bez przeglądu >" `
-                    -ValidChoices @('P', 'N', 'K')
+                    -Prompt "Lokacja: $($U.Name)" `
+                    -ValidChoices @('P', 'N', 'K') `
+                    -Labels @{ 'P' = 'Pomiń'; 'N' = 'Oznacz jako nie-lokację'; 'K' = 'Kontynuuj (zakończ przegląd)' }
 
                 if ($Choice -eq 'K') { break }
                 if ($Choice -eq 'N') {
