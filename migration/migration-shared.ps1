@@ -17,6 +17,23 @@
     Dependencies: migration-ui.ps1, migration-state.ps1, robot module imported.
 #>
 
+# Ensure MigrationExcludeDirs is initialized (covers CLI invocation path
+# where migrate.ps1 is not the entry point)
+if (-not $script:MigrationExcludeDirs) {
+    $script:MigrationExcludeDirs = @()
+    if ($script:ModuleRoot) {
+        $script:MigrationExcludeDirs += $script:ModuleRoot
+    }
+}
+
+# Nerthus/ contains documentation/rules with example sessions — exclude from scanning
+try {
+    $NerthusDocDir = [System.IO.Path]::Combine((Get-RepoRoot), 'Nerthus')
+    if ([System.IO.Directory]::Exists($NerthusDocDir) -and $script:MigrationExcludeDirs -notcontains $NerthusDocDir) {
+        $script:MigrationExcludeDirs += $NerthusDocDir
+    }
+} catch { }
+
 # Shared diagnostic result renderer (used by Phase 3, Phase 4, and Quick Diagnostics)
 function Show-DiagnosticResults {
     param([Parameter(Mandatory)] $Diagnostics)

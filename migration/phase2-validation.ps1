@@ -174,7 +174,7 @@ function Invoke-MigrationPhase3 {
     } else {
         $IssueCount = $Diag.UnresolvedCharacters.Count + $Diag.MalformedPU.Count +
                       $Diag.DuplicateEntries.Count + $Diag.FailedSessionsWithPU.Count
-        $SummaryLines += "[!!] Diagnostyka PU: $IssueCount problemów - przejdź do Fazy 3"
+        $SummaryLines += "[!!] Diagnostyka PU: $IssueCount problemów - przejdź do Fazy 4"
         Set-PhaseInProgress -State $State -Phase 3
         Write-PhaseSummary -Phase 3 -Status 'InProgress' -Lines $SummaryLines
     }
