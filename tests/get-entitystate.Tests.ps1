@@ -4,9 +4,9 @@
 
     .DESCRIPTION
     Tests for Get-EntityState covering @lokacja, @grupa, @alias, @drzwi,
-    @typ, @należy_do, @status, @ilość, @generyczne_nazwy overrides from
-    session Zmiany, @Transfer expansion, temporal sorting, CN recomputation,
-    and unresolved entity warnings.
+    @typ, @należy_do, @status, @ilość, @generyczne_nazwy, @plik overrides
+    from session Zmiany, @Transfer expansion, temporal sorting, CN
+    recomputation, and unresolved entity warnings.
 #>
 
 BeforeAll {
@@ -272,5 +272,29 @@ Describe 'Get-EntityState - multi-Transfer' {
         $Third = $script:Enriched | Where-Object { $_.Name -eq 'Korony Trzeciego' }
         # Base: 200, +15 from Dawca, +5 from Odbiorca = 220
         $Third.Quantity | Should -Be '220'
+    }
+}
+
+Describe 'Get-EntityState - @plik Zmiany override' {
+    BeforeAll {
+        $script:PlikEntities = Get-Entity -Path $script:FixturesRoot
+        $script:PlikSessions = Get-Session -File (Join-Path $script:FixturesRoot 'sessions-plik-zmiany.md')
+        $script:PlikEnriched = Get-EntityState -Entities $script:PlikEntities -Sessions $script:PlikSessions
+    }
+
+    It 'applies @plik override from Zmiany' {
+        $Xeron = $script:PlikEnriched | Where-Object { $_.Name -eq 'Xeron Demonlord' }
+        $Xeron.FilePathHistory.Count | Should -BeGreaterThan 1
+    }
+
+    It 'resolves FilePath to most recent @plik entry' {
+        $Xeron = $script:PlikEnriched | Where-Object { $_.Name -eq 'Xeron Demonlord' }
+        $Xeron.FilePath | Should -Be 'Postaci/Gracze/Xeron Demonlord v2.md'
+    }
+
+    It 'auto-dates @plik from Zmiany with session date' {
+        $Xeron = $script:PlikEnriched | Where-Object { $_.Name -eq 'Xeron Demonlord' }
+        $LatestEntry = $Xeron.FilePathHistory | Where-Object { $_.FilePath -eq 'Postaci/Gracze/Xeron Demonlord v2.md' }
+        $LatestEntry.ValidFrom | Should -Be ([datetime]::new(2025, 4, 1))
     }
 }

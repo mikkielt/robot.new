@@ -321,9 +321,16 @@ Describe 'Get-Entity' {
         $Xeron.FilePath | Should -Be 'Postaci/Gracze/Xeron Demonlord.md'
     }
 
+    It 'populates FilePathHistory from @plik tag' {
+        $Xeron = $script:Entities | Where-Object { $_.Name -eq 'Xeron Demonlord' }
+        $Xeron.FilePathHistory.Count | Should -Be 1
+        $Xeron.FilePathHistory[0].FilePath | Should -Be 'Postaci/Gracze/Xeron Demonlord.md'
+    }
+
     It 'initializes FilePath as null when no @plik tag present' {
         $Kyrre = $script:Entities | Where-Object { $_.Name -eq 'Kyrre' }
         $Kyrre.FilePath | Should -BeNullOrEmpty
+        $Kyrre.FilePathHistory.Count | Should -Be 0
     }
 }
 
@@ -714,5 +721,41 @@ Describe 'Get-Entity - many characters per player' {
     It 'character with zero PU zdobyte has correct value' {
         $E = $script:Entities | Where-Object { $_.Name -eq 'Bohater Czwarty' }
         $E.Overrides['pu_zdobyte'] | Should -Contain '0'
+    }
+}
+
+Describe 'Get-Entity - temporal @plik' {
+    BeforeAll {
+        $script:Entities = Get-Entity -Path (Join-Path $script:FixturesRoot 'entities-temporal-plik.md')
+    }
+
+    It 'parses multiple @plik entries into FilePathHistory' {
+        $E = $script:Entities | Where-Object { $_.Name -eq 'Bohater Zmiennoaktowy' }
+        $E.FilePathHistory.Count | Should -Be 2
+    }
+
+    It 'resolves active FilePath without ActiveOn filter (last entry wins)' {
+        $E = $script:Entities | Where-Object { $_.Name -eq 'Bohater Zmiennoaktowy' }
+        $E.FilePath | Should -Be 'Postaci/Gracze/Nowy.md'
+    }
+
+    It 'resolves active FilePath with ActiveOn before cutover' {
+        $Entities = Get-Entity -Path (Join-Path $script:FixturesRoot 'entities-temporal-plik.md') -ActiveOn ([datetime]::new(2024, 3, 1))
+        $E = $Entities | Where-Object { $_.Name -eq 'Bohater Zmiennoaktowy' }
+        $E.FilePath | Should -Be 'Postaci/Gracze/Stary.md'
+    }
+
+    It 'resolves active FilePath with ActiveOn after cutover' {
+        $Entities = Get-Entity -Path (Join-Path $script:FixturesRoot 'entities-temporal-plik.md') -ActiveOn ([datetime]::new(2025, 1, 1))
+        $E = $Entities | Where-Object { $_.Name -eq 'Bohater Zmiennoaktowy' }
+        $E.FilePath | Should -Be 'Postaci/Gracze/Nowy.md'
+    }
+
+    It 'handles non-temporal @plik as always-active' {
+        $E = $script:Entities | Where-Object { $_.Name -eq 'Bohater Stały' }
+        $E.FilePath | Should -Be 'Postaci/Gracze/Staly.md'
+        $E.FilePathHistory.Count | Should -Be 1
+        $E.FilePathHistory[0].ValidFrom | Should -BeNullOrEmpty
+        $E.FilePathHistory[0].ValidTo | Should -BeNullOrEmpty
     }
 }

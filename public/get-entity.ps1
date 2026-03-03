@@ -236,7 +236,7 @@ function Get-Entity {
             $StatusHistory   = [System.Collections.Generic.List[object]]::new()
             $QuantityHistory = [System.Collections.Generic.List[object]]::new()
             $GenericNames    = [System.Collections.Generic.List[string]]::new()
-            $FilePath        = $null
+            $FilePathHistory = [System.Collections.Generic.List[object]]::new()
             $Overrides       = @{}
 
             # Iterate child bullets belonging to this entity via lookup
@@ -342,7 +342,12 @@ function Get-Entity {
                         }
                     }
                     '@plik' {
-                        $FilePath = $Value
+                        $Parsed = ConvertFrom-ValidityString -InputText $Value
+                        $FilePathHistory.Add([PSCustomObject]@{
+                            FilePath  = $Parsed.Text
+                            ValidFrom = $Parsed.ValidFrom
+                            ValidTo   = $Parsed.ValidTo
+                        })
                     }
                     default {
                         # Any unrecognised @tag -> generic override (e.g. @pu_startowe, @info, @trigger)
@@ -377,6 +382,7 @@ function Get-Entity {
             $ActiveStatus   = Get-LastActiveValue  -History $StatusHistory   -PropertyName 'Status'    -ActiveOn $ActiveOn
             if (-not $ActiveStatus) { $ActiveStatus = 'Aktywny' }
             $ActiveQuantity = Get-LastActiveValue  -History $QuantityHistory -PropertyName 'Quantity'  -ActiveOn $ActiveOn
+            $ActiveFilePath = Get-LastActiveValue  -History $FilePathHistory -PropertyName 'FilePath'  -ActiveOn $ActiveOn
 
             # Merge or create entity
             $EntityKey = "$SectionType/$EntityName"
@@ -407,8 +413,8 @@ function Get-Entity {
                 foreach ($GN in $GenericNames) { [void]$Existing.Names.Add($GN) }
                 $Existing.Contains.AddRange($ContainsList)
 
-                # Merge file path (last occurrence wins)
-                if ($FilePath) { $Existing.FilePath = $FilePath }
+                # Merge file path history
+                $Existing.FilePathHistory.AddRange($FilePathHistory)
 
                 # Recompute active scalar properties from merged histories
                 if ($SectionType -ne "Entity") { $Existing.Type = $SectionType }
@@ -430,6 +436,9 @@ function Get-Entity {
 
                 $MergedQuantity = Get-LastActiveValue -History $Existing.QuantityHistory -PropertyName 'Quantity' -ActiveOn $ActiveOn
                 if ($MergedQuantity) { $Existing.Quantity = $MergedQuantity }
+
+                $MergedFilePath = Get-LastActiveValue -History $Existing.FilePathHistory -PropertyName 'FilePath' -ActiveOn $ActiveOn
+                if ($MergedFilePath) { $Existing.FilePath = $MergedFilePath }
             }
             else {
                 # First occurrence - create new entity object
@@ -454,7 +463,8 @@ function Get-Entity {
                     Quantity        = $ActiveQuantity
                     QuantityHistory = $QuantityHistory
                     GenericNames    = $GenericNames
-                    FilePath        = $FilePath
+                    FilePath        = $ActiveFilePath
+                    FilePathHistory = $FilePathHistory
                     Contains        = $ContainsList
                 }
                 $EntityMap[$EntityKey] = $Entity

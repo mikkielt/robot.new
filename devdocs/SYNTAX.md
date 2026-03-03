@@ -434,7 +434,7 @@ Tags with dedicated handling in the entity parser (`get-entity.ps1`):
 | `@grupa` | Group/faction membership | Yes |
 | `@status` | Entity lifecycle state (Aktywny/Nieaktywny/Usunięty), defaults to Aktywny | Yes |
 | `@ilość` | Quantity for Przedmiot entities | Yes |
-| `@plik` | Path to character file for Postać entities | No |
+| `@plik` | Path to character file for Postać entities | Yes |
 | `@generyczne_nazwy` | Comma-separated generic names (added to Names collection) | No |
 | Any other | Generic override stored in Overrides dictionary (e.g. `@info`, `@stan`, `@margonemid`, `@prfwebhook`, `@pu_startowe`, `@pu_suma`, `@pu_zdobyte`, `@pu_nadmiar`, `@region`) | Yes (via Overrides) |
 

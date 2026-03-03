@@ -230,7 +230,14 @@ function Get-EntityState {
                         }
                     }
                     '@plik' {
-                        $TargetEntity.FilePath = $Parsed.Text
+                        if (-not $TargetEntity.FilePathHistory) {
+                            $TargetEntity.FilePathHistory = [System.Collections.Generic.List[object]]::new()
+                        }
+                        $TargetEntity.FilePathHistory.Add([PSCustomObject]@{
+                            FilePath  = $Parsed.Text
+                            ValidFrom = $Parsed.ValidFrom
+                            ValidTo   = $Parsed.ValidTo
+                        })
                     }
                     default {
                         # Generic override (e.g. @pu_startowe, @info, @trigger)
@@ -329,6 +336,7 @@ function Get-EntityState {
         if ($Entity.GroupHistory.Count -gt 0)    { $Entity.GroupHistory.Sort($DateComparer) }
         if ($Entity.StatusHistory -and $Entity.StatusHistory.Count -gt 0) { $Entity.StatusHistory.Sort($DateComparer) }
         if ($Entity.QuantityHistory -and $Entity.QuantityHistory.Count -gt 0) { $Entity.QuantityHistory.Sort($DateComparer) }
+        if ($Entity.FilePathHistory -and $Entity.FilePathHistory.Count -gt 0) { $Entity.FilePathHistory.Sort($DateComparer) }
 
         # Recompute active scalar/array values from merged + sorted histories
         $Entity.Location = Get-LastActiveValue -History $Entity.LocationHistory -PropertyName 'Location'  -ActiveOn $ActiveOn
@@ -347,6 +355,11 @@ function Get-EntityState {
         if ($Entity.QuantityHistory -and $Entity.QuantityHistory.Count -gt 0) {
             $MergedQuantity = Get-LastActiveValue -History $Entity.QuantityHistory -PropertyName 'Quantity' -ActiveOn $ActiveOn
             if ($MergedQuantity) { $Entity.Quantity = $MergedQuantity }
+        }
+
+        if ($Entity.FilePathHistory -and $Entity.FilePathHistory.Count -gt 0) {
+            $MergedFilePath = Get-LastActiveValue -History $Entity.FilePathHistory -PropertyName 'FilePath' -ActiveOn $ActiveOn
+            if ($MergedFilePath) { $Entity.FilePath = $MergedFilePath }
         }
     }
 
