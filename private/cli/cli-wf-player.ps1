@@ -197,7 +197,6 @@ function Invoke-EditCharacterWorkflow {
         $PrevValue = if ($CollectedParams.Contains($CurrentStep.Name)) { $CollectedParams[$CurrentStep.Name] } else { $null }
 
         $Result = Invoke-WizardStep -Step $CurrentStep -State $State -CurrentValue $PrevValue
-        if ($Result -eq '__quit__') { return }
         if ($Result -eq '__back__') {
             if ($StepIndex -gt 0) { $StepIndex-- } else { return }
             continue

@@ -247,7 +247,8 @@ function Request-UserChoice {
     param(
         [Parameter(Mandatory)] [string]$Prompt,
         [Parameter(Mandatory)] [string[]]$ValidChoices,
-        [hashtable]$Labels
+        [hashtable]$Labels,
+        [string[]]$HelpText
     )
 
     if ($script:CLIEngineAvailable) {
@@ -265,8 +266,8 @@ function Request-UserChoice {
             })
         }
 
-        $Selected = Show-ArrowMenu -Items $Items -Title $Prompt -ShowBack
-        if ($Selected -eq '__back__' -or $Selected -eq '__quit__') {
+        $Selected = Show-ArrowMenu -Items $Items -Title $Prompt -ShowBack -HelpContent $HelpText
+        if ($Selected -eq '__back__') {
             return 'Q'
         }
         return $Selected
@@ -292,21 +293,20 @@ function Request-UserChoice {
 function Request-YesNo {
     param(
         [Parameter(Mandatory)] [string]$Prompt,
-        [bool]$Default = $true
+        [bool]$Default = $true,
+        [string[]]$HelpText
     )
 
     if ($script:CLIEngineAvailable) {
-        $DefaultLabel = if ($Default) { 'Tak' } else { 'Nie' }
         $Items = @(
             [PSCustomObject]@{ ID = 'tak'; Label = 'Tak'; Description = ''; RoleTag = $null; InfoText = $null; Disabled = $false }
             [PSCustomObject]@{ ID = 'nie'; Label = 'Nie'; Description = ''; RoleTag = $null; InfoText = $null; Disabled = $false }
         )
-        $StartIndex = if ($Default) { 0 } else { 1 }
         Write-Host ''
         Write-Host "  $Prompt" -ForegroundColor (Resolve-MigrationColor -Role 'Accent')
-        $Selected = Show-ArrowMenu -Items $Items -Title '' -ShowBack
-        if ($Selected -eq '__back__' -or $Selected -eq '__quit__') {
-            return $false
+        $Selected = Show-ArrowMenu -Items $Items -Title '' -ShowBack -HelpContent $HelpText
+        if ($Selected -eq '__back__') {
+            return $null
         }
         return ($Selected -eq 'tak')
     }
@@ -433,7 +433,16 @@ function Show-ProgressSummary {
             RoleTag = $null; InfoText = $null; Disabled = $false
         })
 
-        $Selected = Show-ArrowMenu -Items $Items -Title 'Migracja' -ShowBack
+        $MigrationHelp = @(
+            'Wybierz fazę migracji do uruchomienia.'
+            'Fazy są wykonywane sekwencyjnie (0-7).'
+            'Każda faza jest idempotentna — można ją uruchomić wielokrotnie.'
+            ''
+            'Szybka diagnostyka — przegląd stanu migracji'
+            'Pełny raport — szczegółowe zestawienie postępu'
+        )
+
+        $Selected = Show-ArrowMenu -Items $Items -Title 'Migracja' -ShowBack -HelpContent $MigrationHelp -HelpTitle 'Migracja - Pomoc'
         return $Selected
     }
 

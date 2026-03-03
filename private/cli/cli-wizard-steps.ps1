@@ -12,7 +12,7 @@
     cli-wizard.ps1 at load time.
 
     Back-navigation is signalled by returning the sentinel string '__back__'.
-    Quit is signalled by '__quit__'. A $null return on a required field means
+    Both q and Esc return '__back__'. A $null return on a required field means
     "retry this step".
 #>
 
@@ -286,7 +286,6 @@ function Invoke-WizardStep {
 
             $Choice = Show-ArrowMenu -Items $MenuItems -ShowBack
             if ($Choice -eq '__back__') { return '__back__' }
-            if ($Choice -eq '__quit__') { return '__quit__' }
             return $Choice
         }
 
@@ -300,7 +299,6 @@ function Invoke-WizardStep {
 
             $Choice = Show-ArrowMenu -Items $YesNoItems -ShowBack
             if ($Choice -eq '__back__') { return '__back__' }
-            if ($Choice -eq '__quit__') { return '__quit__' }
             return ($Choice -eq 'yes')
         }
 
@@ -423,7 +421,7 @@ function Invoke-WizardStep {
                     }
 
                     $SubResult = Invoke-WizardStep -Step $SubStepObj -State $State
-                    if ($SubResult -eq '__back__' -or $SubResult -eq '__quit__') {
+                    if ($SubResult -eq '__back__') {
                         $Cancelled = $true
                         break
                     }

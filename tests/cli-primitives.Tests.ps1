@@ -67,6 +67,40 @@ Describe 'Get-CLIColor' {
         }
     }
 
+    It 'returns Blue for Success role in Dark theme' {
+        $script:NavState.Theme = 'Dark'
+        Get-CLIColor -Role 'Success' | Should -Be 'Blue'
+    }
+
+    It 'returns DarkBlue for Success role in Light theme' {
+        $script:NavState.Theme = 'Light'
+        Get-CLIColor -Role 'Success' | Should -Be 'DarkBlue'
+    }
+
+    It 'returns White for Info role in Dark theme' {
+        $script:NavState.Theme = 'Dark'
+        Get-CLIColor -Role 'Info' | Should -Be 'White'
+    }
+
+    It 'returns DarkYellow for RoleTag role in Dark theme' {
+        $script:NavState.Theme = 'Dark'
+        Get-CLIColor -Role 'RoleTag' | Should -Be 'DarkYellow'
+    }
+
+    It 'returns DarkCyan for RoleTag role in Light theme' {
+        $script:NavState.Theme = 'Light'
+        Get-CLIColor -Role 'RoleTag' | Should -Be 'DarkCyan'
+    }
+
+    It 'Success color differs from Accent color in both themes' {
+        foreach ($Theme in @('Dark', 'Light')) {
+            $script:NavState.Theme = $Theme
+            $Accent  = Get-CLIColor -Role 'Accent'
+            $Success = Get-CLIColor -Role 'Success'
+            $Success | Should -Not -Be $Accent -Because "Success must be distinguishable from Accent ($Theme)"
+        }
+    }
+
     It 'returns White for unknown role' {
         $script:NavState.Theme = 'Dark'
         Get-CLIColor -Role 'NonExistent' | Should -Be 'White'

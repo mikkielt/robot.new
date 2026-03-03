@@ -128,9 +128,11 @@ All files are dot-sourced on demand when `Invoke-RobotCLI` is called (not at mod
 
 ### 4.2 Show-ArrowMenu (`cli-menus.ps1`)
 
-Input: `-Items` (array of `PSCustomObject` with `ID`, `Label`, `Description`, `RoleTag`, `InfoText`, `Disabled`), optional `-Title`, optional `-ShowBack`.
+Input: `-Items` (array of `PSCustomObject` with `ID`, `Label`, `Description`, `RoleTag`, `InfoText`, `Disabled`), optional `-Title`, optional `-ShowBack`, optional `-HelpContent [string[]]`, optional `-HelpTitle [string]`.
 
-Returns: selected item's `ID` string, `'__back__'` (Escape), `'__help__'` (H key), or `'__quit__'` (Q key).
+Returns: selected item's `ID` string, or `'__back__'` (Escape or Q key). Both q and Esc return `'__back__'`; on the main menu this exits the CLI, on sub-menus it navigates back.
+
+When `-HelpContent` is provided, pressing H shows a centered scrollable overlay box via `Show-HelpOverlay` (no sentinel returned — handled internally). The `h pomoc` hint only appears when help content is available.
 
 ### 4.3 Show-ResultTable (`cli-menus.ps1`)
 

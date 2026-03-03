@@ -54,7 +54,17 @@ function Invoke-MigrationPhase8 {
         } else {
             if ($WhatIf) {
                 Write-StepWarning '[SUCHY PRZEBIEG] Dodałbym komentarz zamrożenia do Gracze.md'
-            } elseif (Request-YesNo -Prompt 'Czy dodać komentarz zamrożenia do Gracze.md?' -Default $true) {
+            } elseif (Request-YesNo -Prompt 'Czy dodać komentarz zamrożenia do Gracze.md?' -Default $true -HelpText @(
+                'Dodanie komentarza HTML na początku Gracze.md',
+                'oznaczającego plik jako zamrożony (read-only).',
+                '',
+                'Od tego momentu Gracze.md staje się archiwum.',
+                'Wszelkie zmiany danych graczy odbywają się',
+                'wyłącznie przez entities.md i moduł .robot.new.',
+                '',
+                'Tak = dodaj komentarz i zacommituj zmianę',
+                'Nie = pomiń, Gracze.md pozostanie bez oznaczenia'
+            )) {
                 $NewContent = "$FreezeComment`n`n$GraczeContent"
                 [System.IO.File]::WriteAllText($GraczePath, $NewContent, $UTF8NoBOM)
                 & git -C $RepoRoot add 'Gracze.md' 2>&1
@@ -102,7 +112,18 @@ function Invoke-MigrationPhase8 {
     }
 
     if (-not $WhatIf -and $DryResults -and $DryResults.Count -gt 0) {
-        if (Request-YesNo -Prompt 'Czy wykonać właściwy przydział PU z powiadomieniami Discord?' -Default $false) {
+        if (Request-YesNo -Prompt 'Czy wykonać właściwy przydział PU z powiadomieniami Discord?' -Default $false -HelpText @(
+            'UWAGA: To jest operacja produkcyjna z rzeczywistymi',
+            'skutkami ubocznymi!',
+            '',
+            'Wykona pełny przydział PU za bieżący miesiąc:',
+            '- zaktualizuje pliki postaci (Postaci/Gracze/*.md)',
+            '- wyśle powiadomienia Discord do graczy',
+            '- dopisze wpis do logu PU (.robot/res/pu-sessions.md)',
+            '',
+            'Tak = wykonaj przydział PU i wyślij powiadomienia',
+            'Nie = pomiń, przydział PU można wykonać później ręcznie'
+        )) {
             try {
                 Invoke-PlayerCharacterPUAssignment -Year $Year -Month $Month `
                     -ExcludeDirectory $script:MigrationExcludeDirs `

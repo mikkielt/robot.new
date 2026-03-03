@@ -95,7 +95,16 @@ function Invoke-MigrationPhase5 {
                 }
 
                 $DedupChoice = Request-UserChoice -Prompt 'Rozwiązać konflikty przez upgrade do Gen4?' -ValidChoices @('T', 'S', 'N') `
-                    -Labels @{ 'T' = 'Tak, zaktualizuj'; 'S' = 'Suchy przebieg (dry run)'; 'N' = 'Nie, pomiń' }
+                    -Labels @{ 'T' = 'Tak, zaktualizuj'; 'S' = 'Suchy przebieg (dry run)'; 'N' = 'Nie, pomiń' } `
+                    -HelpText @(
+                        'Sesje zdeduplikowane istnieją w kilku plikach w różnych',
+                        'formatach (np. Gen2 vs Gen4). Upgrade ujednolici format',
+                        'do Gen4 i zsynchronizuje metadane między kopiami.',
+                        '',
+                        'Tak = upgrade wszystkich kopii do Gen4 (zapis na dysk)',
+                        'Suchy przebieg = podgląd zmian bez zapisu',
+                        'Nie = pomiń, konflikty pozostaną do ręcznego rozwiązania'
+                    )
 
                 if ($DedupChoice -eq 'N') {
                     Write-Host '  Pominięto rozwiązywanie konfliktów formatu.' -ForegroundColor DarkGray
@@ -196,7 +205,18 @@ function Invoke-MigrationPhase5 {
     # Step 5: Prompt for upgrade action
     Write-Step -Number 4 -Text 'Upgrade sesji...'
     $Choice = Request-UserChoice -Prompt 'Czy zaktualizować aktywne sesje do Gen4?' -ValidChoices @('T', 'S', 'N') `
-        -Labels @{ 'T' = 'Tak, zaktualizuj'; 'S' = 'Suchy przebieg (dry run)'; 'N' = 'Nie, pomiń' }
+        -Labels @{ 'T' = 'Tak, zaktualizuj'; 'S' = 'Suchy przebieg (dry run)'; 'N' = 'Nie, pomiń' } `
+        -HelpText @(
+            'Upgrade aktywnych sesji (od 2024) do formatu Gen4.',
+            'Gen4 używa prefiksów @Lokacja, @PU, @Log, @Narrator',
+            'w bloku metadanych pod nagłówkiem sesji.',
+            '',
+            'Tak = zaktualizuj wszystkie aktywne sesje (zapis na dysk)',
+            'Suchy przebieg = podgląd ile sesji zostanie zmienionych',
+            'Nie = pomiń upgrade, sesje pozostaną w starym formacie',
+            '',
+            'Patrz: docs/Sessions.md (Format Gen4)'
+        )
 
     if ($Choice -eq 'N') {
         Write-Host '  Pominięto upgrade sesji.' -ForegroundColor DarkGray
@@ -403,7 +423,16 @@ function Invoke-MigrationPhase5 {
         }
 
         # Offer full report export
-        if ($LocationReport.Count -gt 0 -and (Request-YesNo -Prompt 'Czy wyeksportować pełny raport lokalizacji?' -Default $false)) {
+        if ($LocationReport.Count -gt 0 -and (Request-YesNo -Prompt 'Czy wyeksportować pełny raport lokalizacji?' -Default $false -HelpText @(
+            'Eksport pełnego raportu lokalizacji do pliku tekstowego',
+            'w .robot/res/location-report.txt.',
+            '',
+            'Raport zawiera wszystkie nazwy lokalizacji z sesji,',
+            'ich status dopasowania do encji oraz ewentualne konflikty.',
+            '',
+            'Tak = zapisz raport do pliku',
+            'Nie = pomiń eksport'
+        ))) {
             $ReportPath = [System.IO.Path]::Combine($RepoRoot, '.robot', 'res', 'location-report.txt')
             $ReportLines = [System.Collections.Generic.List[string]]::new()
             $ReportLines.Add("# Raport lokalizacji - $([datetime]::Now.ToString('yyyy-MM-dd HH:mm'))")
@@ -438,7 +467,15 @@ function Invoke-MigrationPhase5 {
 
     # Step 9: Prompt to commit upgraded sessions
     Write-Step -Number 8 -Text 'Commit...'
-    if (Request-YesNo -Prompt 'Czy zacommitować upgrade sesji?' -Default $true) {
+    if (Request-YesNo -Prompt 'Czy zacommitować upgrade sesji?' -Default $true -HelpText @(
+        'Zapisanie zmian do repozytorium git.',
+        '',
+        'Wykona: git add . + git commit z komunikatem',
+        '"Upgrade aktywnych sesji do formatu Gen4".',
+        '',
+        'Tak = git add + git commit',
+        'Nie = pominięcie, zmiany zostają niezacommitowane'
+    )) {
         & git -C $RepoRoot add . 2>&1
         & git -C $RepoRoot commit -m 'Upgrade aktywnych sesji do formatu Gen4' 2>&1
         if ($LASTEXITCODE -eq 0) {

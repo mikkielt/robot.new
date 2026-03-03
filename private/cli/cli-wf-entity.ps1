@@ -45,7 +45,7 @@ function Invoke-NewEntityWorkflow {
     )
 
     $Type = Show-ArrowMenu -Items $TypeItems -ShowBack
-    if ($Type -eq '__back__' -or $Type -eq '__quit__') { return }
+    if ($Type -eq '__back__') { return }
 
     # Step 2: Name
     [System.Console]::Clear()
@@ -61,7 +61,7 @@ function Invoke-NewEntityWorkflow {
         Condition = $null; Transform = $null; Default = $null
     }
     $Name = Invoke-WizardStep -Step $NameStep -State $State
-    if ($Name -eq '__back__' -or $Name -eq '__quit__' -or -not $Name) { return }
+    if ($Name -eq '__back__' -or -not $Name) { return }
 
     # Step 3: Guided tag entry loop
     $Tags = @{}
@@ -102,7 +102,7 @@ function Invoke-NewEntityWorkflow {
         })
 
         $TagChoice = Show-ArrowMenu -Items $TagOptions -ShowBack
-        if ($TagChoice -eq '__back__' -or $TagChoice -eq '__quit__' -or $TagChoice -eq '__done__') { break }
+        if ($TagChoice -eq '__back__' -or $TagChoice -eq '__done__') { break }
 
         $TagName = $TagChoice
         if ($TagChoice -eq '__custom__') {
@@ -242,7 +242,7 @@ function Invoke-EditEntityWorkflow {
         })
 
         $TagChoice = Show-ArrowMenu -Items $TagOptions -ShowBack
-        if ($TagChoice -eq '__back__' -or $TagChoice -eq '__quit__' -or $TagChoice -eq '__done__') { break }
+        if ($TagChoice -eq '__back__' -or $TagChoice -eq '__done__') { break }
 
         $TagName = $TagChoice
         if ($TagChoice -eq '__custom__') {

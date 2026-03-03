@@ -65,7 +65,7 @@ function Invoke-SessionValidation {
         Condition = $null; Transform = $null; Default = $null
     }
     $MinDate = Invoke-WizardStep -Step $MinDateStep -State $State
-    if ($MinDate -eq '__back__' -or $MinDate -eq '__quit__') { return }
+    if ($MinDate -eq '__back__') { return }
 
     $MaxDateStep = [PSCustomObject]@{
         Name = 'MaxDate'; Label = 'Do daty'; StepType = 'date'; Required = $false
@@ -73,7 +73,7 @@ function Invoke-SessionValidation {
         Condition = $null; Transform = $null; Default = $null
     }
     $MaxDate = Invoke-WizardStep -Step $MaxDateStep -State $State
-    if ($MaxDate -eq '__back__' -or $MaxDate -eq '__quit__') { return }
+    if ($MaxDate -eq '__back__') { return }
 
     Write-Host '  Pobieranie sesji...' -ForegroundColor (Get-CLIColor -Role 'Disabled')
 

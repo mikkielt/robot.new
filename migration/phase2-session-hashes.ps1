@@ -40,7 +40,18 @@ function Invoke-MigrationPhase2 {
         $ExistingCount = $ExistingFiles.Count
         Write-StepWarning "Magazyn hashy już istnieje ($ExistingCount plików JSON)"
 
-        if (-not (Request-YesNo -Prompt 'Czy przeliczyć wszystkie hashy od nowa?' -Default $false)) {
+        if (-not (Request-YesNo -Prompt 'Czy przeliczyć wszystkie hashy od nowa?' -Default $false -HelpText @(
+            'Przeliczenie hashy SHA256 dla wszystkich plików Markdown.',
+            'Magazyn hashy już istnieje — ta operacja go nadpisze.',
+            '',
+            'Hashy służą do weryfikacji integralności sesji',
+            '(wykrywanie nieautoryzowanych zmian treści).',
+            '',
+            'Tak = usuń istniejące hashy i wygeneruj od nowa',
+            'Nie = zachowaj obecne hashy i przejdź do weryfikacji',
+            '',
+            'Patrz: docs/Session-Integrity.md'
+        ))) {
             Update-PhaseChecklist -State $State -Phase 2 -Item 'HashesGenerated' -Value $true
             Update-PhaseChecklist -State $State -Phase 2 -Item 'FileCount' -Value $ExistingCount
 

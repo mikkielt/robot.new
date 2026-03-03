@@ -121,7 +121,17 @@ function Invoke-MigrationPhase3 {
         # Offer to mark webhook-less active players as inactive
         $WebhooksResolved = $false
         if (-not $WhatIf) {
-            $MarkInactive = Request-YesNo -Prompt 'Czy chcesz oznaczyć ich jako nieaktywnych?' -Default $false
+            $MarkInactive = Request-YesNo -Prompt 'Czy chcesz oznaczyć ich jako nieaktywnych?' -Default $false -HelpText @(
+                'Oznaczenie aktywnych graczy bez webhooka Discord',
+                'jako nieaktywnych (@status: Nieaktywny) w entities.md.',
+                '',
+                'Gracze bez webhooka nie mogą otrzymywać powiadomień PU.',
+                'Oznaczenie ich jako nieaktywnych zapobiega błędom',
+                'przy późniejszym przydzielaniu PU.',
+                '',
+                'Tak = ustaw @status: Nieaktywny dla wylistowanych graczy',
+                'Nie = pomiń — gracze pozostaną aktywni bez webhooka'
+            )
             if ($MarkInactive) {
                 $MarkedCount = 0
                 foreach ($PlayerName in $NoWebhook) {

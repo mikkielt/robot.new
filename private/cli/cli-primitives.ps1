@@ -36,21 +36,21 @@
 $script:CLIColorScheme = @{
     Dark = @{
         Accent   = 'Cyan'
-        Success  = 'Cyan'
+        Success  = 'Blue'
         Warning  = 'Yellow'
         Error    = 'Magenta'
         Disabled = 'DarkGray'
-        Info     = 'Blue'
-        RoleTag  = 'DarkCyan'
+        Info     = 'White'
+        RoleTag  = 'DarkYellow'
     }
     Light = @{
         Accent   = 'DarkCyan'
-        Success  = 'DarkCyan'
+        Success  = 'DarkBlue'
         Warning  = 'DarkYellow'
         Error    = 'DarkMagenta'
         Disabled = 'Gray'
         Info     = 'DarkBlue'
-        RoleTag  = 'DarkBlue'
+        RoleTag  = 'DarkCyan'
     }
 }
 

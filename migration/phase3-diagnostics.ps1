@@ -79,9 +79,22 @@ function Invoke-MigrationPhase4 {
                     $Choice = Request-UserChoice `
                         -Prompt "Narrator: $($U.RawText)" `
                         -ValidChoices @('A', 'M', 'P', 'K') `
-                        -Labels @{ 'A' = 'Dodaj alias do gracza'; 'M' = 'Mapuj ręcznie na kanoniczne nazwy'; 'P' = 'Pomiń tego narratora'; 'K' = 'Kontynuuj (zakończ przegląd)' }
+                        -Labels @{ 'A' = 'Dodaj alias do gracza'; 'M' = 'Mapuj ręcznie na kanoniczne nazwy'; 'P' = 'Pomiń tego narratora'; 'K' = 'Kontynuuj (zakończ przegląd)' } `
+                        -HelpText @(
+                            'Rozwiązywanie nierozpoznanego narratora sesji.',
+                            'Narrator nie został dopasowany do żadnego gracza.',
+                            '',
+                            'A = dodaj alias (@alias) do istniejącego gracza w entities.md',
+                            '    oraz zapisz mapowanie w narrator-mappings.txt',
+                            'M = podaj ręcznie kanoniczne nazwy (oddzielone przecinkami)',
+                            '    i zapisz mapowanie w narrator-mappings.txt',
+                            'P = pomiń tego narratora (nie twórz mapowania)',
+                            'K = zakończ przegląd — pozostali narratorzy nie zostaną rozwiązani',
+                            '',
+                            'Patrz: docs/Migration.md (Faza 4 — Normalizacja narratorów)'
+                        )
 
-                    if ($Choice -eq 'K') { break }
+                    if ($Choice -eq 'K' -or $Choice -eq 'Q') { break }
                     if ($Choice -eq 'P') { continue }
 
                     if ($Choice -eq 'A') {
@@ -171,7 +184,18 @@ function Show-BRAKCharacters {
         Write-Host "    $($Item.PlayerName) / $($Item.CharacterName) - brak wartości PU" -ForegroundColor Yellow
     }
 
-    $Choice = Request-YesNo -Prompt "    Czy chcesz oznaczyć te postacie jako nieaktywne?" -Default $false
+    $Choice = Request-YesNo -Prompt "    Czy chcesz oznaczyć te postacie jako nieaktywne?" -Default $false -HelpText @(
+        'Soft-delete postaci z wartością PU = BRAK.',
+        'Postacie te nie mają przypisanych punktów umiejętności,',
+        'co powoduje błędy w diagnostyce PU.',
+        '',
+        'Oznaczenie jako nieaktywne (@status: Nieaktywny)',
+        'wyłączy je z obliczeń PU i rozwiąże błędy diagnostyczne.',
+        '',
+        'Tak = ustaw @status: Nieaktywny dla wylistowanych postaci',
+        'Nie = pomiń — postacie pozostaną aktywne z PU = BRAK'
+    )
+    if ($null -eq $Choice) { return }
     if ($Choice) {
         foreach ($Item in $BRAKChars) {
             try {

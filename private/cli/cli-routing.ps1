@@ -143,7 +143,7 @@ function Invoke-QueryAction {
             }
 
             $Result = Invoke-WizardStep -Step $FilterStep -State $State
-            if ($Result -eq '__back__' -or $Result -eq '__quit__') { return }
+            if ($Result -eq '__back__') { return }
             if ($null -ne $Result -and $Result -ne '') {
                 $FilterParams[$FilterKey] = $Result
             }
@@ -265,19 +265,14 @@ function Show-SubMenu {
             }
         }
 
-        $Selected = Show-ArrowMenu -Items $Items -Title $Category -ShowBack
+        $HelpEntry = $script:HelpContent[$Category]
+        $HelpBody = if ($HelpEntry) { $HelpEntry.Body } else { $null }
+        $HelpTitle = if ($HelpEntry) { $HelpEntry.Title } else { $null }
+        $Selected = Show-ArrowMenu -Items $Items -Title $Category -ShowBack -HelpContent $HelpBody -HelpTitle $HelpTitle
 
         if ($Selected -eq '__back__') {
             [void]$State.BreadcrumbStack.Pop()
             return
-        }
-        if ($Selected -eq '__quit__') {
-            [void]$State.BreadcrumbStack.Pop()
-            return '__quit__'
-        }
-        if ($Selected -eq '__help__') {
-            Show-HelpScreen -ContextKey $Category
-            continue
         }
 
         # Handle migration phase items
@@ -322,17 +317,14 @@ function Show-MainMenu {
             Disabled    = $false
         })
 
-        $Selected = Show-ArrowMenu -Items $CategoryItems
+        $RootHelp = $script:HelpContent['root']
+        $Selected = Show-ArrowMenu -Items $CategoryItems -HelpContent $RootHelp.Body -HelpTitle $RootHelp.Title
 
-        if ($Selected -eq '__quit__' -or $Selected -eq '__back__') {
+        if ($Selected -eq '__back__') {
             Write-Host ''
             Write-CLILine -Text 'Do zobaczenia!' -Color (Get-CLIColor -Role 'Accent')
             Write-Host ''
             return
-        }
-        if ($Selected -eq '__help__') {
-            Show-HelpScreen -ContextKey 'root'
-            continue
         }
 
         if ($Selected -eq '__refresh__') {
@@ -341,13 +333,7 @@ function Show-MainMenu {
         }
 
         # Navigate to submenu
-        $SubResult = Show-SubMenu -Category $Selected -State $State
-        if ($SubResult -eq '__quit__') {
-            Write-Host ''
-            Write-CLILine -Text 'Do zobaczenia!' -Color (Get-CLIColor -Role 'Accent')
-            Write-Host ''
-            return
-        }
+        Show-SubMenu -Category $Selected -State $State
     }
 }
 

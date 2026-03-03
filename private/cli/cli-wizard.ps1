@@ -197,7 +197,6 @@ function Invoke-Wizard {
 
         $Result = Invoke-WizardStep -Step $CurrentStep -State $State -CurrentValue $PrevValue
 
-        if ($Result -eq '__quit__') { return $null }
         if ($Result -eq '__back__') {
             if ($StepIndex -gt 0) {
                 $StepIndex--

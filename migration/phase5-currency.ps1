@@ -46,7 +46,17 @@ function Invoke-MigrationPhase6 {
 
         if ($WhatIf) {
             Write-StepWarning '[SUCHY PRZEBIEG] Utworzyłbym skarbiec'
-        } elseif (Request-YesNo -Prompt 'Czy utworzyć Skarbiec Koordynatorów?' -Default $true) {
+        } elseif (Request-YesNo -Prompt 'Czy utworzyć Skarbiec Koordynatorów?' -Default $true -HelpText @(
+            'Utworzenie encji typu Grupa o nazwie "Skarbiec Koordynatorów"',
+            'w pliku entities.md. Skarbiec pełni rolę centralnego konta',
+            'walutowego, z którego koordynatorzy przydzielają środki.',
+            '',
+            'Po utworzeniu zostaniesz poproszony o podanie początkowych',
+            'rezerw (Korony, Talary, Kogi).',
+            '',
+            'Tak = utwórz skarbiec i wprowadź rezerwy',
+            'Nie = pomiń, skarbiec trzeba będzie utworzyć ręcznie'
+        )) {
             try {
                 New-Entity -Type 'Grupa' -Name 'Skarbiec Koordynatorów' -Confirm:$false
                 Write-StepOK 'Utworzono grupę Skarbiec Koordynatorów'
@@ -125,13 +135,31 @@ function Invoke-MigrationPhase6 {
         Write-Step -Number 3 -Text 'Rejestracja walut postaci...'
 
         # Offer CSV batch import or interactive entry
-        $UseCsv = Request-YesNo -Prompt "Czy wczytać dane z pliku CSV? ($($CharsWithout.Count) postaci bez waluty)" -Default $false
+        $UseCsv = Request-YesNo -Prompt "Czy wczytać dane z pliku CSV? ($($CharsWithout.Count) postaci bez waluty)" -Default $false -HelpText @(
+            'Import danych walutowych z pliku CSV dla postaci',
+            'bez zarejestrowanych walut.',
+            '',
+            'Format CSV: Postać,Korony,Talary,Kogi',
+            'Przykład: Crag Hack,50,200,1500',
+            '',
+            'Tak = wczytaj dane z pliku CSV (batch import)',
+            'Nie = przejdź do ręcznego wprowadzania danych'
+        )
 
         if ($UseCsv) {
             Invoke-CurrencyCSVImport -CharactersWithout $CharsWithout
         } else {
             # Fall back to interactive per-character entry
-            $DoInteractive = Request-YesNo -Prompt "Czy wprowadzić dane ręcznie dla $($CharsWithout.Count) postaci?" -Default $true
+            $DoInteractive = Request-YesNo -Prompt "Czy wprowadzić dane ręcznie dla $($CharsWithout.Count) postaci?" -Default $true -HelpText @(
+                'Ręczne wprowadzanie stanów walut dla każdej aktywnej',
+                'postaci, która nie ma jeszcze encji walutowych.',
+                '',
+                'Dla każdej postaci podajesz Korony, Talary i Kogi.',
+                'Można pominąć (Enter) nominał, który nie dotyczy postaci.',
+                '',
+                'Tak = wprowadź dane interaktywnie postać po postaci',
+                'Nie = pomiń, uruchom Fazę 6 ponownie po zebraniu danych'
+            )
             if ($DoInteractive) {
                 Invoke-CurrencyInteractiveEntry -CharactersWithout $CharsWithout
             } else {
@@ -143,7 +171,17 @@ function Invoke-MigrationPhase6 {
     # Step 4: Register narrator budgets (optional)
     if (-not $WhatIf) {
         Write-Step -Number 4 -Text 'Budżety narratorów...'
-        if (Request-YesNo -Prompt 'Czy narratorzy mają budżety walut do zarejestrowania?' -Default $false) {
+        if (Request-YesNo -Prompt 'Czy narratorzy mają budżety walut do zarejestrowania?' -Default $false -HelpText @(
+            'Rejestracja budżetów walutowych dla narratorów.',
+            'Narratorzy mogą posiadać pule walut przeznaczone',
+            'do rozdawania graczom podczas sesji.',
+            '',
+            'Po wybraniu Tak, podajesz nazwę narratora i kwoty.',
+            'Pusta nazwa kończy wprowadzanie.',
+            '',
+            'Tak = przejdź do rejestracji budżetów narratorów',
+            'Nie = pomiń, narratorzy nie mają budżetów do rejestracji'
+        )) {
             Invoke-NarratorBudgetEntry
         } else {
             Write-Host '  Pominięto budżety narratorów.' -ForegroundColor DarkGray
@@ -173,7 +211,15 @@ function Invoke-MigrationPhase6 {
         Write-Step -Number 6 -Text 'Commit...'
         $GitDiff = & git -C $RepoRoot diff --name-only 'entities.md' 2>&1
         if ($GitDiff) {
-            if (Request-YesNo -Prompt 'Czy zacommitować zmiany walutowe?' -Default $true) {
+            if (Request-YesNo -Prompt 'Czy zacommitować zmiany walutowe?' -Default $true -HelpText @(
+                'Zapisanie zmian walutowych do repozytorium git.',
+                '',
+                'Wykona: git add entities.md + git commit',
+                'z komunikatem "Enrollment walut - stan początkowy".',
+                '',
+                'Tak = git add + git commit',
+                'Nie = pominięcie, zmiany zostają niezacommitowane'
+            )) {
                 & git -C $RepoRoot add 'entities.md' 2>&1
                 & git -C $RepoRoot commit -m 'Enrollment walut - stan początkowy' 2>&1
                 if ($LASTEXITCODE -eq 0) {

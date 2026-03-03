@@ -109,7 +109,17 @@ function Invoke-MigrationPhase7 {
 
     # Ask coordinator to confirm PU cycle validation (one-time gate)
     if ($Diag.OK -and -not ($State.Phases['7'].Checklist.ContainsKey('PUCycleValidated') -and $State.Phases['7'].Checklist['PUCycleValidated'])) {
-        if (Request-YesNo -Prompt 'Czy porównano wyniki PU z starym systemem i są zgodne?' -Default $false) {
+        if (Request-YesNo -Prompt 'Czy porównano wyniki PU z starym systemem i są zgodne?' -Default $false -HelpText @(
+            'Potwierdzenie, że wyniki przydziału PU z nowego systemu',
+            '(.robot.new) zgadzają się z wynikami starego systemu.',
+            '',
+            'To jednorazowa bramka — po potwierdzeniu kryterium',
+            '"Min. 1 pełny cykl PU bez rozbieżności" zostanie',
+            'oznaczone jako spełnione.',
+            '',
+            'Tak = potwierdzam zgodność wyników PU',
+            'Nie = jeszcze nie porównano lub są rozbieżności'
+        )) {
             Update-PhaseChecklist -State $State -Phase 7 -Item 'PUCycleValidated' -Value $true
         }
     }

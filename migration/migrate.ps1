@@ -129,12 +129,6 @@ while ($true) {
                 Write-Host ''
                 exit 0
             }
-            '__quit__' {
-                Write-Host ''
-                Write-Host '  Do zobaczenia!' -ForegroundColor Cyan
-                Write-Host ''
-                exit 0
-            }
             'diagnostics' {
                 Invoke-QuickDiagnostics
                 Request-Confirmation

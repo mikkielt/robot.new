@@ -41,7 +41,7 @@ function Invoke-CurrencyTransferWorkflow {
         Condition = $null; Transform = $null; Default = $null
     }
     $Amount = Invoke-WizardStep -Step $AmountStep -State $State
-    if ($Amount -eq '__back__' -or $Amount -eq '__quit__' -or -not $Amount) { return }
+    if ($Amount -eq '__back__' -or -not $Amount) { return }
 
     # Step 3: Destination currency
     [System.Console]::Clear()

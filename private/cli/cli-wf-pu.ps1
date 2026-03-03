@@ -41,7 +41,7 @@ function Invoke-PUAssignmentWorkflow {
         Condition = $null; Transform = $null; Default = [string](Get-Date).Year
     }
     $Year = Invoke-WizardStep -Step $YearStep -State $State
-    if ($Year -eq '__back__' -or $Year -eq '__quit__') { return }
+    if ($Year -eq '__back__') { return }
 
     # ── Step 2: Month ──
     [System.Console]::Clear()
@@ -56,7 +56,7 @@ function Invoke-PUAssignmentWorkflow {
         Condition = $null; Transform = $null; Default = [string](Get-Date).Month
     }
     $Month = Invoke-WizardStep -Step $MonthStep -State $State
-    if ($Month -eq '__back__' -or $Month -eq '__quit__') { return }
+    if ($Month -eq '__back__') { return }
 
     # ── Step 3: Session integrity pre-check ──
     [System.Console]::Clear()
@@ -186,7 +186,7 @@ function Invoke-PUAssignmentWorkflow {
             [PSCustomObject]@{ ID = 'yes'; Label = 'Tak'; Description = ''; RoleTag = $null; InfoText = $null; Disabled = $false }
             [PSCustomObject]@{ ID = 'no';  Label = 'Nie'; Description = ''; RoleTag = $null; InfoText = $null; Disabled = $false }
         ) -ShowBack
-        if ($FlagChoice -eq '__back__' -or $FlagChoice -eq '__quit__') { return }
+        if ($FlagChoice -eq '__back__') { return }
         $Flags[$FlagKey] = ($FlagChoice -eq 'yes')
     }
 

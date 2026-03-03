@@ -50,7 +50,16 @@ function Invoke-MigrationPhase1 {
             Update-PhaseChecklist -State $State -Phase 1 -Item 'Committed' -Value $false
         }
 
-        if (-not (Request-YesNo -Prompt 'Plik entities.md już istnieje. Czy wygenerować ponownie?' -Default $false)) {
+        if (-not (Request-YesNo -Prompt 'Plik entities.md już istnieje. Czy wygenerować ponownie?' -Default $false -HelpText @(
+            'Ponowne generowanie entities.md z Gracze.md.',
+            'Nadpisze aktualny plik entities.md nową wersją',
+            'wygenerowaną z danych legacy (Gracze.md).',
+            '',
+            'Tak = nadpisz entities.md nowo wygenerowaną wersją',
+            'Nie = zachowaj istniejący plik i przejdź do weryfikacji',
+            '',
+            'Patrz: docs/Migration.md (Faza 1 — Bootstrap)'
+        ))) {
             # Skip regeneration, proceed to verification only
             $SkipGeneration = $true
         }
@@ -124,7 +133,16 @@ function Invoke-MigrationPhase1 {
             Update-PhaseChecklist -State $State -Phase 1 -Item 'SectionsAdded' -Value $true
         } else {
             Write-StepWarning "Brakujące sekcje: $($MissingSections -join ', ')"
-            if (-not $WhatIf -and (Request-YesNo -Prompt 'Czy dodać brakujące sekcje automatycznie?' -Default $true)) {
+            if (-not $WhatIf -and (Request-YesNo -Prompt 'Czy dodać brakujące sekcje automatycznie?' -Default $true -HelpText @(
+                'Dopisanie brakujących sekcji (## NPC, ## Grupa itp.)',
+                'na końcu pliku entities.md.',
+                '',
+                'Sekcje te są wymagane przez Get-Entity do poprawnego',
+                'parsowania encji w repozytorium.',
+                '',
+                'Tak = dopisz brakujące nagłówki sekcji do entities.md',
+                'Nie = pomiń — musisz dodać sekcje ręcznie'
+            ))) {
                 $SB = [System.Text.StringBuilder]::new()
                 [void]$SB.Append($Content)
                 foreach ($Section in $MissingSections) {
@@ -147,7 +165,15 @@ function Invoke-MigrationPhase1 {
 
         if ($NeedsCommit) {
             Write-Step -Number 5 -Text 'Commit...'
-            if (Request-YesNo -Prompt 'Czy zacommitować entities.md?' -Default $true) {
+            if (Request-YesNo -Prompt 'Czy zacommitować entities.md?' -Default $true -HelpText @(
+                'Zapisanie zmian do repozytorium git.',
+                '',
+                'Wykona: git add entities.md + git commit',
+                'z komunikatem "Bootstrap entities.md z Gracze.md".',
+                '',
+                'Tak = git add + git commit',
+                'Nie = pominięcie, zmiany zostają niezacommitowane'
+            )) {
                 & git -C $RepoRoot add 'entities.md' 2>&1
                 & git -C $RepoRoot commit -m 'Bootstrap entities.md z Gracze.md' 2>&1
                 if ($LASTEXITCODE -eq 0) {
