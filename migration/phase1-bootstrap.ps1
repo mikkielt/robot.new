@@ -62,8 +62,8 @@ function Invoke-MigrationPhase1 {
 
         # Ensure ConvertTo-EntitiesFromPlayers is available
         if (-not (Get-Command 'ConvertTo-EntitiesFromPlayers' -ErrorAction SilentlyContinue)) {
-            $HelpersPath = [System.IO.Path]::Combine($ModuleRoot, 'private', 'entity-writehelpers.ps1')
-            . $HelpersPath
+            $MigrationHelpersPath = [System.IO.Path]::Combine($ModuleRoot, 'private', 'entity-migrationhelpers.ps1')
+            . $MigrationHelpersPath
         }
 
         if ($WhatIf) {

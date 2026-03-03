@@ -6,7 +6,7 @@
 
 ## 1. Scope
 
-This document covers `private/charfile-helpers.ps1`: the parser and writer for character files (`Postaci/Gracze/*.md`), and the template system used by `New-PlayerCharacter`.
+This document covers `private/charfile-helpers.ps1` and `private/charfile-reputation.ps1` (dot-sourced by `charfile-helpers.ps1`): the parser and writer for character files (`Postaci/Gracze/*.md`), and the template system used by `New-PlayerCharacter`.
 
 **Not covered**: Entity-level character data (PU tags, aliases, status) - see [ENTITY-WRITES.md](ENTITY-WRITES.md). Three-layer state merge - see [ENTITIES.md](ENTITIES.md).
 
@@ -77,7 +77,7 @@ Parses an entire character file into a structured object.
 - Angle brackets stripped from URLs (`<url>` -> `url`)
 - Diacritic normalization: maps both `Tematy zastrzeżone` and `Tematy zastrzezone`
 
-### 3.3 `Read-ReputationTier`
+### 3.3 `Read-ReputationTier` *(in `private/charfile-reputation.ps1`)*
 
 Parses a single reputation tier (Positive/Neutral/Negative) from list items.
 
@@ -103,7 +103,7 @@ Replaces the content of a single bold-header section in-place.
 
 Uses `List[string]` mutation (same pattern as entity write helpers).
 
-### 3.5 `Format-ReputationSection`
+### 3.5 `Format-ReputationSection` *(in `private/charfile-reputation.ps1`)*
 
 Renders the three-tier reputation structure as Markdown lines.
 
@@ -184,11 +184,11 @@ Character file path is auto-resolved from `Get-PlayerCharacter` or overridden wi
 
 ## 6. Precompiled Regex Patterns
 
-| Variable | Purpose |
-|---|---|
-| `$CharSectionPattern` | Matches `**Header:**` bold-header format |
-| `$ReputationTierPattern` | Matches reputation tier labels (Pozytywna/Neutralna/Negatywna) |
-| `$LocationDetailPattern` | Extracts `Location (detail)` or `Location: detail` |
+| Variable | Source File | Purpose |
+|---|---|---|
+| `$CharSectionPattern` | `charfile-helpers.ps1` | Matches `**Header:**` bold-header format |
+| `$ReputationTierPattern` | `charfile-reputation.ps1` | Matches reputation tier labels (Pozytywna/Neutralna/Negatywna) |
+| `$LocationDetailPattern` | `charfile-helpers.ps1` | Extracts `Location (detail)` or `Location: detail` |
 
 ---
 

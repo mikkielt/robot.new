@@ -6,7 +6,7 @@
 
 ## 1. Scope
 
-This document covers the entity write subsystem: `private/entity-writehelpers.ps1` (low-level line-array manipulation primitives) and all mutating commands: player/character-specific (`Set-Player`, `Set-PlayerCharacter`, `New-Player`, `New-PlayerCharacter`, `Remove-PlayerCharacter`), generic entity CRUD (`New-Entity`, `Set-Entity`, `Remove-Entity`), and currency entity CRUD (`New-CurrencyEntity`, `Set-CurrencyEntity`, `Remove-CurrencyEntity`).
+This document covers the entity write subsystem: `private/entity-writehelpers.ps1` (low-level line-array manipulation primitives, dot-sources `private/entity-findhelpers.ps1` for find helpers) and all mutating commands: player/character-specific (`Set-Player`, `Set-PlayerCharacter`, `New-Player`, `New-PlayerCharacter`, `Remove-PlayerCharacter`), generic entity CRUD (`New-Entity`, `Set-Entity`, `Remove-Entity`), and currency entity CRUD (`New-CurrencyEntity`, `Set-CurrencyEntity`, `Remove-CurrencyEntity`). Bootstrap migration helper `ConvertTo-EntitiesFromPlayers` lives in `private/entity-migrationhelpers.ps1`.
 
 **Not covered**: Entity reading/parsing - see [ENTITIES.md](ENTITIES.md). Character file writing - see [CHARFILE.md](CHARFILE.md). Currency query (`Get-CurrencyEntity`) and reporting - see [CURRENCY.md](CURRENCY.md).
 
@@ -15,7 +15,10 @@ This document covers the entity write subsystem: `private/entity-writehelpers.ps
 ## 2. Architecture Overview
 
 ```
-private/entity-writehelpers.ps1 (shared file manipulation)
+private/entity-findhelpers.ps1 (find primitives: Find-EntitySection, Find-EntityBullet, Find-EntityTag + regex patterns)
+     ▲
+     │ (dot-sourced by)
+private/entity-writehelpers.ps1 (write primitives: Set-EntityTag, New-EntityBullet, Resolve-EntityTarget, Read/Write-EntityFile, Invoke-EnsureEntityFile, ConvertFrom-EntityTemplate)
      ▲         ▲         ▲         ▲         ▲         ▲         ▲         ▲
      │         │         │         │         │         │         │         │
 Set-Player  Set-Player  New-Player  New-Player  Remove-Player  New-    Set-    Remove-
@@ -26,21 +29,30 @@ Set-Player  Set-Player  New-Player  New-Player  Remove-Player  New-    Set-    R
 
 Currency CRUD (public/currency/) also uses entity-writehelpers.ps1 via the
 generic entity primitives + private/currency-helpers.ps1 for denomination logic.
+
+Bootstrap migration (ConvertTo-EntitiesFromPlayers) lives in private/entity-migrationhelpers.ps1.
 ```
 
-All mutating commands dot-source `private/entity-writehelpers.ps1` and operate on `List[string]` line arrays with in-place index manipulation.
+All mutating commands dot-source `private/entity-writehelpers.ps1` (which in turn dot-sources `private/entity-findhelpers.ps1`) and operate on `List[string]` line arrays with in-place index manipulation.
 
 ---
 
-## 3. Line-Array Primitives (`private/entity-writehelpers.ps1`)
+## 3. Line-Array Primitives
 
 ### 3.1 Functions
+
+**`private/entity-findhelpers.ps1`** (dot-sourced by `private/entity-writehelpers.ps1`):
 
 | Function | Purpose | Returns |
 |---|---|---|
 | `Find-EntitySection` | Locates `## Type` section boundaries | `{ HeaderIdx, StartIdx, EndIdx, HeaderText, EntityType }` |
 | `Find-EntityBullet` | Locates `* EntityName` within a section range | `{ BulletIdx, ChildrenStartIdx, ChildrenEndIdx, EntityName }` |
 | `Find-EntityTag` | Finds **last** occurrence of `- @tag: value` in children | `{ TagIdx, Tag, Value }` or `$null` |
+
+**`private/entity-writehelpers.ps1`**:
+
+| Function | Purpose | Returns |
+|---|---|---|
 | `Set-EntityTag` | Upserts a tag line: replaces if found, inserts at children end | Updated `ChildrenEnd` index |
 | `New-EntityBullet` | Inserts `* EntityName` with sorted `@tag` children | - |
 | `ConvertFrom-EntityTemplate` | Parses a rendered template into `@{ Name; Tags }` for `New-EntityBullet` | `@{ Name; Tags }` |
@@ -48,6 +60,11 @@ All mutating commands dot-source `private/entity-writehelpers.ps1` and operate o
 | `Read-EntityFile` | Reads file into `List[string]` with newline detection | `{ Lines, NL }` |
 | `Write-EntityFile` | Writes `List[string]` back to file (UTF-8 no BOM) | - |
 | `Invoke-EnsureEntityFile` | Creates `entities.md` with skeleton sections if missing | - |
+
+**`private/entity-migrationhelpers.ps1`**:
+
+| Function | Purpose | Returns |
+|---|---|---|
 | `ConvertTo-EntitiesFromPlayers` | Bootstrap: generates `entities.md` from `Get-Player` output | - |
 
 ### 3.2 `Find-EntitySection`
@@ -124,7 +141,7 @@ High-level orchestrator that ensures the entity exists, creating intermediate st
 
 ### 3.9 Module-Level Regex Patterns
 
-Three precompiled regex patterns (`RegexOptions.Compiled`):
+Three precompiled regex patterns (`RegexOptions.Compiled`) defined in `private/entity-findhelpers.ps1`:
 - Section header pattern (`## `)
 - Entity bullet pattern (`* `)
 - Tag pattern (`- @tag:`)
@@ -312,7 +329,7 @@ See [CURRENCY.md](CURRENCY.md) for the full currency system specification (denom
 
 ---
 
-## 7. Bootstrap Migration (`ConvertTo-EntitiesFromPlayers`)
+## 7. Bootstrap Migration (`ConvertTo-EntitiesFromPlayers`, `private/entity-migrationhelpers.ps1`)
 
 One-time function that generates a complete `entities.md` from `Get-Player` output:
 

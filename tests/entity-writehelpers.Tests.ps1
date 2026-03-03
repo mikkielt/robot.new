@@ -17,6 +17,7 @@ BeforeAll {
     . (Join-Path $script:ModuleRoot 'public' 'get-entity.ps1')
     . (Join-Path $script:ModuleRoot 'public' 'player' 'get-player.ps1')
     . (Join-Path $script:ModuleRoot 'private' 'entity-writehelpers.ps1')
+    . (Join-Path $script:ModuleRoot 'private' 'entity-migrationhelpers.ps1')
 }
 
 Describe 'Find-EntitySection' {

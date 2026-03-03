@@ -6,7 +6,7 @@
 
 ## 1. Scope
 
-This document covers the interactive CLI subsystem: `public/cli/invoke-robotcli.ps1` (entry point), the 14 private modules in `private/cli/` (UI primitives, fuzzy search, wizard auto-generation, menu registry, routing, display, workflows, migration integration), and the 4 test files in `tests/cli-*.Tests.ps1`.
+This document covers the interactive CLI subsystem: `public/cli/invoke-robotcli.ps1` (entry point), the 17 private modules in `private/cli/` (UI primitives, fuzzy search, wizard auto-generation, menu registry, routing, display, workflows, migration integration), and the 4 test files in `tests/cli-*.Tests.ps1`.
 
 **Not covered**: Individual public functions that wizards wrap (e.g., `New-Player`, `Set-Entity`). Migration phase implementations - see migration subsystem docs. Plugin system - see [PLUGINS.md](PLUGINS.md).
 
@@ -18,7 +18,9 @@ This document covers the interactive CLI subsystem: `public/cli/invoke-robotcli.
 Invoke-RobotCLI (public/cli/invoke-robotcli.ps1)
     │
     ├── Layer 1: cli-primitives.ps1     (leaf - no CLI deps)
-    │       Colors, Write-CLILine, Read-ArrowKey, Show-ArrowMenu, Show-ResultTable
+    │   │   Colors, Write-CLILine, Read-ArrowKey
+    │   └── cli-menus.ps1               (dot-sourced by cli-primitives.ps1)
+    │           Show-ArrowMenu, Show-ResultTable
     │
     ├── Layer 2: cli-fuzzy.ps1          (depends on L1)
     │       Get-FuzzySearchCandidates, Filter-FuzzyCandidates, Show-FuzzySearch
@@ -27,8 +29,11 @@ Invoke-RobotCLI (public/cli/invoke-robotcli.ps1)
     │       Show-DetailCard, Format-DetailValidityRange, Refresh-NavState
     │
     ├── Layer 3: cli-wizard.ps1         (depends on L1 + L2)
-    │       $script:CommonParams, Resolve-StepType, Invoke-WizardStep,
-    │       Invoke-Wizard, Show-Preview
+    │   │   $script:CommonParams, Resolve-StepType, Invoke-Wizard
+    │   ├── cli-wizard-steps.ps1        (dot-sourced by cli-wizard.ps1)
+    │   │       Invoke-WizardStep
+    │   └── cli-wizard-preview.ps1      (dot-sourced by cli-wizard.ps1)
+    │           Show-Preview
     │
     ├── Layer 4: cli-registry.ps1       (pure data)
     │       $script:MenuOrder, $script:MenuRegistry (39 entries)
@@ -40,7 +45,9 @@ Invoke-RobotCLI (public/cli/invoke-robotcli.ps1)
     ├── Layer 6: Workflows (depend on L1–L3)
     │   ├── cli-wf-session.ps1          Session edit + validation
     │   ├── cli-wf-player.ps1           Player/character create, edit, cards
-    │   ├── cli-wf-entity.ps1           Entity create, edit, history, search, card
+    │   ├── cli-wf-entity.ps1           Entity create, edit, history, search
+    │   │   └── cli-display-entity.ps1  (dot-sourced by cli-wf-entity.ps1)
+    │   │           Format-ValidityRange, Show-EntityCard
     │   ├── cli-wf-currency.ps1         Currency transfer + reconciliation display
     │   ├── cli-wf-pu.ps1               PU assignment + diagnostics
     │   ├── cli-wf-discord.ps1          Discord PU notification + announcement
@@ -56,19 +63,23 @@ All files are dot-sourced on demand when `Invoke-RobotCLI` is called (not at mod
 
 ## 3. File Structure
 
-### 3.1 `private/cli/` (14 files)
+### 3.1 `private/cli/` (17 files)
 
 | File | Lines | Layer | Contents |
 |---|---|---|---|
-| `cli-primitives.ps1` | ~420 | 1 | Color scheme, theme detection, banner, breadcrumb, arrow menu, result table |
+| `cli-primitives.ps1` | ~420 | 1 | Color scheme, theme detection, banner, breadcrumb; dot-sources `cli-menus.ps1` |
+| `cli-menus.ps1` | — | 1 | `Show-ArrowMenu`, `Show-ResultTable` (dot-sourced by `cli-primitives.ps1`) |
 | `cli-fuzzy.ps1` | ~340 | 2 | Fuzzy search candidate generation, filtering, interactive picker |
 | `cli-display.ps1` | ~210 | 2 | Detail card rendering, validity range formatting, NavState refresh |
-| `cli-wizard.ps1` | ~650 | 3 | CommonParams, step type resolution, wizard step execution, wizard orchestration, preview |
+| `cli-wizard.ps1` | ~650 | 3 | `$script:CommonParams`, step type resolution, `Invoke-Wizard`; dot-sources `cli-wizard-steps.ps1` and `cli-wizard-preview.ps1` |
+| `cli-wizard-steps.ps1` | — | 3 | `Invoke-WizardStep` (dot-sourced by `cli-wizard.ps1`) |
+| `cli-wizard-preview.ps1` | — | 3 | `Show-Preview` (dot-sourced by `cli-wizard.ps1`) |
 | `cli-registry.ps1` | ~600 | 4 | Menu order array, menu registry (39 entries, pure data) |
 | `cli-routing.ps1` | ~360 | 5 | Menu helpers, action dispatch, query execution, main/sub menu loops |
 | `cli-wf-session.ps1` | ~150 | 6 | `Invoke-EditSessionWorkflow`, `Invoke-SessionValidation` |
 | `cli-wf-player.ps1` | ~400 | 6 | `Invoke-NewPlayerWorkflow`, `Invoke-NewCharacterWorkflow`, `Invoke-EditCharacterWorkflow`, `Invoke-CharacterCardWorkflow`, `Show-CharacterCard`, `Show-PlayerCard` |
-| `cli-wf-entity.ps1` | ~480 | 6 | `Invoke-NewEntityWorkflow`, `Invoke-EditEntityWorkflow`, `Invoke-EntityHistoryWorkflow`, `Invoke-EntitySearchWorkflow`, `Format-ValidityRange`, `Show-EntityCard` |
+| `cli-wf-entity.ps1` | ~480 | 6 | `Invoke-NewEntityWorkflow`, `Invoke-EditEntityWorkflow`, `Invoke-EntityHistoryWorkflow`, `Invoke-EntitySearchWorkflow`; dot-sources `cli-display-entity.ps1` |
+| `cli-display-entity.ps1` | — | 6 | `Format-ValidityRange`, `Show-EntityCard` (dot-sourced by `cli-wf-entity.ps1`) |
 | `cli-wf-currency.ps1` | ~155 | 6 | `Invoke-CurrencyTransferWorkflow`, `Invoke-CurrencyReconciliationDisplay` |
 | `cli-wf-pu.ps1` | ~340 | 6 | `Invoke-PUAssignmentWorkflow`, `Invoke-PrePUDiagnostics`, `Invoke-PUDiagnosticsDisplay` |
 | `cli-wf-discord.ps1` | ~130 | 6 | `Invoke-DiscordPUNotificationWorkflow`, `Invoke-DiscordAnnouncementWorkflow` |
@@ -77,7 +88,7 @@ All files are dot-sourced on demand when `Invoke-RobotCLI` is called (not at mod
 
 ### 3.2 Entry Point
 
-`public/cli/invoke-robotcli.ps1` exports `Invoke-RobotCLI`. It dot-sources all 14 CLI files in layer order, validates terminal compatibility, detects theme, pre-loads entity/player/name index data, and enters the main menu loop.
+`public/cli/invoke-robotcli.ps1` exports `Invoke-RobotCLI`. It dot-sources all 17 CLI files in layer order (including the sub-files dot-sourced transitively by `cli-primitives.ps1`, `cli-wizard.ps1`, and `cli-wf-entity.ps1`), validates terminal compatibility, detects theme, pre-loads entity/player/name index data, and enters the main menu loop.
 
 ### 3.3 Tests
 
@@ -90,7 +101,7 @@ All files are dot-sourced on demand when `Invoke-RobotCLI` is called (not at mod
 
 ---
 
-## 4. UI Primitives Contract (`cli-primitives.ps1`)
+## 4. UI Primitives Contract (`cli-primitives.ps1` + `cli-menus.ps1`)
 
 ### 4.1 Color Scheme
 
@@ -110,13 +121,13 @@ All files are dot-sourced on demand when `Invoke-RobotCLI` is called (not at mod
 
 `Get-CLIColor -Role <string>` returns the appropriate ConsoleColor for the current theme. Falls back to `White` for unknown roles.
 
-### 4.2 Show-ArrowMenu
+### 4.2 Show-ArrowMenu (`cli-menus.ps1`)
 
 Input: `-Items` (array of `PSCustomObject` with `ID`, `Label`, `Description`, `RoleTag`, `InfoText`, `Disabled`), optional `-Title`, optional `-ShowBack`.
 
 Returns: selected item's `ID` string, `'__back__'` (Escape), or `'__quit__'` (Q key).
 
-### 4.3 Show-ResultTable
+### 4.3 Show-ResultTable (`cli-menus.ps1`)
 
 Input: `-Data` (array), `-Columns` (property names), `-Headers` (display names), optional `-Widths`, optional `-Title`.
 
@@ -161,7 +172,7 @@ Prefix matches are ranked before contains matches. Results are capped at `MaxRes
 
 ---
 
-## 6. Wizard Auto-Generation (`cli-wizard.ps1`)
+## 6. Wizard Auto-Generation (`cli-wizard.ps1`, `cli-wizard-steps.ps1`, `cli-wizard-preview.ps1`)
 
 ### 6.1 Step Type Resolution
 

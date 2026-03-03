@@ -104,21 +104,21 @@ Scalar properties: last active value wins. Multi-valued properties: all active v
 
 ## 2. Entity Write Operations
 
-### 2.1 Write Helpers (`private/entity-writehelpers.ps1`)
+### 2.1 Write Helpers (`private/entity-writehelpers.ps1`, `private/entity-findhelpers.ps1`)
 
 All mutating functions operate on `List[string]` line arrays with in-place index manipulation:
 
-| Function | Purpose |
-|---|---|
-| `Find-EntitySection` | Locates `## Type` section boundaries. Returns `{ HeaderIdx, StartIdx, EndIdx, HeaderText, EntityType }`. |
-| `Find-EntityBullet` | Locates `* EntityName` bullet within a section range. Returns `{ BulletIdx, ChildrenStartIdx, ChildrenEndIdx, EntityName }`. |
-| `Find-EntityTag` | Finds last occurrence of `- @tag: value` within a bullet's children. Returns `{ TagIdx, Tag, Value }` or `$null`. |
-| `Set-EntityTag` | Upserts a tag line: replaces if found, inserts at children end if not. Returns updated `ChildrenEnd`. |
-| `New-EntityBullet` | Inserts `* EntityName` with sorted `@tag` children at section end. |
-| `Resolve-EntityTarget` | High-level orchestrator: `Invoke-EnsureEntityFile` -> find/create section -> find/create bullet. Returns `{ Lines, NL, BulletIdx, ChildrenStart, ChildrenEnd, FilePath, Created }`. |
-| `Read-EntityFile` | Reads file into `List[string]` with newline detection. |
-| `Write-EntityFile` | Writes `List[string]` back to file (UTF-8 no BOM, preserves newline style). |
-| `Invoke-EnsureEntityFile` | Creates `entities.md` with skeleton sections (`## Gracz`, `## Postać`, `## Przedmiot`) if missing. |
+| Function | Source | Purpose |
+|---|---|---|
+| `Find-EntitySection` | `private/entity-findhelpers.ps1` | Locates `## Type` section boundaries. Returns `{ HeaderIdx, StartIdx, EndIdx, HeaderText, EntityType }`. |
+| `Find-EntityBullet` | `private/entity-findhelpers.ps1` | Locates `* EntityName` bullet within a section range. Returns `{ BulletIdx, ChildrenStartIdx, ChildrenEndIdx, EntityName }`. |
+| `Find-EntityTag` | `private/entity-findhelpers.ps1` | Finds last occurrence of `- @tag: value` within a bullet's children. Returns `{ TagIdx, Tag, Value }` or `$null`. |
+| `Set-EntityTag` | `private/entity-writehelpers.ps1` | Upserts a tag line: replaces if found, inserts at children end if not. Returns updated `ChildrenEnd`. |
+| `New-EntityBullet` | `private/entity-writehelpers.ps1` | Inserts `* EntityName` with sorted `@tag` children at section end. |
+| `Resolve-EntityTarget` | `private/entity-writehelpers.ps1` | High-level orchestrator: `Invoke-EnsureEntityFile` -> find/create section -> find/create bullet. Returns `{ Lines, NL, BulletIdx, ChildrenStart, ChildrenEnd, FilePath, Created }`. |
+| `Read-EntityFile` | `private/entity-writehelpers.ps1` | Reads file into `List[string]` with newline detection. |
+| `Write-EntityFile` | `private/entity-writehelpers.ps1` | Writes `List[string]` back to file (UTF-8 no BOM, preserves newline style). |
+| `Invoke-EnsureEntityFile` | `private/entity-writehelpers.ps1` | Creates `entities.md` with skeleton sections (`## Gracz`, `## Postać`, `## Przedmiot`) if missing. |
 
 ### 2.2 Mutating Commands
 
@@ -130,7 +130,7 @@ All mutating functions operate on `List[string]` line arrays with in-place index
 | `New-PlayerCharacter` | `entities.md` `## Postać` + `## Gracz` + character file | Creates character entity with `@należy_do` and `@pu_startowe`. Ensures player entity exists (creates if missing). Creates character file from `player-character-file.md.template`. Optionally applies initial character file properties. `SupportsShouldProcess`. |
 | `Remove-PlayerCharacter` | `entities.md` `## Postać` | Soft-delete: writes `@status: Usunięty (YYYY-MM:)`. Does not delete the entity bullet or character file. `ConfirmImpact = 'High'`. |
 
-### 2.3 Bootstrap Migration (`ConvertTo-EntitiesFromPlayers`)
+### 2.3 Bootstrap Migration (`ConvertTo-EntitiesFromPlayers`, `private/entity-migrationhelpers.ps1`)
 
 One-time function that generates a complete `entities.md` from `Get-Player` output:
 - Reads all players (optionally pre-fetched, or calls `Get-Player -Entities @()` to avoid circular dependency).
@@ -351,7 +351,7 @@ Low-level webhook sender. POSTs JSON payload (`content`, optional `username`) to
 
 ```powershell
 Import-Module ./.robot.new/robot.psd1
-. ./.robot.new/private/entity-writehelpers.ps1
+. ./.robot.new/private/entity-migrationhelpers.ps1
 ConvertTo-EntitiesFromPlayers -OutputPath ./.robot.new/entities.md
 ```
 
@@ -429,7 +429,9 @@ Unresolved names in `Get-EntityState` / narrator resolution should be cleaned up
 
 | File | Purpose |
 |---|---|
-| `private/entity-writehelpers.ps1` | Entity file read/write primitives, bootstrap migration |
+| `private/entity-findhelpers.ps1` | Entity section/bullet/tag locators (`Find-EntitySection`, `Find-EntityBullet`, `Find-EntityTag`); dot-sourced by `entity-writehelpers.ps1` |
+| `private/entity-writehelpers.ps1` | Entity file read/write primitives (`Set-EntityTag`, `New-EntityBullet`, `Resolve-EntityTarget`, `Read-EntityFile`, `Write-EntityFile`, `Invoke-EnsureEntityFile`) |
+| `private/entity-migrationhelpers.ps1` | Bootstrap migration (`ConvertTo-EntitiesFromPlayers`); dot-sourced by `migration/phase1-bootstrap.ps1` |
 | `private/charfile-helpers.ps1` | Character file parse/write for `Postaci/Gracze/*.md` |
 | `private/format-sessionblock.ps1` | Shared Gen4 metadata block rendering |
 | `private/admin-config.ps1` | Config resolution, template rendering |
