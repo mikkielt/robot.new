@@ -1,6 +1,6 @@
 <#
     .SYNOPSIS
-    Phase 6: Parallel operation monitoring dashboard.
+    Phase 7: Parallel operation monitoring dashboard.
 
     .DESCRIPTION
     Runs PU diagnostics, PU simulation, session format check, currency
@@ -11,26 +11,26 @@
 #>
 
 # ============================================================================
-# PHASE 6 - Parallel operation monitoring dashboard
+# PHASE 7 - Parallel operation monitoring dashboard
 # ============================================================================
 
-function Invoke-MigrationPhase6 {
+function Invoke-MigrationPhase7 {
     param(
         [Parameter(Mandatory)] [hashtable]$State,
         [switch]$WhatIf
     )
 
-    $PhaseStatus = Get-PhaseStatus -State $State -Phase 6
-    Write-PhaseHeader -Phase 6 -Status $PhaseStatus
+    $PhaseStatus = Get-PhaseStatus -State $State -Phase 7
+    Write-PhaseHeader -Phase 7 -Status $PhaseStatus
 
     # Initialize parallel period start timestamp
     if ($PhaseStatus -eq 'NotStarted') {
-        Set-PhaseInProgress -State $State -Phase 6
-        $State.Phases['6'].ParallelStartedAt = [datetime]::UtcNow.ToString('o')
+        Set-PhaseInProgress -State $State -Phase 7
+        $State.Phases['7'].ParallelStartedAt = [datetime]::UtcNow.ToString('o')
     }
 
     # Display parallel period duration
-    $StartStr = $State.Phases['6'].ParallelStartedAt
+    $StartStr = $State.Phases['7'].ParallelStartedAt
     if ($StartStr) {
         $Start = [datetime]::Parse($StartStr)
         $Days = ([datetime]::UtcNow - $Start).Days
@@ -47,7 +47,7 @@ function Invoke-MigrationPhase6 {
                       $Diag.DuplicateEntries.Count + $Diag.FailedSessionsWithPU.Count
         Write-StepWarning "Test-PlayerCharacterPUAssignment: $IssueCount problemów"
     }
-    Update-PhaseChecklist -State $State -Phase 6 -Item 'DiagnosticsOK' -Value $Diag.OK
+    Update-PhaseChecklist -State $State -Phase 7 -Item 'DiagnosticsOK' -Value $Diag.OK
 
     # Dashboard section 2: PU simulation (dry-run for current month)
     Write-SectionHeader 'Symulacja PU (bieżący miesiąc)'
@@ -80,10 +80,10 @@ function Invoke-MigrationPhase6 {
     $NonGen4Count = ($NonGen4Recent | Measure-Object).Count
     if ($NonGen4Count -eq 0) {
         Write-StepOK 'Wszystkie ostatnie sesje w formacie Gen4'
-        Update-PhaseChecklist -State $State -Phase 6 -Item 'AllGen4' -Value $true
+        Update-PhaseChecklist -State $State -Phase 7 -Item 'AllGen4' -Value $true
     } else {
         Write-StepWarning "$NonGen4Count ostatnich sesji nie w formacie Gen4"
-        Update-PhaseChecklist -State $State -Phase 6 -Item 'AllGen4' -Value $false
+        Update-PhaseChecklist -State $State -Phase 7 -Item 'AllGen4' -Value $false
     }
 
     # Dashboard section 4: Currency reconciliation
@@ -91,16 +91,16 @@ function Invoke-MigrationPhase6 {
     $Recon = Test-CurrencyReconciliation
     if ($Recon.WarningCount -eq 0) {
         Write-StepOK 'Brak ostrzeżeń'
-        Update-PhaseChecklist -State $State -Phase 6 -Item 'CurrencyOK' -Value $true
+        Update-PhaseChecklist -State $State -Phase 7 -Item 'CurrencyOK' -Value $true
     } else {
         Write-StepWarning "$($Recon.WarningCount) ostrzeżeń"
-        Update-PhaseChecklist -State $State -Phase 6 -Item 'CurrencyOK' -Value $false
+        Update-PhaseChecklist -State $State -Phase 7 -Item 'CurrencyOK' -Value $false
     }
 
     # Dashboard section 5: Cutover readiness criteria
     Write-SectionHeader 'Kryteria przełączenia'
     $Criteria = @{
-        'Min. 1 pełny cykl PU bez rozbieżności'  = $State.Phases['6'].Checklist.ContainsKey('PUCycleValidated') -and $State.Phases['6'].Checklist['PUCycleValidated']
+        'Min. 1 pełny cykl PU bez rozbieżności'  = $State.Phases['7'].Checklist.ContainsKey('PUCycleValidated') -and $State.Phases['7'].Checklist['PUCycleValidated']
         'Wszyscy aktywni narratorzy stosują Gen4'  = $NonGen4Count -eq 0
         'Test-PUAssignment: OK = True'             = $Diag.OK
         'Test-CurrencyReconciliation: brak błędów' = $Recon.WarningCount -eq 0
@@ -108,9 +108,9 @@ function Invoke-MigrationPhase6 {
     Write-ChecklistReport -Checklist $Criteria -Title 'KRYTERIA PRZEŁĄCZENIA'
 
     # Ask coordinator to confirm PU cycle validation (one-time gate)
-    if ($Diag.OK -and -not ($State.Phases['6'].Checklist.ContainsKey('PUCycleValidated') -and $State.Phases['6'].Checklist['PUCycleValidated'])) {
+    if ($Diag.OK -and -not ($State.Phases['7'].Checklist.ContainsKey('PUCycleValidated') -and $State.Phases['7'].Checklist['PUCycleValidated'])) {
         if (Request-YesNo -Prompt 'Czy porównano wyniki PU z starym systemem i są zgodne?' -Default $false) {
-            Update-PhaseChecklist -State $State -Phase 6 -Item 'PUCycleValidated' -Value $true
+            Update-PhaseChecklist -State $State -Phase 7 -Item 'PUCycleValidated' -Value $true
         }
     }
 
@@ -119,14 +119,14 @@ function Invoke-MigrationPhase6 {
     if (($AllCriteria | Measure-Object).Count -eq 0) {
         Write-Host ''
         Write-StepOK 'Wszystkie kryteria spełnione. Możesz przejść do Fazy 7.'
-        Set-PhaseCompleted -State $State -Phase 6
+        Set-PhaseCompleted -State $State -Phase 7
     }
 
     # Append dashboard run timestamp to history
-    if (-not $State.Phases['6'].ContainsKey('DashboardRuns')) {
-        $State.Phases['6'].DashboardRuns = @()
+    if (-not $State.Phases['7'].ContainsKey('DashboardRuns')) {
+        $State.Phases['7'].DashboardRuns = @()
     }
-    $State.Phases['6'].DashboardRuns = @($State.Phases['6'].DashboardRuns) + @([datetime]::UtcNow.ToString('o'))
+    $State.Phases['7'].DashboardRuns = @($State.Phases['7'].DashboardRuns) + @([datetime]::UtcNow.ToString('o'))
 
     if (-not $WhatIf) { Save-MigrationState -State $State }
 }

@@ -10,14 +10,14 @@
     colors when CLI engine is available, falling back to hardcoded colors otherwise.
 
     Helpers:
-    - Show-DiagnosticResults:  renders PU diagnostic report (used by Phase 2, 3, 7, Quick Diagnostics)
+    - Show-DiagnosticResults:  renders PU diagnostic report (used by Phase 3, 4, 8, Quick Diagnostics)
     - Invoke-QuickDiagnostics: main menu shortcut for quick health check
     - Invoke-FullReport:       main menu shortcut for per-phase status report
 
     Dependencies: migration-ui.ps1, migration-state.ps1, robot module imported.
 #>
 
-# Shared diagnostic result renderer (used by Phase 2, Phase 3, and Quick Diagnostics)
+# Shared diagnostic result renderer (used by Phase 3, Phase 4, and Quick Diagnostics)
 function Show-DiagnosticResults {
     param([Parameter(Mandatory)] $Diagnostics)
 
@@ -143,11 +143,11 @@ function Invoke-FullReport {
     Write-Host '  PEŁNY RAPORT MIGRACJI' -ForegroundColor $AccentColor
     Write-Host ('=' * 60) -ForegroundColor $AccentColor
 
-    # Use registry if available, fallback to hardcoded 0-7
+    # Use registry if available, fallback to hardcoded 0-8
     $Phases = if ($script:PhaseRegistry) {
         $script:PhaseRegistry
     } else {
-        0..7 | ForEach-Object { @{ ID = $_; Name = $script:PhaseNames[$_] } }
+        0..8 | ForEach-Object { @{ ID = $_; Name = $script:PhaseNames[$_] } }
     }
 
     foreach ($Phase in $Phases) {

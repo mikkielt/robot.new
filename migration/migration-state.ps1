@@ -30,7 +30,7 @@ function Resolve-MigrationStatePath {
 # Creates a default state hashtable with all phases set to NotStarted.
 function New-DefaultMigrationState {
     $Phases = @{}
-    for ($I = 0; $I -le 7; $I++) {
+    for ($I = 0; $I -le 8; $I++) {
         $Phases["$I"] = @{
             Status    = 'NotStarted'
             Checklist = @{}
@@ -186,7 +186,7 @@ function Update-PhaseChecklist {
     $State.Phases[$Key].Checklist[$Item] = $Value
 }
 
-# Appends diagnostic run result to Phase 3 history.
+# Appends diagnostic run result to Phase 4 history.
 function Add-DiagnosticSnapshot {
     param(
         [Parameter(Mandatory)] [hashtable]$State,
@@ -194,7 +194,7 @@ function Add-DiagnosticSnapshot {
         [Parameter(Mandatory)] [int]$IssueCount
     )
 
-    $Key = '3'
+    $Key = '4'
     if (-not $State.Phases.ContainsKey($Key)) {
         $State.Phases[$Key] = @{ Status = 'NotStarted'; Checklist = @{} }
     }

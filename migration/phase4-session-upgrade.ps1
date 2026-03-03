@@ -1,6 +1,6 @@
 <#
     .SYNOPSIS
-    Phase 4: Session format upgrade to Gen4.
+    Phase 5: Session format upgrade to Gen4.
 
     .DESCRIPTION
     Identifies non-Gen4 sessions in active files (2024+), upgrades them
@@ -12,17 +12,17 @@
 #>
 
 # ============================================================================
-# PHASE 4 - Session format upgrade to Gen4
+# PHASE 5 - Session format upgrade to Gen4
 # ============================================================================
 
-function Invoke-MigrationPhase4 {
+function Invoke-MigrationPhase5 {
     param(
         [Parameter(Mandatory)] [hashtable]$State,
         [switch]$WhatIf
     )
 
-    $PhaseStatus = Get-PhaseStatus -State $State -Phase 4
-    Write-PhaseHeader -Phase 4 -Status $PhaseStatus
+    $PhaseStatus = Get-PhaseStatus -State $State -Phase 5
+    Write-PhaseHeader -Phase 5 -Status $PhaseStatus
 
     $RepoRoot = Get-RepoRoot
 
@@ -33,17 +33,17 @@ function Invoke-MigrationPhase4 {
     foreach ($Group in $FormatGroups) {
         Write-Host "    $($Group.Name): $($Group.Count) sesji" -ForegroundColor DarkGray
     }
-    Update-PhaseChecklist -State $State -Phase 4 -Item 'FormatDistribution' -Value $true
+    Update-PhaseChecklist -State $State -Phase 5 -Item 'FormatDistribution' -Value $true
 
     # Step 2: Resolve format dedup conflicts across duplicate sessions
-    $FormatDedupDone = $State.Phases.ContainsKey('4') -and $State.Phases['4'].ContainsKey('Checklist') -and $State.Phases['4'].Checklist.ContainsKey('FormatDedupResolved') -and $State.Phases['4'].Checklist['FormatDedupResolved']
+    $FormatDedupDone = $State.Phases.ContainsKey('4') -and $State.Phases['5'].ContainsKey('Checklist') -and $State.Phases['5'].Checklist.ContainsKey('FormatDedupResolved') -and $State.Phases['5'].Checklist['FormatDedupResolved']
     if (-not $FormatDedupDone) {
         Write-Step -Number 2 -Text 'Konflikty formatu w zdeduplikowanych sesjach...'
         $MergedSessions = @($AllSessions | Where-Object { $_.IsMerged })
 
         if ($MergedSessions.Count -eq 0) {
             Write-StepOK 'Brak zdeduplikowanych sesji'
-            Update-PhaseChecklist -State $State -Phase 4 -Item 'FormatDedupResolved' -Value $true
+            Update-PhaseChecklist -State $State -Phase 5 -Item 'FormatDedupResolved' -Value $true
         } else {
             # Collect unique file paths from all merged sessions
             $DedupFiles = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
@@ -82,7 +82,7 @@ function Invoke-MigrationPhase4 {
 
             if ($FormatConflicts.Count -eq 0) {
                 Write-StepOK "Brak konfliktów formatu w $($MergedSessions.Count) zdeduplikowanych sesjach"
-                Update-PhaseChecklist -State $State -Phase 4 -Item 'FormatDedupResolved' -Value $true
+                Update-PhaseChecklist -State $State -Phase 5 -Item 'FormatDedupResolved' -Value $true
             } else {
                 Write-StepWarning "$($FormatConflicts.Count) sesji z konfliktami formatu:"
                 foreach ($FC in $FormatConflicts) {
@@ -142,7 +142,7 @@ function Invoke-MigrationPhase4 {
 
                         if ($DedupFailed -eq 0) {
                             Write-StepOK $ResultMsg
-                            Update-PhaseChecklist -State $State -Phase 4 -Item 'FormatDedupResolved' -Value $true
+                            Update-PhaseChecklist -State $State -Phase 5 -Item 'FormatDedupResolved' -Value $true
                         } else {
                             Write-StepWarning $ResultMsg
                         }
@@ -168,13 +168,13 @@ function Invoke-MigrationPhase4 {
 
     if ($NonGen4Count -eq 0) {
         Write-StepOK 'Wszystkie aktywne sesje już w formacie Gen4'
-        Update-PhaseChecklist -State $State -Phase 4 -Item 'UpgradeDone' -Value $true
-        $DedupAlsoResolved = $State.Phases.ContainsKey('4') -and $State.Phases['4'].ContainsKey('Checklist') -and $State.Phases['4'].Checklist.ContainsKey('FormatDedupResolved') -and $State.Phases['4'].Checklist['FormatDedupResolved']
+        Update-PhaseChecklist -State $State -Phase 5 -Item 'UpgradeDone' -Value $true
+        $DedupAlsoResolved = $State.Phases.ContainsKey('4') -and $State.Phases['5'].ContainsKey('Checklist') -and $State.Phases['5'].Checklist.ContainsKey('FormatDedupResolved') -and $State.Phases['5'].Checklist['FormatDedupResolved']
         if ($DedupAlsoResolved) {
-            Set-PhaseCompleted -State $State -Phase 4
-            Write-PhaseSummary -Phase 4 -Status 'Completed' -Lines @('[OK] Wszystkie aktywne sesje w Gen4', '[OK] Konflikty formatu rozwiązane')
+            Set-PhaseCompleted -State $State -Phase 5
+            Write-PhaseSummary -Phase 5 -Status 'Completed' -Lines @('[OK] Wszystkie aktywne sesje w Gen4', '[OK] Konflikty formatu rozwiązane')
         } else {
-            Set-PhaseInProgress -State $State -Phase 4
+            Set-PhaseInProgress -State $State -Phase 5
         }
         if (-not $WhatIf) { Save-MigrationState -State $State }
         return
@@ -252,13 +252,13 @@ function Invoke-MigrationPhase4 {
 
     if ($StillNonGen4 -eq 0) {
         Write-StepOK 'Weryfikacja: wszystkie aktywne sesje w Gen4'
-        Update-PhaseChecklist -State $State -Phase 4 -Item 'UpgradeDone' -Value $true
+        Update-PhaseChecklist -State $State -Phase 5 -Item 'UpgradeDone' -Value $true
     } else {
         Write-StepWarning "Wciąż $StillNonGen4 sesji nie w Gen4"
     }
 
     # Step 7: Narrator verification (non-blocking - informational only)
-    $NarratorReviewDone = $State.Phases.ContainsKey('4') -and $State.Phases['4'].ContainsKey('Checklist') -and $State.Phases['4'].Checklist.ContainsKey('NarratorReviewDone') -and $State.Phases['4'].Checklist['NarratorReviewDone']
+    $NarratorReviewDone = $State.Phases.ContainsKey('4') -and $State.Phases['5'].ContainsKey('Checklist') -and $State.Phases['5'].Checklist.ContainsKey('NarratorReviewDone') -and $State.Phases['5'].Checklist['NarratorReviewDone']
     if (-not $NarratorReviewDone) {
         Write-Step -Number 6 -Text 'Weryfikacja narratorów po upgrade...'
 
@@ -285,14 +285,14 @@ function Invoke-MigrationPhase4 {
             }
         }
 
-        Update-PhaseChecklist -State $State -Phase 4 -Item 'NarratorReviewDone' -Value $true
+        Update-PhaseChecklist -State $State -Phase 5 -Item 'NarratorReviewDone' -Value $true
     } else {
         Write-Step -Number 6 -Text 'Weryfikacja narratorów...'
         Write-StepOK 'Weryfikacja narratorów już wykonana'
     }
 
     # Step 8: Location report review
-    $LocationReviewDone = $State.Phases.ContainsKey('4') -and $State.Phases['4'].ContainsKey('Checklist') -and $State.Phases['4'].Checklist.ContainsKey('LocationReviewDone') -and $State.Phases['4'].Checklist['LocationReviewDone']
+    $LocationReviewDone = $State.Phases.ContainsKey('4') -and $State.Phases['5'].ContainsKey('Checklist') -and $State.Phases['5'].Checklist.ContainsKey('LocationReviewDone') -and $State.Phases['5'].Checklist['LocationReviewDone']
     if (-not $LocationReviewDone) {
         Write-Step -Number 7 -Text 'Raport lokalizacji - przegląd nazw...'
 
@@ -427,7 +427,7 @@ function Invoke-MigrationPhase4 {
         }
 
         Write-StepOK 'Przegląd lokalizacji zakończony'
-        Update-PhaseChecklist -State $State -Phase 4 -Item 'LocationReviewDone' -Value $true
+        Update-PhaseChecklist -State $State -Phase 5 -Item 'LocationReviewDone' -Value $true
     } else {
         Write-Step -Number 7 -Text 'Raport lokalizacji...'
         Write-StepOK 'Przegląd lokalizacji już wykonany'
@@ -440,19 +440,19 @@ function Invoke-MigrationPhase4 {
         & git -C $RepoRoot commit -m 'Upgrade aktywnych sesji do formatu Gen4' 2>&1
         if ($LASTEXITCODE -eq 0) {
             Write-StepOK 'Zacommitowano'
-            Update-PhaseChecklist -State $State -Phase 4 -Item 'Committed' -Value $true
+            Update-PhaseChecklist -State $State -Phase 5 -Item 'Committed' -Value $true
         } else {
             Write-StepError 'Nie udało się zacommitować'
         }
     }
 
     # Phase summary and state persistence
-    $DedupAlsoResolved = $State.Phases.ContainsKey('4') -and $State.Phases['4'].ContainsKey('Checklist') -and $State.Phases['4'].Checklist.ContainsKey('FormatDedupResolved') -and $State.Phases['4'].Checklist['FormatDedupResolved']
+    $DedupAlsoResolved = $State.Phases.ContainsKey('4') -and $State.Phases['5'].ContainsKey('Checklist') -and $State.Phases['5'].Checklist.ContainsKey('FormatDedupResolved') -and $State.Phases['5'].Checklist['FormatDedupResolved']
     if ($StillNonGen4 -eq 0 -and $DedupAlsoResolved) {
-        Set-PhaseCompleted -State $State -Phase 4
-        Write-PhaseSummary -Phase 4 -Status 'Completed' -Lines @("[OK] $UpgradeCount sesji zaktualizowanych do Gen4", '[OK] Konflikty formatu rozwiązane')
+        Set-PhaseCompleted -State $State -Phase 5
+        Write-PhaseSummary -Phase 5 -Status 'Completed' -Lines @("[OK] $UpgradeCount sesji zaktualizowanych do Gen4", '[OK] Konflikty formatu rozwiązane')
     } else {
-        Set-PhaseInProgress -State $State -Phase 4
+        Set-PhaseInProgress -State $State -Phase 5
     }
 
     if (-not $WhatIf) { Save-MigrationState -State $State }

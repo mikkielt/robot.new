@@ -1,6 +1,6 @@
 <#
     .SYNOPSIS
-    Phase 0-7 implementation functions for the migration script - data-driven
+    Phase 0-8 implementation functions for the migration script - data-driven
     phase registry with dynamic dot-sourcing.
 
     .DESCRIPTION
@@ -14,12 +14,13 @@
     Phases:
     - Phase 0: Preparation & backup (phase0-preparation.ps1)
     - Phase 1: Bootstrap entities.md from Gracze.md (phase1-bootstrap.ps1)
-    - Phase 2: Data parity validation (phase2-validation.ps1)
-    - Phase 3: Diagnostics & data repair (phase3-diagnostics.ps1)
-    - Phase 4: Session format upgrade to Gen4 (phase4-session-upgrade.ps1)
-    - Phase 5: Currency enrollment (phase5-currency.ps1)
-    - Phase 6: Parallel operation monitoring dashboard (phase6-parallel.ps1)
-    - Phase 7: Cutover (phase7-cutover.ps1)
+    - Phase 2: Session integrity hashes (phase2-session-hashes.ps1)
+    - Phase 3: Data parity validation (phase2-validation.ps1)
+    - Phase 4: Diagnostics & data repair (phase3-diagnostics.ps1)
+    - Phase 5: Session format upgrade to Gen4 (phase4-session-upgrade.ps1)
+    - Phase 6: Currency enrollment (phase5-currency.ps1)
+    - Phase 7: Parallel operation monitoring dashboard (phase6-parallel.ps1)
+    - Phase 8: Cutover (phase7-cutover.ps1)
 
     Shared helpers: migration-shared.ps1
 
@@ -36,12 +37,13 @@
 $script:PhaseRegistry = @(
     @{ ID = 0; Name = 'Przygotowanie i backup';           Script = 'phase0-preparation.ps1';      Function = 'Invoke-MigrationPhase0' }
     @{ ID = 1; Name = 'Bootstrap entities.md';             Script = 'phase1-bootstrap.ps1';         Function = 'Invoke-MigrationPhase1' }
-    @{ ID = 2; Name = 'Walidacja parzystości danych';      Script = 'phase2-validation.ps1';        Function = 'Invoke-MigrationPhase2' }
-    @{ ID = 3; Name = 'Diagnostyka i naprawa danych';      Script = 'phase3-diagnostics.ps1';       Function = 'Invoke-MigrationPhase3' }
-    @{ ID = 4; Name = 'Upgrade formatu sesji';             Script = 'phase4-session-upgrade.ps1';   Function = 'Invoke-MigrationPhase4' }
-    @{ ID = 5; Name = 'Enrollment walut';                  Script = 'phase5-currency.ps1';          Function = 'Invoke-MigrationPhase5' }
-    @{ ID = 6; Name = 'Okres równoległy';                  Script = 'phase6-parallel.ps1';          Function = 'Invoke-MigrationPhase6' }
-    @{ ID = 7; Name = 'Przełączenie (cutover)';            Script = 'phase7-cutover.ps1';           Function = 'Invoke-MigrationPhase7' }
+    @{ ID = 2; Name = 'Hashy integralności sesji';         Script = 'phase2-session-hashes.ps1';    Function = 'Invoke-MigrationPhase2' }
+    @{ ID = 3; Name = 'Walidacja parzystości danych';      Script = 'phase2-validation.ps1';        Function = 'Invoke-MigrationPhase3' }
+    @{ ID = 4; Name = 'Diagnostyka i naprawa danych';      Script = 'phase3-diagnostics.ps1';       Function = 'Invoke-MigrationPhase4' }
+    @{ ID = 5; Name = 'Upgrade formatu sesji';             Script = 'phase4-session-upgrade.ps1';   Function = 'Invoke-MigrationPhase5' }
+    @{ ID = 6; Name = 'Enrollment walut';                  Script = 'phase5-currency.ps1';          Function = 'Invoke-MigrationPhase6' }
+    @{ ID = 7; Name = 'Okres równoległy';                  Script = 'phase6-parallel.ps1';          Function = 'Invoke-MigrationPhase7' }
+    @{ ID = 8; Name = 'Przełączenie (cutover)';            Script = 'phase7-cutover.ps1';           Function = 'Invoke-MigrationPhase8' }
 )
 
 # ── Shared helpers ──────────────────────────────────────────────────────────

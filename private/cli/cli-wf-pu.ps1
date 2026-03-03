@@ -58,7 +58,69 @@ function Invoke-PUAssignmentWorkflow {
     $Month = Invoke-WizardStep -Step $MonthStep -State $State
     if ($Month -eq '__back__' -or $Month -eq '__quit__') { return }
 
-    # ── Step 3: Dry run ──
+    # ── Step 3: Session integrity pre-check ──
+    [System.Console]::Clear()
+    Write-CLILine -Text 'Przydział miesięczny PU' -Color $AccentColor
+    Write-Host ''
+    Write-CLILine -Text "  Rok: $Year  Miesiąc: $Month" -Color $DisabledColor
+    Write-Host ''
+    Write-Host '  Sprawdzanie integralności sesji...' -ForegroundColor $DisabledColor
+
+    $IntegrityPassed = $true
+    try {
+        $Integrity = Test-SessionIntegrity
+
+        if (-not $Integrity.OK) {
+            Write-Host ''
+            Write-CLILine -Text "$([char]0x26A0) Wykryto problemy integralności sesji:" -Color $WarningColor
+
+            # High-severity issues first
+            if ($Integrity.PUAffectedSessions -and $Integrity.PUAffectedSessions.Count -gt 0) {
+                Write-CLILine -Text "  $([char]0x2717) Zmodyfikowane sesje z danymi PU: $($Integrity.PUAffectedSessions.Count)" -Color $ErrorColor
+                foreach ($Item in $Integrity.PUAffectedSessions | Select-Object -First 5) {
+                    Write-CLILine -Text "      $($Item.Header)" -Color $ErrorColor
+                }
+            }
+            if ($Integrity.DuplicatePUMarkers -and $Integrity.DuplicatePUMarkers.Count -gt 0) {
+                Write-CLILine -Text "  $([char]0x2717) Duplikaty znaczników PU: $($Integrity.DuplicatePUMarkers.Count)" -Color $ErrorColor
+                foreach ($Item in $Integrity.DuplicatePUMarkers | Select-Object -First 5) {
+                    Write-CLILine -Text "      $($Item.Header) (x$($Item.PUMarkerCount))" -Color $ErrorColor
+                }
+            }
+            if ($Integrity.FutureDatedSessions -and $Integrity.FutureDatedSessions.Count -gt 0) {
+                Write-CLILine -Text "  $([char]0x2717) Sesje z przyszłą datą: $($Integrity.FutureDatedSessions.Count)" -Color $ErrorColor
+            }
+
+            # Lower-severity issues
+            if ($Integrity.ModifiedSessions -and $Integrity.ModifiedSessions.Count -gt 0) {
+                Write-CLILine -Text "  $([char]0x26A0) Zmodyfikowane sesje: $($Integrity.ModifiedSessions.Count)" -Color $WarningColor
+            }
+            if ($Integrity.MalformedHeaders -and $Integrity.MalformedHeaders.Count -gt 0) {
+                Write-CLILine -Text "  $([char]0x26A0) Nieprawidłowe nagłówki: $($Integrity.MalformedHeaders.Count)" -Color $WarningColor
+            }
+            if ($Integrity.FormatAnomalies -and $Integrity.FormatAnomalies.Count -gt 0) {
+                Write-CLILine -Text "  $([char]0x26A0) Anomalie formatu: $($Integrity.FormatAnomalies.Count)" -Color $WarningColor
+            }
+            if ($Integrity.MissingHashFiles -and $Integrity.MissingHashFiles.Count -gt 0) {
+                Write-CLILine -Text "  $([char]0x25CB) Brak plików hashy: $($Integrity.MissingHashFiles.Count)" -Color $DisabledColor
+            }
+
+            Write-Host ''
+            Write-CLILine -Text 'Kontynuować mimo problemów?' -Color $WarningColor
+            $Continue = Show-ArrowMenu -Items @(
+                [PSCustomObject]@{ ID = 'yes'; Label = 'Tak, kontynuuj'; Description = ''; RoleTag = $null; InfoText = $null; Disabled = $false }
+                [PSCustomObject]@{ ID = 'no';  Label = 'Anuluj';         Description = ''; RoleTag = $null; InfoText = $null; Disabled = $false }
+            ) -ShowBack
+            if ($Continue -ne 'yes') { return }
+        } else {
+            Write-CLILine -Text "$([char]0x2713) Integralność sesji: OK" -Color $SuccessColor
+        }
+    }
+    catch {
+        Write-CLILine -Text "$([char]0x26A0) Nie udało się sprawdzić integralności: $_" -Color $WarningColor
+    }
+
+    # ── Step 4: Dry run ──
     [System.Console]::Clear()
     Write-CLILine -Text 'Przydział miesięczny PU' -Color $AccentColor
     Write-Host ''
@@ -88,7 +150,7 @@ function Invoke-PUAssignmentWorkflow {
     Write-CLILine -Text 'Naciśnij dowolny klawisz, aby przejść do opcji...' -Color $DisabledColor
     [void](Read-ArrowKey)
 
-    # ── Step 4: Flags ──
+    # ── Step 5: Flags ──
     $Flags = [ordered]@{
         'UpdatePlayerCharacters' = $true
         'SendToDiscord'          = $true
@@ -128,7 +190,7 @@ function Invoke-PUAssignmentWorkflow {
         $Flags[$FlagKey] = ($FlagChoice -eq 'yes')
     }
 
-    # ── Step 5: Confirmation ──
+    # ── Step 6: Confirmation ──
     [System.Console]::Clear()
     Write-CLILine -Text 'Przydział miesięczny PU' -Color $AccentColor
     Write-Host ''

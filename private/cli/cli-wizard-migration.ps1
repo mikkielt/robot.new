@@ -76,9 +76,9 @@ function Get-MigrationMenuItems {
             })
         }
     } else {
-        # Fallback: hardcoded phase 0-7 from PhaseNames
+        # Fallback: hardcoded phase 0-8 from PhaseNames
         if ($script:PhaseNames) {
-            for ($I = 0; $I -le 7; $I++) {
+            for ($I = 0; $I -le 8; $I++) {
                 $PhaseStatus = Get-PhaseStatus -State $MigrationState -Phase $I
                 $StatusInfo = $script:StatusDisplay[$PhaseStatus]
                 $StatusSymbol = if ($StatusInfo) { "$($StatusInfo.Symbol) " } else { '' }

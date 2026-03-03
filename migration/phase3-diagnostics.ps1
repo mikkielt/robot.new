@@ -1,6 +1,6 @@
 <#
     .SYNOPSIS
-    Phase 3: Diagnostics & data repair (iterative).
+    Phase 4: Diagnostics & data repair (iterative).
 
     .DESCRIPTION
     Runs PU diagnostics, offers soft-delete for characters with PU=BRAK,
@@ -12,31 +12,31 @@
 #>
 
 # ============================================================================
-# PHASE 3 - Diagnostics & data repair (iterative)
+# PHASE 4 - Diagnostics & data repair (iterative)
 # ============================================================================
 
-function Invoke-MigrationPhase3 {
+function Invoke-MigrationPhase4 {
     param(
         [Parameter(Mandatory)] [hashtable]$State,
         [switch]$WhatIf
     )
 
-    $PhaseStatus = Get-PhaseStatus -State $State -Phase 3
-    Write-PhaseHeader -Phase 3 -Status $PhaseStatus
+    $PhaseStatus = Get-PhaseStatus -State $State -Phase 4
+    Write-PhaseHeader -Phase 4 -Status $PhaseStatus
 
     Write-Step -Number 1 -Text 'Uruchamianie diagnostyki...'
     $Diag = Test-PlayerCharacterPUAssignment -ExcludeDirectory $script:MigrationExcludeDirs
 
     if ($Diag.OK) {
         Write-StepOK 'Diagnostyka: OK - brak problemów'
-        Set-PhaseCompleted -State $State -Phase 3
+        Set-PhaseCompleted -State $State -Phase 4
         Add-DiagnosticSnapshot -State $State -OK $true -IssueCount 0
-        Write-PhaseSummary -Phase 3 -Status 'Completed' -Lines @('[OK] Wszystkie dane poprawne')
+        Write-PhaseSummary -Phase 4 -Status 'Completed' -Lines @('[OK] Wszystkie dane poprawne')
         if (-not $WhatIf) { Save-MigrationState -State $State }
         return
     }
 
-    Set-PhaseInProgress -State $State -Phase 3
+    Set-PhaseInProgress -State $State -Phase 4
     Show-DiagnosticResults -Diagnostics $Diag
 
     # Show characters with PU=BRAK and offer to soft-delete
@@ -45,7 +45,7 @@ function Invoke-MigrationPhase3 {
     }
 
     # Narrator normalization step
-    $NarratorNormDone = $State.Phases.ContainsKey('3') -and $State.Phases['3'].ContainsKey('Checklist') -and $State.Phases['3'].Checklist.ContainsKey('NarratorNormalizationDone') -and $State.Phases['3'].Checklist['NarratorNormalizationDone']
+    $NarratorNormDone = $State.Phases.ContainsKey('3') -and $State.Phases['4'].ContainsKey('Checklist') -and $State.Phases['4'].Checklist.ContainsKey('NarratorNormalizationDone') -and $State.Phases['4'].Checklist['NarratorNormalizationDone']
     $UnresolvedNarratorCount = 0
 
     if (-not $NarratorNormDone) {
@@ -59,7 +59,7 @@ function Invoke-MigrationPhase3 {
 
         if ($UnresolvedNarratorCount -eq 0) {
             Write-StepOK 'Wszyscy narratorzy rozwiązani lub zamapowani'
-            Update-PhaseChecklist -State $State -Phase 3 -Item 'NarratorNormalizationDone' -Value $true
+            Update-PhaseChecklist -State $State -Phase 4 -Item 'NarratorNormalizationDone' -Value $true
         } else {
             Write-StepWarning "$UnresolvedNarratorCount nierozwiązanych narratorów"
 
@@ -113,7 +113,7 @@ function Invoke-MigrationPhase3 {
                 }
             }
 
-            Update-PhaseChecklist -State $State -Phase 3 -Item 'NarratorNormalizationDone' -Value $true
+            Update-PhaseChecklist -State $State -Phase 4 -Item 'NarratorNormalizationDone' -Value $true
         }
     } else {
         Write-Step -Number 2 -Text 'Diagnostyka narratorów...'
@@ -127,7 +127,7 @@ function Invoke-MigrationPhase3 {
     Add-DiagnosticSnapshot -State $State -OK $false -IssueCount $TotalIssues
 
     # Show diagnostic trend across iterations
-    $History = $State.Phases['3'].DiagnosticHistory
+    $History = $State.Phases['4'].DiagnosticHistory
     if ($History -and $History.Count -gt 1) {
         Write-SectionHeader 'Trend diagnostyki'
         for ($I = 0; $I -lt $History.Count; $I++) {

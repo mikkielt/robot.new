@@ -63,12 +63,13 @@ function Resolve-MigrationColor {
 $script:PhaseNames = @{
     0 = 'Przygotowanie i backup'
     1 = 'Bootstrap entities.md'
-    2 = 'Walidacja parzystości danych'
-    3 = 'Diagnostyka i naprawa danych'
-    4 = 'Upgrade formatu sesji'
-    5 = 'Enrollment walut'
-    6 = 'Okres równoległy'
-    7 = 'Przełączenie (cutover)'
+    2 = 'Hashy integralności sesji'
+    3 = 'Walidacja parzystości danych'
+    4 = 'Diagnostyka i naprawa danych'
+    5 = 'Upgrade formatu sesji'
+    6 = 'Enrollment walut'
+    7 = 'Okres równoległy'
+    8 = 'Przełączenie (cutover)'
 }
 
 # Status display strings (Polish) - uses semantic roles, not hardcoded colors
@@ -442,7 +443,7 @@ function Show-ProgressSummary {
     Write-Host ('=' * 60) -ForegroundColor $AccentColor
     Write-Host ''
 
-    for ($I = 0; $I -le 7; $I++) {
+    for ($I = 0; $I -le 8; $I++) {
         $PhaseStatus = Get-PhaseStatus -State $State -Phase $I
         $StatusInfo = $script:StatusDisplay[$PhaseStatus]
         $Name = $script:PhaseNames[$I]

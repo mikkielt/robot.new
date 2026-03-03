@@ -1,6 +1,6 @@
 <#
     .SYNOPSIS
-    Phase 7: Cutover (freeze legacy, first standalone PU run).
+    Phase 8: Cutover (freeze legacy, first standalone PU run).
 
     .DESCRIPTION
     Runs final diagnostics, freezes Gracze.md with read-only comment,
@@ -12,17 +12,17 @@
 #>
 
 # ============================================================================
-# PHASE 7 - Cutover (freeze legacy, first standalone PU run)
+# PHASE 8 - Cutover (freeze legacy, first standalone PU run)
 # ============================================================================
 
-function Invoke-MigrationPhase7 {
+function Invoke-MigrationPhase8 {
     param(
         [Parameter(Mandatory)] [hashtable]$State,
         [switch]$WhatIf
     )
 
-    $PhaseStatus = Get-PhaseStatus -State $State -Phase 7
-    Write-PhaseHeader -Phase 7 -Status $PhaseStatus
+    $PhaseStatus = Get-PhaseStatus -State $State -Phase 8
+    Write-PhaseHeader -Phase 8 -Status $PhaseStatus
 
     $RepoRoot = Get-RepoRoot
 
@@ -31,7 +31,7 @@ function Invoke-MigrationPhase7 {
     $Diag = Test-PlayerCharacterPUAssignment -ExcludeDirectory $script:MigrationExcludeDirs
     if ($Diag.OK) {
         Write-StepOK 'Diagnostyka: OK'
-        Update-PhaseChecklist -State $State -Phase 7 -Item 'FinalDiagnostics' -Value $true
+        Update-PhaseChecklist -State $State -Phase 8 -Item 'FinalDiagnostics' -Value $true
     } else {
         Write-StepError 'Diagnostyka: PROBLEMY - napraw je przed przełączeniem'
         Show-DiagnosticResults -Diagnostics $Diag
@@ -50,7 +50,7 @@ function Invoke-MigrationPhase7 {
 
         if ($GraczeContent.Contains('zamrożony (read-only)')) {
             Write-StepOK 'Gracze.md już zamrożony'
-            Update-PhaseChecklist -State $State -Phase 7 -Item 'GraczeFrozen' -Value $true
+            Update-PhaseChecklist -State $State -Phase 8 -Item 'GraczeFrozen' -Value $true
         } else {
             if ($WhatIf) {
                 Write-StepWarning '[SUCHY PRZEBIEG] Dodałbym komentarz zamrożenia do Gracze.md'
@@ -61,7 +61,7 @@ function Invoke-MigrationPhase7 {
                 & git -C $RepoRoot commit -m 'Zamrożenie Gracze.md - migracja zakończona' 2>&1
                 if ($LASTEXITCODE -eq 0) {
                     Write-StepOK 'Gracze.md zamrożony i zacommitowany'
-                    Update-PhaseChecklist -State $State -Phase 7 -Item 'GraczeFrozen' -Value $true
+                    Update-PhaseChecklist -State $State -Phase 8 -Item 'GraczeFrozen' -Value $true
                 }
             }
         }
@@ -73,7 +73,7 @@ function Invoke-MigrationPhase7 {
     Write-Step -Number 3 -Text 'Oznaczenie starego systemu jako deprecated...'
     Write-Host '  Dodaj notatkę deprecation do .robot/README.md (jeśli istnieje)' -ForegroundColor DarkGray
     Write-Host '  lub poinformuj zespół, że .robot/robot.ps1 nie jest już używany.' -ForegroundColor DarkGray
-    Update-PhaseChecklist -State $State -Phase 7 -Item 'OldSystemDeprecated' -Value $true
+    Update-PhaseChecklist -State $State -Phase 8 -Item 'OldSystemDeprecated' -Value $true
 
     # Step 4: Execute first standalone PU assignment
     Write-Step -Number 4 -Text 'Pierwszy samodzielny przydział PU...'
@@ -111,7 +111,7 @@ function Invoke-MigrationPhase7 {
                     -AppendToLog `
                     -Confirm:$false
                 Write-StepOK 'Przydział PU wykonany, powiadomienia wysłane'
-                Update-PhaseChecklist -State $State -Phase 7 -Item 'FirstPURun' -Value $true
+                Update-PhaseChecklist -State $State -Phase 8 -Item 'FirstPURun' -Value $true
             }
             catch {
                 Write-StepError "Przydział PU nie powiódł się: $($_.Exception.Message)"
@@ -134,7 +134,7 @@ function Invoke-MigrationPhase7 {
             }
         }
     }
-    Update-PhaseChecklist -State $State -Phase 7 -Item 'PostMigrationTag' -Value $true
+    Update-PhaseChecklist -State $State -Phase 8 -Item 'PostMigrationTag' -Value $true
 
     # Step 6: Show Discord announcement template
     Write-Step -Number 6 -Text 'Szablon ogłoszenia...'
@@ -147,7 +147,7 @@ function Invoke-MigrationPhase7 {
     Write-Host '  Stary system (.robot/robot.ps1) nie jest już używany.' -ForegroundColor Cyan
     Write-Host '  W razie pytań - kontakt z koordynatorem.' -ForegroundColor Cyan
     Write-Host '  ────────────────────────────────────────────' -ForegroundColor DarkGray
-    Update-PhaseChecklist -State $State -Phase 7 -Item 'Announcement' -Value $true
+    Update-PhaseChecklist -State $State -Phase 8 -Item 'Announcement' -Value $true
 
     # Step 7: Display final verification checklist
     Write-Step -Number 7 -Text 'Weryfikacja końcowa...'
@@ -157,7 +157,7 @@ function Invoke-MigrationPhase7 {
         'Aktywne sesje w Gen4'                               = (Get-PhaseStatus -State $State -Phase 4) -eq 'Completed'
         'Waluty zarejestrowane'                               = (Get-PhaseStatus -State $State -Phase 5) -eq 'Completed'
         'Min. 1 cykl PU bez rozbieżności'                    = (Get-PhaseStatus -State $State -Phase 6) -eq 'Completed'
-        'Gracze.md zamrożony'                                = $State.Phases['7'].Checklist.ContainsKey('GraczeFrozen') -and $State.Phases['7'].Checklist['GraczeFrozen']
+        'Gracze.md zamrożony'                                = $State.Phases['8'].Checklist.ContainsKey('GraczeFrozen') -and $State.Phases['8'].Checklist['GraczeFrozen']
         'Stary system deprecated'                            = $true
         'Tag post-migration istnieje'                        = $true
         'Zespół poinformowany'                               = $true
@@ -165,8 +165,8 @@ function Invoke-MigrationPhase7 {
     Write-ChecklistReport -Checklist $FinalChecklist -Title 'WERYFIKACJA KOŃCOWA'
 
     # Phase summary and state persistence
-    Set-PhaseCompleted -State $State -Phase 7
-    Write-PhaseSummary -Phase 7 -Status 'Completed' -Lines @(
+    Set-PhaseCompleted -State $State -Phase 8
+    Write-PhaseSummary -Phase 8 -Status 'Completed' -Lines @(
         '[OK] Migracja zakończona!',
         '[OK] System .robot.new jest aktywny',
         '[OK] Gracze.md zamrożony jako archiwum'
