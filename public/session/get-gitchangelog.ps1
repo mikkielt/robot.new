@@ -132,9 +132,24 @@ function Get-GitChangeLog {
         }
     }
 
+    # Resolve git executable path via PATH (avoids UseShellExecute dependency)
+    $GitPath = $null
+    foreach ($Dir in $env:PATH -split [System.IO.Path]::PathSeparator) {
+        if (-not [string]::IsNullOrWhiteSpace($Dir)) {
+            $Candidate = [System.IO.Path]::Combine($Dir, "git")
+            if ([System.IO.File]::Exists($Candidate)) {
+                $GitPath = $Candidate
+                break
+            }
+        }
+    }
+    if (-not $GitPath) {
+        throw "git executable not found in PATH."
+    }
+
     # Process setup - UTF-8 encoding, array-based arguments, async stderr
     $Psi = [System.Diagnostics.ProcessStartInfo]::new()
-    $Psi.FileName = "git"
+    $Psi.FileName = $GitPath
     $Psi.RedirectStandardOutput = $true
     $Psi.RedirectStandardError  = $true
     $Psi.UseShellExecute        = $false
