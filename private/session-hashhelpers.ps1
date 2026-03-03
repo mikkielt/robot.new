@@ -112,7 +112,7 @@ function Read-SessionHashFile {
             $Result[$Prop.Name] = $Prop.Value
         }
     } catch {
-        [System.Console]::Error.WriteLine("[WARN Read-SessionHashFile] Failed to parse '$JsonPath': $_")
+        Write-RobotWarning "[WARN Read-SessionHashFile] Failed to parse '$JsonPath': $_"
     }
 
     return $Result
@@ -178,7 +178,7 @@ function Read-SessionHashMeta {
             $Defaults['Version'] = $Parsed['Version']
         }
     } catch {
-        [System.Console]::Error.WriteLine("[WARN Read-SessionHashMeta] Failed to parse '$MetaPath': $_")
+        Write-RobotWarning "[WARN Read-SessionHashMeta] Failed to parse '$MetaPath': $_"
     }
 
     return $Defaults

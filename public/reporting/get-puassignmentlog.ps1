@@ -32,8 +32,15 @@ function Get-PUAssignmentLog {
         [datetime]$MinDate,
 
         [Parameter(HelpMessage = "Include only runs on or before this date")]
-        [datetime]$MaxDate
+        [datetime]$MaxDate,
+
+        [Parameter(HelpMessage = "Suppress warning output to stderr")]
+        [switch]$Quiet
     )
+
+    $PrevSuppress = $script:SuppressWarnings
+    if ($Quiet) { $script:SuppressWarnings = $true }
+    try {
 
     if (-not $Path) {
         $Config = Get-AdminConfig
@@ -41,7 +48,7 @@ function Get-PUAssignmentLog {
     }
 
     if (-not [System.IO.File]::Exists($Path)) {
-        [System.Console]::Error.WriteLine("[WARN Get-PUAssignmentLog] State file not found: '$Path'")
+        Write-RobotWarning "[WARN Get-PUAssignmentLog] State file not found: '$Path'"
         return @()
     }
 
@@ -138,4 +145,6 @@ function Get-PUAssignmentLog {
     })
 
     return @($Entries)
+
+    } finally { $script:SuppressWarnings = $PrevSuppress }
 }

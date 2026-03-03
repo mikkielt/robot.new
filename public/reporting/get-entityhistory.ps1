@@ -31,8 +31,15 @@ function Get-EntityHistory {
         [object[]]$Entities,
 
         [Parameter(HelpMessage = "Pre-fetched session list from Get-Session (passed to Get-EntityState)")]
-        [object[]]$Sessions
+        [object[]]$Sessions,
+
+        [Parameter(HelpMessage = "Suppress warning output to stderr")]
+        [switch]$Quiet
     )
+
+    $PrevSuppress = $script:SuppressWarnings
+    if ($Quiet) { $script:SuppressWarnings = $true }
+    try {
 
     if (-not $Entities) {
         $FetchArgs = @{}
@@ -65,7 +72,7 @@ function Get-EntityHistory {
     }
 
     if (-not $Entity) {
-        [System.Console]::Error.WriteLine("[WARN Get-EntityHistory] Entity '$Name' not found")
+        Write-RobotWarning "[WARN Get-EntityHistory] Entity '$Name' not found"
         return @()
     }
 
@@ -110,4 +117,6 @@ function Get-EntityHistory {
     })
 
     return @($Timeline)
+
+    } finally { $script:SuppressWarnings = $PrevSuppress }
 }

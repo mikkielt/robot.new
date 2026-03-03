@@ -55,10 +55,15 @@ function Invoke-SessionLogFetch {
         [switch]$RetryFailed,
 
         [Parameter(HelpMessage = "Override log storage directory (default: ResDir/logs)")]
-        [string]$LogDirectory
+        [string]$LogDirectory,
+
+        [Parameter(HelpMessage = "Suppress warning output to stderr")]
+        [switch]$Quiet
     )
 
     begin {
+        $script:PrevSuppressLogFetch = $script:SuppressWarnings
+        if ($Quiet) { $script:SuppressWarnings = $true }
         $CollectedSessions = [System.Collections.Generic.List[PSObject]]::new()
     }
 
@@ -103,7 +108,7 @@ function Invoke-SessionLogFetch {
 
         $Total = $UniqueUrls.Count
         if ($Total -eq 0) {
-            [System.Console]::Error.WriteLine('[WARN Invoke-SessionLogFetch] No log URLs found in the provided sessions.')
+            Write-RobotWarning '[WARN Invoke-SessionLogFetch] No log URLs found in the provided sessions.'
             return [PSCustomObject]@{
                 Total      = 0
                 Fetched    = 0
@@ -178,7 +183,7 @@ function Invoke-SessionLogFetch {
             for ($Attempt = 0; $Attempt -le $MaxRetries; $Attempt++) {
                 if ($Attempt -gt 0) {
                     $BackoffMs = $RetryDelayMs * [math]::Pow(2, $Attempt - 1)
-                    [System.Console]::Error.WriteLine("[WARN Invoke-SessionLogFetch] Retrying '$FileName' (attempt $($Attempt + 1)/$($MaxRetries + 1)) after ${BackoffMs}ms...")
+                    Write-RobotWarning "[WARN Invoke-SessionLogFetch] Retrying '$FileName' (attempt $($Attempt + 1)/$($MaxRetries + 1)) after ${BackoffMs}ms..."
                     [System.Threading.Thread]::Sleep([int]$BackoffMs)
                 }
 
@@ -234,7 +239,7 @@ function Invoke-SessionLogFetch {
             if (-not $Success) {
                 $FailedCount++
                 $FailedUrls.Add($Url)
-                [System.Console]::Error.WriteLine("[WARN Invoke-SessionLogFetch] Failed to fetch '$Url': $LastError")
+                Write-RobotWarning "[WARN Invoke-SessionLogFetch] Failed to fetch '$Url': $LastError"
 
                 # Write .failed marker
                 $FailedContent = "URL: $Url`nError: $LastError`nHTTP Status: $LastStatusCode`nTimestamp: $([System.DateTime]::UtcNow.ToString('o'))"
@@ -257,5 +262,7 @@ function Invoke-SessionLogFetch {
             Skipped    = $Skipped
             FailedUrls = [string[]]$FailedUrls.ToArray()
         }
+
+        $script:SuppressWarnings = $script:PrevSuppressLogFetch
     }
 }

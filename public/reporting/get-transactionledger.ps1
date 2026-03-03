@@ -35,8 +35,15 @@ function Get-TransactionLedger {
         [object[]]$Sessions,
 
         [Parameter(HelpMessage = "Pre-fetched entity list from Get-EntityState")]
-        [object[]]$Entities
+        [object[]]$Entities,
+
+        [Parameter(HelpMessage = "Suppress warning output to stderr")]
+        [switch]$Quiet
     )
+
+    $PrevSuppress = $script:SuppressWarnings
+    if ($Quiet) { $script:SuppressWarnings = $true }
+    try {
 
     if (-not $Sessions) {
         $FetchArgs = @{}
@@ -50,7 +57,7 @@ function Get-TransactionLedger {
     if ($Denomination) {
         $DenomFilter = Resolve-CurrencyDenomination -Name $Denomination
         if (-not $DenomFilter) {
-            [System.Console]::Error.WriteLine("[WARN Get-TransactionLedger] Unknown denomination filter: '$Denomination'")
+            Write-RobotWarning "[WARN Get-TransactionLedger] Unknown denomination filter: '$Denomination'"
             return @()
         }
     }
@@ -125,4 +132,6 @@ function Get-TransactionLedger {
     }
 
     return @($Ledger)
+
+    } finally { $script:SuppressWarnings = $PrevSuppress }
 }

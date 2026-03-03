@@ -163,7 +163,7 @@ function Resolve-IntelTargets {
             }
 
             if (-not $Resolved) {
-                [System.Console]::Error.WriteLine("[WARN @Intel] Unresolved target '$TName'")
+                Write-RobotWarning "[WARN @Intel] Unresolved target '$TName'"
                 continue
             }
 

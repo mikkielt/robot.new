@@ -55,7 +55,7 @@ function Resolve-EntityCN {
 
     # Cycle guard
     if (-not $Visited.Add($Entity.Name)) {
-        [System.Console]::Error.WriteLine("[WARN Get-Entity] Cycle detected in @lokacja chain for '$($Entity.Name)'")
+        Write-RobotWarning "[WARN Get-Entity] Cycle detected in @lokacja chain for '$($Entity.Name)'"
         return "Lokacja/$($Entity.Name)"
     }
 
@@ -101,8 +101,15 @@ function Get-Entity {
         [string[]]$Path = @("$(Get-RepoRoot)/.robot.new"),
 
         [Parameter(HelpMessage = "Filter temporally-scoped data to entries active on this date")]
-        [datetime]$ActiveOn
+        [datetime]$ActiveOn,
+
+        [Parameter(HelpMessage = "Suppress warning output to stderr")]
+        [switch]$Quiet
     )
+
+    $PrevSuppress = $script:SuppressWarnings
+    if ($Quiet) { $script:SuppressWarnings = $true }
+    try {
 
     # Collect and sort input files
     $Entities  = [System.Collections.Generic.List[object]]::new()
@@ -486,4 +493,6 @@ function Get-Entity {
     }
 
     return $Entities
+
+    } finally { $script:SuppressWarnings = $PrevSuppress }
 }

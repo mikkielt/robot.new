@@ -70,8 +70,15 @@ function Invoke-PlayerCharacterPUAssignment {
         [switch]$ReconcileCurrency,
 
         [Parameter(HelpMessage = "Directories to exclude from session file scanning")]
-        [string[]]$ExcludeDirectory
+        [string[]]$ExcludeDirectory,
+
+        [Parameter(HelpMessage = "Suppress warning output to stderr")]
+        [switch]$Quiet
     )
+
+    $PrevSuppress = $script:SuppressWarnings
+    if ($Quiet) { $script:SuppressWarnings = $true }
+    try {
 
     $Config = Get-AdminConfig
 
@@ -110,7 +117,7 @@ function Invoke-PlayerCharacterPUAssignment {
             }
         }
     } catch {
-        [System.Console]::Error.WriteLine("[WARN Invoke-PlayerCharacterPUAssignment] Git optimization failed, falling back to full scan: $_")
+        Write-RobotWarning "[WARN Invoke-PlayerCharacterPUAssignment] Git optimization failed, falling back to full scan: $_"
     }
 
     # Get sessions in date range
@@ -127,7 +134,7 @@ function Invoke-PlayerCharacterPUAssignment {
                     }
                 }
             } catch {
-                [System.Console]::Error.WriteLine("[WARN Invoke-PlayerCharacterPUAssignment] Failed to parse '$FilePath': $_")
+                Write-RobotWarning "[WARN Invoke-PlayerCharacterPUAssignment] Failed to parse '$FilePath': $_"
             }
         }
         $SessionResults
@@ -144,7 +151,7 @@ function Invoke-PlayerCharacterPUAssignment {
     }
 
     if ($SessionsWithPU.Count -eq 0) {
-        [System.Console]::Error.WriteLine("[INFO Invoke-PlayerCharacterPUAssignment] No sessions with PU entries found in range $MinDateStr to $MaxDateStr")
+        Write-RobotInfo "[INFO Invoke-PlayerCharacterPUAssignment] No sessions with PU entries found in range $MinDateStr to $MaxDateStr"
         return @()
     }
 
@@ -165,7 +172,7 @@ function Invoke-PlayerCharacterPUAssignment {
     }
 
     if ($NewSessions.Count -eq 0) {
-        [System.Console]::Error.WriteLine("[INFO Invoke-PlayerCharacterPUAssignment] All sessions in range already processed")
+        Write-RobotInfo "[INFO Invoke-PlayerCharacterPUAssignment] All sessions in range already processed"
         return @()
     }
 
@@ -357,7 +364,7 @@ function Invoke-PlayerCharacterPUAssignment {
             $Webhook = $Items[0].Character.Player.PRFWebhook
 
             if (-not $Webhook) {
-                [System.Console]::Error.WriteLine("[WARN Invoke-PlayerCharacterPUAssignment] No webhook for player '$PName' - skipping Discord notification")
+                Write-RobotWarning "[WARN Invoke-PlayerCharacterPUAssignment] No webhook for player '$PName' - skipping Discord notification"
                 continue
             }
 
@@ -367,7 +374,7 @@ function Invoke-PlayerCharacterPUAssignment {
                 try {
                     Send-DiscordMessage -Webhook $Webhook -Message $FullMessage -Username 'Bothen'
                 } catch {
-                    [System.Console]::Error.WriteLine("[WARN Invoke-PlayerCharacterPUAssignment] Discord send failed for '$PName': $_")
+                    Write-RobotWarning "[WARN Invoke-PlayerCharacterPUAssignment] Discord send failed for '$PName': $_"
                 }
             }
         }
@@ -391,12 +398,12 @@ function Invoke-PlayerCharacterPUAssignment {
     if ($ReconcileCurrency) {
         $ReconciliationResult = Test-CurrencyReconciliation -Sessions @($Sessions)
         if ($ReconciliationResult.WarningCount -gt 0) {
-            [System.Console]::Error.WriteLine("[INFO Invoke-PlayerCharacterPUAssignment] Currency reconciliation: $($ReconciliationResult.WarningCount) warning(s)")
+            Write-RobotInfo "[INFO Invoke-PlayerCharacterPUAssignment] Currency reconciliation: $($ReconciliationResult.WarningCount) warning(s)"
             foreach ($Warning in $ReconciliationResult.Warnings) {
                 [System.Console]::Error.WriteLine("  [$($Warning.Severity)] $($Warning.Check): $($Warning.Entity) - $($Warning.Detail)")
             }
         } else {
-            [System.Console]::Error.WriteLine("[INFO Invoke-PlayerCharacterPUAssignment] Currency reconciliation: no warnings")
+            Write-RobotInfo "[INFO Invoke-PlayerCharacterPUAssignment] Currency reconciliation: no warnings"
         }
     }
 
@@ -406,4 +413,6 @@ function Invoke-PlayerCharacterPUAssignment {
     }
 
     return $AssignmentResults
+
+    } finally { $script:SuppressWarnings = $PrevSuppress }
 }

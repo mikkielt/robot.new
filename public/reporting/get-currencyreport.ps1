@@ -42,8 +42,15 @@ function Get-CurrencyReport {
         [switch]$ShowHistory,
 
         [Parameter(HelpMessage = "Convert all amounts to Kogi equivalent for comparison")]
-        [switch]$AsBaseUnit
+        [switch]$AsBaseUnit,
+
+        [Parameter(HelpMessage = "Suppress warning output to stderr")]
+        [switch]$Quiet
     )
+
+    $PrevSuppress = $script:SuppressWarnings
+    if ($Quiet) { $script:SuppressWarnings = $true }
+    try {
 
     if (-not $Entities) {
         $Entities = if ($ActiveOn) { Get-EntityState -ActiveOn $ActiveOn } else { Get-EntityState }
@@ -54,7 +61,7 @@ function Get-CurrencyReport {
     if ($Denomination) {
         $DenomFilter = Resolve-CurrencyDenomination -Name $Denomination
         if (-not $DenomFilter) {
-            [System.Console]::Error.WriteLine("[WARN Get-CurrencyReport] Unknown denomination filter: '$Denomination'")
+            Write-RobotWarning "[WARN Get-CurrencyReport] Unknown denomination filter: '$Denomination'"
             return @()
         }
     }
@@ -143,4 +150,6 @@ function Get-CurrencyReport {
     }
 
     return @($Report)
+
+    } finally { $script:SuppressWarnings = $PrevSuppress }
 }

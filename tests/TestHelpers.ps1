@@ -13,6 +13,25 @@
 $script:ModuleRoot   = Split-Path $PSScriptRoot -Parent
 $script:FixturesRoot = Join-Path $PSScriptRoot 'fixtures'
 
+# Warning suppression support - mirrors robot.psm1 definitions so that
+# dot-sourced files (pattern B/C/D) can call Write-RobotWarning/Write-RobotInfo
+# in the test scope.
+$script:SuppressWarnings = $false
+
+function Write-RobotWarning {
+    param([Parameter(Mandatory)] [string]$Message)
+    if (-not $script:SuppressWarnings) {
+        [System.Console]::Error.WriteLine($Message)
+    }
+}
+
+function Write-RobotInfo {
+    param([Parameter(Mandatory)] [string]$Message)
+    if (-not $script:SuppressWarnings) {
+        [System.Console]::Error.WriteLine($Message)
+    }
+}
+
 # Temp directory (unique per test run)
 $script:TempRoot = $null
 

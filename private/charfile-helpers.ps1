@@ -320,7 +320,7 @@ function Write-CharacterFileSection {
 
     $Section = Find-CharacterSection -Lines $Lines.ToArray() -SectionName $SectionName
     if (-not $Section) {
-        [System.Console]::Error.WriteLine("[WARN charfile-helpers] Section '$SectionName' not found in character file")
+        Write-RobotWarning "[WARN charfile-helpers] Section '$SectionName' not found in character file"
         return
     }
 

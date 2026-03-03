@@ -170,7 +170,61 @@ This is separate from the module directory (`.robot.new/`) and lives in `.robot/
 
 ---
 
-## 4. Environment Variables
+## 4. Warning Suppression (`robot.psm1`)
+
+### 4.1 Overview
+
+Module-scoped warning suppression prevents `[System.Console]::Error.WriteLine` output from corrupting interactive CLI menus. All warning/info emission routes through centralized helpers that check a boolean flag before writing.
+
+### 4.2 Components
+
+| Component | Location | Purpose |
+|---|---|---|
+| `$script:SuppressWarnings` | `robot.psm1` | Module-scoped boolean flag, defaults to `$false` |
+| `Write-RobotWarning` | `robot.psm1` | Emits `[WARN ...]` to stderr if flag is `$false` |
+| `Write-RobotInfo` | `robot.psm1` | Emits `[INFO ...]` to stderr if flag is `$false` |
+
+Both helpers are module-internal (not exported). Available to all dot-sourced functions via module scope.
+
+### 4.3 `-Quiet` Parameter Pattern
+
+Public functions that emit warnings expose a `[switch]$Quiet` parameter. When set, the function saves the current flag, sets it to `$true`, and restores in `finally`:
+
+```powershell
+$PrevSuppress = $script:SuppressWarnings
+if ($Quiet) { $script:SuppressWarnings = $true }
+try {
+    # function body using Write-RobotWarning / Write-RobotInfo
+}
+finally {
+    $script:SuppressWarnings = $PrevSuppress
+}
+```
+
+Nested calls inherit the suppressed state automatically — inner functions do not need `-Quiet` threading.
+
+### 4.4 CLI Integration
+
+The CLI suppresses warnings at two levels:
+
+1. **Startup** (`Invoke-RobotCLI`): `Get-Entity -Quiet` for pre-loading
+2. **Dispatch** (`Invoke-MenuAction` in `cli-routing.ps1`): wraps all Wizard/Query/Workflow dispatch with `$script:SuppressWarnings = $true` / `finally { $false }`
+
+CLI-internal warnings (plugin validation in `Merge-PluginMenuItems`, plugin load errors) are **not** suppressed — they fire before the menu loop starts and are unaffected by overlay rendering.
+
+### 4.5 Scope of Conversion
+
+| Category | Converted | Reason |
+|---|---|---|
+| Public data-access functions (16) | Yes | CLI-reachable, `-Quiet` parameter added |
+| Private helpers (4 files) | Yes | Inherit flag from callers |
+| CLI startup warnings | No | Fire before menu loop |
+| Infrastructure (`plugin-hooks`, `plugin-loader`, `admin-config`) | No | Module import time |
+| Migration (`migration-state`) | No | Not CLI-reachable |
+
+---
+
+## 5. Environment Variables
 
 | Variable | Purpose |
 |---|---|
@@ -179,7 +233,7 @@ This is separate from the module directory (`.robot.new/`) and lives in `.robot/
 
 ---
 
-## 5. Local Config File
+## 6. Local Config File
 
 Path: `.robot.new/local.config.psd1` (git-ignored)
 
@@ -196,7 +250,7 @@ Loaded via `Import-PowerShellDataFile` with error handling. Missing file is not 
 
 ---
 
-## 6. Edge Cases
+## 7. Edge Cases
 
 | Scenario | Behavior |
 |---|---|
@@ -211,7 +265,7 @@ Loaded via `Import-PowerShellDataFile` with error handling. Missing file is not 
 
 ---
 
-## 7. Testing
+## 8. Testing
 
 | Test file | Coverage |
 |---|---|
@@ -223,7 +277,7 @@ Fixtures: `local.config.psd1`, `pu-sessions.md`, template files in `tests/fixtur
 
 ---
 
-## 8. Related Documents
+## 9. Related Documents
 
 - [PU.md](PU.md) - PU pipeline uses history entries for deduplication
 - [ENTITY-WRITES.md](ENTITY-WRITES.md) - Write commands consume `Get-AdminConfig`

@@ -324,7 +324,7 @@ function Refresh-NavState {
     param([Parameter(Mandatory)] [object]$State)
 
     Write-Host "  Odświeżanie danych..." -ForegroundColor (Get-CLIColor -Role 'Disabled')
-    $State.Entities = Get-Entity
+    $State.Entities = Get-Entity -Quiet
     $State.Players  = Get-Player
     $State.NameIndex = Get-NameIndex -Players $State.Players -Entities $State.Entities
     $State.ResolveCache = @{}

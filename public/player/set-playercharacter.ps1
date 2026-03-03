@@ -97,8 +97,15 @@ function Set-PlayerCharacter {
         [string]$EntitiesFile,
 
         [Parameter(HelpMessage = "Path to character .md file (auto-resolved if omitted)")]
-        [string]$CharacterFile
+        [string]$CharacterFile,
+
+        [Parameter(HelpMessage = "Suppress warning output to stderr")]
+        [switch]$Quiet
     )
+
+    $PrevSuppress = $script:SuppressWarnings
+    if ($Quiet) { $script:SuppressWarnings = $true }
+    try {
 
     if (-not $EntitiesFile) {
         $EntitiesFile = [System.IO.Path]::Combine((Get-RepoRoot), '.robot.new', 'entities.md')
@@ -244,7 +251,7 @@ function Set-PlayerCharacter {
         }
 
         if (-not [System.IO.File]::Exists($CharacterFile)) {
-            [System.Console]::Error.WriteLine("[WARN Set-PlayerCharacter] Character file not found: $CharacterFile")
+            Write-RobotWarning "[WARN Set-PlayerCharacter] Character file not found: $CharacterFile"
             return
         }
 
@@ -302,4 +309,6 @@ function Set-PlayerCharacter {
             [System.IO.File]::WriteAllText($CharacterFile, $CharContent, $UTF8NoBOM)
         }
     }
+
+    } finally { $script:SuppressWarnings = $PrevSuppress }
 }

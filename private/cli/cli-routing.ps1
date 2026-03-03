@@ -189,6 +189,11 @@ function Invoke-MenuAction {
         return
     }
 
+    # Suppress warnings during CLI dispatch to prevent stderr output from
+    # corrupting the interactive menu display (overlay/redraw issue).
+    $script:SuppressWarnings = $true
+    try {
+
     $Mode = if ($Entry.Mode) { $Entry.Mode } else { 'Wizard' }
 
     switch ($Mode) {
@@ -223,6 +228,8 @@ function Invoke-MenuAction {
             & $WorkflowFn -State $State -Entry $Entry
         }
     }
+
+    } finally { $script:SuppressWarnings = $false }
 }
 
 # ── Query Action ─────────────────────────────────────────────────────────────

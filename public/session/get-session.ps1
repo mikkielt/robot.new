@@ -165,7 +165,7 @@ function Merge-SessionGroup {
             }
             if ($DistinctValues.Count -gt 1) {
                 $ValList = $DistinctValues -join ' vs '
-                [System.Console]::Error.WriteLine("[WARN Get-Session] Dedup conflict on '$FieldName' for header '$($Primary.Header)': $ValList")
+                Write-RobotWarning "[WARN Get-Session] Dedup conflict on '$FieldName' for header '$($Primary.Header)': $ValList"
             }
         }
     }
@@ -291,8 +291,15 @@ function Get-Session {
         [object[]]$Players,
 
         [Parameter(HelpMessage = "Fetch and parse log content, attaching LogData to each session")]
-        [switch]$IncludeLogs
+        [switch]$IncludeLogs,
+
+        [Parameter(HelpMessage = "Suppress warning output to stderr")]
+        [switch]$Quiet
     )
+
+    $PrevSuppress = $script:SuppressWarnings
+    if ($Quiet) { $script:SuppressWarnings = $true }
+    try {
 
     $RepoRoot = Get-RepoRoot
 
@@ -718,4 +725,6 @@ function Get-Session {
     }
 
     return $Filtered
+
+    } finally { $script:SuppressWarnings = $PrevSuppress }
 }

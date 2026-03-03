@@ -50,8 +50,15 @@ function Get-EntityState {
         [object[]]$Players,
 
         [Parameter(HelpMessage = "Filter temporally-scoped data to entries active on this date")]
-        [datetime]$ActiveOn
+        [datetime]$ActiveOn,
+
+        [Parameter(HelpMessage = "Suppress warning output to stderr")]
+        [switch]$Quiet
     )
+
+    $PrevSuppress = $script:SuppressWarnings
+    if ($Quiet) { $script:SuppressWarnings = $true }
+    try {
 
     if (-not $PSBoundParameters.ContainsKey('Entities')) {
         $Entities = if ($ActiveOn) { Get-Entity -ActiveOn $ActiveOn } else { Get-Entity }
@@ -121,7 +128,7 @@ function Get-EntityState {
             }
 
             if (-not $TargetEntity) {
-                [System.Console]::Error.WriteLine("[WARN Get-EntityState] Unresolved entity '$($Change.EntityName)' in session '$($Session.Header)'")
+                Write-RobotWarning "[WARN Get-EntityState] Unresolved entity '$($Change.EntityName)' in session '$($Session.Header)'"
                 continue
             }
 
@@ -258,20 +265,20 @@ function Get-EntityState {
             foreach ($Transfer in $Session.Transfers) {
                 $ResolvedDenom = Resolve-CurrencyDenomination -Name $Transfer.Denomination
                 if (-not $ResolvedDenom) {
-                    [System.Console]::Error.WriteLine("[WARN Get-EntityState] Unknown denomination '$($Transfer.Denomination)' in @Transfer in session '$($Session.Header)'")
+                    Write-RobotWarning "[WARN Get-EntityState] Unknown denomination '$($Transfer.Denomination)' in @Transfer in session '$($Session.Header)'"
                     continue
                 }
 
                 # Find source currency entity
                 $SourceEntity = Find-CurrencyEntity -Entities $Entities -Denomination $Transfer.Denomination -OwnerName $Transfer.Source
                 if (-not $SourceEntity) {
-                    [System.Console]::Error.WriteLine("[WARN Get-EntityState] No currency entity for '$($Transfer.Source)' ($($ResolvedDenom.Name)) in @Transfer in session '$($Session.Header)' - assuming 0 balance")
+                    Write-RobotWarning "[WARN Get-EntityState] No currency entity for '$($Transfer.Source)' ($($ResolvedDenom.Name)) in @Transfer in session '$($Session.Header)' - assuming 0 balance"
                 }
 
                 # Find destination currency entity
                 $DestEntity = Find-CurrencyEntity -Entities $Entities -Denomination $Transfer.Denomination -OwnerName $Transfer.Destination
                 if (-not $DestEntity) {
-                    [System.Console]::Error.WriteLine("[WARN Get-EntityState] No currency entity for '$($Transfer.Destination)' ($($ResolvedDenom.Name)) in @Transfer in session '$($Session.Header)' - assuming 0 balance")
+                    Write-RobotWarning "[WARN Get-EntityState] No currency entity for '$($Transfer.Destination)' ($($ResolvedDenom.Name)) in @Transfer in session '$($Session.Header)' - assuming 0 balance"
                 }
 
                 # Apply -N to source
@@ -364,4 +371,6 @@ function Get-EntityState {
     }
 
     return $Entities
+
+    } finally { $script:SuppressWarnings = $PrevSuppress }
 }

@@ -108,7 +108,7 @@ function Invoke-RobotCLI {
     Write-Host ''
     Write-Host "  Ładowanie danych..." -ForegroundColor DarkGray
 
-    $Entities = Get-Entity
+    $Entities = Get-Entity -Quiet
     $Players  = Get-Player
     $NameIdx  = Get-NameIndex -Players $Players -Entities $Entities
 

@@ -45,8 +45,15 @@ function Get-NamedLocationReport {
         [switch]$IncludeReferences,
 
         [Parameter(HelpMessage = "Treat slash paths as atomic names instead of splitting")]
-        [switch]$IncludeRawSlashPaths
+        [switch]$IncludeRawSlashPaths,
+
+        [Parameter(HelpMessage = "Suppress warning output to stderr")]
+        [switch]$Quiet
     )
+
+    $PrevSuppress = $script:SuppressWarnings
+    if ($Quiet) { $script:SuppressWarnings = $true }
+    try {
 
     # 1. Load sessions
     if (-not $Sessions) {
@@ -340,7 +347,7 @@ function Get-NamedLocationReport {
         $StemIdx = $NameIdxResult.StemIndex
         $BKTree  = $NameIdxResult.BKTree
     } catch {
-        [System.Console]::Error.WriteLine("[WARN Get-NamedLocationReport] Could not build name index: $_")
+        Write-RobotWarning "[WARN Get-NamedLocationReport] Could not build name index: $_"
     }
 
     if ($NameIdx) {
@@ -556,4 +563,6 @@ function Get-NamedLocationReport {
     $Sorted = $Report | Sort-Object -Property OccurrenceCount -Descending
 
     return @($Sorted)
+
+    } finally { $script:SuppressWarnings = $PrevSuppress }
 }

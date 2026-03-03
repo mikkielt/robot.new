@@ -41,8 +41,15 @@ function Set-SessionHash {
         [string]$Since,
 
         [Parameter(HelpMessage = "Directories to exclude from scanning")]
-        [string[]]$ExcludeDirectory
+        [string[]]$ExcludeDirectory,
+
+        [Parameter(HelpMessage = "Suppress warning output to stderr")]
+        [switch]$Quiet
     )
+
+    $PrevSuppress = $script:SuppressWarnings
+    if ($Quiet) { $script:SuppressWarnings = $true }
+    try {
 
     # Load helpers
     if (-not (Get-Command 'Get-ContentHash' -ErrorAction SilentlyContinue)) {
@@ -69,7 +76,7 @@ function Set-SessionHash {
             if ([System.IO.File]::Exists($FullPath)) {
                 [void]$FilesToProcess.Add($FullPath)
             } else {
-                [System.Console]::Error.WriteLine("[WARN Set-SessionHash] File not found: '$FullPath'")
+                Write-RobotWarning "[WARN Set-SessionHash] File not found: '$FullPath'"
             }
         }
     } elseif ($Full) {
@@ -117,7 +124,7 @@ function Set-SessionHash {
                     }
                 }
             } catch {
-                [System.Console]::Error.WriteLine("[WARN Set-SessionHash] Git changelog failed: $_. Falling back to full scan.")
+                Write-RobotWarning "[WARN Set-SessionHash] Git changelog failed: $_. Falling back to full scan."
                 $UseFullScan = $true
             }
         } else {
@@ -195,4 +202,6 @@ function Set-SessionHash {
         HashesUpdated  = $TotalUpdated
         HashesNew      = $TotalNew
     }
+
+    } finally { $script:SuppressWarnings = $PrevSuppress }
 }

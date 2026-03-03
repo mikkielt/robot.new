@@ -65,8 +65,15 @@ function New-PlayerCharacter {
         [string]$FilePath,
 
         [Parameter(HelpMessage = "Path to entities.md file")]
-        [string]$EntitiesFile
+        [string]$EntitiesFile,
+
+        [Parameter(HelpMessage = "Suppress warning output to stderr")]
+        [switch]$Quiet
     )
+
+    $PrevSuppress = $script:SuppressWarnings
+    if ($Quiet) { $script:SuppressWarnings = $true }
+    try {
 
     $Config = Get-AdminConfig
 
@@ -138,7 +145,7 @@ function New-PlayerCharacter {
         $CharFilePath = [System.IO.Path]::Combine($Config.CharactersDir, "$CharacterName.md")
 
         if ([System.IO.File]::Exists($CharFilePath)) {
-            [System.Console]::Error.WriteLine("[WARN New-PlayerCharacter] Character file already exists: $CharFilePath")
+            Write-RobotWarning "[WARN New-PlayerCharacter] Character file already exists: $CharFilePath"
         } else {
             $TemplateVars = @{
                 CharacterSheetUrl = if ($CharacterSheetUrl) { $CharacterSheetUrl } else { '<TU_WKLEJAMY_LINK>' }
@@ -226,4 +233,6 @@ function New-PlayerCharacter {
         CharacterFile = if (-not $NoCharacterFile) { $CharFilePath } else { $null }
         PlayerCreated = $PlayerTarget.Created
     }
+
+    } finally { $script:SuppressWarnings = $PrevSuppress }
 }

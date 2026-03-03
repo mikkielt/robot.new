@@ -60,8 +60,15 @@ function Get-VotingEligibility {
         [int]$Months = 6,
 
         [Parameter(HelpMessage = "Minimum PU required for voting eligibility (default: 3.0)")]
-        [decimal]$MinimumPU = [decimal]3.0
+        [decimal]$MinimumPU = [decimal]3.0,
+
+        [Parameter(HelpMessage = "Suppress warning output to stderr")]
+        [switch]$Quiet
     )
+
+    $PrevSuppress = $script:SuppressWarnings
+    if ($Quiet) { $script:SuppressWarnings = $true }
+    try {
 
     $Config = Get-AdminConfig
 
@@ -70,7 +77,7 @@ function Get-VotingEligibility {
     $PUSessionsPath = [System.IO.Path]::Combine($Config.ResDir, 'pu-sessions.md')
 
     if (-not [System.IO.File]::Exists($PUSessionsPath)) {
-        [System.Console]::Error.WriteLine("[INFO Get-VotingEligibility] No pu-sessions.md found at '$PUSessionsPath'")
+        Write-RobotInfo "[INFO Get-VotingEligibility] No pu-sessions.md found at '$PUSessionsPath'"
         return @()
     }
 
@@ -121,7 +128,7 @@ function Get-VotingEligibility {
     }
 
     if ($Runs.Count -eq 0) {
-        [System.Console]::Error.WriteLine("[INFO Get-VotingEligibility] No PU assignment runs found in pu-sessions.md")
+        Write-RobotInfo "[INFO Get-VotingEligibility] No PU assignment runs found in pu-sessions.md"
         return @()
     }
 
@@ -138,7 +145,7 @@ function Get-VotingEligibility {
     }
 
     if ($FilteredRuns.Count -eq 0) {
-        [System.Console]::Error.WriteLine("[INFO Get-VotingEligibility] No PU assignment runs found in the last $Months months")
+        Write-RobotInfo "[INFO Get-VotingEligibility] No PU assignment runs found in the last $Months months"
         return @()
     }
 
@@ -188,7 +195,7 @@ function Get-VotingEligibility {
     }
 
     if ($MinSessionDate -eq [datetime]::MaxValue) {
-        [System.Console]::Error.WriteLine("[INFO Get-VotingEligibility] Could not determine session date range from headers")
+        Write-RobotInfo "[INFO Get-VotingEligibility] Could not determine session date range from headers"
         return @()
     }
 
@@ -371,4 +378,6 @@ function Get-VotingEligibility {
     foreach ($Item in $IneligibleSorted) { [void]$Sorted.Add($Item) }
 
     return $Sorted
+
+    } finally { $script:SuppressWarnings = $PrevSuppress }
 }

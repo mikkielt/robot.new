@@ -64,8 +64,15 @@ function Test-SessionIntegrity {
         [string]$Since,
 
         [Parameter(HelpMessage = "Directories to exclude from scanning")]
-        [string[]]$ExcludeDirectory
+        [string[]]$ExcludeDirectory,
+
+        [Parameter(HelpMessage = "Suppress warning output to stderr")]
+        [switch]$Quiet
     )
+
+    $PrevSuppress = $script:SuppressWarnings
+    if ($Quiet) { $script:SuppressWarnings = $true }
+    try {
 
     # Load helpers
     if (-not (Get-Command 'Get-ContentHash' -ErrorAction SilentlyContinue)) {
@@ -145,7 +152,7 @@ function Test-SessionIntegrity {
                     }
                 }
             } catch {
-                [System.Console]::Error.WriteLine("[WARN Test-SessionIntegrity] Git changelog failed: $_. Falling back to full scan.")
+                Write-RobotWarning "[WARN Test-SessionIntegrity] Git changelog failed: $_. Falling back to full scan."
                 $UseFullScan = $true
             }
         } else {
@@ -451,4 +458,6 @@ function Test-SessionIntegrity {
         FormatAnomalies      = $FormatAnomalies.ToArray()
         FutureDatedSessions  = $FutureDatedSessions.ToArray()
     }
+
+    } finally { $script:SuppressWarnings = $PrevSuppress }
 }

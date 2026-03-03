@@ -33,7 +33,8 @@ $script:CommonParams = [System.Collections.Generic.HashSet[string]]::new(
         'WhatIf', 'Confirm', 'Verbose', 'Debug', 'ErrorAction',
         'ErrorVariable', 'OutVariable', 'OutBuffer', 'PipelineVariable',
         'WarningAction', 'WarningVariable', 'InformationAction',
-        'InformationVariable', 'ProgressAction'
+        'InformationVariable', 'ProgressAction',
+        'Quiet'
     ),
     [System.StringComparer]::OrdinalIgnoreCase
 )

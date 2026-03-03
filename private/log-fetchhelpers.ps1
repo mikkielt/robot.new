@@ -160,13 +160,13 @@ function Invoke-LogFetch {
         $Response = $Client.GetAsync($NormalizedUrl).GetAwaiter().GetResult()
     }
     catch {
-        [System.Console]::Error.WriteLine("[WARN Invoke-LogFetch] Network error fetching '$NormalizedUrl': $_")
+        Write-RobotWarning "[WARN Invoke-LogFetch] Network error fetching '$NormalizedUrl': $_"
         return $null
     }
 
     if (-not $Response.IsSuccessStatusCode) {
         $StatusCode = [int]$Response.StatusCode
-        [System.Console]::Error.WriteLine("[WARN Invoke-LogFetch] HTTP $StatusCode fetching '$NormalizedUrl'")
+        Write-RobotWarning "[WARN Invoke-LogFetch] HTTP $StatusCode fetching '$NormalizedUrl'"
         return $null
     }
 

@@ -23,6 +23,26 @@
 
 $ModuleRoot = $PSScriptRoot
 
+# ── Warning Suppression ────────────────────────────────────────────────────
+# Module-scoped flag checked by Write-RobotWarning/Write-RobotInfo.
+# Set to $true by CLI dispatch or public functions called with -Quiet.
+
+$script:SuppressWarnings = $false
+
+function Write-RobotWarning {
+    param([Parameter(Mandatory)] [string]$Message)
+    if (-not $script:SuppressWarnings) {
+        [System.Console]::Error.WriteLine($Message)
+    }
+}
+
+function Write-RobotInfo {
+    param([Parameter(Mandatory)] [string]$Message)
+    if (-not $script:SuppressWarnings) {
+        [System.Console]::Error.WriteLine($Message)
+    }
+}
+
 # ── PHASE 1: Core Function Loading ──────────────────────────────────────────
 
 # Discover all .ps1 files using .NET I/O - avoid Get-ChildItem for performance

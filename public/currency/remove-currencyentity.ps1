@@ -32,8 +32,15 @@ function Remove-CurrencyEntity {
         [string]$ValidFrom,
 
         [Parameter(HelpMessage = "Path to entities.md file")]
-        [string]$EntitiesFile
+        [string]$EntitiesFile,
+
+        [Parameter(HelpMessage = "Suppress warning output to stderr")]
+        [switch]$Quiet
     )
+
+    $PrevSuppress = $script:SuppressWarnings
+    if ($Quiet) { $script:SuppressWarnings = $true }
+    try {
 
     $Config = Get-AdminConfig
 
@@ -68,7 +75,7 @@ function Remove-CurrencyEntity {
         if ($ParenIdx -gt 0) { $QtyText = $QtyText.Substring(0, $ParenIdx).Trim() }
         [int]$Qty = 0
         if ([int]::TryParse($QtyText, [ref]$Qty) -and $Qty -ne 0) {
-            [System.Console]::Error.WriteLine("[WARN Remove-CurrencyEntity] Entity '$Name' has non-zero balance ($Qty). Soft-deleting anyway.")
+            Write-RobotWarning "[WARN Remove-CurrencyEntity] Entity '$Name' has non-zero balance ($Qty). Soft-deleting anyway."
         }
     }
 
@@ -78,4 +85,6 @@ function Remove-CurrencyEntity {
     if ($PSCmdlet.ShouldProcess($EntitiesFilePath, "Remove-CurrencyEntity: soft-delete '$Name' (@status: Usunięty ($ValidFrom`:))")) {
         Write-EntityFile -Path $EntitiesFilePath -Lines $Lines -NL $File.NL
     }
+
+    } finally { $script:SuppressWarnings = $PrevSuppress }
 }
