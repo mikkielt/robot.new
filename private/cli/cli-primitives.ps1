@@ -241,7 +241,7 @@ function Show-ArrowMenu {
         if ($Item.RoleTag) { $LabelLen += $Item.RoleTag.Length + 1 }
         if ($LabelLen -gt $MaxLabelWidth) { $MaxLabelWidth = $LabelLen }
     }
-    $MaxLabelWidth = [Math]::Min($MaxLabelWidth + 2, 35)
+    $MaxLabelWidth = [Math]::Min($MaxLabelWidth + 4, [System.Console]::WindowWidth - 20)
 
     # Initial render
     $MenuStartRow = [System.Console]::CursorTop
