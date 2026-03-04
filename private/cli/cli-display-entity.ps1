@@ -69,6 +69,14 @@ function Show-EntityCard {
         Write-Host "$($Entity.Quantity)"
     }
 
+    # Info (surfaced from @info override)
+    if ($Entity.Overrides -and $Entity.Overrides.ContainsKey('info')) {
+        $InfoValues = $Entity.Overrides['info']
+        $InfoText = if ($InfoValues -is [System.Collections.IList]) { $InfoValues[-1] } else { [string]$InfoValues }
+        Write-Host "  $('Info'.PadRight(22))" -NoNewline -ForegroundColor $InfoColor
+        Write-Host $InfoText
+    }
+
     # Groups
     if ($Entity.Groups -and $Entity.Groups.Count -gt 0) {
         Write-Host "  $('Grupy'.PadRight(22))" -NoNewline -ForegroundColor $InfoColor
@@ -107,6 +115,7 @@ function Show-EntityCard {
         Write-Host ''
         Write-CLILine -Text 'Tagi' -Color $InfoColor
         foreach ($Key in $Entity.Overrides.Keys) {
+            if ($Key -eq 'info') { continue }
             $Values = $Entity.Overrides[$Key]
             if ($Values -is [System.Collections.IList]) {
                 Write-Host "    $("@$Key".PadRight(20))" -NoNewline -ForegroundColor $DisabledColor

@@ -46,8 +46,8 @@ function Resolve-EntityCN {
         return $CNCache[$Entity.Name]
     }
 
-    # Non-locations always get a flat CN
-    if ($Entity.Type -ne 'Lokacja') {
+    # Non-locations always get a flat CN (Mapa shares hierarchical CN logic)
+    if ($Entity.Type -ne 'Lokacja' -and $Entity.Type -ne 'Mapa') {
         $Result = "$($Entity.Type)/$($Entity.Name)"
         if ($CNCache) { $CNCache[$Entity.Name] = $Result }
         return $Result
@@ -195,6 +195,8 @@ function Get-Entity {
         "postaci"          = "Postać"
         "przedmiot"        = "Przedmiot"
         "przedmioty"       = "Przedmiot"
+        "mapa"             = "Mapa"
+        "mapy"             = "Mapa"
     }
 
     # Main parsing loop: iterate sections -> entities -> tags
@@ -380,6 +382,12 @@ function Get-Entity {
                             $Names.Add($Parsed.Text)
                         }
                     }
+                    '@slug' {
+                        $Parsed = ConvertFrom-ValidityString -InputText $Value
+                        if (Test-TemporalActivity -Item $Parsed -ActiveOn $ActiveOn) {
+                            $Names.Add($Parsed.Text)
+                        }
+                    }
                     '@koordynaty' {
                         $Parsed = ConvertFrom-ValidityString -InputText $Value
                         # Parse "X, Y" coordinate pair (tile units)
@@ -450,8 +458,8 @@ function Get-Entity {
                 }
             }
 
-            # For locations with active doors, add path-qualified names for resolution
-            if ($SectionType -eq 'Lokacja' -and $ActiveDoors.Count -gt 0) {
+            # For locations/maps with active doors, add path-qualified names for resolution
+            if (($SectionType -eq 'Lokacja' -or $SectionType -eq 'Mapa') -and $ActiveDoors.Count -gt 0) {
                 foreach ($DoorName in $ActiveDoors) {
                     [void]$Names.Add("$DoorName/$EntityName")
                 }
@@ -528,7 +536,7 @@ function Get-Entity {
                 }
 
                 # Recompute door-path names after merge
-                if ($Existing.Type -eq 'Lokacja' -and $Existing.Doors.Count -gt 0) {
+                if (($Existing.Type -eq 'Lokacja' -or $Existing.Type -eq 'Mapa') -and $Existing.Doors.Count -gt 0) {
                     foreach ($DoorName in $Existing.Doors) {
                         [void]$Existing.Names.Add("$DoorName/$($Existing.Name)")
                     }

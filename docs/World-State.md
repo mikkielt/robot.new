@@ -44,6 +44,7 @@ An entity is any named element of the game world that the system tracks. Each en
 | **NPC** | A non-player character | Sandro, Lord Haart |
 | **Grupa** | A group, faction, or organization | Bractwo Miecza, Nekromanci |
 | **Lokacja** | A place in the game world | Erathia, Bracada, Zamek Steadwick |
+| **Mapa** | A game map (floor/interior) tied to a location | Komnata Rady, Piwnica Ratusza |
 | **Gracz** | A player (real person) | Roland, Catherine |
 | **Postać** | A player character | Crag Hack, Gem |
 | **Przedmiot** | A notable item | Miecz Piekieł, Tarcza Krasnoludów |
@@ -233,17 +234,19 @@ Locations in Margonem have game-assigned names, but the Nerthus RP server uses i
 
 The entity's `Name` stays as the Margonem game name. The Nerthus name is added to the entity's searchable names, so both names resolve to the same entity.
 
-### Multi-ID Locations
+### Map Entities (Mapa) vs Location Entities (Lokacja)
 
-A single location entity can map to many Margonem numeric IDs (one per floor or variant). Record each ID as a separate `@margonemid` line:
+**Mapa** entities represent individual game maps — each floor, interior, or instance from the Margonem map registry. Every Mapa entity carries a unique `@margonemid`, a map type (`@typ: zewnętrzna` or `wewnętrzna`), a CDN image URL (`@url`), and tile dimensions (`@wymiary`). Mapa entities are stored in a dedicated overflow file (`maps-100-ent.md`) due to their volume (~2,704 entries).
 
-```markdown
-* Gwiżdżąca Grota
-    - @margonemid: 2135
-    - @margonemid: 2136
-    - @margonemid: 2137
-    - @margonemid: 2138
-```
+**Lokacja** entities represent conceptual places in the game world — deduplicated location names derived from the Mapa hierarchy. A single Lokacja (e.g., "Gwiżdżąca Grota") may correspond to many Mapa entities (one per floor or variant). Lokacja entities live in `entities.md`.
+
+Both Mapa and Lokacja entities participate in the location hierarchy via `@lokacja` — they can have a parent location, door connections, and Nerthus names. When two maps share the same name (e.g., multiple "Apartament" in different buildings), each can be given a unique slug to distinguish them.
+
+### Slugs (Disambiguation)
+
+When multiple entities share the same name (common with maps and generic locations), a slug provides a unique identifier that the system recognizes for resolution. For example, two maps both named "Komnata Rady" can be distinguished by their slugs "komnata-rady-ratusz" and "komnata-rady-zamek".
+
+Slugs are searchable — you can use a slug anywhere an entity name is expected, and the system will find the right entity.
 
 ### Aliases
 
@@ -281,6 +284,7 @@ These changes are applied with the session's date as the effective date.
 | `@grupa` | Which group/faction the entity belongs to |
 | `@status` | Whether the entity is active, inactive, or removed |
 | `@alias` | An alternative name for the entity |
+| `@info` | A description or note about the entity (displayed prominently in the entity card) |
 | Any other property | Custom metadata stored with the entity |
 
 ### Automatic dating

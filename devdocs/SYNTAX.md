@@ -451,7 +451,7 @@ Tags with dedicated handling in the entity parser (`get-entity.ps1`):
 | `@plik` | Path to character file for Postać entities | Yes |
 | `@generyczne_nazwy` | Comma-separated generic names (added to Names collection) | No |
 | `@nazwa_nerthus` | RP override name for the entity (added to Names for resolution). Scalar: last-active-wins | Yes |
-| Any other | Generic override stored in Overrides dictionary (e.g. `@info`, `@stan`, `@margonemid`, `@rozmiar_mapy`, `@tlo`, `@prfwebhook`, `@pu_startowe`, `@pu_suma`, `@pu_zdobyte`, `@pu_nadmiar`, `@region`) | Yes (via Overrides) |
+| Any other | Generic override stored in Overrides dictionary (e.g. `@info`, `@stan`, `@margonemid`, `@tlo`, `@prfwebhook`, `@pu_startowe`, `@pu_suma`, `@pu_zdobyte`, `@pu_nadmiar`, `@region`) | Yes (via Overrides) |
 
 ### Override Tag Conventions for Locations
 
@@ -459,8 +459,10 @@ These tags are stored as generic overrides (in `Overrides` dictionary) but have 
 
 | Tag | Description | Example |
 |---|---|---|
-| `@margonemid` | Margonem numeric map ID. Multi-valued: one line per floor/variant | `@margonemid: 117` |
-| `@rozmiar_mapy` | Tile grid dimensions (WxH) | `@rozmiar_mapy: 32x32` |
+| `@margonemid` | Margonem numeric map ID. One per Mapa entity (unique) | `@margonemid: 117` |
+| `@typ` | Map type for Mapa entities: `zewnętrzna` (exterior) or `wewnętrzna` (interior) | `@typ: zewnętrzna` |
+| `@url` | CDN image URL for Mapa entities | `@url: https://cdn.margonem.pl/maps/ithan.png` |
+| `@wymiary` | Tile grid dimensions for Mapa entities (width, height) | `@wymiary: 64, 96` |
 | `@tlo` | Background image reference. Supports seasonal markers | `@tlo: ithan-zima.png (zima)` |
 
 ### Recognized @Tags — Session-Level (Gen4 Metadata)

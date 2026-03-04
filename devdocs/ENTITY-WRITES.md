@@ -124,11 +124,13 @@ High-level orchestrator that ensures the entity exists, creating intermediate st
 
 **`Write-EntityFile`**: Rejoins lines with detected newline style, writes via `[System.IO.File]::WriteAllText()` with `UTF8Encoding(false)` (no BOM).
 
-**`Invoke-EnsureEntityFile`**: Creates `entities.md` with skeleton loaded from `entities-skeleton.md.template` (via `Get-AdminTemplate`). The template defines all 6 entity type sections:
+**`Invoke-EnsureEntityFile`**: Creates `entities.md` with skeleton loaded from `entities-skeleton.md.template` (via `Get-AdminTemplate`). The template defines all 7 entity type sections:
 ```markdown
 ## Gracz
 
 ## Postać
+
+## Przedmiot
 
 ## NPC
 
@@ -136,7 +138,7 @@ High-level orchestrator that ensures the entity exists, creating intermediate st
 
 ## Lokacja
 
-## Przedmiot
+## Mapa
 ```
 
 ### 3.9 Module-Level Regex Patterns
@@ -225,14 +227,14 @@ Three precompiled regex patterns (`RegexOptions.Compiled`) defined in `private/e
 
 ## 5. Generic Entity CRUD (`public/entity/`)
 
-These commands handle NPC, Grupa, Lokacja, and Przedmiot entities. `Gracz` and `Postać` are excluded - they have specialized commands (§4) with domain-specific logic (PU, ownership, character files).
+These commands handle NPC, Grupa, Lokacja, Mapa, and Przedmiot entities. `Gracz` and `Postać` are excluded - they have specialized commands (§4) with domain-specific logic (PU, ownership, character files).
 
 ### 5.1 `New-Entity`
 
 | Aspect | Detail |
 |---|---|
 | **Target** | `entities.md` under `## Type` section |
-| **Types** | `ValidateSet("NPC", "Grupa", "Lokacja", "Przedmiot")` |
+| **Types** | `ValidateSet("NPC", "Grupa", "Lokacja", "Mapa", "Przedmiot")` |
 | **Tags written** | Any `@tag` via `-Tags` hashtable |
 | **Creation** | Creates entity via `Resolve-EntityTarget` |
 | **Duplicate detection** | Throws if entity already exists in the target section |
@@ -390,6 +392,7 @@ One-time function that generates a complete `entities.md` from `Get-Player` outp
 | `tests/new-entity.Tests.ps1` | Generic creation, duplicate detection, tag writing, ValidFrom |
 | `tests/set-entity.Tests.ps1` | Tag upsert, auto-creation, cross-section search, temporal suffix |
 | `tests/remove-entity.Tests.ps1` | Soft-delete, status writing, ConfirmImpact |
+| `tests/mapa-entity.Tests.ps1` | Mapa type registration, skeleton creation, New/Set/Remove-Entity with Mapa |
 | `tests/new-currencyentity.Tests.ps1` | Denomination validation, auto-naming, duplicate detection, template |
 | `tests/set-currencyentity.Tests.ps1` | Absolute/delta quantity, owner/location, mutual exclusion |
 | `tests/get-currencyentity.Tests.ps1` | Filtering, denomination resolution, balance, inactive exclusion |

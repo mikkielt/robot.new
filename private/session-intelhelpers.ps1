@@ -226,6 +226,7 @@ function Resolve-IntelTargets {
 
                     foreach ($Entity in $Entities) {
                         if ($Entity.Type -eq 'Lokacja') { continue }
+                        if ($Entity.Type -eq 'Mapa') { continue }
                         if ($Entity.LocationHistory.Count -eq 0) { continue }
 
                         foreach ($LH in $Entity.LocationHistory) {

@@ -358,7 +358,7 @@ The automated migration is orchestrated by `migration/migrate.ps1` (`Invoke-Phas
 | 2 | `Invoke-MigrationPhase2` | `phase2-session-hashes.ps1` | Generate baseline SHA256 hashes for all session headers (`Set-SessionHash -Full`) |
 | 3 | `Invoke-MigrationPhase3` | `phase2-validation.ps1` | Validate entity parity between legacy and new stores |
 | 4 | `Invoke-MigrationPhase4` | `phase3-diagnostics.ps1` | Run PU diagnostics and narrator normalization |
-| 5 | `Invoke-MigrationPhase5` | `phase5-location-import.ps1` | Bulk-import game-map locations, infer hierarchy, apply overrides |
+| 5 | `Invoke-MigrationPhase5` | `phase5-location-import.ps1` | Bulk-import Mapa entities from maps.json to overflow file, derive Lokacja from hierarchy, apply overrides |
 | 6 | `Invoke-MigrationPhase6` | `phase4-session-upgrade.ps1` | Upgrade session formats from Gen1/2/3 to Gen4 |
 | 7 | `Invoke-MigrationPhase7` | `phase5-currency.ps1` | Currency entity creation and reconciliation |
 | 8 | `Invoke-MigrationPhase8` | `phase6-parallel.ps1` | Parallel operations (entity sharding, batch processing) |
@@ -382,9 +382,9 @@ Runs `Set-SessionHash -Full` to compute SHA256 content hashes for all headers in
 
 ### 9.4 Phase 5: Location Import
 
-Bulk-imports game-map locations from `.robot/res/maps.json` as `Lokacja` entities. Dot-sources `migration-location-helpers.ps1` (self-contained, no plugin dependency).
+Imports game-map data from `.robot/res/maps.json` as two entity types: **Mapa** entities (concrete game maps with metadata) written to the overflow file `maps-100-ent.md`, and **Lokacja** entities (conceptual locations) derived from the hierarchy and written to `entities.md`. Dot-sources `migration-location-helpers.ps1`.
 
-**`maps.json` format**: The file is sourced from the Margonem game data (via the margoworld plugin's scraper). Expected structure:
+**`maps.json` format**: The file is sourced from the Margonem game data. Expected structure:
 
 ```json
 {
@@ -404,22 +404,37 @@ Bulk-imports game-map locations from `.robot/res/maps.json` as `Lokacja` entitie
 
 | Field | Type | Used by Phase 5 | Description |
 |---|---|---|---|
-| `id` | `int` | Yes | Margonem map ID, stored as `@margonemid` tag |
-| `name` | `string` | Yes | Map display name, becomes the `Lokacja` entity name and input to hierarchy inference |
-| `outerior` | `bool` | Yes | Whether the map is an exterior (overworld) location; used as comment annotation in override export |
-| `url` | `string` | No | Map image URL (not imported) |
-| `tileWidth` | `int` | No | Tile pixel width (not imported) |
-| `tileHeight` | `int` | No | Tile pixel height (not imported) |
+| `id` | `int` | Yes | Margonem map ID, stored as `@margonemid` tag on Mapa entity |
+| `name` | `string` | Yes | Map display name, becomes the Mapa entity name and input to hierarchy inference |
+| `outerior` | `bool` | Yes | Whether the map is an exterior (overworld) location; stored as `@typ: zewnętrzna/wewnętrzna` |
+| `url` | `string` | Yes | Map image URL, stored as `@url` tag on Mapa entity |
+| `tileWidth` | `int` | Yes | Tile pixel width, stored as part of `@wymiary` (when both dimensions non-null) |
+| `tileHeight` | `int` | Yes | Tile pixel height, stored as part of `@wymiary` (when both dimensions non-null) |
 
 The top-level `lastUpdated` field is informational (ISO 8601 timestamp of last scrape). The `maps` array contains one entry per game location (~2,704 entries in production).
 
 **Hierarchy inference**: For each map entry, applies `Get-MapBaseNameDeterministic` (9-pattern iterative stripping: difficulty, floor, room, sala, named sala, direction, piętro, piwnica, named subarea). If the stripped base name exists in the map name set, it becomes the parent. Falls back to `Get-MapBaseNameCandidates` (progressive word removal) when deterministic stripping overshoots.
 
-**Bulk import**: Single `Read-EntityFile` / `Write-EntityFile` cycle. Entities sorted alphabetically, each with `@margonemid: {id}` and optional `@lokacja: {parent}` tags.
+**Mapa bulk import** (Step 4): All maps.json entries are written as Mapa entities to the overflow file `maps-100-ent.md` (numeric key 100 gives medium primacy). Each Mapa entity gets these tags:
 
-**Override file**: Exports `.robot/res/location-overrides.txt` (TSV). Section 1 maps Margonem names to Nerthus names (`@nazwa_nerthus`). Section 2 defines virtual locations. Re-running the phase applies overrides via `Set-EntityTag` / `New-EntityBullet`.
+```markdown
+* {map.name}
+    - @margonemid: {map.id}
+    - @lokacja: {parent}           # from hierarchy, if exists
+    - @typ: zewnętrzna/wewnętrzna  # from map.outerior boolean
+    - @url: {map.url}              # CDN image URL
+    - @wymiary: {tileWidth}, {tileHeight}  # only if both non-null
+```
 
-**Checklist**: `MapsJsonLoaded`, `HierarchyInferred`, `BulkImportDone`, `OverridesExported`, `OverridesImported`, `Committed`. Phase completes when both `BulkImportDone` and `OverridesImported` are true.
+Entities are sorted alphabetically within the `## Mapa` section. The overflow file is created fresh if missing, or appended to if it already exists.
+
+**Lokacja derivation** (Step 5): A second pass extracts unique location names from the hierarchy — all root maps (no parent) and all parent values — and creates Lokacja entities in `entities.md`. Each Lokacja gets `@lokacja` pointing to its own parent if the location name itself appeared as a child in the hierarchy. This produces far fewer entities than the full map count (~unique base names).
+
+**Override file** (Steps 6-7): Exports `.robot/res/location-overrides.txt` (TSV). Section 1 maps Margonem names to Nerthus names (`@nazwa_nerthus`) — applied to **Mapa** entities in the overflow file. Section 2 defines virtual locations — created as **Lokacja** entities in `entities.md`. Re-running the phase applies overrides via `Set-EntityTag` / `New-EntityBullet`.
+
+**Backward compatibility**: The old `BulkImportDone` checklist key (from partial Phase 5 runs that created Lokacja entities directly) is recognized as equivalent to `MapaBulkImportDone`, allowing the Mapa import step to be skipped while the Lokacja derivation step still runs.
+
+**Checklist**: `MapsJsonLoaded`, `HierarchyInferred`, `MapaBulkImportDone` (or legacy `BulkImportDone`), `LokacjaDerivationDone`, `OverridesExported`, `OverridesImported`, `Committed`. Phase completes when `MapaBulkImportDone` AND `LokacjaDerivationDone` AND `OverridesImported` are all true.
 
 ### 9.5 Phase 9: Cutover
 
@@ -526,6 +541,7 @@ Unresolved names in `Get-EntityState` / narrator resolution should be cleaned up
 |---|---|
 | `entities.md` | Base entity registry (lowest override primacy) |
 | `entities-100-ent.md` | Override shard with primacy 100 |
+| `maps-100-ent.md` | Mapa entity overflow file (~2,704 game-map entities, created by Phase 5) |
 | `robot.psd1` | Module manifest |
 | `robot.psm1` | Module loader (auto-discovers Verb-Noun `.ps1` files) |
 | `templates/*.md.template` | Character file and player entry templates |

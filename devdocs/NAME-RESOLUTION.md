@@ -49,7 +49,7 @@ Get-Entity ──┘                              │
 
 | Priority | Source | Examples |
 |---|---|---|
-| 1 | Full names and registered aliases | `"Crag Hack"`, `"Sandro"` |
+| 1 | Full names, registered aliases, `@slug` values, `@nazwa_nerthus` values | `"Crag Hack"`, `"Sandro"`, `"komnata-rady-ratusz"` |
 | 2 | Individual word tokens (≥ `MinTokenLength`, default 3) | `"Crag"`, `"Hack"` |
 
 ### 3.3 Collision Resolution
@@ -87,7 +87,7 @@ Each index entry:
 | Field | Type | Description |
 |---|---|---|
 | `Owner` | object | Resolved entity (if not ambiguous) |
-| `OwnerType` | string | `"Player"`, `"NPC"`, `"Grupa"`, `"Lokacja"`, `"Gracz"`, `"Postać"` |
+| `OwnerType` | string | `"Player"`, `"NPC"`, `"Grupa"`, `"Lokacja"`, `"Mapa"`, `"Gracz"`, `"Postać"` |
 | `Owners` | object[] | All owners (if ambiguous) |
 | `Source` | string | Original full name the token came from |
 | `Priority` | int | 1 (full name) or 2 (word token) |
@@ -289,6 +289,7 @@ This distinguishes between "never looked up" (`ContainsKey` = false) and "looked
 |---|---|
 | `tests/resolve-name.Tests.ps1` | All 4 stages, type filtering, cache behavior, edge cases |
 | `tests/get-nameindex.Tests.ps1` | Priority collision, ambiguity, stem index, BK-tree construction |
+| `tests/get-entity-mapa.Tests.ps1` | @slug indexing at priority 1, slug-based resolution via `Resolve-Name` |
 
 ---
 

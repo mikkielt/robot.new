@@ -33,7 +33,7 @@ function Set-Entity {
         [string]$Name,
 
         [Parameter(HelpMessage = "Entity type (for disambiguation or auto-creation)")]
-        [ValidateSet("NPC", "Grupa", "Lokacja", "Przedmiot")]
+        [ValidateSet("NPC", "Grupa", "Lokacja", "Mapa", "Przedmiot")]
         [string]$Type,
 
         [Parameter(Mandatory, HelpMessage = "@tag values to upsert (hashtable of tag name -> value)")]
@@ -71,7 +71,7 @@ function Set-Entity {
         }
     } else {
         # Search all sections
-        $AllTypes = @('NPC', 'Grupa', 'Lokacja', 'Przedmiot', 'Gracz', 'Postać')
+        $AllTypes = @('NPC', 'Grupa', 'Lokacja', 'Mapa', 'Przedmiot', 'Gracz', 'Postać')
         foreach ($SearchType in $AllTypes) {
             $Section = Find-EntitySection -Lines $LinesArray -EntityType $SearchType
             if (-not $Section) { continue }

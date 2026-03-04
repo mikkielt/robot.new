@@ -6,7 +6,7 @@
     This file contains New-Entity which creates an entity bullet under the
     appropriate ## Type section in entities.md.
 
-    Supported types: NPC, Grupa, Lokacja, Przedmiot.
+    Supported types: NPC, Grupa, Lokacja, Mapa, Przedmiot.
     Gracz and Postać are excluded - use New-Player and New-PlayerCharacter
     for those (they carry domain-specific logic).
 
@@ -29,7 +29,7 @@ function New-Entity {
 
     [CmdletBinding(SupportsShouldProcess, ConfirmImpact = 'Medium')] param(
         [Parameter(Mandatory, HelpMessage = "Entity type section")]
-        [ValidateSet("NPC", "Grupa", "Lokacja", "Przedmiot")]
+        [ValidateSet("NPC", "Grupa", "Lokacja", "Mapa", "Przedmiot")]
         [string]$Type,
 
         [Parameter(Mandatory, HelpMessage = "Entity name")]

@@ -69,6 +69,7 @@ Level-2 headers define entity type sections, mapped via `$TypeMap`:
 | `## NPC` | NPC |
 | `## Grupa` | Grupa |
 | `## Lokacja` | Lokacja |
+| `## Mapa` | Mapa |
 | `## Gracz` | Gracz |
 | `## Postać` | Postać |
 | `## Przedmiot` | Przedmiot |
@@ -87,6 +88,7 @@ Level-2 headers define entity type sections, mapped via `$TypeMap`:
 | `@ilość` | Temporal | `Quantity`, `QuantityHistory` | Item quantity (used for stackable items such as currency). Accepts integer values. In Zmiany blocks, supports `+N`/`-N` delta syntax to add/subtract from current quantity. |
 | `@plik` | Temporal | `FilePath`, `FilePathHistory` | Relative path to the entity's file (e.g. character `.md` file). Supports temporal ranges for entities whose file reference changes over time. Populated automatically by `New-PlayerCharacter` and during migration from `Gracze.md` link paths. |
 | `@nazwa_nerthus` | Temporal | `NerthusName`, `NerthusNameHistory` | RP override name for the entity. Active value added to `Names` for resolution. Scalar semantics: last-active-wins (like `@lokacja`). |
+| `@slug` | Temporal | `Names` | Unique disambiguator string. Active value added to `Names` HashSet for resolution. Used to distinguish same-name entities (e.g., multiple "Komnata Rady" under different parents). No dedicated property — resolved via the name index like `@alias`. |
 | `@koordynaty` | Temporal | `Coordinates`, `CoordinateHistory` | Map tile coordinates as `X, Y` (32×32px tile units). Active value: `@{ X = [int]; Y = [int] }` or `$null` for interiors. Presence implies exterior location (has a world-map position). |
 | `@zawiera` | Non-temporal | `Contains` | Child containment declaration |
 | `@generyczne_nazwy` | Non-temporal | `GenericNames`, `Names` | Comma-delimited generic names for the entity (e.g. "Strażnik Miasta, Wartownik"). Added to `Names` for resolution. |
@@ -104,7 +106,7 @@ Partial dates resolved via `Resolve-PartialDate`:
 
 ### 3.5a Door-Path Name Generation
 
-For Lokacja entities with active `@drzwi` entries, path-qualified names are generated and added to `Names`:
+For Lokacja and Mapa entities with active `@drzwi` entries, path-qualified names are generated and added to `Names`:
 
 ```
 Gwiżdżąca Grota with @drzwi: Steadwick and @drzwi: Czerwona Twierdza
@@ -126,9 +128,9 @@ Single O(n) pass builds the lookup hashtable, avoiding O(n²) repeated `.Where()
 
 ### 3.7 Canonical Name Resolution (`Resolve-EntityCN`)
 
-**Non-location entities**: `Type/Name` (e.g., `NPC/Sandro`)
+**Non-location/map entities**: `Type/Name` (e.g., `NPC/Sandro`)
 
-**Location entities**: Hierarchical paths built by walking the `@lokacja` chain upward:
+**Lokacja and Mapa entities**: Hierarchical paths built by walking the `@lokacja` chain upward:
 
 ```
 Resolve-EntityCN("Zamek Steadwick"):
@@ -330,8 +332,9 @@ Characters with `Status = 'Usunięty'` are excluded unless `-IncludeDeleted`.
 | `tests/entity-status.Tests.ps1` | Status lifecycle, temporal status transitions |
 | `tests/przedmiot-entity.Tests.ps1` | Przedmiot type mappings, entity creation, duplicate detection |
 | `tests/currency-entity.Tests.ps1` | Currency entity creation, @ilość tag handling, quantity updates |
+| `tests/get-entity-mapa.Tests.ps1` | Mapa type parsing, @slug resolution, @url/@url_nerthus overrides, hierarchical CN, door-paths |
 
-Fixtures: `entities.md`, `entities-100-ent.md`, `entities-200-ent.md`, `sessions-zmiany.md`.
+Fixtures: `entities.md`, `entities-100-ent.md`, `entities-200-ent.md`, `sessions-zmiany.md`, `entities-mapa.md`, `entities-slug.md`.
 
 ---
 

@@ -3,14 +3,18 @@
     Phase 5: Import lokalizacji z mapy.
 
     .DESCRIPTION
-    Bulk-imports Margonem game locations from maps.json as Lokacja entities,
-    infers parent-child hierarchy from naming conventions, exports a TSV
-    override file for coordinator review (@nazwa_nerthus overrides and
-    virtual locations), and applies overrides on re-entry.
+    Two-entity-type import from maps.json:
+    1. Mapa entities — every maps.json entry becomes a Mapa (concrete game map
+       with metadata: @margonemid, @typ, @url, @wymiary, @lokacja parent).
+       Written to a dedicated overflow file maps-100-ent.md.
+    2. Lokacja entities — deduplicated location names derived from the Mapa
+       hierarchy. Written to entities.md ## Lokacja section.
 
     Two-pass workflow:
-    1. Automated import: read maps.json, infer hierarchy, bulk-create entities
+    1. Automated import: read maps.json, infer hierarchy, bulk-create Mapa,
+       derive Lokacja from unique base names.
     2. Coordinator review: edit override file, re-run phase to apply
+       (@nazwa_nerthus on Mapa, virtual Lokacja).
 
     Dependencies: migration-ui.ps1, migration-state.ps1,
                   migration-location-helpers.ps1, robot module imported.
@@ -117,35 +121,165 @@ function Invoke-MigrationPhase5 {
     Update-PhaseChecklist -State $State -Phase 5 -Item 'HierarchyInferred' -Value $true
 
     # ── Step 3: Check existing entities ─────────────────────────────────────
-    Write-Step -Number 3 -Text 'Sprawdzanie istniejących encji Lokacja...'
+    Write-Step -Number 3 -Text 'Sprawdzanie istniejących encji Mapa i Lokacja...'
     $Entities = Get-Entity
-    $ExistingNames = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+
+    $ExistingMapaNames = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+    $ExistingLokacjaNames = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
     foreach ($E in $Entities) {
-        if ([string]::Equals($E.EntityType, 'Lokacja', [System.StringComparison]::OrdinalIgnoreCase)) {
-            [void]$ExistingNames.Add($E.Name)
+        if ([string]::Equals($E.EntityType, 'Mapa', [System.StringComparison]::OrdinalIgnoreCase)) {
+            [void]$ExistingMapaNames.Add($E.Name)
+        }
+        elseif ([string]::Equals($E.EntityType, 'Lokacja', [System.StringComparison]::OrdinalIgnoreCase)) {
+            [void]$ExistingLokacjaNames.Add($E.Name)
         }
     }
 
-    $ToImport = [System.Collections.Generic.List[object]]::new()
-    $Skipped = 0
+    $MapaToImport = [System.Collections.Generic.List[object]]::new()
+    $MapaSkipped = 0
     foreach ($Map in $Maps) {
-        if ($ExistingNames.Contains($Map.name)) {
-            $Skipped++
+        if ($ExistingMapaNames.Contains($Map.name)) {
+            $MapaSkipped++
         } else {
-            $ToImport.Add($Map)
+            $MapaToImport.Add($Map)
         }
     }
 
-    Write-StepOK "Do importu: $($ToImport.Count) | Już istniejące: $Skipped"
+    Write-StepOK "Mapa do importu: $($MapaToImport.Count) | Już istniejące: $MapaSkipped | Lokacja istniejące: $($ExistingLokacjaNames.Count)"
 
-    # ── Step 4: Bulk import ─────────────────────────────────────────────────
-    $BulkDone = $Checklist.ContainsKey('BulkImportDone') -and $Checklist['BulkImportDone']
-    if (-not $BulkDone -and $ToImport.Count -gt 0) {
-        Write-Step -Number 4 -Text 'Import lokalizacji do entities.md...'
+    # ── Step 4: Bulk import Mapa entities to overflow file ──────────────────
+    $MapaBulkDone = ($Checklist.ContainsKey('MapaBulkImportDone') -and $Checklist['MapaBulkImportDone']) -or
+                    ($Checklist.ContainsKey('BulkImportDone') -and $Checklist['BulkImportDone'])
+
+    if (-not $MapaBulkDone -and $MapaToImport.Count -gt 0) {
+        Write-Step -Number 4 -Text 'Import encji Mapa do maps-100-ent.md...'
 
         if ($WhatIf) {
-            Write-StepWarning "[SUCHY PRZEBIEG] Zaimportowałbym $($ToImport.Count) lokalizacji"
+            Write-StepWarning "[SUCHY PRZEBIEG] Zaimportowałbym $($MapaToImport.Count) encji Mapa"
         } else {
+            # Determine overflow file path
+            $RobotNewDir = [System.IO.Path]::Combine($RepoRoot, '.robot.new')
+            $OverflowPath = [System.IO.Path]::Combine($RobotNewDir, 'maps-100-ent.md')
+
+            # Create or read overflow file
+            if ([System.IO.File]::Exists($OverflowPath)) {
+                $FileData = Read-EntityFile -Path $OverflowPath
+                $Lines = $FileData.Lines
+                $NL = $FileData.NL
+            } else {
+                # Create new file with ## Mapa section header
+                $Lines = [System.Collections.Generic.List[string]]::new()
+                $Lines.Add('## Mapa')
+                $Lines.Add('')
+                $NL = "`n"
+            }
+
+            # Find Mapa section
+            $Section = Find-EntitySection -Lines $Lines.ToArray() -EntityType 'Mapa'
+            if (-not $Section) {
+                # Add Mapa section at end
+                if ($Lines.Count -gt 0 -and -not [string]::IsNullOrWhiteSpace($Lines[$Lines.Count - 1])) {
+                    $Lines.Add('')
+                }
+                $Lines.Add('## Mapa')
+                $Lines.Add('')
+                $Section = Find-EntitySection -Lines $Lines.ToArray() -EntityType 'Mapa'
+            }
+
+            # Sort imports alphabetically
+            $SortedImports = $MapaToImport | Sort-Object -Property { $_.name }
+
+            # Track section end offset (shifts as we insert)
+            $InsertOffset = 0
+            foreach ($Map in $SortedImports) {
+                $Tags = [ordered]@{}
+                $Tags['margonemid'] = "$($Map.id)"
+
+                $Parent = $ParentMap[$Map.name]
+                if ($Parent) {
+                    $Tags['lokacja'] = $Parent
+                }
+
+                $Tags['typ'] = if ($Map.outerior) { 'zewnętrzna' } else { 'wewnętrzna' }
+                $Tags['url'] = $Map.url
+
+                # Add @wymiary only if both dimensions are present
+                if ($null -ne $Map.tileWidth -and $null -ne $Map.tileHeight -and
+                    "$($Map.tileWidth)" -ne '' -and "$($Map.tileHeight)" -ne '') {
+                    $Tags['wymiary'] = "$($Map.tileWidth), $($Map.tileHeight)"
+                }
+
+                New-EntityBullet -Lines $Lines -SectionEnd ($Section.EndIdx + $InsertOffset) -EntityName $Map.name -Tags $Tags
+
+                # Count inserted lines: bullet + tags + possible blank line
+                $TagCount = $Tags.Count
+                $InsertedLines = 1 + $TagCount  # bullet + tag lines
+                # New-EntityBullet may add a blank line before the entity
+                if (($Section.EndIdx + $InsertOffset) -gt 0 -and
+                    -not [string]::IsNullOrWhiteSpace($Lines[$Section.EndIdx + $InsertOffset - 1 - $InsertedLines])) {
+                    $InsertedLines++
+                }
+                $InsertOffset += $InsertedLines
+            }
+
+            Write-EntityFile -Path $OverflowPath -Lines $Lines -NL $NL
+            Write-StepOK "Zaimportowano $($SortedImports.Count) encji Mapa do maps-100-ent.md"
+            Update-PhaseChecklist -State $State -Phase 5 -Item 'MapaBulkImportDone' -Value $true
+        }
+    } elseif ($MapaBulkDone) {
+        Write-Step -Number 4 -Text 'Import encji Mapa...'
+        Write-StepOK 'Import Mapa już wykonany'
+    } elseif ($MapaToImport.Count -eq 0) {
+        Write-Step -Number 4 -Text 'Import encji Mapa...'
+        Write-StepOK 'Wszystkie encje Mapa już istnieją'
+        Update-PhaseChecklist -State $State -Phase 5 -Item 'MapaBulkImportDone' -Value $true
+    }
+
+    # ── Step 5: Derive Lokacja entities from hierarchy ──────────────────────
+    $LokacjaDone = $Checklist.ContainsKey('LokacjaDerivationDone') -and $Checklist['LokacjaDerivationDone']
+
+    if (-not $LokacjaDone) {
+        Write-Step -Number 5 -Text 'Wyprowadzanie encji Lokacja z hierarchii...'
+
+        # Collect unique location names from the hierarchy:
+        # 1. All parent values (non-null) from ParentMap → these are location names
+        # 2. All root names (maps with no parent) → these are also locations
+        $UniqueLocationNames = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+
+        foreach ($Entry in $ParentMap.GetEnumerator()) {
+            # Root maps (no parent) are locations themselves
+            if ($null -eq $Entry.Value) {
+                [void]$UniqueLocationNames.Add($Entry.Key)
+            } else {
+                # The parent is a location
+                [void]$UniqueLocationNames.Add($Entry.Value)
+            }
+        }
+
+        # Build parent-of-parent map: for each location name, find its parent
+        # by walking the hierarchy (a location's parent is found by looking up
+        # the location name in ParentMap — if the location itself was a map entry)
+        $LocationParent = [System.Collections.Generic.Dictionary[string, string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+        foreach ($LocName in $UniqueLocationNames) {
+            if ($ParentMap.ContainsKey($LocName)) {
+                $LocParent = $ParentMap[$LocName]
+                if ($null -ne $LocParent) {
+                    $LocationParent[$LocName] = $LocParent
+                }
+            }
+        }
+
+        # Filter out already existing Lokacja entities
+        $LokacjaToCreate = [System.Collections.Generic.List[string]]::new()
+        foreach ($LocName in $UniqueLocationNames) {
+            if (-not $ExistingLokacjaNames.Contains($LocName)) {
+                $LokacjaToCreate.Add($LocName)
+            }
+        }
+
+        Write-Host "    Unikalne nazwy lokalizacji: $($UniqueLocationNames.Count) | Do utworzenia: $($LokacjaToCreate.Count)" -ForegroundColor Cyan
+
+        if ($LokacjaToCreate.Count -gt 0 -and -not $WhatIf) {
             # Read entity file
             $AdminConfig = Get-AdminConfig
             $EntityPath = $AdminConfig.EntityFile
@@ -162,26 +296,21 @@ function Invoke-MigrationPhase5 {
                 return
             }
 
-            # Sort imports alphabetically
-            $SortedImports = $ToImport | Sort-Object -Property { $_.name }
+            # Sort alphabetically
+            $SortedLokacje = $LokacjaToCreate | Sort-Object
 
-            # Track section end offset (shifts as we insert)
             $InsertOffset = 0
-            foreach ($Map in $SortedImports) {
+            foreach ($LocName in $SortedLokacje) {
                 $Tags = [ordered]@{}
-                $Tags['margonemid'] = "$($Map.id)"
 
-                $Parent = $ParentMap[$Map.name]
-                if ($Parent) {
-                    $Tags['lokacja'] = $Parent
+                if ($LocationParent.ContainsKey($LocName)) {
+                    $Tags['lokacja'] = $LocationParent[$LocName]
                 }
 
-                New-EntityBullet -Lines $Lines -SectionEnd ($Section.EndIdx + $InsertOffset) -EntityName $Map.name -Tags $Tags
+                New-EntityBullet -Lines $Lines -SectionEnd ($Section.EndIdx + $InsertOffset) -EntityName $LocName -Tags $Tags
 
-                # Count inserted lines: bullet + tags + possible blank line
                 $TagCount = $Tags.Count
-                $InsertedLines = 1 + $TagCount  # bullet + tag lines
-                # New-EntityBullet may add a blank line before the entity
+                $InsertedLines = 1 + $TagCount
                 if (($Section.EndIdx + $InsertOffset) -gt 0 -and
                     -not [string]::IsNullOrWhiteSpace($Lines[$Section.EndIdx + $InsertOffset - 1 - $InsertedLines])) {
                     $InsertedLines++
@@ -190,30 +319,33 @@ function Invoke-MigrationPhase5 {
             }
 
             Write-EntityFile -Path $EntityPath -Lines $Lines -NL $NL
-            Write-StepOK "Zaimportowano $($SortedImports.Count) lokalizacji"
-            Update-PhaseChecklist -State $State -Phase 5 -Item 'BulkImportDone' -Value $true
+            Write-StepOK "Utworzono $($SortedLokacje.Count) encji Lokacja w entities.md"
+        } elseif ($WhatIf -and $LokacjaToCreate.Count -gt 0) {
+            Write-StepWarning "[SUCHY PRZEBIEG] Utworzyłbym $($LokacjaToCreate.Count) encji Lokacja"
+        } elseif ($LokacjaToCreate.Count -eq 0) {
+            Write-StepOK 'Wszystkie encje Lokacja już istnieją'
         }
-    } elseif ($BulkDone) {
-        Write-Step -Number 4 -Text 'Import lokalizacji...'
-        Write-StepOK 'Import już wykonany'
-    } elseif ($ToImport.Count -eq 0) {
-        Write-Step -Number 4 -Text 'Import lokalizacji...'
-        Write-StepOK 'Wszystkie lokalizacje już istnieją w entities.md'
-        Update-PhaseChecklist -State $State -Phase 5 -Item 'BulkImportDone' -Value $true
+
+        if (-not $WhatIf) {
+            Update-PhaseChecklist -State $State -Phase 5 -Item 'LokacjaDerivationDone' -Value $true
+        }
+    } else {
+        Write-Step -Number 5 -Text 'Wyprowadzanie encji Lokacja...'
+        Write-StepOK 'Lokacja już wyprowadzone'
     }
 
-    # ── Step 5: Export override file ────────────────────────────────────────
+    # ── Step 6: Export override file ────────────────────────────────────────
     $OverridePath = [System.IO.Path]::Combine($RepoRoot, '.robot', 'res', 'location-overrides.txt')
     $OverridesExported = $Checklist.ContainsKey('OverridesExported') -and $Checklist['OverridesExported']
 
     if (-not $OverridesExported -and -not $WhatIf) {
-        Write-Step -Number 5 -Text 'Eksport pliku nadpisań lokalizacji...'
+        Write-Step -Number 6 -Text 'Eksport pliku nadpisań lokalizacji...'
 
         $OverrideLines = [System.Collections.Generic.List[string]]::new()
         $OverrideLines.Add('# Plik nadpisań lokalizacji - edytuj i uruchom Fazę 5 ponownie')
         $OverrideLines.Add('# Wygenerowano: ' + [datetime]::Now.ToString('yyyy-MM-dd HH:mm'))
         $OverrideLines.Add('')
-        $OverrideLines.Add('# Sekcja 1: Nazwy Nerthus (NazwaMargonem<TAB>NazwaNerthus)')
+        $OverrideLines.Add('# Sekcja 1: Nazwy Nerthus dla encji Mapa (NazwaMargonem<TAB>NazwaNerthus)')
         $OverrideLines.Add('# Zostaw NazwaNerthus pustą jeśli nazwa Margonem jest poprawna.')
 
         # Sort maps for override file
@@ -239,15 +371,15 @@ function Invoke-MigrationPhase5 {
         Write-ActionRequired "Edytuj plik location-overrides.txt i uruchom Fazę 5 ponownie aby zastosować nadpisania."
         Update-PhaseChecklist -State $State -Phase 5 -Item 'OverridesExported' -Value $true
     } elseif ($OverridesExported) {
-        Write-Step -Number 5 -Text 'Eksport nadpisań...'
+        Write-Step -Number 6 -Text 'Eksport nadpisań...'
         Write-StepOK 'Plik nadpisań już wyeksportowany'
     }
 
-    # ── Step 6: Import overrides ────────────────────────────────────────────
+    # ── Step 7: Import overrides ────────────────────────────────────────────
     $OverridesImported = $Checklist.ContainsKey('OverridesImported') -and $Checklist['OverridesImported']
 
     if (-not $OverridesImported -and [System.IO.File]::Exists($OverridePath) -and -not $WhatIf) {
-        Write-Step -Number 6 -Text 'Import nadpisań...'
+        Write-Step -Number 7 -Text 'Import nadpisań...'
 
         $OverrideContent = [System.IO.File]::ReadAllLines($OverridePath, $UTF8NoBOM)
 
@@ -302,10 +434,10 @@ function Invoke-MigrationPhase5 {
                 Write-Host "    Nadpisania nazw: $($NerthusOverrides.Count) | Lokalizacje wirtualne: $($VirtualLocations.Count)" -ForegroundColor Cyan
 
                 if (-not (Request-YesNo -Prompt 'Czy zastosować nadpisania?' -Default $true -HelpText @(
-                    "Nadpisania nazw Nerthus: $($NerthusOverrides.Count)",
-                    "Nowe lokalizacje wirtualne: $($VirtualLocations.Count)",
+                    "Nadpisania nazw Nerthus (Mapa): $($NerthusOverrides.Count)",
+                    "Nowe lokalizacje wirtualne (Lokacja): $($VirtualLocations.Count)",
                     '',
-                    'Tak = zapisz zmiany w entities.md',
+                    'Tak = zapisz zmiany',
                     'Nie = pomiń, uruchom fazę ponownie po edycji pliku'
                 ))) {
                     Write-Host '  Pominięto stosowanie nadpisań.' -ForegroundColor DarkGray
@@ -314,30 +446,44 @@ function Invoke-MigrationPhase5 {
                 }
             }
 
-            # Read entity file for modifications
-            $AdminConfig = Get-AdminConfig
-            $EntityPath = $AdminConfig.EntityFile
-            $FileData = Read-EntityFile -Path $EntityPath
-            $Lines = $FileData.Lines
-            $NL = $FileData.NL
+            # Apply Section 1: nazwa_nerthus overrides → Mapa entities in overflow file
+            if ($NerthusOverrides.Count -gt 0) {
+                $RobotNewDir = [System.IO.Path]::Combine($RepoRoot, '.robot.new')
+                $OverflowPath = [System.IO.Path]::Combine($RobotNewDir, 'maps-100-ent.md')
 
-            # Apply Section 1: nazwa_nerthus overrides
-            foreach ($Override in $NerthusOverrides) {
-                $Section = Find-EntitySection -Lines $Lines.ToArray() -EntityType 'Lokacja'
-                if (-not $Section) { continue }
+                if ([System.IO.File]::Exists($OverflowPath)) {
+                    $OverflowData = Read-EntityFile -Path $OverflowPath
+                    $OverflowLines = $OverflowData.Lines
+                    $OverflowNL = $OverflowData.NL
 
-                $Bullet = Find-EntityBullet -Lines $Lines.ToArray() -SectionStart $Section.StartIdx -SectionEnd $Section.EndIdx -EntityName $Override.MapName
-                if (-not $Bullet) {
-                    Write-Host "    Ostrzeżenie: nie znaleziono encji '$($Override.MapName)'" -ForegroundColor Yellow
-                    continue
+                    foreach ($Override in $NerthusOverrides) {
+                        $Section = Find-EntitySection -Lines $OverflowLines.ToArray() -EntityType 'Mapa'
+                        if (-not $Section) { continue }
+
+                        $Bullet = Find-EntityBullet -Lines $OverflowLines.ToArray() -SectionStart $Section.StartIdx -SectionEnd $Section.EndIdx -EntityName $Override.MapName
+                        if (-not $Bullet) {
+                            Write-Host "    Ostrzeżenie: nie znaleziono encji Mapa '$($Override.MapName)'" -ForegroundColor Yellow
+                            continue
+                        }
+
+                        Set-EntityTag -Lines $OverflowLines -ChildrenStart $Bullet.ChildrenStartIdx -ChildrenEnd $Bullet.ChildrenEndIdx -TagName 'nazwa_nerthus' -Value $Override.NerthusName
+                        $AppliedOverrides++
+                    }
+
+                    Write-EntityFile -Path $OverflowPath -Lines $OverflowLines -NL $OverflowNL
+                } else {
+                    Write-Host "    Ostrzeżenie: nie znaleziono pliku maps-100-ent.md — pomijam nadpisania nazw" -ForegroundColor Yellow
                 }
-
-                Set-EntityTag -Lines $Lines -ChildrenStart $Bullet.ChildrenStartIdx -ChildrenEnd $Bullet.ChildrenEndIdx -TagName 'nazwa_nerthus' -Value $Override.NerthusName
-                $AppliedOverrides++
             }
 
-            # Apply Section 2: virtual locations
+            # Apply Section 2: virtual locations → Lokacja entities in entities.md
             if ($VirtualLocations.Count -gt 0) {
+                $AdminConfig = Get-AdminConfig
+                $EntityPath = $AdminConfig.EntityFile
+                $FileData = Read-EntityFile -Path $EntityPath
+                $Lines = $FileData.Lines
+                $NL = $FileData.NL
+
                 $Section = Find-EntitySection -Lines $Lines.ToArray() -EntityType 'Lokacja'
                 if ($Section) {
                     $InsertOffset = 0
@@ -369,10 +515,11 @@ function Invoke-MigrationPhase5 {
                         $AppliedVirtual++
                     }
                 }
+
+                Write-EntityFile -Path $EntityPath -Lines $Lines -NL $NL
             }
 
-            Write-EntityFile -Path $EntityPath -Lines $Lines -NL $NL
-            Write-StepOK "Zastosowano nadpisania: $AppliedOverrides nazw, $AppliedVirtual wirtualnych lokalizacji"
+            Write-StepOK "Zastosowano nadpisania: $AppliedOverrides nazw Mapa, $AppliedVirtual wirtualnych Lokacja"
             Update-PhaseChecklist -State $State -Phase 5 -Item 'OverridesImported' -Value $true
         } else {
             Write-StepOK 'Brak nadpisań w pliku (plik nie został edytowany lub jest pusty)'
@@ -388,49 +535,65 @@ function Invoke-MigrationPhase5 {
             }
         }
     } elseif ($OverridesImported) {
-        Write-Step -Number 6 -Text 'Import nadpisań...'
+        Write-Step -Number 7 -Text 'Import nadpisań...'
         Write-StepOK 'Nadpisania już zastosowane'
     } elseif (-not [System.IO.File]::Exists($OverridePath)) {
-        Write-Step -Number 6 -Text 'Import nadpisań...'
-        Write-StepWarning 'Plik nadpisań nie istnieje jeszcze — eksportuj go w kroku 5'
+        Write-Step -Number 7 -Text 'Import nadpisań...'
+        Write-StepWarning 'Plik nadpisań nie istnieje jeszcze — eksportuj go w kroku 6'
     }
 
-    # ── Step 7: Verification ────────────────────────────────────────────────
-    Write-Step -Number 7 -Text 'Weryfikacja importu...'
+    # ── Step 8: Verification ──────────────────────────────────────────────
+    Write-Step -Number 8 -Text 'Weryfikacja importu...'
     $PostEntities = Get-Entity
-    $LokacjaEntities = @($PostEntities | Where-Object { $_.EntityType -eq 'Lokacja' })
-    $WithMargonemId = @($LokacjaEntities | Where-Object { $_.Tags -and $_.Tags.ContainsKey('margonemid') })
-    $WithNazwaNerthus = @($LokacjaEntities | Where-Object { $_.Tags -and $_.Tags.ContainsKey('nazwa_nerthus') })
-    $WithLokacja = @($LokacjaEntities | Where-Object { $_.Tags -and $_.Tags.ContainsKey('lokacja') })
 
+    $MapaEntities = @($PostEntities | Where-Object { $_.EntityType -eq 'Mapa' })
+    $MapaWithMargonemId = @($MapaEntities | Where-Object { $_.Tags -and $_.Tags.ContainsKey('margonemid') })
+    $MapaWithUrl = @($MapaEntities | Where-Object { $_.Overrides -and $_.Overrides.ContainsKey('url') })
+    $MapaWithLokacja = @($MapaEntities | Where-Object { $_.Tags -and $_.Tags.ContainsKey('lokacja') })
+    $MapaWithTyp = @($MapaEntities | Where-Object { $_.Tags -and $_.Tags.ContainsKey('typ') })
+
+    $LokacjaEntities = @($PostEntities | Where-Object { $_.EntityType -eq 'Lokacja' })
+    $LokacjaWithLokacja = @($LokacjaEntities | Where-Object { $_.Tags -and $_.Tags.ContainsKey('lokacja') })
+
+    Write-Host "    Mapa ogółem: $($MapaEntities.Count)" -ForegroundColor Cyan
+    Write-Host "      Z @margonemid: $($MapaWithMargonemId.Count)" -ForegroundColor DarkGray
+    Write-Host "      Z @url: $($MapaWithUrl.Count)" -ForegroundColor DarkGray
+    Write-Host "      Z @lokacja (rodzic): $($MapaWithLokacja.Count)" -ForegroundColor DarkGray
+    Write-Host "      Z @typ: $($MapaWithTyp.Count)" -ForegroundColor DarkGray
     Write-Host "    Lokacja ogółem: $($LokacjaEntities.Count)" -ForegroundColor Cyan
-    Write-Host "    Z @margonemid: $($WithMargonemId.Count)" -ForegroundColor DarkGray
-    Write-Host "    Z @nazwa_nerthus: $($WithNazwaNerthus.Count)" -ForegroundColor DarkGray
-    Write-Host "    Z @lokacja (rodzic): $($WithLokacja.Count)" -ForegroundColor DarkGray
+    Write-Host "      Z @lokacja (rodzic): $($LokacjaWithLokacja.Count)" -ForegroundColor DarkGray
     Write-StepOK 'Weryfikacja zakończona'
 
-    # ── Step 8: Commit ──────────────────────────────────────────────────────
+    # ── Step 9: Commit ────────────────────────────────────────────────────
     $CommitDone = $Checklist.ContainsKey('Committed') -and $Checklist['Committed']
     if (-not $CommitDone -and -not $WhatIf) {
-        Write-Step -Number 8 -Text 'Commit...'
+        Write-Step -Number 9 -Text 'Commit...'
+
+        $RobotNewDir = [System.IO.Path]::Combine($RepoRoot, '.robot.new')
+        $OverflowPath = [System.IO.Path]::Combine($RobotNewDir, 'maps-100-ent.md')
+        $OverflowExists = [System.IO.File]::Exists($OverflowPath)
+
         $GitDiff = & git -C $RepoRoot diff --name-only 'entities.md' 2>&1
         $OverrideExists = [System.IO.File]::Exists($OverridePath)
 
-        if ($GitDiff -or $OverrideExists) {
+        if ($GitDiff -or $OverflowExists -or $OverrideExists) {
             if (Request-YesNo -Prompt 'Czy zacommitować import lokalizacji?' -Default $true -HelpText @(
                 'Zapisanie zmian do repozytorium git.',
                 '',
-                'Wykona: git add entities.md .robot/res/location-overrides.txt',
-                '        git commit "Import lokalizacji z mapy"',
+                'Wykona: git add entities.md .robot.new/maps-*-ent.md .robot/res/location-overrides.txt',
+                '        git commit "Import lokalizacji z mapy (Mapa + Lokacja)"',
                 '',
                 'Tak = git add + git commit',
                 'Nie = pominięcie, zmiany zostają niezacommitowane'
             )) {
                 & git -C $RepoRoot add 'entities.md' 2>&1
+                if ($OverflowExists) {
+                    & git -C $RepoRoot add '.robot.new/maps-100-ent.md' 2>&1
+                }
                 if ($OverrideExists) {
                     & git -C $RepoRoot add '.robot/res/location-overrides.txt' 2>&1
                 }
-                & git -C $RepoRoot commit -m 'Import lokalizacji z mapy (Faza 5 migracji)' 2>&1
+                & git -C $RepoRoot commit -m 'Import lokalizacji z mapy — Mapa + Lokacja (Faza 5 migracji)' 2>&1
                 if ($LASTEXITCODE -eq 0) {
                     Write-StepOK 'Zacommitowano'
                     Update-PhaseChecklist -State $State -Phase 5 -Item 'Committed' -Value $true
@@ -442,25 +605,30 @@ function Invoke-MigrationPhase5 {
             Write-StepOK 'Brak zmian do zacommitowania'
         }
     } elseif ($CommitDone) {
-        Write-Step -Number 8 -Text 'Commit...'
+        Write-Step -Number 9 -Text 'Commit...'
         Write-StepOK 'Już zacommitowano'
     }
 
     # ── Phase summary ───────────────────────────────────────────────────────
-    $BulkOK = $State.Phases['5'].Checklist.ContainsKey('BulkImportDone') -and $State.Phases['5'].Checklist['BulkImportDone']
+    $MapaOK = ($State.Phases['5'].Checklist.ContainsKey('MapaBulkImportDone') -and $State.Phases['5'].Checklist['MapaBulkImportDone']) -or
+              ($State.Phases['5'].Checklist.ContainsKey('BulkImportDone') -and $State.Phases['5'].Checklist['BulkImportDone'])
+    $LokacjaOK = $State.Phases['5'].Checklist.ContainsKey('LokacjaDerivationDone') -and $State.Phases['5'].Checklist['LokacjaDerivationDone']
     $OverridesOK = $State.Phases['5'].Checklist.ContainsKey('OverridesImported') -and $State.Phases['5'].Checklist['OverridesImported']
 
-    if ($BulkOK -and $OverridesOK) {
+    if ($MapaOK -and $LokacjaOK -and $OverridesOK) {
         Set-PhaseCompleted -State $State -Phase 5
         Write-PhaseSummary -Phase 5 -Status 'Completed' -Lines @(
+            "[OK] $($MapaEntities.Count) encji Mapa w maps-100-ent.md",
             "[OK] $($LokacjaEntities.Count) encji Lokacja w entities.md",
-            "[OK] $($WithMargonemId.Count) z @margonemid, $($WithLokacja.Count) z @lokacja"
+            "[OK] $($MapaWithMargonemId.Count) z @margonemid, $($MapaWithLokacja.Count) z @lokacja"
         )
     } else {
         Set-PhaseInProgress -State $State -Phase 5
         $StatusLines = [System.Collections.Generic.List[string]]::new()
-        if ($BulkOK) { $StatusLines.Add('[OK] Import zakończony') }
-        else { $StatusLines.Add('[!!] Import niezakończony') }
+        if ($MapaOK) { $StatusLines.Add('[OK] Import Mapa zakończony') }
+        else { $StatusLines.Add('[!!] Import Mapa niezakończony') }
+        if ($LokacjaOK) { $StatusLines.Add('[OK] Wyprowadzanie Lokacja zakończone') }
+        else { $StatusLines.Add('[!!] Wyprowadzanie Lokacja niezakończone') }
         if ($OverridesOK) { $StatusLines.Add('[OK] Nadpisania zastosowane') }
         else { $StatusLines.Add('[!!] Nadpisania oczekują na zastosowanie') }
         Write-PhaseSummary -Phase 5 -Status 'InProgress' -Lines $StatusLines.ToArray()

@@ -45,6 +45,8 @@ $script:EntityTypeMap = @{
     "postaci"          = "Postać"
     "przedmiot"        = "Przedmiot"
     "przedmioty"       = "Przedmiot"
+    "mapa"             = "Mapa"
+    "mapy"             = "Mapa"
 }
 
 # Reverse map: canonical type -> preferred section header text
@@ -55,6 +57,7 @@ $script:TypeToHeader = @{
     "Gracz"            = "Gracz"
     "Postać"           = "Postać"
     "Przedmiot"        = "Przedmiot"
+    "Mapa"             = "Mapa"
 }
 
 # Helper: find a ## Type section in file lines

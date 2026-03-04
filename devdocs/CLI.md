@@ -90,7 +90,7 @@ All files are dot-sourced on demand when `Invoke-RobotCLI` is called (not at mod
 | `cli-wf-session.ps1` | ~150 | 6 | `Invoke-EditSessionWorkflow`, `Invoke-SessionValidation` |
 | `cli-wf-player.ps1` | ~400 | 6 | `Invoke-NewPlayerWorkflow`, `Invoke-NewCharacterWorkflow`, `Invoke-EditCharacterWorkflow`, `Invoke-CharacterCardWorkflow`, `Show-CharacterCard`, `Show-PlayerCard` |
 | `cli-wf-entity.ps1` | ~480 | 6 | `Invoke-NewEntityWorkflow`, `Invoke-EditEntityWorkflow`, `Invoke-EntityHistoryWorkflow`, `Invoke-EntitySearchWorkflow`; dot-sources `cli-display-entity.ps1` |
-| `cli-display-entity.ps1` | — | 6 | `Format-ValidityRange`, `Show-EntityCard` (dot-sourced by `cli-wf-entity.ps1`) |
+| `cli-display-entity.ps1` | — | 6 | `Format-ValidityRange`, `Show-EntityCard` (dot-sourced by `cli-wf-entity.ps1`). `Show-EntityCard` surfaces `@info` as a first-class field (after Quantity, before Groups) and excludes it from the generic Tagi loop to avoid duplication. |
 | `cli-wf-currency.ps1` | ~155 | 6 | `Invoke-CurrencyTransferWorkflow`, `Invoke-CurrencyReconciliationDisplay` |
 | `cli-wf-pu.ps1` | ~340 | 6 | `Invoke-PUAssignmentWorkflow`, `Invoke-PrePUDiagnostics`, `Invoke-PUDiagnosticsDisplay` |
 | `cli-wf-discord.ps1` | ~130 | 6 | `Invoke-DiscordPUNotificationWorkflow`, `Invoke-DiscordAnnouncementWorkflow` |

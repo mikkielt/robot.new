@@ -142,16 +142,18 @@ The coordinator runs diagnostics, fixes issues, re-runs diagnostics, and repeats
 
 ### Phase 5 - Location Import
 
-The coordinator imports all game-map locations into the entity store as Location entities. This uses a two-pass workflow:
+The coordinator imports all game-map locations into the entity store. This produces two entity types using a two-pass workflow:
 
-**First pass (automated):** The system reads the full map registry, infers parent-child relationships from naming conventions (e.g. "Piekielna Grota p.2" is a child of "Piekielna Grota"), and creates Location entities in bulk. Each entity receives a Margonem map ID tag for traceability.
+**Mapa entities (concrete game maps):** The system reads the full map registry (~2,704 entries) and creates a Mapa entity for each one. Each Mapa entity records the Margonem map ID, map type (exterior/interior), CDN image URL, and tile dimensions. These are written to a dedicated overflow file (`maps-100-ent.md`) to keep the main `entities.md` manageable.
 
-**Second pass (coordinator review):** The system exports a tab-separated override file listing all imported locations. The coordinator edits this file to:
+**Lokacja entities (conceptual locations):** The system infers parent-child relationships from naming conventions (e.g. "Piekielna Grota p.2" is a child of "Piekielna Grota") and derives deduplicated Lokacja entities from the hierarchy's unique base names. These represent the conceptual places — fewer than the total map count — and are written to `entities.md`.
 
-- Add Nerthus-specific names for locations that use different names in the RP setting (e.g. "Potępione Zamczysko" → "Przeklęty Zamek")
-- Add virtual locations that exist only in the Nerthus setting (not in the game)
+**Coordinator review (second pass):** The system exports a tab-separated override file listing all imported maps. The coordinator edits this file to:
 
-After editing, the coordinator re-runs the phase to apply the overrides. The phase completes when both the import and override steps are done.
+- Add Nerthus-specific names for maps that use different names in the RP setting (applied as `@nazwa_nerthus` on Mapa entities)
+- Add virtual locations that exist only in the Nerthus setting (created as Lokacja entities)
+
+After editing, the coordinator re-runs the phase to apply the overrides. The phase completes when the Mapa import, Lokacja derivation, and override steps are all done.
 
 > This phase must run before the session format upgrade (Phase 6) because the location review step in Phase 6 expects Location entities to already exist.
 
