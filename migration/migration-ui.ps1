@@ -66,10 +66,11 @@ $script:PhaseNames = @{
     2 = 'Hashy integralności sesji'
     3 = 'Walidacja parzystości danych'
     4 = 'Diagnostyka i naprawa danych'
-    5 = 'Upgrade formatu sesji'
-    6 = 'Enrollment walut'
-    7 = 'Okres równoległy'
-    8 = 'Przełączenie (cutover)'
+    5 = 'Import lokalizacji z mapy'
+    6 = 'Upgrade formatu sesji'
+    7 = 'Enrollment walut'
+    8 = 'Okres równoległy'
+    9 = 'Przełączenie (cutover)'
 }
 
 # Status display strings (Polish) - uses semantic roles, not hardcoded colors
@@ -435,7 +436,7 @@ function Show-ProgressSummary {
 
         $MigrationHelp = @(
             'Wybierz fazę migracji do uruchomienia.'
-            'Fazy są wykonywane sekwencyjnie (0-7).'
+            'Fazy są wykonywane sekwencyjnie (0-9).'
             'Każda faza jest idempotentna — można ją uruchomić wielokrotnie.'
             ''
             'Szybka diagnostyka — przegląd stanu migracji'
@@ -454,7 +455,7 @@ function Show-ProgressSummary {
     Write-Host ('=' * 60) -ForegroundColor $AccentColor
     Write-Host ''
 
-    for ($I = 0; $I -le 8; $I++) {
+    for ($I = 0; $I -le 9; $I++) {
         $PhaseStatus = Get-PhaseStatus -State $State -Phase $I
         $StatusInfo = $script:StatusDisplay[$PhaseStatus]
         $Name = $script:PhaseNames[$I]

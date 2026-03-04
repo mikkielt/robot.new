@@ -496,8 +496,8 @@ Describe 'Migration Phase Registry' {
         $script:PhaseRegistry | Should -Not -BeNullOrEmpty
     }
 
-    It 'PhaseRegistry has expected phase count (9 phases: 0-8)' -Skip:(-not $script:MigrationAvailable) {
-        $script:PhaseRegistry.Count | Should -Be 9
+    It 'PhaseRegistry has expected phase count (10 phases: 0-9)' -Skip:(-not $script:MigrationAvailable) {
+        $script:PhaseRegistry.Count | Should -Be 10
     }
 
     It 'all phases have unique IDs' -Skip:(-not $script:MigrationAvailable) {
@@ -506,8 +506,8 @@ Describe 'Migration Phase Registry' {
         $UniqueIDs.Count | Should -Be $IDs.Count
     }
 
-    It 'all phases have IDs in sequence 0-8' -Skip:(-not $script:MigrationAvailable) {
-        for ($I = 0; $I -le 8; $I++) {
+    It 'all phases have IDs in sequence 0-9' -Skip:(-not $script:MigrationAvailable) {
+        for ($I = 0; $I -le 9; $I++) {
             $Phase = $script:PhaseRegistry | Where-Object { $_.ID -eq $I }
             $Phase | Should -Not -BeNullOrEmpty -Because "Phase $I should exist in registry"
         }

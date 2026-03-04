@@ -82,7 +82,7 @@ Session records exist in four format generations, accumulated over the project's
 
 ## Migration Phases
 
-The migration is divided into 8 phases (0-7). Not all require involvement from the entire team.
+The migration is divided into 10 phases (0-9). Not all require involvement from the entire team.
 
 | Phase | What happens | Who is involved | Duration |
 |---|---|---|---|
@@ -90,12 +90,14 @@ The migration is divided into 8 phases (0-7). Not all require involvement from t
 | **1. Bootstrap** | Generate entity store from legacy player data | Coordinator | 1 day |
 | **2. Validation** | Verify data parity between old and new systems | Coordinator | 1 day |
 | **3. Diagnostics** | Fix typos, date errors, missing aliases | Coordinator, narrators | 2-3 days |
-| **4. Session upgrade** | Upgrade active session files to Gen4 format | Coordinator | 1-2 days |
-| **5. Currency enrollment** | Collect and register currency balances | Everyone | ~1 week |
-| **6. Parallel period** | Both systems run side-by-side, results compared | Coordinator | 2-4 weeks |
-| **7. Cutover** | Official switch to the new system | Coordinator | 1 day |
+| **4. Diagnostics & repair** | Extended diagnostics and data repair | Coordinator | 1-2 days |
+| **5. Location import** | Import game-map locations as entities, review overrides | Coordinator | 2-3 days |
+| **6. Session upgrade** | Upgrade active session files to Gen4 format | Coordinator | 1-2 days |
+| **7. Currency enrollment** | Collect and register currency balances | Everyone | ~1 week |
+| **8. Parallel period** | Both systems run side-by-side, results compared | Coordinator | 2-4 weeks |
+| **9. Cutover** | Official switch to the new system | Coordinator | 1 day |
 
-**Total estimated time**: 4-6 weeks, most of which is the parallel period.
+**Total estimated time**: 5-7 weeks, most of which is the parallel period.
 
 ### Phase 0 - Preparation and Backup
 
@@ -138,7 +140,22 @@ Additionally, a narrator report identifies raw narrator names from session heade
 
 The coordinator runs diagnostics, fixes issues, re-runs diagnostics, and repeats until the diagnostic tool returns OK.
 
-### Phase 4 - Session Format Upgrade
+### Phase 5 - Location Import
+
+The coordinator imports all game-map locations into the entity store as Location entities. This uses a two-pass workflow:
+
+**First pass (automated):** The system reads the full map registry, infers parent-child relationships from naming conventions (e.g. "Piekielna Grota p.2" is a child of "Piekielna Grota"), and creates Location entities in bulk. Each entity receives a Margonem map ID tag for traceability.
+
+**Second pass (coordinator review):** The system exports a tab-separated override file listing all imported locations. The coordinator edits this file to:
+
+- Add Nerthus-specific names for locations that use different names in the RP setting (e.g. "Potępione Zamczysko" → "Przeklęty Zamek")
+- Add virtual locations that exist only in the Nerthus setting (not in the game)
+
+After editing, the coordinator re-runs the phase to apply the overrides. The phase completes when both the import and override steps are done.
+
+> This phase must run before the session format upgrade (Phase 6) because the location review step in Phase 6 expects Location entities to already exist.
+
+### Phase 6 - Session Format Upgrade
 
 The coordinator upgrades active session files from Gen1/Gen2/Gen3 to the current Gen4 format. The upgrade changes **only metadata structure** - narrative text and special blocks (clarifications, effects, rewards) are preserved.
 
@@ -160,7 +177,7 @@ The coordinator upgrades active session files from Gen1/Gen2/Gen3 to the current
 
 Non-location exclusions are stored in `.robot/res/location-exclusions.txt` and persist across re-runs. The commit step is blocked until all truly unresolved locations are handled.
 
-### Phase 5 - Currency Enrollment
+### Phase 7 - Currency Enrollment
 
 The currency system is an entirely new capability. This phase sets up the initial state:
 
@@ -177,7 +194,7 @@ The currency system is an entirely new capability. This phase sets up the initia
 
 Currency transfers during gameplay are registered by narrators in sessions via `@Transfer` directives.
 
-### Phase 6 - Parallel Period
+### Phase 8 - Parallel Period
 
 For 2-4 weeks, both the old and new systems run simultaneously. The coordinator runs PU assignment through both and compares results. During this period:
 
@@ -186,14 +203,14 @@ For 2-4 weeks, both the old and new systems run simultaneously. The coordinator 
 - **New characters** are created exclusively through the new system
 - **Old sessions** remain readable without modification
 
-**Cutover criteria** (all must be met before Phase 7):
+**Cutover criteria** (all must be met before Phase 9):
 
 - At least one full PU cycle with identical results from both systems
 - All active narrators using Gen4 format
 - Diagnostics clean (OK = true)
 - Currency reconciliation without critical warnings
 
-### Phase 7 - Cutover
+### Phase 9 - Cutover
 
 The official switch to the new system as the sole operational tool:
 
@@ -312,7 +329,7 @@ The migration is designed to be reversible at every stage:
 | **Player has no webhook address** | PU is still calculated and applied, but the Discord notification for that player is skipped with a warning | Add the webhook address to the player's record and re-send manually if needed |
 | **Stale history entries** | The diagnostic tool flags session headers in the processing log that no longer match any session in the repository | Review flagged entries; they may indicate renamed or deleted session files |
 | **Character soft-deleted but still referenced** | Removed characters are excluded from standard views but still exist in the data | Use the include-deleted option to view them; they can be reactivated by updating their status |
-| **Unresolved location name** | Phase 4 blocks the commit until the coordinator resolves or excludes the name | Create a Location entity or mark as non-location |
+| **Unresolved location name** | Phase 6 blocks the commit until the coordinator resolves or excludes the name | Create a Location entity or mark as non-location |
 | **Session upgrade fails on a file** | The file is skipped; remaining files continue processing | Check the error message, fix the session header, and re-run |
 
 ## Audit Trail / Evidence of Completion

@@ -1,0 +1,20 @@
+{
+  "lastUpdated": "2026-03-04T10:00:00+01:00",
+  "maps": [
+    { "id": 1, "name": "Ithan", "url": "https://example.com/ithan.png", "outerior": true, "tileWidth": 32, "tileHeight": 32 },
+    { "id": 2, "name": "Ithan - północ", "url": "https://example.com/ithan-n.png", "outerior": false, "tileWidth": 32, "tileHeight": 32 },
+    { "id": 3, "name": "Ithan - południe", "url": "https://example.com/ithan-s.png", "outerior": false, "tileWidth": 32, "tileHeight": 32 },
+    { "id": 4, "name": "Piekielna Grota", "url": "https://example.com/pg.png", "outerior": false, "tileWidth": 32, "tileHeight": 32 },
+    { "id": 5, "name": "Piekielna Grota p.2", "url": "https://example.com/pg-p2.png", "outerior": false, "tileWidth": 32, "tileHeight": 32 },
+    { "id": 6, "name": "Piekielna Grota p.3 - sala 2", "url": "https://example.com/pg-p3-s2.png", "outerior": false, "tileWidth": 32, "tileHeight": 32 },
+    { "id": 7, "name": "Potępione Zamczysko", "url": "https://example.com/pz.png", "outerior": true, "tileWidth": 48, "tileHeight": 48 },
+    { "id": 8, "name": "Potępione Zamczysko - lochy wschodnie p.2", "url": "https://example.com/pz-lw-p2.png", "outerior": false, "tileWidth": 48, "tileHeight": 48 },
+    { "id": 9, "name": "Potępione Zamczysko - głębokie lochy", "url": "https://example.com/pz-gl.png", "outerior": false, "tileWidth": 32, "tileHeight": 32 },
+    { "id": 10, "name": "Bracada", "url": "https://example.com/bracada.png", "outerior": true, "tileWidth": 64, "tileHeight": 64 },
+    { "id": 11, "name": "Lezysko Baraniego Kanoniera (poziom: trudny)", "url": "https://example.com/lbk.png", "outerior": false, "tileWidth": 22, "tileHeight": 22 },
+    { "id": 12, "name": "Lezysko Baraniego Kanoniera", "url": "https://example.com/lbk-base.png", "outerior": false, "tileWidth": 22, "tileHeight": 22 },
+    { "id": 13, "name": "Erem Czarnego Słońca", "url": "https://example.com/ecs.png", "outerior": false, "tileWidth": 32, "tileHeight": 32 },
+    { "id": 14, "name": "Erem Czarnego Słońca p.1 - Sala Magicznego Błota", "url": "https://example.com/ecs-p1-smb.png", "outerior": false, "tileWidth": 32, "tileHeight": 32 },
+    { "id": 15, "name": "Karka-han", "url": "https://example.com/kh.png", "outerior": true, "tileWidth": 32, "tileHeight": 32 }
+  ]
+}

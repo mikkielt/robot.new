@@ -347,7 +347,7 @@ Low-level webhook sender. POSTs JSON payload (`content`, optional `username`) to
 
 ## 9. Migration Phase Pipeline
 
-The automated migration is orchestrated by `migration/migrate.ps1` (`Invoke-PhaseByNumber`). Nine phases run sequentially, with state checkpointing in `.robot/res/migration-state.json`. Each phase is idempotent.
+The automated migration is orchestrated by `migration/migrate.ps1` (`Invoke-PhaseByNumber`). Ten phases run sequentially, with state checkpointing in `.robot/res/migration-state.json`. Each phase is idempotent.
 
 ### 9.1 Phase Overview
 
@@ -358,10 +358,11 @@ The automated migration is orchestrated by `migration/migrate.ps1` (`Invoke-Phas
 | 2 | `Invoke-MigrationPhase2` | `phase2-session-hashes.ps1` | Generate baseline SHA256 hashes for all session headers (`Set-SessionHash -Full`) |
 | 3 | `Invoke-MigrationPhase3` | `phase2-validation.ps1` | Validate entity parity between legacy and new stores |
 | 4 | `Invoke-MigrationPhase4` | `phase3-diagnostics.ps1` | Run PU diagnostics and narrator normalization |
-| 5 | `Invoke-MigrationPhase5` | `phase4-session-upgrade.ps1` | Upgrade session formats from Gen1/2/3 to Gen4 |
-| 6 | `Invoke-MigrationPhase6` | `phase5-currency.ps1` | Currency entity creation and reconciliation |
-| 7 | `Invoke-MigrationPhase7` | `phase6-parallel.ps1` | Parallel operations (entity sharding, batch processing) |
-| 8 | `Invoke-MigrationPhase8` | `phase7-cutover.ps1` | Final diagnostics, freeze `Gracze.md`, first standalone PU run |
+| 5 | `Invoke-MigrationPhase5` | `phase5-location-import.ps1` | Bulk-import game-map locations, infer hierarchy, apply overrides |
+| 6 | `Invoke-MigrationPhase6` | `phase4-session-upgrade.ps1` | Upgrade session formats from Gen1/2/3 to Gen4 |
+| 7 | `Invoke-MigrationPhase7` | `phase5-currency.ps1` | Currency entity creation and reconciliation |
+| 8 | `Invoke-MigrationPhase8` | `phase6-parallel.ps1` | Parallel operations (entity sharding, batch processing) |
+| 9 | `Invoke-MigrationPhase9` | `phase7-cutover.ps1` | Final diagnostics, freeze `Gracze.md`, first standalone PU run |
 
 ### 9.2 Migration Files
 
@@ -371,6 +372,7 @@ The automated migration is orchestrated by `migration/migrate.ps1` (`Invoke-Phas
 | `migration-state.ps1` | State read/write (`Get-MigrationState`, `Save-MigrationState`) |
 | `migration-shared.ps1` | Shared diagnostics (`Invoke-QuickDiagnostics`, `Show-DiagnosticResults`) |
 | `migration-ui.ps1` | UI helpers (`Write-PhaseHeader`, `Write-Step`, `Write-StepOK`, etc.) |
+| `migration-location-helpers.ps1` | Self-contained location name helpers (`Get-MapBaseNameDeterministic`, `Get-MapBaseNameCandidates`); dot-sourced by Phase 5 |
 | `narrator-normalization.ps1` | Narrator mapping I/O (`Import-NarratorMappings`, `Export-NarratorMappings`) |
 | `phase*.ps1` | Individual phase implementations |
 
@@ -378,7 +380,48 @@ The automated migration is orchestrated by `migration/migrate.ps1` (`Invoke-Phas
 
 Runs `Set-SessionHash -Full` to compute SHA256 content hashes for all headers in repository Markdown files. This captures the pre-mutation baseline before any validation, repair, or format-upgrade phases modify session content. The hash store is created in `{ResDir}/session-hashes/` and enables `Test-SessionIntegrity` to detect content tampering later. See [SESSION-INTEGRITY.md](SESSION-INTEGRITY.md).
 
-### 9.4 Phase 8: Cutover
+### 9.4 Phase 5: Location Import
+
+Bulk-imports game-map locations from `.robot/res/maps.json` as `Lokacja` entities. Dot-sources `migration-location-helpers.ps1` (self-contained, no plugin dependency).
+
+**`maps.json` format**: The file is sourced from the Margonem game data (via the margoworld plugin's scraper). Expected structure:
+
+```json
+{
+  "lastUpdated": "2026-03-04T10:00:00+01:00",
+  "maps": [
+    {
+      "id": 1,
+      "name": "Steadwick",
+      "url": "https://example.com/steadwick.png",
+      "outerior": true,
+      "tileWidth": 32,
+      "tileHeight": 32
+    }
+  ]
+}
+```
+
+| Field | Type | Used by Phase 5 | Description |
+|---|---|---|---|
+| `id` | `int` | Yes | Margonem map ID, stored as `@margonemid` tag |
+| `name` | `string` | Yes | Map display name, becomes the `Lokacja` entity name and input to hierarchy inference |
+| `outerior` | `bool` | Yes | Whether the map is an exterior (overworld) location; used as comment annotation in override export |
+| `url` | `string` | No | Map image URL (not imported) |
+| `tileWidth` | `int` | No | Tile pixel width (not imported) |
+| `tileHeight` | `int` | No | Tile pixel height (not imported) |
+
+The top-level `lastUpdated` field is informational (ISO 8601 timestamp of last scrape). The `maps` array contains one entry per game location (~2,704 entries in production).
+
+**Hierarchy inference**: For each map entry, applies `Get-MapBaseNameDeterministic` (9-pattern iterative stripping: difficulty, floor, room, sala, named sala, direction, piętro, piwnica, named subarea). If the stripped base name exists in the map name set, it becomes the parent. Falls back to `Get-MapBaseNameCandidates` (progressive word removal) when deterministic stripping overshoots.
+
+**Bulk import**: Single `Read-EntityFile` / `Write-EntityFile` cycle. Entities sorted alphabetically, each with `@margonemid: {id}` and optional `@lokacja: {parent}` tags.
+
+**Override file**: Exports `.robot/res/location-overrides.txt` (TSV). Section 1 maps Margonem names to Nerthus names (`@nazwa_nerthus`). Section 2 defines virtual locations. Re-running the phase applies overrides via `Set-EntityTag` / `New-EntityBullet`.
+
+**Checklist**: `MapsJsonLoaded`, `HierarchyInferred`, `BulkImportDone`, `OverridesExported`, `OverridesImported`, `Committed`. Phase completes when both `BulkImportDone` and `OverridesImported` are true.
+
+### 9.5 Phase 9: Cutover
 
 Runs final PU diagnostics (must pass to proceed), freezes `Gracze.md` with a read-only comment header, marks the legacy system as deprecated, executes the first standalone PU assignment, creates a post-migration git tag, and displays an announcement template.
 
@@ -495,5 +538,5 @@ Unresolved names in `Get-EntityState` / narrator resolution should be cleaned up
 - [ENTITIES.md](ENTITIES.md) - Entity data model migrated from `Gracze.md`
 - [SESSIONS.md](SESSIONS.md) - Session format generations (Gen1–Gen4)
 - [SESSION-INTEGRITY.md](SESSION-INTEGRITY.md) - Session hash baseline (Phase 2)
-- [CURRENCY.md](CURRENCY.md) - Currency entities created during Phase 5
+- [CURRENCY.md](CURRENCY.md) - Currency entities created during Phase 7
 - [PU.md](PU.md) - PU history migration

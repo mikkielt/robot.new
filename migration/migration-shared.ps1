@@ -164,7 +164,7 @@ function Invoke-FullReport {
     $Phases = if ($script:PhaseRegistry) {
         $script:PhaseRegistry
     } else {
-        0..8 | ForEach-Object { @{ ID = $_; Name = $script:PhaseNames[$_] } }
+        0..9 | ForEach-Object { @{ ID = $_; Name = $script:PhaseNames[$_] } }
     }
 
     foreach ($Phase in $Phases) {
