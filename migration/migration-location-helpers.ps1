@@ -12,7 +12,7 @@
     These are copied from the margoworld plugin and core location-helpers.ps1
     respectively, so that migration does not depend on optional plugins.
 
-    Dot-sourced by phase5-location-import.ps1.
+    Dot-sourced by phase3-location-import.ps1.
 #>
 
 # ── Precompiled regex patterns (copied from margoworld-helpers.ps1) ─────────

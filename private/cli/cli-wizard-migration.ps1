@@ -76,23 +76,21 @@ function Get-MigrationMenuItems {
             })
         }
     } else {
-        # Fallback: hardcoded phase 0-9 from PhaseNames
-        if ($script:PhaseNames) {
-            for ($I = 0; $I -le 9; $I++) {
-                $PhaseStatus = Get-PhaseStatus -State $MigrationState -Phase $I
-                $StatusInfo = $script:StatusDisplay[$PhaseStatus]
-                $StatusSymbol = if ($StatusInfo) { "$($StatusInfo.Symbol) " } else { '' }
-                $StatusText = if ($StatusInfo) { $StatusInfo.Text } else { '' }
+        # Fallback: hardcoded phase 0-6
+        for ($I = 0; $I -le 6; $I++) {
+            $PhaseStatus = Get-PhaseStatus -State $MigrationState -Phase $I
+            $StatusInfo = $script:StatusDisplay[$PhaseStatus]
+            $StatusSymbol = if ($StatusInfo) { "$($StatusInfo.Symbol) " } else { '' }
+            $StatusText = if ($StatusInfo) { $StatusInfo.Text } else { '' }
 
-                [void]$Items.Add([PSCustomObject]@{
-                    ID          = "migration-phase-$I"
-                    Label       = "${StatusSymbol}Faza $I`: $($script:PhaseNames[$I])"
-                    Description = $StatusText
-                    RoleTag     = 'K'
-                    InfoText    = $null
-                    Disabled    = $false
-                })
-            }
+            [void]$Items.Add([PSCustomObject]@{
+                ID          = "migration-phase-$I"
+                Label       = "${StatusSymbol}Faza $I`: $(Get-PhaseName -Phase $I)"
+                Description = $StatusText
+                RoleTag     = 'K'
+                InfoText    = $null
+                Disabled    = $false
+            })
         }
     }
 
@@ -145,7 +143,7 @@ function Invoke-MigrationPhaseAction {
     }
 
     # Show phase header
-    $PhaseName = if ($PhaseEntry) { $PhaseEntry.Name } elseif ($script:PhaseNames) { $script:PhaseNames[$PhaseNum] } else { "Faza $PhaseNum" }
+    $PhaseName = if ($PhaseEntry) { $PhaseEntry.Name } else { Get-PhaseName -Phase $PhaseNum }
     Write-Host ''
     Write-Host "  $([string][char]0x2500 * 50)" -ForegroundColor (Get-CLIColor -Role 'Accent')
     Write-CLILine -Text "FAZA $PhaseNum`: $PhaseName" -Color (Get-CLIColor -Role 'Accent')

@@ -714,12 +714,12 @@ Describe 'Get-Entity - many characters per player' {
     }
 
     It 'parses PU nadmiar for last character' {
-        $E = $script:Entities | Where-Object { $_.Name -eq 'Bohater Piąty' }
+        $E = $script:Entities | Where-Object { $_.Name -eq 'Coronius' }
         $E.Overrides['pu_nadmiar'] | Should -Contain '2.5'
     }
 
     It 'character with zero PU zdobyte has correct value' {
-        $E = $script:Entities | Where-Object { $_.Name -eq 'Bohater Czwarty' }
+        $E = $script:Entities | Where-Object { $_.Name -eq 'Mephala' }
         $E.Overrides['pu_zdobyte'] | Should -Contain '0'
     }
 }

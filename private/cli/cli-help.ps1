@@ -218,7 +218,7 @@ $script:HelpContent = @{
             'Narzędzia do przenoszenia danych ze starszego formatu'
             'kampanii do aktualnego.'
             ''
-            'Migracja składa się z kilku kroków (faz 0-9),'
+            'Migracja składa się z kilku kroków (faz 0-6),'
             'wykonywanych po kolei. Każdy krok można uruchomić'
             'wielokrotnie bez ryzyka — postęp jest zapamiętywany.'
             ''

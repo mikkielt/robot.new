@@ -21,7 +21,7 @@
     script-scope patterns/maps are in entity-findhelpers.ps1 (dot-sourced below).
 
     Migration helper (ConvertTo-EntitiesFromPlayers) is in
-    entity-migrationhelpers.ps1, dot-sourced separately by phase1-bootstrap.ps1.
+    entity-migrationhelpers.ps1, dot-sourced separately by phase0-setup.ps1.
 
     All functions operate on raw line arrays (same approach as Set-Session).
     Parse boundaries by scanning lines, manipulate via List[string], write

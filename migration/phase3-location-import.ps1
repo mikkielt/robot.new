@@ -1,6 +1,6 @@
 <#
     .SYNOPSIS
-    Phase 5: Import lokalizacji z mapy.
+    Phase 3: Import lokalizacji z mapy.
 
     .DESCRIPTION
     Two-entity-type import from maps.json:
@@ -24,21 +24,26 @@
 . ([System.IO.Path]::Combine($PSScriptRoot, 'migration-location-helpers.ps1'))
 
 # ============================================================================
-# PHASE 5 - Import lokalizacji z mapy
+# PHASE 3 - Import lokalizacji z mapy
 # ============================================================================
 
-function Invoke-MigrationPhase5 {
+function Invoke-MigrationPhase3 {
     [CmdletBinding(SupportsShouldProcess)]
     param(
         [Parameter(Mandatory)] [hashtable]$State,
         [switch]$WhatIf
     )
 
-    $PhaseStatus = Get-PhaseStatus -State $State -Phase 5
-    Write-PhaseHeader -Phase 5 -Status $PhaseStatus
+    if (-not (Test-PhasePredecessor -State $State -Phase 3)) {
+        Write-StepWarning 'Faza 2 nie jest ukończona.'
+        if (-not (Request-YesNo -Prompt 'Kontynuować mimo to?' -Default $false)) { return }
+    }
+
+    $PhaseStatus = Get-PhaseStatus -State $State -Phase 3
+    Write-PhaseHeader -Phase 3 -Status $PhaseStatus
 
     $RepoRoot = Get-RepoRoot
-    $Checklist = if ($State.Phases['5'].ContainsKey('Checklist')) { $State.Phases['5'].Checklist } else { @{} }
+    $Checklist = if ($State.Phases['3'].ContainsKey('Checklist')) { $State.Phases['3'].Checklist } else { @{} }
 
     # ── Step 1: Load maps.json ──────────────────────────────────────────────
     Write-Step -Number 1 -Text 'Wczytywanie maps.json...'
@@ -65,7 +70,7 @@ function Invoke-MigrationPhase5 {
     $Interior = @($Maps | Where-Object { $_.outerior -ne $true })
 
     Write-StepOK "Wczytano $($Maps.Count) lokalizacji (exterior: $($Exterior.Count), interior: $($Interior.Count))"
-    Update-PhaseChecklist -State $State -Phase 5 -Item 'MapsJsonLoaded' -Value $true
+    Update-PhaseChecklist -State $State -Phase 3 -Item 'MapsJsonLoaded' -Value $true
 
     # ── Step 2: Infer hierarchy ─────────────────────────────────────────────
     Write-Step -Number 2 -Text 'Wnioskowanie hierarchii lokalizacji...'
@@ -118,7 +123,7 @@ function Invoke-MigrationPhase5 {
     }
 
     Write-StepOK "Hierarchia: $RootCount korzeni, $ChildCount dzieci"
-    Update-PhaseChecklist -State $State -Phase 5 -Item 'HierarchyInferred' -Value $true
+    Update-PhaseChecklist -State $State -Phase 3 -Item 'HierarchyInferred' -Value $true
 
     # ── Step 3: Check existing entities ─────────────────────────────────────
     Write-Step -Number 3 -Text 'Sprawdzanie istniejących encji Mapa i Lokacja...'
@@ -224,7 +229,7 @@ function Invoke-MigrationPhase5 {
 
             Write-EntityFile -Path $OverflowPath -Lines $Lines -NL $NL
             Write-StepOK "Zaimportowano $($SortedImports.Count) encji Mapa do maps-100-ent.md"
-            Update-PhaseChecklist -State $State -Phase 5 -Item 'MapaBulkImportDone' -Value $true
+            Update-PhaseChecklist -State $State -Phase 3 -Item 'MapaBulkImportDone' -Value $true
         }
     } elseif ($MapaBulkDone) {
         Write-Step -Number 4 -Text 'Import encji Mapa...'
@@ -232,7 +237,7 @@ function Invoke-MigrationPhase5 {
     } elseif ($MapaToImport.Count -eq 0) {
         Write-Step -Number 4 -Text 'Import encji Mapa...'
         Write-StepOK 'Wszystkie encje Mapa już istnieją'
-        Update-PhaseChecklist -State $State -Phase 5 -Item 'MapaBulkImportDone' -Value $true
+        Update-PhaseChecklist -State $State -Phase 3 -Item 'MapaBulkImportDone' -Value $true
     }
 
     # ── Step 5: Derive Lokacja entities from hierarchy ──────────────────────
@@ -327,7 +332,7 @@ function Invoke-MigrationPhase5 {
         }
 
         if (-not $WhatIf) {
-            Update-PhaseChecklist -State $State -Phase 5 -Item 'LokacjaDerivationDone' -Value $true
+            Update-PhaseChecklist -State $State -Phase 3 -Item 'LokacjaDerivationDone' -Value $true
         }
     } else {
         Write-Step -Number 5 -Text 'Wyprowadzanie encji Lokacja...'
@@ -342,7 +347,7 @@ function Invoke-MigrationPhase5 {
         Write-Step -Number 6 -Text 'Eksport pliku nadpisań lokalizacji...'
 
         $OverrideLines = [System.Collections.Generic.List[string]]::new()
-        $OverrideLines.Add('# Plik nadpisań lokalizacji - edytuj i uruchom Fazę 5 ponownie')
+        $OverrideLines.Add('# Plik nadpisań lokalizacji - edytuj i uruchom Fazę 3 ponownie')
         $OverrideLines.Add('# Wygenerowano: ' + [datetime]::Now.ToString('yyyy-MM-dd HH:mm'))
         $OverrideLines.Add('')
         $OverrideLines.Add('# Sekcja 1: Nazwy Nerthus dla encji Mapa (NazwaMargonem<TAB>NazwaNerthus)')
@@ -368,8 +373,8 @@ function Invoke-MigrationPhase5 {
         [System.IO.File]::WriteAllLines($OverridePath, $OverrideLines, $UTF8NoBOM)
 
         Write-StepOK "Wyeksportowano plik nadpisań: $OverridePath"
-        Write-ActionRequired "Edytuj plik location-overrides.txt i uruchom Fazę 5 ponownie aby zastosować nadpisania."
-        Update-PhaseChecklist -State $State -Phase 5 -Item 'OverridesExported' -Value $true
+        Write-ActionRequired "Edytuj plik location-overrides.txt i uruchom Fazę 3 ponownie aby zastosować nadpisania."
+        Update-PhaseChecklist -State $State -Phase 3 -Item 'OverridesExported' -Value $true
     } elseif ($OverridesExported) {
         Write-Step -Number 6 -Text 'Eksport nadpisań...'
         Write-StepOK 'Plik nadpisań już wyeksportowany'
@@ -520,7 +525,7 @@ function Invoke-MigrationPhase5 {
             }
 
             Write-StepOK "Zastosowano nadpisania: $AppliedOverrides nazw Mapa, $AppliedVirtual wirtualnych Lokacja"
-            Update-PhaseChecklist -State $State -Phase 5 -Item 'OverridesImported' -Value $true
+            Update-PhaseChecklist -State $State -Phase 3 -Item 'OverridesImported' -Value $true
         } else {
             Write-StepOK 'Brak nadpisań w pliku (plik nie został edytowany lub jest pusty)'
             # Allow phase to proceed without overrides if coordinator confirms
@@ -531,7 +536,7 @@ function Invoke-MigrationPhase5 {
                 'Tak = oznacz krok jako ukończony',
                 'Nie = wróć, edytuj plik i uruchom fazę ponownie'
             )) {
-                Update-PhaseChecklist -State $State -Phase 5 -Item 'OverridesImported' -Value $true
+                Update-PhaseChecklist -State $State -Phase 3 -Item 'OverridesImported' -Value $true
             }
         }
     } elseif ($OverridesImported) {
@@ -593,10 +598,10 @@ function Invoke-MigrationPhase5 {
                 if ($OverrideExists) {
                     & git -C $RepoRoot add '.robot/res/location-overrides.txt' 2>&1
                 }
-                & git -C $RepoRoot commit -m 'Import lokalizacji z mapy — Mapa + Lokacja (Faza 5 migracji)' 2>&1
+                & git -C $RepoRoot commit -m 'Import lokalizacji z mapy — Mapa + Lokacja (Faza 3 migracji)' 2>&1
                 if ($LASTEXITCODE -eq 0) {
                     Write-StepOK 'Zacommitowano'
-                    Update-PhaseChecklist -State $State -Phase 5 -Item 'Committed' -Value $true
+                    Update-PhaseChecklist -State $State -Phase 3 -Item 'Committed' -Value $true
                 } else {
                     Write-StepError 'Nie udało się zacommitować'
                 }
@@ -610,20 +615,20 @@ function Invoke-MigrationPhase5 {
     }
 
     # ── Phase summary ───────────────────────────────────────────────────────
-    $MapaOK = ($State.Phases['5'].Checklist.ContainsKey('MapaBulkImportDone') -and $State.Phases['5'].Checklist['MapaBulkImportDone']) -or
-              ($State.Phases['5'].Checklist.ContainsKey('BulkImportDone') -and $State.Phases['5'].Checklist['BulkImportDone'])
-    $LokacjaOK = $State.Phases['5'].Checklist.ContainsKey('LokacjaDerivationDone') -and $State.Phases['5'].Checklist['LokacjaDerivationDone']
-    $OverridesOK = $State.Phases['5'].Checklist.ContainsKey('OverridesImported') -and $State.Phases['5'].Checklist['OverridesImported']
+    $MapaOK = ($State.Phases['3'].Checklist.ContainsKey('MapaBulkImportDone') -and $State.Phases['3'].Checklist['MapaBulkImportDone']) -or
+              ($State.Phases['3'].Checklist.ContainsKey('BulkImportDone') -and $State.Phases['3'].Checklist['BulkImportDone'])
+    $LokacjaOK = $State.Phases['3'].Checklist.ContainsKey('LokacjaDerivationDone') -and $State.Phases['3'].Checklist['LokacjaDerivationDone']
+    $OverridesOK = $State.Phases['3'].Checklist.ContainsKey('OverridesImported') -and $State.Phases['3'].Checklist['OverridesImported']
 
     if ($MapaOK -and $LokacjaOK -and $OverridesOK) {
-        Set-PhaseCompleted -State $State -Phase 5
-        Write-PhaseSummary -Phase 5 -Status 'Completed' -Lines @(
+        Set-PhaseCompleted -State $State -Phase 3
+        Write-PhaseSummary -Phase 3 -Status 'Completed' -Lines @(
             "[OK] $($MapaEntities.Count) encji Mapa w maps-100-ent.md",
             "[OK] $($LokacjaEntities.Count) encji Lokacja w entities.md",
             "[OK] $($MapaWithMargonemId.Count) z @margonemid, $($MapaWithLokacja.Count) z @lokacja"
         )
     } else {
-        Set-PhaseInProgress -State $State -Phase 5
+        Set-PhaseInProgress -State $State -Phase 3
         $StatusLines = [System.Collections.Generic.List[string]]::new()
         if ($MapaOK) { $StatusLines.Add('[OK] Import Mapa zakończony') }
         else { $StatusLines.Add('[!!] Import Mapa niezakończony') }
@@ -631,7 +636,7 @@ function Invoke-MigrationPhase5 {
         else { $StatusLines.Add('[!!] Wyprowadzanie Lokacja niezakończone') }
         if ($OverridesOK) { $StatusLines.Add('[OK] Nadpisania zastosowane') }
         else { $StatusLines.Add('[!!] Nadpisania oczekują na zastosowanie') }
-        Write-PhaseSummary -Phase 5 -Status 'InProgress' -Lines $StatusLines.ToArray()
+        Write-PhaseSummary -Phase 3 -Status 'InProgress' -Lines $StatusLines.ToArray()
     }
 
     if (-not $WhatIf) { Save-MigrationState -State $State }

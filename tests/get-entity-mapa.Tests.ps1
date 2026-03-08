@@ -110,8 +110,8 @@ Describe 'Get-Entity - @slug tag' {
     }
 
     It '@slug value appears in NPC entity Names set' {
-        $NPC = $script:SlugEntities | Where-Object { $_.Name -eq 'Kupiec Joran' }
-        $NPC.Names | Should -Contain 'joran-kupiec'
+        $NPC = $script:SlugEntities | Where-Object { $_.Name -eq 'Kupiec Clancy' }
+        $NPC.Names | Should -Contain 'clancy-kupiec'
     }
 
     It '@slug value appears in Lokacja entity Names set' {
@@ -134,9 +134,9 @@ Describe 'Get-NameIndex - @slug indexing' {
     }
 
     It 'indexes @slug value at priority 1' {
-        $script:Index.ContainsKey('joran-kupiec') | Should -BeTrue
-        $script:Index['joran-kupiec'].Priority | Should -Be 1
-        $script:Index['joran-kupiec'].Owner.Name | Should -Be 'Kupiec Joran'
+        $script:Index.ContainsKey('clancy-kupiec') | Should -BeTrue
+        $script:Index['clancy-kupiec'].Priority | Should -Be 1
+        $script:Index['clancy-kupiec'].Owner.Name | Should -Be 'Kupiec Clancy'
     }
 
     It 'indexes location @slug value' {
@@ -152,11 +152,11 @@ Describe 'Resolve-Name - @slug resolution' {
     }
 
     It 'resolves slug to correct entity' {
-        $Result = Resolve-Name -Query 'joran-kupiec' `
+        $Result = Resolve-Name -Query 'clancy-kupiec' `
             -Index $script:IndexResult.Index `
             -StemIndex $script:IndexResult.StemIndex `
             -BKTree $script:IndexResult.BKTree
         $Result | Should -Not -BeNullOrEmpty
-        $Result.Name | Should -Be 'Kupiec Joran'
+        $Result.Name | Should -Be 'Kupiec Clancy'
     }
 }

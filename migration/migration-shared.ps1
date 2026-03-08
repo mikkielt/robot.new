@@ -10,7 +10,7 @@
     colors when CLI engine is available, falling back to hardcoded colors otherwise.
 
     Helpers:
-    - Show-DiagnosticResults:  renders PU diagnostic report (used by Phase 3, 4, 8, Quick Diagnostics)
+    - Show-DiagnosticResults:  renders PU diagnostic report (used by Phase 2, 6, Quick Diagnostics)
     - Invoke-QuickDiagnostics: main menu shortcut for quick health check
     - Invoke-FullReport:       main menu shortcut for per-phase status report
 
@@ -34,7 +34,18 @@ try {
     }
 } catch { }
 
-# Shared diagnostic result renderer (used by Phase 3, Phase 4, and Quick Diagnostics)
+# Checks if the predecessor phase (N-1) is completed.
+function Test-PhasePredecessor {
+    param(
+        [Parameter(Mandatory)] [hashtable]$State,
+        [Parameter(Mandatory)] [int]$Phase
+    )
+    if ($Phase -eq 0) { return $true }
+    $PredecessorStatus = Get-PhaseStatus -State $State -Phase ($Phase - 1)
+    return ($PredecessorStatus -eq 'Completed')
+}
+
+# Shared diagnostic result renderer (used by Phase 2, Phase 6, and Quick Diagnostics)
 function Show-DiagnosticResults {
     param([Parameter(Mandatory)] $Diagnostics)
 
@@ -160,11 +171,11 @@ function Invoke-FullReport {
     Write-Host '  PEŁNY RAPORT MIGRACJI' -ForegroundColor $AccentColor
     Write-Host ('=' * 60) -ForegroundColor $AccentColor
 
-    # Use registry if available, fallback to hardcoded 0-8
+    # Use registry if available, fallback to hardcoded 0-6
     $Phases = if ($script:PhaseRegistry) {
         $script:PhaseRegistry
     } else {
-        0..9 | ForEach-Object { @{ ID = $_; Name = $script:PhaseNames[$_] } }
+        0..6 | ForEach-Object { @{ ID = $_; Name = Get-PhaseName -Phase $_ } }
     }
 
     foreach ($Phase in $Phases) {

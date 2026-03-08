@@ -109,7 +109,7 @@ Describe 'Hierarchy inference from maps-test.json' {
             [void]$NameSet.Add($Map.name)
         }
 
-        # Compute parent map (same algorithm as phase5-location-import.ps1)
+        # Compute parent map (same algorithm as phase3-location-import.ps1)
         $script:ParentMap = [System.Collections.Generic.Dictionary[string, string]]::new([System.StringComparer]::OrdinalIgnoreCase)
         foreach ($Map in $Maps) {
             $Name = $Map.name

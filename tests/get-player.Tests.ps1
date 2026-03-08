@@ -189,15 +189,15 @@ Describe 'Get-Player - player with many characters' {
 
     It 'Names index contains all character names and aliases' {
         $Solmyr = $script:Players | Where-Object { $_.Name -eq 'Solmyr' }
-        $Solmyr.Names | Should -Contain 'Bohater Pierwszy'
-        $Solmyr.Names | Should -Contain 'B1'
-        $Solmyr.Names | Should -Contain 'Bohater Piąty'
-        $Solmyr.Names | Should -Contain 'B5'
+        $Solmyr.Names | Should -Contain 'Mutare'
+        $Solmyr.Names | Should -Contain 'Mu'
+        $Solmyr.Names | Should -Contain 'Coronius'
+        $Solmyr.Names | Should -Contain 'Co'
     }
 
     It 'parses PU with nadmiar for last character' {
         $Solmyr = $script:Players | Where-Object { $_.Name -eq 'Solmyr' }
-        $Last = $Solmyr.Characters | Where-Object { $_.Name -eq 'Bohater Piąty' }
+        $Last = $Solmyr.Characters | Where-Object { $_.Name -eq 'Coronius' }
         $Last.PUExceeded | Should -Be 2.5
     }
 }

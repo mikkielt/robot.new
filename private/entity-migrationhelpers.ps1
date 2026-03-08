@@ -4,8 +4,8 @@
     player data.
 
     .DESCRIPTION
-    Non-exported helper function used exclusively by migration phase 1
-    (phase1-bootstrap.ps1) to generate the initial entities.md file from
+    Non-exported helper function used exclusively by migration Phase 0
+    (phase0-setup.ps1) to generate the initial entities.md file from
     Gracze.md player data.
 
     Contains:

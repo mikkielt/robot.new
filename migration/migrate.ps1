@@ -3,7 +3,7 @@
     Interaktywny skrypt migracji z systemu .robot na .robot.new.
 
     .DESCRIPTION
-    Prowadzi koordynatora przez 10 faz migracji (Fazy 0-9) z polskojęzycznym
+    Prowadzi koordynatora przez 7 faz migracji (Fazy 0-6) z polskojęzycznym
     interfejsem, śledzeniem postępu i idempotentnym ponawianiem.
 
     Można uruchamiać wielokrotnie - każda faza sprawdza swój stan
@@ -17,7 +17,7 @@
         .\.robot.new\migration\migrate.ps1 -WhatIf      # Tryb suchy (bez zmian)
 
     .PARAMETER Phase
-    Uruchom konkretną fazę (0-9) bez wyświetlania menu.
+    Uruchom konkretną fazę (0-6) bez wyświetlania menu.
 
     .PARAMETER WhatIf
     Tryb suchy - nie wykonuje zmian, tylko pokazuje co by się stało.
@@ -26,7 +26,7 @@
     Pomiń import modułu robot (do testowania).
 #>
 [CmdletBinding()] param(
-    [ValidateRange(0, 9)]
+    [ValidateRange(0, 6)]
     [int]$Phase = -1,
 
     [switch]$WhatIf,
@@ -147,7 +147,7 @@ while ($true) {
         }
     } else {
         # Fallback: Read-Host numbered menu
-        $ValidChoices = @('0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'D', 'R', 'Q')
+        $ValidChoices = @('0', '1', '2', '3', '4', '5', '6', 'D', 'R', 'Q')
         $Choice = Request-UserChoice -Prompt 'Wybierz opcję:' -ValidChoices $ValidChoices
 
         switch ($Choice) {

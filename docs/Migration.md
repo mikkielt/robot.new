@@ -82,26 +82,23 @@ Session records exist in four format generations, accumulated over the project's
 
 ## Migration Phases
 
-The migration is divided into 10 phases (0-9). Not all require involvement from the entire team.
+The migration is divided into 7 phases (0-6). Not all require involvement from the entire team.
 
 | Phase | What happens | Who is involved | Duration |
 |---|---|---|---|
-| **0. Preparation** | Safety backup, module verification, data manifest | Coordinator | 1 day |
-| **1. Bootstrap** | Generate entity store from legacy player data | Coordinator | 1 day |
-| **2. Validation** | Verify data parity between old and new systems | Coordinator | 1 day |
-| **3. Diagnostics** | Fix typos, date errors, missing aliases | Coordinator, narrators | 2-3 days |
-| **4. Diagnostics & repair** | Extended diagnostics and data repair | Coordinator | 1-2 days |
-| **5. Location import** | Import game-map locations as entities, review overrides | Coordinator | 2-3 days |
-| **6. Session upgrade** | Upgrade active session files to Gen4 format | Coordinator | 1-2 days |
-| **7. Currency enrollment** | Collect and register currency balances | Everyone | ~1 week |
-| **8. Parallel period** | Both systems run side-by-side, results compared | Coordinator | 2-4 weeks |
-| **9. Cutover** | Official switch to the new system | Coordinator | 1 day |
+| **0. Przygotowanie i bootstrap** | Safety backup, module verification, data manifest, generate entity store | Coordinator | 1-2 days |
+| **1. Baseline integralności sesji** | Compute and store baseline session content hashes | Coordinator | 1 day |
+| **2. Walidacja i naprawa danych** | Verify data parity, fix typos, date errors, missing aliases, extended diagnostics | Coordinator, narrators | 3-5 days |
+| **3. Import lokalizacji z mapy** | Import game-map locations as entities, review overrides | Coordinator | 2-3 days |
+| **4. Upgrade formatu sesji** | Upgrade active session files to Gen4 format | Coordinator | 1-2 days |
+| **5. Enrollment walut** | Collect and register currency balances | Everyone | ~1 week |
+| **6. Przełączenie (cutover)** | Parallel period, verification, official switch to the new system | Coordinator | 2-4 weeks |
 
-**Total estimated time**: 5-7 weeks, most of which is the parallel period.
+**Total estimated time**: 4-6 weeks, most of which is the parallel/cutover period.
 
-### Phase 0 - Preparation and Backup
+### Phase 0 - Przygotowanie i bootstrap
 
-The coordinator secures the current state before any changes:
+The coordinator secures the current state before any changes, then generates the entity store from legacy data. This phase combines preparation and bootstrap into a single step (`phase0-setup.ps1`):
 
 1. **Verify clean git state** - no uncommitted changes allowed before migration starts
 2. **Create safety tag** (`pre-migration`) - provides a rollback point to the exact pre-migration state
@@ -109,16 +106,17 @@ The coordinator secures the current state before any changes:
 4. **Verify submodule** - `.robot.new` must be registered as a git submodule
 5. **Verify module** - confirm all commands are available (~32 exported)
 6. **Create data manifest** - `.robot/robot-data.psd1` ensures all commands write to the correct `entities.md` location
+7. **Generate entity store** - reads all current player and character data from the existing player database and writes it into `entities.md`. The system creates one new file containing all players, their characters, and associated metadata (PU values, aliases, group memberships). The original player database remains untouched. Additional entity sections (NPC, Group, Location, Item) are added for future use.
 
-### Phase 1 - Bootstrap Entity Store
+### Phase 1 - Baseline integralności sesji
 
-The coordinator generates the new entity store from the existing player database. This is a one-time operation that reads all current player and character data and writes it into `entities.md`.
+A read-only phase that computes and stores baseline SHA-256 content hashes for all session files (`phase1-session-hashes.ps1`). These hashes provide tamper detection and change tracking for session content going forward. The baseline is stored in `.robot/res/session-hashes/` and serves as the reference point for the `Test-SessionIntegrity` validator.
 
-The system creates one new file containing all players, their characters, and associated metadata (PU values, aliases, group memberships). The original player database remains untouched. Additional entity sections (NPC, Group, Location, Item) are added for future use.
+### Phase 2 - Walidacja i naprawa danych
 
-### Phase 2 - Data Parity Validation
+This phase combines data parity validation with diagnostics and data repair (`phase2-validation.ps1`). It first verifies the new system correctly reads and merges data from both sources, then iteratively fixes issues surfaced by the stricter validation:
 
-A read-only phase that verifies the new system correctly reads and merges data from both sources:
+**Validation checks:**
 
 - Player and character counts match expectations
 - PU values match the original data (spot-checked)
@@ -126,9 +124,9 @@ A read-only phase that verifies the new system correctly reads and merges data f
 - Players without webhook addresses identified
 - Diagnostic tool run to surface any issues
 
-### Phase 3 - Diagnostics and Data Repair
+**Diagnostics and repair:**
 
-The new system is stricter about data validation. Issues that the old system silently ignored now surface as errors. This phase fixes known problems iteratively:
+The new system is stricter about data validation. Issues that the old system silently ignored now surface as errors. This sub-phase fixes known problems iteratively:
 
 - **Unresolved character names** - typos in session PU entries, fixed by correcting the name or adding an alias
 - **Malformed session dates** - dates like `2025-6-15` corrected to `2025-06-15`
@@ -140,9 +138,9 @@ Additionally, a narrator report identifies raw narrator names from session heade
 
 The coordinator runs diagnostics, fixes issues, re-runs diagnostics, and repeats until the diagnostic tool returns OK.
 
-### Phase 5 - Location Import
+### Phase 3 - Import lokalizacji z mapy
 
-The coordinator imports all game-map locations into the entity store. This produces two entity types using a two-pass workflow:
+The coordinator imports all game-map locations into the entity store (`phase3-location-import.ps1`). This produces two entity types using a two-pass workflow:
 
 **Mapa entities (concrete game maps):** The system reads the full map registry (~2,704 entries) and creates a Mapa entity for each one. Each Mapa entity records the Margonem map ID, map type (exterior/interior), CDN image URL, and tile dimensions. These are written to a dedicated overflow file (`maps-100-ent.md`) to keep the main `entities.md` manageable.
 
@@ -155,11 +153,11 @@ The coordinator imports all game-map locations into the entity store. This produ
 
 After editing, the coordinator re-runs the phase to apply the overrides. The phase completes when the Mapa import, Lokacja derivation, and override steps are all done.
 
-> This phase must run before the session format upgrade (Phase 6) because the location review step in Phase 6 expects Location entities to already exist.
+> This phase must run before the session format upgrade (Phase 4) because the location review step in Phase 4 expects Location entities to already exist.
 
-### Phase 6 - Session Format Upgrade
+### Phase 4 - Upgrade formatu sesji
 
-The coordinator upgrades active session files from Gen1/Gen2/Gen3 to the current Gen4 format. The upgrade changes **only metadata structure** - narrative text and special blocks (clarifications, effects, rewards) are preserved.
+The coordinator upgrades active session files from Gen1/Gen2/Gen3 to the current Gen4 format (`phase4-session-upgrade.ps1`). The upgrade changes **only metadata structure** - narrative text and special blocks (clarifications, effects, rewards) are preserved.
 
 | Before | After |
 |---|---|
@@ -179,9 +177,9 @@ The coordinator upgrades active session files from Gen1/Gen2/Gen3 to the current
 
 Non-location exclusions are stored in `.robot/res/location-exclusions.txt` and persist across re-runs. The commit step is blocked until all truly unresolved locations are handled.
 
-### Phase 7 - Currency Enrollment
+### Phase 5 - Enrollment walut
 
-The currency system is an entirely new capability. This phase sets up the initial state:
+The currency system is an entirely new capability. This phase sets up the initial state (`phase5-currency.ps1`):
 
 1. **Coordinator treasury** - a group entity (`Skarbiec Koordynatorow`) with initial reserves in three denominations:
    - **Korona** (gold) - 1 Korona = 100 Talarow
@@ -196,25 +194,25 @@ The currency system is an entirely new capability. This phase sets up the initia
 
 Currency transfers during gameplay are registered by narrators in sessions via `@Transfer` directives.
 
-### Phase 8 - Parallel Period
+### Phase 6 - Przełączenie (cutover)
 
-For 2-4 weeks, both the old and new systems run simultaneously. The coordinator runs PU assignment through both and compares results. During this period:
+This phase combines the parallel period and the official cutover into a single phase (`phase6-cutover.ps1`).
+
+**Parallel period:** For 2-4 weeks, both the old and new systems run simultaneously. The coordinator runs PU assignment through both and compares results. During this period:
 
 - **PU assignments** are compared between systems - results must match
 - **New sessions** are written in Gen4 format by narrators
 - **New characters** are created exclusively through the new system
 - **Old sessions** remain readable without modification
 
-**Cutover criteria** (all must be met before Phase 9):
+**Cutover criteria** (all must be met before switching over):
 
 - At least one full PU cycle with identical results from both systems
 - All active narrators using Gen4 format
 - Diagnostics clean (OK = true)
 - Currency reconciliation without critical warnings
 
-### Phase 9 - Cutover
-
-The official switch to the new system as the sole operational tool:
+**Cutover steps** - the official switch to the new system as the sole operational tool:
 
 1. **Final PU verification** - confirm diagnostics are clean
 2. **Freeze Gracze.md** - add a read-only notice; the file becomes a historical archive
@@ -331,7 +329,7 @@ The migration is designed to be reversible at every stage:
 | **Player has no webhook address** | PU is still calculated and applied, but the Discord notification for that player is skipped with a warning | Add the webhook address to the player's record and re-send manually if needed |
 | **Stale history entries** | The diagnostic tool flags session headers in the processing log that no longer match any session in the repository | Review flagged entries; they may indicate renamed or deleted session files |
 | **Character soft-deleted but still referenced** | Removed characters are excluded from standard views but still exist in the data | Use the include-deleted option to view them; they can be reactivated by updating their status |
-| **Unresolved location name** | Phase 6 blocks the commit until the coordinator resolves or excludes the name | Create a Location entity or mark as non-location |
+| **Unresolved location name** | Phase 4 blocks the commit until the coordinator resolves or excludes the name | Create a Location entity or mark as non-location |
 | **Session upgrade fails on a file** | The file is skipped; remaining files continue processing | Check the error message, fix the session header, and re-run |
 
 ## Audit Trail / Evidence of Completion

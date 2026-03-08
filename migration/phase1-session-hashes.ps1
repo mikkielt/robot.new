@@ -1,6 +1,6 @@
 <#
     .SYNOPSIS
-    Phase 2: Generate session integrity hashes (baseline snapshot).
+    Phase 1: Generate session integrity hashes (baseline snapshot).
 
     .DESCRIPTION
     Runs Set-SessionHash -Full to compute SHA256 content hashes for all
@@ -15,17 +15,22 @@
 #>
 
 # ============================================================================
-# PHASE 2 - Generate session integrity hashes (baseline snapshot)
+# PHASE 1 - Generate session integrity hashes (baseline snapshot)
 # ============================================================================
 
-function Invoke-MigrationPhase2 {
+function Invoke-MigrationPhase1 {
     param(
         [Parameter(Mandatory)] [hashtable]$State,
         [switch]$WhatIf
     )
 
-    $PhaseStatus = Get-PhaseStatus -State $State -Phase 2
-    Write-PhaseHeader -Phase 2 -Status $PhaseStatus
+    if (-not (Test-PhasePredecessor -State $State -Phase 1)) {
+        Write-StepWarning 'Faza 0 nie jest ukończona.'
+        if (-not (Request-YesNo -Prompt 'Kontynuować mimo to?' -Default $false)) { return }
+    }
+
+    $PhaseStatus = Get-PhaseStatus -State $State -Phase 1
+    Write-PhaseHeader -Phase 1 -Status $PhaseStatus
 
     $RepoRoot = Get-RepoRoot
     $Config = Get-AdminConfig
@@ -52,8 +57,8 @@ function Invoke-MigrationPhase2 {
             '',
             'Patrz: docs/Session-Integrity.md'
         ))) {
-            Update-PhaseChecklist -State $State -Phase 2 -Item 'HashesGenerated' -Value $true
-            Update-PhaseChecklist -State $State -Phase 2 -Item 'FileCount' -Value $ExistingCount
+            Update-PhaseChecklist -State $State -Phase 1 -Item 'HashesGenerated' -Value $true
+            Update-PhaseChecklist -State $State -Phase 1 -Item 'FileCount' -Value $ExistingCount
 
             # Skip to integrity check
             $SkipGeneration = $true
@@ -68,7 +73,7 @@ function Invoke-MigrationPhase2 {
 
         if ($WhatIf) {
             Write-StepWarning '[SUCHY PRZEBIEG] Wygenerowałbym hashy sesji'
-            Update-PhaseChecklist -State $State -Phase 2 -Item 'HashesGenerated' -Value $false
+            Update-PhaseChecklist -State $State -Phase 1 -Item 'HashesGenerated' -Value $false
         } else {
             try {
                 $HashResult = Set-SessionHash -Full
@@ -76,13 +81,13 @@ function Invoke-MigrationPhase2 {
                 $HashCount = $HashResult.HashesComputed
 
                 Write-StepOK "Przetworzono $FileCount plików, obliczono $HashCount hashy"
-                Update-PhaseChecklist -State $State -Phase 2 -Item 'HashesGenerated' -Value $true
-                Update-PhaseChecklist -State $State -Phase 2 -Item 'FileCount' -Value $FileCount
-                Update-PhaseChecklist -State $State -Phase 2 -Item 'HashCount' -Value $HashCount
+                Update-PhaseChecklist -State $State -Phase 1 -Item 'HashesGenerated' -Value $true
+                Update-PhaseChecklist -State $State -Phase 1 -Item 'FileCount' -Value $FileCount
+                Update-PhaseChecklist -State $State -Phase 1 -Item 'HashCount' -Value $HashCount
             }
             catch {
                 Write-StepError "Błąd generowania hashy: $($_.Exception.Message)"
-                Set-PhaseInProgress -State $State -Phase 2
+                Set-PhaseInProgress -State $State -Phase 1
                 Save-MigrationState -State $State
                 return
             }
@@ -99,7 +104,7 @@ function Invoke-MigrationPhase2 {
 
         if ($IntegrityResult.OK) {
             Write-StepOK 'Integralność potwierdzona — brak anomalii'
-            Update-PhaseChecklist -State $State -Phase 2 -Item 'IntegrityOK' -Value $true
+            Update-PhaseChecklist -State $State -Phase 1 -Item 'IntegrityOK' -Value $true
         } else {
             # Report findings (informational — does not block phase completion)
             $Issues = @()
@@ -116,27 +121,27 @@ function Invoke-MigrationPhase2 {
             $IssueStr = $Issues -join ', '
             Write-StepWarning "Wykryto problemy: $IssueStr"
             Write-Host '    Te problemy zostaną rozwiązane w kolejnych fazach migracji.' -ForegroundColor DarkGray
-            Update-PhaseChecklist -State $State -Phase 2 -Item 'IntegrityOK' -Value $false
-            Update-PhaseChecklist -State $State -Phase 2 -Item 'IntegrityIssues' -Value $IssueStr
+            Update-PhaseChecklist -State $State -Phase 1 -Item 'IntegrityOK' -Value $false
+            Update-PhaseChecklist -State $State -Phase 1 -Item 'IntegrityIssues' -Value $IssueStr
         }
     }
 
     # Phase summary and state persistence
-    $Checklist = $State.Phases['2'].Checklist
+    $Checklist = $State.Phases['1'].Checklist
     $AllDone = $Checklist['HashesGenerated'] -eq $true
 
     if ($AllDone) {
-        Set-PhaseCompleted -State $State -Phase 2
+        Set-PhaseCompleted -State $State -Phase 1
         $SummaryLines = @("[OK] Wygenerowano hashy sesji (baseline)")
         if ($Checklist['IntegrityOK'] -eq $true) {
             $SummaryLines += '[OK] Integralność potwierdzona'
         } else {
             $SummaryLines += '[!!] Wykryto problemy integralności (informacyjnie)'
         }
-        Write-PhaseSummary -Phase 2 -Status 'Completed' -Lines $SummaryLines
+        Write-PhaseSummary -Phase 1 -Status 'Completed' -Lines $SummaryLines
     } else {
-        Set-PhaseInProgress -State $State -Phase 2
-        Write-PhaseSummary -Phase 2 -Status 'InProgress' -Lines @('[!!] Generowanie hashy nie ukończone')
+        Set-PhaseInProgress -State $State -Phase 1
+        Write-PhaseSummary -Phase 1 -Status 'InProgress' -Lines @('[!!] Generowanie hashy nie ukończone')
     }
 
     if (-not $WhatIf) { Save-MigrationState -State $State }

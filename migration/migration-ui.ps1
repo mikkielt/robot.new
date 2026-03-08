@@ -59,18 +59,15 @@ function Resolve-MigrationColor {
     }
 }
 
-# Phase name lookup (Polish)
-$script:PhaseNames = @{
-    0 = 'Przygotowanie i backup'
-    1 = 'Bootstrap entities.md'
-    2 = 'Hashy integralności sesji'
-    3 = 'Walidacja parzystości danych'
-    4 = 'Diagnostyka i naprawa danych'
-    5 = 'Import lokalizacji z mapy'
-    6 = 'Upgrade formatu sesji'
-    7 = 'Enrollment walut'
-    8 = 'Okres równoległy'
-    9 = 'Przełączenie (cutover)'
+# Phase name lookup — derives from $script:PhaseRegistry (set by migration-phases.ps1).
+# Falls back to "Faza N" if registry is not yet loaded.
+function Get-PhaseName {
+    param([Parameter(Mandatory)] [int]$Phase)
+    if ($script:PhaseRegistry) {
+        $Entry = $script:PhaseRegistry | Where-Object { $_.ID -eq $Phase } | Select-Object -First 1
+        if ($Entry) { return $Entry.Name }
+    }
+    return "Faza $Phase"
 }
 
 # Status display strings (Polish) - uses semantic roles, not hardcoded colors
@@ -90,7 +87,7 @@ function Write-PhaseHeader {
         [string]$Detail
     )
 
-    $Name = $script:PhaseNames[$Phase]
+    $Name = Get-PhaseName -Phase $Phase
     $StatusInfo = $script:StatusDisplay[$Status]
     $AccentColor = Resolve-MigrationColor -Role 'Accent'
 
@@ -184,7 +181,7 @@ function Write-PhaseSummary {
         [string[]]$Lines = @()
     )
 
-    $Name = $script:PhaseNames[$Phase]
+    $Name = Get-PhaseName -Phase $Phase
     $StatusInfo = $script:StatusDisplay[$Status]
 
     Write-Host ''
@@ -406,6 +403,14 @@ function Show-ProgressSummary {
         Write-Host ('=' * 60) -ForegroundColor $AccentColor
         Write-Host ''
 
+        # Progress indicator
+        $CompletedCount = ($script:PhaseRegistry | Where-Object {
+            (Get-PhaseStatus -State $State -Phase $_.ID) -eq 'Completed'
+        } | Measure-Object).Count
+        $TotalCount = $script:PhaseRegistry.Count
+        Write-Host "  Postęp: $CompletedCount/$TotalCount faz ukończonych" -ForegroundColor $AccentColor
+        Write-Host ''
+
         $Items = [System.Collections.Generic.List[PSCustomObject]]::new()
 
         foreach ($Phase in $script:PhaseRegistry) {
@@ -413,11 +418,12 @@ function Show-ProgressSummary {
             $StatusInfo = $script:StatusDisplay[$PhaseStatus]
             $StatusSymbol = if ($StatusInfo) { "$($StatusInfo.Symbol) " } else { '' }
             $StatusText = if ($StatusInfo) { $StatusInfo.Text } else { '' }
+            $EstStr = if ($Phase.EstimatedMinutes) { " (~$($Phase.EstimatedMinutes) min)" } else { '' }
 
             [void]$Items.Add([PSCustomObject]@{
                 ID          = "phase-$($Phase.ID)"
                 Label       = "${StatusSymbol}Faza $($Phase.ID): $($Phase.Name)"
-                Description = $StatusText
+                Description = "$StatusText$EstStr"
                 RoleTag     = 'K'
                 InfoText    = $null
                 Disabled    = $false
@@ -436,7 +442,7 @@ function Show-ProgressSummary {
 
         $MigrationHelp = @(
             'Wybierz fazę migracji do uruchomienia.'
-            'Fazy są wykonywane sekwencyjnie (0-9).'
+            'Fazy są wykonywane sekwencyjnie (0-6).'
             'Każda faza jest idempotentna — można ją uruchomić wielokrotnie.'
             ''
             'Szybka diagnostyka — przegląd stanu migracji'
@@ -455,14 +461,29 @@ function Show-ProgressSummary {
     Write-Host ('=' * 60) -ForegroundColor $AccentColor
     Write-Host ''
 
-    for ($I = 0; $I -le 9; $I++) {
+    # Progress indicator (fallback)
+    $CompletedCount = 0
+    $TotalCount = if ($script:PhaseRegistry) { $script:PhaseRegistry.Count } else { 7 }
+    for ($I = 0; $I -le 6; $I++) {
+        if ((Get-PhaseStatus -State $State -Phase $I) -eq 'Completed') { $CompletedCount++ }
+    }
+    Write-Host "  Postęp: $CompletedCount/$TotalCount faz ukończonych" -ForegroundColor $AccentColor
+    Write-Host ''
+
+    for ($I = 0; $I -le 6; $I++) {
         $PhaseStatus = Get-PhaseStatus -State $State -Phase $I
         $StatusInfo = $script:StatusDisplay[$PhaseStatus]
-        $Name = $script:PhaseNames[$I]
+        $Name = Get-PhaseName -Phase $I
         $StatusColor = Resolve-MigrationColor -Role $StatusInfo.Role
 
-        $PhaseLabel = "  [$I] $Name"
-        $PaddedLabel = $PhaseLabel.PadRight(45)
+        $EstStr = ''
+        if ($script:PhaseRegistry) {
+            $RegEntry = $script:PhaseRegistry | Where-Object { $_.ID -eq $I } | Select-Object -First 1
+            if ($RegEntry -and $RegEntry.EstimatedMinutes) { $EstStr = " (~$($RegEntry.EstimatedMinutes) min)" }
+        }
+
+        $PhaseLabel = "  [$I] $Name$EstStr"
+        $PaddedLabel = $PhaseLabel.PadRight(55)
 
         Write-Host $PaddedLabel -NoNewline
         Write-Host "$($StatusInfo.Symbol) $($StatusInfo.Text)" -ForegroundColor $StatusColor

@@ -1,8 +1,8 @@
 ## NPC
 
-* Kupiec Joran
+* Kupiec Clancy
     - @lokacja: Targ Główny
-    - @slug: joran-kupiec
+    - @slug: clancy-kupiec
     - @status: Aktywny
     - @info: Handlarz przypraw z Erathii.
 

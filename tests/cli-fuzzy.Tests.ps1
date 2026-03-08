@@ -29,9 +29,9 @@ Describe 'Filter-FuzzyCandidates' {
         $script:TestCandidates = @(
             [PSCustomObject]@{ Name = 'Xeron Demonlord'; Type = 'NPC'; DisplayText = 'Xeron Demonlord [NPC]'; Owner = $null }
             [PSCustomObject]@{ Name = 'Solmyra';         Type = 'NPC'; DisplayText = 'Solmyra [NPC]';         Owner = $null }
-            [PSCustomObject]@{ Name = 'Kraków';           Type = 'Lokacja'; DisplayText = 'Kraków [Lokacja]'; Owner = $null }
+            [PSCustomObject]@{ Name = 'Tatalia';           Type = 'Lokacja'; DisplayText = 'Tatalia [Lokacja]'; Owner = $null }
             [PSCustomObject]@{ Name = 'Bracada';          Type = 'Lokacja'; DisplayText = 'Bracada [Lokacja]'; Owner = $null }
-            [PSCustomObject]@{ Name = 'Aranorn';          Type = 'NPC'; DisplayText = 'Aranorn [NPC]';         Owner = $null }
+            [PSCustomObject]@{ Name = 'Lorelei';          Type = 'NPC'; DisplayText = 'Lorelei [NPC]';         Owner = $null }
         )
 
         $script:TestState = [PSCustomObject]@{
@@ -85,15 +85,15 @@ Describe 'Filter-FuzzyCandidates' {
 Describe 'Get-FuzzySearchCandidates' {
     BeforeAll {
         $script:TestEntity1 = [PSCustomObject]@{ Name = 'Xeron'; Type = 'NPC'; Tags = @{} }
-        $script:TestEntity2 = [PSCustomObject]@{ Name = 'Kraków'; Type = 'Lokacja'; Tags = @{} }
+        $script:TestEntity2 = [PSCustomObject]@{ Name = 'Tatalia'; Type = 'Lokacja'; Tags = @{} }
         $script:TestEntity3 = [PSCustomObject]@{ Name = 'Gildia Magów'; Type = 'Grupa'; Tags = @{} }
         $script:TestEntity4 = [PSCustomObject]@{ Name = 'Sakiewka Xerona'; Type = 'Przedmiot'; Tags = @{ 'ilość' = '100' } }
 
         $script:TestPlayer1 = [PSCustomObject]@{
-            Name = 'Jan'
+            Name = 'Tyris'
             Characters = @(
-                [PSCustomObject]@{ Name = 'Aranorn' }
-                [PSCustomObject]@{ Name = 'Valdris' }
+                [PSCustomObject]@{ Name = 'Lorelei' }
+                [PSCustomObject]@{ Name = 'Loynis' }
             )
         }
 
@@ -106,15 +106,15 @@ Describe 'Get-FuzzySearchCandidates' {
     It 'returns players for "players" source' {
         $Result = Get-FuzzySearchCandidates -Source 'players' -State $script:FuzzyState
         $Result.Count | Should -Be 1
-        $Result[0].Name | Should -Be 'Jan'
+        $Result[0].Name | Should -Be 'Tyris'
         $Result[0].Type | Should -Be 'Gracz'
     }
 
     It 'returns characters for "characters" source' {
         $Result = Get-FuzzySearchCandidates -Source 'characters' -State $script:FuzzyState
         $Result.Count | Should -Be 2
-        $Result[0].Name | Should -Be 'Aranorn'
-        $Result[1].Name | Should -Be 'Valdris'
+        $Result[0].Name | Should -Be 'Lorelei'
+        $Result[1].Name | Should -Be 'Loynis'
     }
 
     It 'returns all entities for "entities" source' {
@@ -125,7 +125,7 @@ Describe 'Get-FuzzySearchCandidates' {
     It 'returns only locations for "locations" source' {
         $Result = Get-FuzzySearchCandidates -Source 'locations' -State $script:FuzzyState
         $Result.Count | Should -Be 1
-        $Result[0].Name | Should -Be 'Kraków'
+        $Result[0].Name | Should -Be 'Tatalia'
     }
 
     It 'returns only groups for "groups" source' {

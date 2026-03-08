@@ -125,7 +125,7 @@ Describe 'ConvertFrom-ChatLogContent' {
     }
 
     It 'extracts speaker from Speaker: text pattern' {
-        $SpeakerLine = $script:ChatResult.Lines | Where-Object { $_.Speaker -eq 'Karendar' } | Select-Object -First 1
+        $SpeakerLine = $script:ChatResult.Lines | Where-Object { $_.Speaker -eq 'Ivor' } | Select-Object -First 1
         $SpeakerLine | Should -Not -BeNullOrEmpty
         $SpeakerLine.Text | Should -Be 'Proszę!'
     }
@@ -165,7 +165,7 @@ Describe 'ConvertFrom-ChatLogContent' {
     It 'detects Grupowy channel' {
         $GrupowyLine = $script:ChatResult.Lines | Where-Object { $_.Channel -eq 'Grupowy' } | Select-Object -First 1
         $GrupowyLine | Should -Not -BeNullOrEmpty
-        $GrupowyLine.Speaker | Should -Be 'Anward'
+        $GrupowyLine.Speaker | Should -Be 'Deemer'
     }
 }
 
@@ -190,9 +190,9 @@ Describe 'ConvertFrom-ProseContent' {
     }
 
     It 'parses Speaker: text lines' {
-        $ElaraLine = $script:ProseResult.Lines | Where-Object { $_.Speaker -eq 'Elara' } | Select-Object -First 1
-        $ElaraLine | Should -Not -BeNullOrEmpty
-        $ElaraLine.Text | Should -Match 'bandytach'
+        $JenovaLine = $script:ProseResult.Lines | Where-Object { $_.Speaker -eq 'Jenova' } | Select-Object -First 1
+        $JenovaLine | Should -Not -BeNullOrEmpty
+        $JenovaLine.Text | Should -Match 'bandytach'
     }
 
     It 'sets Time and Channel to null for prose lines' {
@@ -279,10 +279,10 @@ Describe 'Get-SessionLog' {
         $Result = Get-SessionLog -Session $script:MockSession1 `
             -LogDirectory $script:TempLogDir -SkipFetch
         $Speakers = $Result.Logs[0].Speakers
-        $Karendar = $Speakers | Where-Object { $_.Raw -eq 'Karendar' }
-        $Karendar | Should -Not -BeNullOrEmpty
-        $Karendar.LineCount | Should -BeGreaterThan 0
-        $Karendar.Lines.Count | Should -Be $Karendar.LineCount
+        $Ivor = $Speakers | Where-Object { $_.Raw -eq 'Ivor' }
+        $Ivor | Should -Not -BeNullOrEmpty
+        $Ivor.LineCount | Should -BeGreaterThan 0
+        $Ivor.Lines.Count | Should -Be $Ivor.LineCount
     }
 
     It 'aggregates channels for ChatLog' {

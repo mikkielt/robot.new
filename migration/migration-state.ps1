@@ -13,7 +13,7 @@
     - Set-PhaseCompleted:      marks phase done with timestamp
     - Set-PhaseInProgress:     marks phase in progress
     - Update-PhaseChecklist:   sets a checklist item for a phase
-    - Add-DiagnosticSnapshot:  appends diagnostic run result to phase 3 history
+    - Add-DiagnosticSnapshot:  appends diagnostic run result to phase 2 history
 
     State file location: .robot/res/migration-state.json (committed to repo).
     Format: JSON with Phases dictionary keyed by phase number (as string).
@@ -30,7 +30,7 @@ function Resolve-MigrationStatePath {
 # Creates a default state hashtable with all phases set to NotStarted.
 function New-DefaultMigrationState {
     $Phases = @{}
-    for ($I = 0; $I -le 9; $I++) {
+    for ($I = 0; $I -le 6; $I++) {
         $Phases["$I"] = @{
             Status    = 'NotStarted'
             Checklist = @{}
@@ -38,7 +38,7 @@ function New-DefaultMigrationState {
     }
 
     return @{
-        Version   = '1.0'
+        Version   = '2.0'
         StartedAt = [datetime]::UtcNow.ToString('o')
         Phases    = $Phases
     }
@@ -186,7 +186,7 @@ function Update-PhaseChecklist {
     $State.Phases[$Key].Checklist[$Item] = $Value
 }
 
-# Appends diagnostic run result to Phase 4 history.
+# Appends diagnostic run result to Phase 2 history.
 function Add-DiagnosticSnapshot {
     param(
         [Parameter(Mandatory)] [hashtable]$State,
@@ -194,7 +194,7 @@ function Add-DiagnosticSnapshot {
         [Parameter(Mandatory)] [int]$IssueCount
     )
 
-    $Key = '4'
+    $Key = '2'
     if (-not $State.Phases.ContainsKey($Key)) {
         $State.Phases[$Key] = @{ Status = 'NotStarted'; Checklist = @{} }
     }

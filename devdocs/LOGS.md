@@ -73,7 +73,7 @@ Plain narrative without timestamps. Source: manually written session summaries.
 Karczma pod Liściem Dębu
 
 Narrator: Wieczór był ciepły i wilgotny.
-Elara: Słyszałam o bandytach na trakcie.
+Jenova: Słyszałam o bandytach na trakcie.
 ```
 
 **Detection**: Fallback when ChatLog detection fails.

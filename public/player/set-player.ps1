@@ -47,6 +47,10 @@ function Set-Player {
         [Parameter(HelpMessage = "Player aliases (appended with deduplication)")]
         [string[]]$Aliases,
 
+        [Parameter(HelpMessage = "Entity status (Aktywny, Nieaktywny, Usunięty)")]
+        [ValidateSet("Aktywny", "Nieaktywny", "Usunięty")]
+        [string]$Status,
+
         [Parameter(HelpMessage = "Path to entities.md file")]
         [string]$EntitiesFile
     )
@@ -121,6 +125,11 @@ function Set-Player {
                 }
             }
         }
+    }
+
+    if ($PSBoundParameters.ContainsKey('Status')) {
+        $DateStr = (Get-Date).ToString('yyyy-MM')
+        $ChildEnd = Set-EntityTag -Lines $Lines -ChildrenStart $Target.ChildrenStart -ChildrenEnd $ChildEnd -TagName 'status' -Value "$Status ($DateStr`:)"
     }
 
     # Write with ShouldProcess
