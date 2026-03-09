@@ -12,6 +12,8 @@
     not yet implemented).
 #>
 
+. "$script:ModuleRoot/private/reporting-helpers.ps1"
+
 function Get-NotificationLog {
     <#
         .SYNOPSIS
@@ -39,64 +41,56 @@ function Get-NotificationLog {
         [object[]]$Entities
     )
 
-    if (-not $Sessions) {
-        $FetchArgs = @{}
-        if ($MinDate) { $FetchArgs['MinDate'] = $MinDate }
-        if ($MaxDate) { $FetchArgs['MaxDate'] = $MaxDate }
-        if ($Entities) { $FetchArgs['Entities'] = $Entities }
-        $Sessions = Get-Session @FetchArgs
-    }
+    $ExtraFetch = @{}
+    if ($Entities) { $ExtraFetch['Entities'] = $Entities }
+    $Sessions = Get-SessionsForReport -Sessions $Sessions -MinDate $MinDate -MaxDate $MaxDate -ExtraFetchArgs $ExtraFetch
+
+    $EntryArgs = @{ Sessions = $Sessions; DirectiveName = 'Intel' }
+    if ($MinDate) { $EntryArgs['MinDate'] = $MinDate }
+    if ($MaxDate) { $EntryArgs['MaxDate'] = $MaxDate }
+    $Entries = Get-SessionDirectiveEntries @EntryArgs
 
     $Report = [System.Collections.Generic.List[object]]::new()
 
-    foreach ($Session in $Sessions) {
-        if (-not $Session.Intel -or $Session.Intel.Count -eq 0) { continue }
-        if ($null -eq $Session.Date) { continue }
+    foreach ($E in $Entries) {
+        $Intel = $E.Directive
 
-        # Date range filtering
-        if ($MinDate -and $Session.Date -lt $MinDate) { continue }
-        if ($MaxDate -and $Session.Date -gt $MaxDate) { continue }
+        # Directive filter
+        if ($Directive -and -not [string]::Equals($Intel.Directive, $Directive, [System.StringComparison]::OrdinalIgnoreCase)) {
+            continue
+        }
 
-        $NarratorName = if ($Session.Narrator) { $Session.Narrator.Name } else { $null }
+        # Resolve recipient names
+        $RecipientNames = @()
+        if ($Intel.Recipients) {
+            $RecipientNames = @($Intel.Recipients | ForEach-Object { $_.Name })
+        }
 
-        foreach ($Intel in $Session.Intel) {
-            # Directive filter
-            if ($Directive -and -not [string]::Equals($Intel.Directive, $Directive, [System.StringComparison]::OrdinalIgnoreCase)) {
-                continue
-            }
-
-            # Resolve recipient names
-            $RecipientNames = @()
-            if ($Intel.Recipients) {
-                $RecipientNames = @($Intel.Recipients | ForEach-Object { $_.Name })
-            }
-
-            # Target filter: match against TargetName or any recipient
-            if ($Target) {
-                $TargetMatch = [string]::Equals($Intel.TargetName, $Target, [System.StringComparison]::OrdinalIgnoreCase)
-                if (-not $TargetMatch) {
-                    $TargetMatch = $false
-                    foreach ($RName in $RecipientNames) {
-                        if ([string]::Equals($RName, $Target, [System.StringComparison]::OrdinalIgnoreCase)) {
-                            $TargetMatch = $true
-                            break
-                        }
+        # Target filter: match against TargetName or any recipient
+        if ($Target) {
+            $TargetMatch = [string]::Equals($Intel.TargetName, $Target, [System.StringComparison]::OrdinalIgnoreCase)
+            if (-not $TargetMatch) {
+                $TargetMatch = $false
+                foreach ($RName in $RecipientNames) {
+                    if ([string]::Equals($RName, $Target, [System.StringComparison]::OrdinalIgnoreCase)) {
+                        $TargetMatch = $true
+                        break
                     }
                 }
-                if (-not $TargetMatch) { continue }
             }
-
-            $Report.Add([PSCustomObject]@{
-                Date           = $Session.Date
-                SessionTitle   = $Session.Title
-                Narrator       = $NarratorName
-                Directive      = $Intel.Directive
-                TargetName     = $Intel.TargetName
-                Message        = $Intel.Message
-                RecipientCount = $RecipientNames.Count
-                Recipients     = $RecipientNames
-            })
+            if (-not $TargetMatch) { continue }
         }
+
+        $Report.Add([PSCustomObject]@{
+            Date           = $E.Session.Date
+            SessionTitle   = $E.Session.Title
+            Narrator       = $E.Session.Narrator
+            Directive      = $Intel.Directive
+            TargetName     = $Intel.TargetName
+            Message        = $Intel.Message
+            RecipientCount = $RecipientNames.Count
+            Recipients     = $RecipientNames
+        })
     }
 
     # Sort chronologically

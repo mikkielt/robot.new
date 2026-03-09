@@ -11,6 +11,8 @@
 BeforeAll {
     . "$PSScriptRoot/TestHelpers.ps1"
     Import-RobotModule
+    . (Join-Path $script:ModuleRoot 'private' 'temporal-helpers.ps1')
+    . (Join-Path $script:ModuleRoot 'private' 'session-parsehelpers.ps1')
     . (Join-Path $script:ModuleRoot 'private' 'session-hashhelpers.ps1')
     . (Join-Path $script:ModuleRoot 'private' 'admin-config.ps1')
     . (Join-Path $script:ModuleRoot 'public' 'workflow' 'set-sessionhash.ps1')

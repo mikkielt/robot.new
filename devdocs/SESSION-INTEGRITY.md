@@ -320,9 +320,9 @@ File selection logic is identical to `Set-SessionHash` (section 9.2).
 
 | Variable | Pattern | Purpose |
 |---|---|---|
-| `$script:IntegrityPUSectionPattern` | `^\s*[-\*]\s+@?[Pp][Uu]\s*:` | Detect `@PU:` or `PU:` section markers |
+| `$script:PUSectionPattern` | `^\s*[-\*]\s+@?[Pp][Uu]\s*:` | Detect `@PU:` or `PU:` section markers (canonical: `session-parsehelpers.ps1`) |
 | `$script:DateLineLikePattern` | `^\d{4}-\d{2}-\d{2}` | Detect date-like lines for format anomaly check |
-| `$script:IntegrityDateRegex` | `\b(\d{4}-\d{2}-\d{2})(?:/(\d{2}))?\b` | Extract and validate dates from headers |
+| `$script:SessionDatePattern` | `\b(\d{4}-\d{2}-\d{2})(?:/(\d{2}))?\b` | Extract and validate dates from headers (canonical: `temporal-helpers.ps1`) |
 
 ### 10.5 Format Anomaly Detection
 
@@ -358,9 +358,9 @@ Only bare date-like lines at column 0 without `### ` prefix are flagged.
 |---|---|---|
 | `$script:WSPattern` | `session-hashhelpers.ps1` | Precompiled `\s+` regex for whitespace stripping |
 | `$script:UTF8NoBOM` | `session-hashhelpers.ps1` | Shared `UTF8Encoding($false)` instance |
-| `$script:IntegrityPUSectionPattern` | `test-sessionintegrity.ps1` | Precompiled PU section marker pattern |
+| `$script:PUSectionPattern` | `session-parsehelpers.ps1` | Precompiled PU section marker pattern (shared) |
 | `$script:DateLineLikePattern` | `test-sessionintegrity.ps1` | Precompiled date-like line pattern |
-| `$script:IntegrityDateRegex` | `test-sessionintegrity.ps1` | Precompiled date extraction pattern |
+| `$script:SessionDatePattern` | `temporal-helpers.ps1` | Precompiled date extraction pattern (shared) |
 
 ### 11.2 Dot-Source Loading
 

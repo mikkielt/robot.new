@@ -18,6 +18,7 @@ BeforeAll {
     . (Join-Path $script:ModuleRoot 'public' 'get-nameindex.ps1')
     . (Join-Path $script:ModuleRoot 'public' 'resolve' 'resolve-narrator.ps1')
     . (Join-Path $script:ModuleRoot 'public' 'session' 'get-session.ps1')
+    . (Join-Path $script:ModuleRoot 'private' 'reporting-helpers.ps1')
     . (Join-Path $script:ModuleRoot 'public' 'reporting' 'get-notificationlog.ps1')
 }
 

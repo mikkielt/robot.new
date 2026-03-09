@@ -133,7 +133,10 @@ function Resolve-Name {
         [System.Collections.Generic.Dictionary[string, System.Collections.Generic.List[string]]]$StemIndex,
 
         [Parameter(HelpMessage = "BK-tree from Get-NameIndex for O(log N) fuzzy matching")]
-        [hashtable]$BKTree
+        [hashtable]$BKTree,
+
+        [Parameter(HelpMessage = "Skip Stage 3 fuzzy/Levenshtein matching to avoid false positives")]
+        [switch]$NoFuzzy
     )
 
     # Build index if not provided - includes both players and entities
@@ -204,7 +207,12 @@ function Resolve-Name {
         }
     }
 
-    # Stage 3: Levenshtein fuzzy match
+    # Stage 3: Levenshtein fuzzy match (skipped when -NoFuzzy is set)
+    if ($NoFuzzy) {
+        if ($Cache) { $Cache[$CacheKey] = [System.DBNull]::Value }
+        return $null
+    }
+
     $BestOwner    = $null
     $BestDistance = [int]::MaxValue
 

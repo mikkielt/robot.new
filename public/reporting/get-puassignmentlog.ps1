@@ -12,11 +12,8 @@
 
 . "$script:ModuleRoot/private/admin-state.ps1"
 
-# Precompiled pattern for timestamp lines: "- 2025-06-15 14:30 (UTC+01:00):"
-$script:TimestampLinePattern = [regex]::new(
-    '^\s*-\s+(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2})\s+\(([^)]+)\):\s*$',
-    [System.Text.RegularExpressions.RegexOptions]::Compiled
-)
+# $script:AdminHistoryTimestampPattern — canonical definition in private/admin-state.ps1
+# (loaded via the dot-source above)
 
 function Get-PUAssignmentLog {
     <#
@@ -63,7 +60,7 @@ function Get-PUAssignmentLog {
 
     foreach ($Line in $Lines) {
         # Check for timestamp line
-        $TsMatch = $script:TimestampLinePattern.Match($Line)
+        $TsMatch = $script:AdminHistoryTimestampPattern.Match($Line)
         if ($TsMatch.Success) {
             # Flush previous entry
             if ($null -ne $CurrentTimestamp -and $null -ne $CurrentHeaders) {

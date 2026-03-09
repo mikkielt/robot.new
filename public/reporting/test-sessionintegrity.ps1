@@ -26,24 +26,19 @@
     Dot-sources:
     - private/session-hashhelpers.ps1 (hashing primitives)
     - private/admin-config.ps1 (ResDir resolution)
+
+    Uses canonical patterns from other helpers (available via module scope):
+    - $script:SessionDatePattern from temporal-helpers.ps1
+    - $script:PUSectionPattern from session-parsehelpers.ps1
 #>
 
-# Precompiled PU section pattern (same as Test-PlayerCharacterPUAssignment)
-$script:IntegrityPUSectionPattern = [regex]::new(
-    '^\s*[-\*]\s+@?[Pp][Uu]\s*:',
-    [System.Text.RegularExpressions.RegexOptions]::Compiled
-)
+# $script:PUSectionPattern — canonical definition in private/session-parsehelpers.ps1
+# (available via module scope; loaded by get-session.ps1 at import time)
 
-# Precompiled date-like line pattern for format anomaly detection
+# Date-like line pattern for format anomaly detection
 # Matches lines starting with YYYY-MM-DD but NOT preceded by ### prefix
 $script:DateLineLikePattern = [regex]::new(
     '^\d{4}-\d{2}-\d{2}',
-    [System.Text.RegularExpressions.RegexOptions]::Compiled
-)
-
-# Date regex for header validation (same as Get-Session)
-$script:IntegrityDateRegex = [regex]::new(
-    '\b(\d{4}-\d{2}-\d{2})(?:/(\d{2}))?\b',
     [System.Text.RegularExpressions.RegexOptions]::Compiled
 )
 
@@ -208,7 +203,7 @@ function Test-SessionIntegrity {
                     if ($Section.Header.Level -ne 3) { continue }
 
                     $HeaderText = $Section.Header.Text
-                    $DateMatch = $script:IntegrityDateRegex.Match($HeaderText)
+                    $DateMatch = $script:SessionDatePattern.Match($HeaderText)
                     if (-not $DateMatch.Success) {
                         $MalformedHeaders.Add([PSCustomObject]@{
                             FilePath     = $FilePath
@@ -312,7 +307,7 @@ function Test-SessionIntegrity {
                         $PUMarkerCount = 0
 
                         foreach ($Line in $ContentLines) {
-                            if ($script:IntegrityPUSectionPattern.IsMatch($Line)) {
+                            if ($script:PUSectionPattern.IsMatch($Line)) {
                                 $PUMarkerCount++
                             }
                         }
@@ -380,7 +375,7 @@ function Test-SessionIntegrity {
             if ($Section.Header.Level -ne 3) { continue }
 
             $HeaderText = $Section.Header.Text
-            $DateMatch = $script:IntegrityDateRegex.Match($HeaderText)
+            $DateMatch = $script:SessionDatePattern.Match($HeaderText)
             if (-not $DateMatch.Success) {
                 $MalformedHeaders.Add([PSCustomObject]@{
                     FilePath     = $FilePath

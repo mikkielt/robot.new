@@ -10,6 +10,8 @@
     Provides a "what happened in the world" audit view for coordinators.
 #>
 
+. "$script:ModuleRoot/private/reporting-helpers.ps1"
+
 function Get-ChangeLog {
     <#
         .SYNOPSIS
@@ -33,52 +35,40 @@ function Get-ChangeLog {
         [object[]]$Sessions
     )
 
-    if (-not $Sessions) {
-        $FetchArgs = @{}
-        if ($MinDate) { $FetchArgs['MinDate'] = $MinDate }
-        if ($MaxDate) { $FetchArgs['MaxDate'] = $MaxDate }
-        $Sessions = Get-Session @FetchArgs
+    $Sessions = Get-SessionsForReport -Sessions $Sessions -MinDate $MinDate -MaxDate $MaxDate
+
+    $EntryArgs = @{ Sessions = $Sessions; DirectiveName = 'Changes' }
+    if ($MinDate) { $EntryArgs['MinDate'] = $MinDate }
+    if ($MaxDate) { $EntryArgs['MaxDate'] = $MaxDate }
+    if ($EntityName) {
+        $EntryArgs['TargetName']     = $EntityName
+        $EntryArgs['TargetProperty'] = 'EntityName'
     }
+    $Entries = Get-SessionDirectiveEntries @EntryArgs
 
     $Report = [System.Collections.Generic.List[object]]::new()
 
-    foreach ($Session in $Sessions) {
-        if (-not $Session.Changes -or $Session.Changes.Count -eq 0) { continue }
-        if ($null -eq $Session.Date) { continue }
+    foreach ($E in $Entries) {
+        foreach ($TagEntry in $E.Directive.Tags) {
+            $TagName = $TagEntry.Tag
+            # Strip leading '@' if present
+            if ($TagName.StartsWith('@')) {
+                $TagName = $TagName.Substring(1)
+            }
 
-        # Date range filtering (when sessions were pre-fetched without date args)
-        if ($MinDate -and $Session.Date -lt $MinDate) { continue }
-        if ($MaxDate -and $Session.Date -gt $MaxDate) { continue }
-
-        $NarratorName = if ($Session.Narrator) { $Session.Narrator.Name } else { $null }
-
-        foreach ($Change in $Session.Changes) {
-            # Entity name filter
-            if ($EntityName -and -not [string]::Equals($Change.EntityName, $EntityName, [System.StringComparison]::OrdinalIgnoreCase)) {
+            # Property filter
+            if ($Property -and -not [string]::Equals($TagName, $Property, [System.StringComparison]::OrdinalIgnoreCase)) {
                 continue
             }
 
-            foreach ($TagEntry in $Change.Tags) {
-                $TagName = $TagEntry.Tag
-                # Strip leading '@' if present
-                if ($TagName.StartsWith('@')) {
-                    $TagName = $TagName.Substring(1)
-                }
-
-                # Property filter
-                if ($Property -and -not [string]::Equals($TagName, $Property, [System.StringComparison]::OrdinalIgnoreCase)) {
-                    continue
-                }
-
-                $Report.Add([PSCustomObject]@{
-                    Date         = $Session.Date
-                    SessionTitle = $Session.Title
-                    Narrator     = $NarratorName
-                    EntityName   = $Change.EntityName
-                    Property     = $TagName
-                    Value        = $TagEntry.Value
-                })
-            }
+            $Report.Add([PSCustomObject]@{
+                Date         = $E.Session.Date
+                SessionTitle = $E.Session.Title
+                Narrator     = $E.Session.Narrator
+                EntityName   = $E.Directive.EntityName
+                Property     = $TagName
+                Value        = $TagEntry.Value
+            })
         }
     }
 

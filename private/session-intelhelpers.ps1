@@ -132,35 +132,7 @@ function Resolve-IntelTargets {
         $RecipientEntities = [System.Collections.Generic.List[object]]::new()
 
         foreach ($TName in $TargetNames) {
-            # Resolve via name index (stages 1, 2, 2b - no fuzzy)
-            $Resolved = $null
-
-            if ($Index.ContainsKey($TName)) {
-                $IdxEntry = $Index[$TName]
-                if (-not $IdxEntry.Ambiguous) { $Resolved = $IdxEntry.Owner }
-            }
-
-            if (-not $Resolved) {
-                $Stem = Get-DeclensionStem -Text $TName
-                if ($StemIndex -and $StemIndex.ContainsKey($Stem)) {
-                    foreach ($TokenKey in $StemIndex[$Stem]) {
-                        if ($Index.ContainsKey($TokenKey)) {
-                            $IdxEntry = $Index[$TokenKey]
-                            if (-not $IdxEntry.Ambiguous) { $Resolved = $IdxEntry.Owner; break }
-                        }
-                    }
-                }
-            }
-
-            if (-not $Resolved) {
-                $Candidates = Get-StemAlternationCandidates -Text $TName
-                foreach ($Candidate in $Candidates) {
-                    if ($Index.ContainsKey($Candidate)) {
-                        $IdxEntry = $Index[$Candidate]
-                        if (-not $IdxEntry.Ambiguous) { $Resolved = $IdxEntry.Owner; break }
-                    }
-                }
-            }
+            $Resolved = Resolve-Name -Query $TName -Index $Index -StemIndex $StemIndex -Cache $ResolveCache -NoFuzzy
 
             if (-not $Resolved) {
                 Write-RobotWarning "[WARN @Intel] Unresolved target '$TName'"
@@ -402,58 +374,14 @@ function Get-SessionMentions {
     )
 
     foreach ($Token in $CandidateTokens) {
-        $CacheKey = $Token
-        if ($ResolveCache.ContainsKey($CacheKey)) {
-            $Cached = $ResolveCache[$CacheKey]
-            if ($Cached -is [System.DBNull]) { continue }
-            if (-not $ResolvedEntities.ContainsKey($Cached.Name)) {
-                $ResolvedEntities[$Cached.Name] = [PSCustomObject]@{
-                    Owner     = $Cached
-                    OwnerType = if ($Cached.PSObject.Properties['Type']) { $Cached.Type } else { 'Player' }
-                }
+        $Resolved = Resolve-Name -Query $Token -Index $Index -StemIndex $StemIndex -Cache $ResolveCache -NoFuzzy
+
+        if ($null -ne $Resolved -and -not $ResolvedEntities.ContainsKey($Resolved.Name)) {
+            $OwnerType = if ($Resolved.PSObject.Properties['Type']) { $Resolved.Type } else { 'Player' }
+            $ResolvedEntities[$Resolved.Name] = [PSCustomObject]@{
+                Owner     = $Resolved
+                OwnerType = $OwnerType
             }
-            continue
-        }
-
-        $Resolved = $null
-
-        # Stage 1: Exact index lookup
-        if ($Index.ContainsKey($Token)) {
-            $Entry = $Index[$Token]
-            if (-not $Entry.Ambiguous) { $Resolved = $Entry }
-        }
-
-        # Stage 2: Declension-stripped match
-        if (-not $Resolved) {
-            $Stem = Get-DeclensionStem -Text $Token
-            if ($StemIndex -and $StemIndex.ContainsKey($Stem)) {
-                foreach ($TokenKey in $StemIndex[$Stem]) {
-                    if ($Index.ContainsKey($TokenKey)) {
-                        $Entry = $Index[$TokenKey]
-                        if (-not $Entry.Ambiguous) { $Resolved = $Entry; break }
-                    }
-                }
-            }
-        }
-
-        # Stage 2b: Stem alternation
-        if (-not $Resolved) {
-            $Candidates = Get-StemAlternationCandidates -Text $Token
-            foreach ($Candidate in $Candidates) {
-                if ($Index.ContainsKey($Candidate)) {
-                    $Entry = $Index[$Candidate]
-                    if (-not $Entry.Ambiguous) { $Resolved = $Entry; break }
-                }
-            }
-        }
-
-        if ($Resolved) {
-            $ResolveCache[$CacheKey] = $Resolved.Owner
-            if (-not $ResolvedEntities.ContainsKey($Resolved.Owner.Name)) {
-                $ResolvedEntities[$Resolved.Owner.Name] = $Resolved
-            }
-        } else {
-            $ResolveCache[$CacheKey] = [System.DBNull]::Value
         }
     }
 

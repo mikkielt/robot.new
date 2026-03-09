@@ -7,12 +7,13 @@
     Test-CurrencyReconciliation) and Get-EntityState (@Transfer expansion).
 
     Contains:
-    - $CurrencyDenominations:       canonical denomination definitions with exchange rates
-    - ConvertTo-CurrencyBaseUnit:    convert any denomination amount to Kogi (base unit)
-    - ConvertFrom-CurrencyBaseUnit:  convert Kogi amount to highest-denomination breakdown
-    - Resolve-CurrencyDenomination:  resolve colloquial/stem denomination name to canonical
-    - Test-IsCurrencyEntity:         check if an entity is a currency entity
-    - Find-CurrencyEntity:           find a currency entity by denomination and owner
+    - $CurrencyDenominations:          canonical denomination definitions with exchange rates
+    - ConvertTo-CurrencyBaseUnit:      convert any denomination amount to Kogi (base unit)
+    - ConvertFrom-CurrencyBaseUnit:    convert Kogi amount to highest-denomination breakdown
+    - Resolve-CurrencyDenomination:    resolve colloquial/stem denomination name to canonical
+    - Test-IsCurrencyEntity:           check if an entity is a currency entity
+    - Find-CurrencyEntity:             find a currency entity by denomination and owner
+    - Get-CurrencyEntitiesFiltered:    identify, filter by status, and enrich currency entities
 #>
 
 # Canonical denomination definitions
@@ -186,4 +187,53 @@ function Find-CurrencyEntity {
     }
 
     return $null
+}
+
+function Get-CurrencyEntitiesFiltered {
+    <#
+        .SYNOPSIS
+        Identifies currency entities from a collection and returns enriched objects
+        with resolved denomination, parsed quantity, and extracted properties.
+    #>
+    param(
+        [Parameter(Mandatory)]
+        [AllowEmptyCollection()]
+        [object[]]$Entities,
+
+        [switch]$IncludeInactive,
+
+        [switch]$IncludeDeleted
+    )
+
+    $Result = [System.Collections.Generic.List[object]]::new()
+
+    foreach ($Entity in $Entities) {
+        if (-not (Test-IsCurrencyEntity -Entity $Entity)) { continue }
+
+        $Status = if ($Entity.Status) { $Entity.Status } else { 'Aktywny' }
+        if ($Status -eq 'Usunięty' -and -not $IncludeDeleted) { continue }
+        if ($Status -eq 'Nieaktywny' -and -not $IncludeInactive) { continue }
+
+        $EntityDenom = $null
+        foreach ($GN in $Entity.GenericNames) {
+            $Resolved = Resolve-CurrencyDenomination -Name $GN
+            if ($Resolved) { $EntityDenom = $Resolved; break }
+        }
+        if (-not $EntityDenom) { continue }
+
+        $QtyStr = if ($Entity.Quantity) { $Entity.Quantity } else { '0' }
+        [int]$QtyInt = 0
+        [void][int]::TryParse($QtyStr, [ref]$QtyInt)
+
+        $Result.Add([PSCustomObject]@{
+            Entity       = $Entity
+            Denomination = $EntityDenom
+            Owner        = $Entity.Owner
+            Location     = $Entity.Location
+            Quantity     = $QtyInt
+            Status       = $Status
+        })
+    }
+
+    return @($Result)
 }

@@ -66,20 +66,8 @@ function Get-SessionGraphLeaderboard {
         $Entry = $Index[$Header]
 
         # Date filter
-        if ($MinDate -or $MaxDate) {
-            $SessionDate = $null
-            if ($Entry.ContainsKey('Date') -and $Entry['Date']) {
-                [datetime]$Parsed = [datetime]::MinValue
-                if ([datetime]::TryParseExact($Entry['Date'], 'yyyy-MM-dd',
-                    [System.Globalization.CultureInfo]::InvariantCulture,
-                    [System.Globalization.DateTimeStyles]::None,
-                    [ref]$Parsed)) {
-                    $SessionDate = $Parsed
-                }
-            }
-            if ($MinDate -and ($null -eq $SessionDate -or $SessionDate -lt $MinDate)) { continue }
-            if ($MaxDate -and ($null -eq $SessionDate -or $SessionDate -gt $MaxDate)) { continue }
-        }
+        if (($MinDate -or $MaxDate) -and
+            -not (Test-GraphEntryDateInRange -Entry $Entry -MinDate $MinDate -MaxDate $MaxDate)) { continue }
 
         if (-not $Entry.ContainsKey('Participants') -or -not $Entry['Participants']) { continue }
 

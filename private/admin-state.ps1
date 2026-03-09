@@ -11,6 +11,11 @@
     - Get-AdminHistoryEntries: reads processed session headers from a state file
     - Add-AdminHistoryEntry:  appends new entries with timestamp to a state file
 
+    Module-level data:
+    - $HistoryEntryPattern:           indented history entry line "    - ### ..."
+    - $MultiSpacePattern:             whitespace collapse pattern
+    - $AdminHistoryTimestampPattern:  timestamp lines "- YYYY-MM-dd HH:mm (timezone):"
+
     State files (`.robot/res/*.md`) use an append-only format:
 
         - YYYY-MM-dd HH:mm (timezone):
@@ -27,6 +32,13 @@ $script:HistoryEntryPattern = [regex]::new('^\s+-\s+###\s+(.+)$', [System.Text.R
 
 # Precompiled pattern for collapsing multiple whitespace
 $script:MultiSpacePattern = [regex]::new('\s{2,}', [System.Text.RegularExpressions.RegexOptions]::Compiled)
+
+# Admin history timestamp line pattern - matches "- YYYY-MM-dd HH:mm (timezone):" entries
+# in pu-sessions.md. Used by Get-PUAssignmentLog and Get-VotingEligibility.
+$script:AdminHistoryTimestampPattern = [regex]::new(
+    '^\s*-\s+(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2})\s+\(([^)]+)\)\s*:\s*$',
+    [System.Text.RegularExpressions.RegexOptions]::Compiled
+)
 
 # Reads all processed session headers from a state file.
 # Returns a HashSet[string] (OrdinalIgnoreCase) of normalized header strings.

@@ -15,9 +15,10 @@
     - Get-AllActiveValues:        returns all active entries from a history list as string[]
 
     Module-level data:
-    - $ValidityPattern:    precompiled regex for parsing validity range syntax
-    - $SeasonKeywords:     HashSet of valid Polish season keywords
-    - $DateRangePattern:   precompiled regex for detecting date range components
+    - $ValidityPattern:      precompiled regex for parsing validity range syntax
+    - $SeasonKeywords:       HashSet of valid Polish season keywords
+    - $DateRangePattern:     precompiled regex for detecting date range components
+    - $SessionDatePattern:   precompiled regex for extracting session dates (YYYY-MM-DD with optional /DD range)
 
     These helpers are used by Get-Entity, Get-EntityState, Get-Session (via
     Resolve-IntelTargets), and various reporting commands. They are dot-sourced
@@ -30,6 +31,10 @@ $script:ValidityPattern = [regex]::new('^(.*?)(?:\s*\(([^)]+)\))?$', [System.Tex
 
 # Date range component detector - matches start:end patterns
 $script:DateRangePattern = [regex]::new('^([^:]*):(.*)$', [System.Text.RegularExpressions.RegexOptions]::Compiled)
+
+# Session date pattern - matches YYYY-MM-DD with optional /DD range suffix in session headers
+# Used by Get-Session, Set-Session (via session-decomposehelpers), and Test-SessionIntegrity
+$script:SessionDatePattern = [regex]::new('\b(\d{4}-\d{2}-\d{2})(?:/(\d{2}))?\b', [System.Text.RegularExpressions.RegexOptions]::Compiled)
 
 # Valid Polish season keywords (case-insensitive matching via OrdinalIgnoreCase)
 $script:SeasonKeywords = [System.Collections.Generic.HashSet[string]]::new(

@@ -11,6 +11,7 @@
     - Find-CharacterSection:       locates **Header:** section boundaries in character file lines
     - Read-CharacterFile:          parses an entire character file into a structured object
     - Write-CharacterFileSection:  replaces content of a single bold-header section in-place
+    - Write-CharacterFile:         writes character file to disk (UTF-8 no BOM) with plugin hooks
 
     Reputation helpers (Read-ReputationTier, Format-ReputationSection) are in
     charfile-reputation.ps1, dot-sourced below.
@@ -355,4 +356,36 @@ function Write-CharacterFileSection {
     }
     # Ensure blank line after content (section separator)
     $Lines.Insert($InsertIdx, '')
+}
+
+# Helper: write character file to disk (UTF-8 no BOM) with plugin hooks.
+# Mirrors Write-EntityFile pattern from entity-writehelpers.ps1.
+function Write-CharacterFile {
+    param(
+        [Parameter(Mandatory)]
+        [string]$Path,
+
+        [Parameter(Mandatory)]
+        [string]$Content
+    )
+
+    $HasHooks = Get-Command 'Invoke-PluginHook' -ErrorAction SilentlyContinue
+
+    if ($HasHooks) {
+        Invoke-PluginHook -Operation 'Write-CharacterFile' -Phase 'BeforeWrite' -Context @{
+            Operation = 'Write-CharacterFile'
+            Path      = $Path
+            Content   = $Content
+        }
+    }
+
+    $UTF8NoBOM = [System.Text.UTF8Encoding]::new($false)
+    [System.IO.File]::WriteAllText($Path, $Content, $UTF8NoBOM)
+
+    if ($HasHooks) {
+        Invoke-PluginHook -Operation 'Write-CharacterFile' -Phase 'AfterWrite' -Context @{
+            Operation = 'Write-CharacterFile'
+            Path      = $Path
+        }
+    }
 }

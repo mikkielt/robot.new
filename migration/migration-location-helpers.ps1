@@ -1,6 +1,6 @@
 <#
     .SYNOPSIS
-    Self-contained location name helpers for migration Phase 5.
+    Location name helpers for migration Phase 5.
 
     .DESCRIPTION
     Provides two functions for inferring parent-child hierarchy from Margonem
@@ -9,51 +9,15 @@
     - Get-MapBaseNameDeterministic: 9-pattern iterative stripping → single base name
     - Get-MapBaseNameCandidates:    progressive word removal → candidate array
 
-    These are copied from the margoworld plugin and core location-helpers.ps1
-    respectively, so that migration does not depend on optional plugins.
+    Regex patterns are imported from the canonical source in
+    private/location-helpers.ps1 so they stay in sync across migration,
+    plugin, and core code.
 
     Dot-sourced by phase3-location-import.ps1.
 #>
 
-# ── Precompiled regex patterns (copied from margoworld-helpers.ps1) ─────────
-
-$script:MLDifficultyPattern = [regex]::new(
-    '\s*\(poziom:\s*[^)]+\)\s*$',
-    [System.Text.RegularExpressions.RegexOptions]::Compiled -bor
-    [System.Text.RegularExpressions.RegexOptions]::IgnoreCase)
-$script:MLFloorPattern = [regex]::new(
-    '\s+p\.\d+$',
-    [System.Text.RegularExpressions.RegexOptions]::Compiled)
-$script:MLRoomSuffixPattern = [regex]::new(
-    '\s+s\.\d+$',
-    [System.Text.RegularExpressions.RegexOptions]::Compiled)
-$script:MLSalaPattern = [regex]::new(
-    '\s+-\s+sala\s+\d+$',
-    [System.Text.RegularExpressions.RegexOptions]::Compiled -bor
-    [System.Text.RegularExpressions.RegexOptions]::IgnoreCase)
-$script:MLNamedSalaPattern = [regex]::new(
-    '\s+-\s+Sala\s+.+$',
-    [System.Text.RegularExpressions.RegexOptions]::Compiled)
-$script:MLDirectionPattern = [regex]::new(
-    '\s+-\s+(północ|południe|wschód|zachód|góra|dół)$',
-    [System.Text.RegularExpressions.RegexOptions]::Compiled -bor
-    [System.Text.RegularExpressions.RegexOptions]::IgnoreCase)
-$script:MLPietroPattern = [regex]::new(
-    '\s+-\s+piętro(\s+\d+)?$',
-    [System.Text.RegularExpressions.RegexOptions]::Compiled -bor
-    [System.Text.RegularExpressions.RegexOptions]::IgnoreCase)
-$script:MLPiwnicaPattern = [regex]::new(
-    '\s+-\s+piwnica(\s+p\.\d+)?$',
-    [System.Text.RegularExpressions.RegexOptions]::Compiled -bor
-    [System.Text.RegularExpressions.RegexOptions]::IgnoreCase)
-$script:MLNamedSubareaPattern = [regex]::new(
-    '\s+-\s+[a-ząćęłńóśżź].+$',
-    [System.Text.RegularExpressions.RegexOptions]::Compiled)
-
-# Precompiled pattern for candidate generation (difficulty pre-strip)
-$script:MLCandidateDifficultyPattern = [regex]::new(
-    '\s*\(poziom:\s*[^)]+\)\s*$',
-    [System.Text.RegularExpressions.RegexOptions]::Compiled)
+# ── Import canonical location regex patterns ────────────────────────────────
+. "$PSScriptRoot/../private/location-helpers.ps1"
 
 # ── Get-MapBaseNameDeterministic ────────────────────────────────────────────
 
@@ -81,15 +45,15 @@ function Get-MapBaseNameDeterministic {
     $Result = $Name
     do {
         $Prev = $Result
-        $Result = $script:MLDifficultyPattern.Replace($Result, '')
-        $Result = $script:MLFloorPattern.Replace($Result, '')
-        $Result = $script:MLRoomSuffixPattern.Replace($Result, '')
-        $Result = $script:MLSalaPattern.Replace($Result, '')
-        $Result = $script:MLNamedSalaPattern.Replace($Result, '')
-        $Result = $script:MLDirectionPattern.Replace($Result, '')
-        $Result = $script:MLPietroPattern.Replace($Result, '')
-        $Result = $script:MLPiwnicaPattern.Replace($Result, '')
-        $Result = $script:MLNamedSubareaPattern.Replace($Result, '')
+        $Result = $script:LocDifficultyPattern.Replace($Result, '')
+        $Result = $script:LocFloorPattern.Replace($Result, '')
+        $Result = $script:LocRoomSuffixPattern.Replace($Result, '')
+        $Result = $script:LocSalaPattern.Replace($Result, '')
+        $Result = $script:LocNamedSalaPattern.Replace($Result, '')
+        $Result = $script:LocDirectionPattern.Replace($Result, '')
+        $Result = $script:LocPietroPattern.Replace($Result, '')
+        $Result = $script:LocPiwnicaPattern.Replace($Result, '')
+        $Result = $script:LocNamedSubareaPattern.Replace($Result, '')
     } while ($Result -ne $Prev)
 
     return $Result
@@ -123,7 +87,7 @@ function Get-MapBaseNameCandidates {
     )
 
     # Pre-strip difficulty parenthetical
-    $Clean = $script:MLCandidateDifficultyPattern.Replace($Name, '').Trim()
+    $Clean = $script:LocDifficultyPattern.Replace($Name, '').Trim()
     if ($Clean.Length -eq 0) { return [string[]]@() }
 
     $Candidates = [System.Collections.Generic.List[string]]::new()

@@ -39,6 +39,7 @@
 #>
 
 # Dot-source helpers
+. "$script:ModuleRoot/private/temporal-helpers.ps1"
 . "$script:ModuleRoot/private/session-parsehelpers.ps1"
 . "$script:ModuleRoot/private/session-intelhelpers.ps1"
 
@@ -381,7 +382,7 @@ function Get-Session {
 
     # Precompile regex patterns
 
-    $DateRegex      = [regex]::new('\b(\d{4}-\d{2}-\d{2})(?:/(\d{2}))?\b')
+    $DateRegex      = $script:SessionDatePattern
     $LocItalicRegex = [regex]::new('\*Lokalizacj[ae]?:\s*(.+?)\*')
     $PURegex        = [regex]::new('^(.+?):\s*([\d,\.]+)')
     $UrlRegex       = [regex]::new('(https?://\S+)')

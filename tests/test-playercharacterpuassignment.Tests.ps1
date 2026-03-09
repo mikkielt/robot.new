@@ -12,6 +12,7 @@ BeforeAll {
     . "$PSScriptRoot/TestHelpers.ps1"
     Import-RobotModule
     Mock Get-RepoRoot { return $script:FixturesRoot }
+    . (Join-Path $script:ModuleRoot 'private' 'session-parsehelpers.ps1')
     . (Join-Path $script:ModuleRoot 'public' 'workflow' 'invoke-playercharacterpuassignment.ps1')
     . (Join-Path $script:ModuleRoot 'public' 'reporting' 'test-playercharacterpuassignment.ps1')
 }

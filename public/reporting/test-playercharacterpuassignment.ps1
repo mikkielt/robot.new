@@ -35,8 +35,8 @@
 # Precompiled pattern matching PU-like child lines: "  - CharName: 0,3"
 $script:PULikePattern = [regex]::new('^\s+[-\*]\s+(.+?):\s*([\d,\.]+)\s*$', [System.Text.RegularExpressions.RegexOptions]::Compiled)
 
-# Pattern matching PU section headers in content: "- PU:" or "- @PU:"
-$script:PUSectionPattern = [regex]::new('^\s*[-\*]\s+@?[Pp][Uu]\s*:', [System.Text.RegularExpressions.RegexOptions]::Compiled)
+# $script:PUSectionPattern — canonical definition in private/session-parsehelpers.ps1
+# (available via module scope; loaded by get-session.ps1 at import time)
 
 function Test-PlayerCharacterPUAssignment {
     <#

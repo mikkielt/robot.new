@@ -30,11 +30,8 @@
 . "$script:ModuleRoot/private/admin-state.ps1"
 . "$script:ModuleRoot/private/admin-config.ps1"
 
-# Precompiled pattern for pu-sessions.md timestamp lines: "- YYYY-MM-dd HH:mm (timezone):"
-$script:HistoryTimestampPattern = [regex]::new(
-    '^\s*-\s+(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2})\s+\(([^)]+)\)\s*:\s*$',
-    [System.Text.RegularExpressions.RegexOptions]::Compiled
-)
+# $script:AdminHistoryTimestampPattern — canonical definition in private/admin-state.ps1
+# (loaded via the dot-source above)
 
 # Precompiled pattern for session header lines: "    - ### header"
 $script:HistorySessionPattern = [regex]::new(
@@ -91,7 +88,7 @@ function Get-VotingEligibility {
     $CurrentHeaders = $null
 
     foreach ($Line in $Lines) {
-        $TsMatch = $script:HistoryTimestampPattern.Match($Line)
+        $TsMatch = $script:AdminHistoryTimestampPattern.Match($Line)
         if ($TsMatch.Success) {
             # Save previous block if any
             if ($null -ne $CurrentTimestamp -and $CurrentHeaders.Count -gt 0) {

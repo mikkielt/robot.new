@@ -89,18 +89,8 @@ function Get-NarratorSessionProfile {
         if (-not $HeaderNarrator) { continue }
         if (-not [string]::Equals($HeaderNarrator, $NarratorName, [System.StringComparison]::OrdinalIgnoreCase)) { continue }
 
-        # Date filter
-        $SessionDate = $null
-        if ($Entry.ContainsKey('Date') -and $Entry['Date']) {
-            [datetime]$Parsed = [datetime]::MinValue
-            if ([datetime]::TryParseExact($Entry['Date'], 'yyyy-MM-dd',
-                [System.Globalization.CultureInfo]::InvariantCulture,
-                [System.Globalization.DateTimeStyles]::None,
-                [ref]$Parsed)) {
-                $SessionDate = $Parsed
-            }
-        }
-
+        # Date filter — needs parsed value for $Dates aggregation below
+        $SessionDate = ConvertFrom-GraphEntryDate -Entry $Entry
         if ($MinDate -and ($null -eq $SessionDate -or $SessionDate -lt $MinDate)) { continue }
         if ($MaxDate -and ($null -eq $SessionDate -or $SessionDate -gt $MaxDate)) { continue }
 

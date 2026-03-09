@@ -108,7 +108,9 @@ function Set-PlayerCharacter {
     try {
 
     if (-not $EntitiesFile) {
-        $EntitiesFile = [System.IO.Path]::Combine((Get-RepoRoot), '.robot.new', 'entities.md')
+        . "$script:ModuleRoot/private/admin-config.ps1"
+        $Config = Get-AdminConfig
+        $EntitiesFile = $Config.EntitiesFile
     }
 
     # Target 1: entities.md
@@ -215,10 +217,10 @@ function Set-PlayerCharacter {
             }
             if (-not $ItemExists) {
                 if ($PSCmdlet.ShouldProcess($Target.FilePath, "Set-PlayerCharacter: auto-create Przedmiot entity '$ItemName'")) {
-                    [void](Resolve-EntityTarget -FilePath $Target.FilePath `
+                    $ItemTarget = Resolve-EntityTarget -FilePath $Target.FilePath `
                         -EntityType 'Przedmiot' -EntityName $ItemName `
-                        -InitialTags ([ordered]@{ 'należy_do' = $CharacterName }))
-                    # Re-read after modification for next iteration
+                        -InitialTags ([ordered]@{ 'należy_do' = $CharacterName })
+                    Write-EntityFile -Path $ItemTarget.FilePath -Lines $ItemTarget.Lines -NL $ItemTarget.NL
                 }
             }
         }
@@ -305,8 +307,7 @@ function Set-PlayerCharacter {
         # Write character file with ShouldProcess
         if ($PSCmdlet.ShouldProcess($CharacterFile, "Set-PlayerCharacter: update character file '$CharacterName'")) {
             $CharContent = [string]::Join($CharData.NL, $CharLines)
-            $UTF8NoBOM = [System.Text.UTF8Encoding]::new($false)
-            [System.IO.File]::WriteAllText($CharacterFile, $CharContent, $UTF8NoBOM)
+            Write-CharacterFile -Path $CharacterFile -Content $CharContent
         }
     }
 

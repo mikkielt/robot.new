@@ -19,9 +19,16 @@
     - Get-SessionPlainTextLogs: scans raw content lines for "Logi: <url>" patterns
                                as a Gen1/Gen2 fallback
 
+    Module-level data:
+    - $PUSectionPattern:  precompiled regex matching PU section markers ("- PU:" or "- @PU:")
+
     These helpers are dot-sourced by get-session.ps1 and are not auto-loaded
     by the module loader.
 #>
+
+# PU section header pattern - matches "- PU:" or "- @PU:" list markers in session content.
+# Used by Test-PlayerCharacterPUAssignment and Test-SessionIntegrity for diagnostics.
+$script:PUSectionPattern = [regex]::new('^\s*[-\*]\s+@?[Pp][Uu]\s*:', [System.Text.RegularExpressions.RegexOptions]::Compiled)
 
 # Helper: extract title from session header
 # Strips the date portion and the trailing narrator part (last comma-delimited

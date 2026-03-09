@@ -26,7 +26,7 @@ function Find-SessionInFile {
         [datetime]$TargetDate
     )
 
-    $DateRegex = [regex]::new('\b(\d{4}-\d{2}-\d{2})(?:/(\d{2}))?\b')
+    $DateRegex = $script:SessionDatePattern
     $Results = [System.Collections.Generic.List[object]]::new()
 
     for ($i = 0; $i -lt $Lines.Count; $i++) {

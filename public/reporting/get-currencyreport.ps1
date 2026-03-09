@@ -68,82 +68,64 @@ function Get-CurrencyReport {
 
     $Report = [System.Collections.Generic.List[object]]::new()
 
-    foreach ($Entity in $Entities) {
-        if (-not (Test-IsCurrencyEntity -Entity $Entity)) { continue }
+    $CurrencyItems = Get-CurrencyEntitiesFiltered -Entities $Entities -IncludeInactive:$IncludeInactive
 
-        # Status filter
-        $Status = if ($Entity.Status) { $Entity.Status } else { 'Aktywny' }
-        if ($Status -eq 'Usunięty') { continue }
-        if ($Status -eq 'Nieaktywny' -and -not $IncludeInactive) { continue }
-
+    foreach ($Item in $CurrencyItems) {
         # Denomination filter
-        $EntityDenom = $null
-        foreach ($GN in $Entity.GenericNames) {
-            $Resolved = Resolve-CurrencyDenomination -Name $GN
-            if ($Resolved) { $EntityDenom = $Resolved; break }
-        }
-        if (-not $EntityDenom) { continue }
-        if ($DenomFilter -and $EntityDenom.Name -ne $DenomFilter.Name) { continue }
+        if ($DenomFilter -and $Item.Denomination.Name -ne $DenomFilter.Name) { continue }
 
         # Owner filter
-        $EntityOwner = $Entity.Owner
-        $EntityLocation = $Entity.Location
         if ($Owner) {
-            if (-not $EntityOwner -or -not [string]::Equals($EntityOwner, $Owner, [System.StringComparison]::OrdinalIgnoreCase)) {
+            if (-not $Item.Owner -or -not [string]::Equals($Item.Owner, $Owner, [System.StringComparison]::OrdinalIgnoreCase)) {
                 continue
             }
         }
 
         # Determine owner type
-        $OwnerType = if ($EntityOwner) { 'Owner' } elseif ($EntityLocation) { 'Location' } else { 'Unowned' }
-
-        # Current balance
-        $CurrentQty = if ($Entity.Quantity) { $Entity.Quantity } else { '0' }
-        [int]$QtyInt = 0
-        [void][int]::TryParse($CurrentQty, [ref]$QtyInt)
+        $OwnerType = if ($Item.Owner) { 'Owner' } elseif ($Item.Location) { 'Location' } else { 'Unowned' }
 
         # Compute base unit value if requested
         $BaseUnitValue = $null
         if ($AsBaseUnit) {
-            $BaseUnitValue = $QtyInt * $EntityDenom.Multiplier
+            $BaseUnitValue = $Item.Quantity * $Item.Denomination.Multiplier
         }
 
         # Determine last change date from QuantityHistory
         $LastChangeDate = $null
-        if ($Entity.QuantityHistory -and $Entity.QuantityHistory.Count -gt 0) {
-            $LastEntry = $Entity.QuantityHistory[-1]
+        if ($Item.Entity.QuantityHistory -and $Item.Entity.QuantityHistory.Count -gt 0) {
+            $LastEntry = $Item.Entity.QuantityHistory[-1]
             $LastChangeDate = $LastEntry.ValidFrom
         }
 
         # Status flags
         $Warnings = [System.Collections.Generic.List[string]]::new()
-        if ($QtyInt -lt 0) {
+        if ($Item.Quantity -lt 0) {
             $Warnings.Add('NegativeBalance')
         }
         if ($LastChangeDate) {
             $StaleThreshold = if ($ActiveOn) { $ActiveOn.AddMonths(-3) } else { [datetime]::Now.AddMonths(-3) }
-            if ($LastChangeDate -lt $StaleThreshold -and $EntityOwner) {
+            if ($LastChangeDate -lt $StaleThreshold -and $Item.Owner) {
                 $Warnings.Add('StaleBalance')
             }
         }
 
         $ReportEntry = [PSCustomObject]@{
-            EntityName     = $Entity.Name
-            Denomination   = $EntityDenom.Name
-            DenomShort     = $EntityDenom.Short
-            Tier           = $EntityDenom.Tier
-            Owner          = $EntityOwner
-            Location       = $EntityLocation
+            EntityName     = $Item.Entity.Name
+            Denomination   = $Item.Denomination.Name
+            DenomShort     = $Item.Denomination.Short
+            Tier           = $Item.Denomination.Tier
+            Owner          = $Item.Owner
+            Location       = $Item.Location
             OwnerType      = $OwnerType
-            Balance        = $QtyInt
+            Balance        = $Item.Quantity
             BaseUnitValue  = $BaseUnitValue
-            Status         = $Status
+            Status         = $Item.Status
             LastChangeDate = $LastChangeDate
             Warnings       = $Warnings.ToArray()
         }
 
-        if ($ShowHistory -and $Entity.QuantityHistory) {
-            $ReportEntry | Add-Member -NotePropertyName 'History' -NotePropertyValue @($Entity.QuantityHistory)
+        if ($ShowHistory -and $Item.Entity.QuantityHistory) {
+            $ReportEntry | Add-Member -NotePropertyName 'History' -NotePropertyValue @($Item.Entity.QuantityHistory)
         }
 
         $Report.Add($ReportEntry)

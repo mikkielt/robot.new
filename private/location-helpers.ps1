@@ -1,11 +1,13 @@
 <#
     .SYNOPSIS
-    Helper functions for game-map location name normalization.
+    Canonical precompiled regex patterns and helpers for game-map location
+    name normalization.
 
     .DESCRIPTION
-    Provides Get-MapBaseName which progressively strips trailing words
-    from game-map location names to produce candidate base names for
-    entity resolution.
+    Defines the 9 regex patterns used to strip floor, room, direction,
+    difficulty, and named-subarea suffixes from Margonem game-map names.
+    Also provides Get-MapBaseName which progressively strips trailing words
+    to produce candidate base names for entity resolution.
 
     Maps use naming conventions like:
         "Piekielna Grota p.3 - sala 2"
@@ -14,13 +16,51 @@
         "Erem Czarnego Słońca p.1 - północ"
         "Grota Arbor s.2"
 
-    This file is dot-sourced by Get-NamedLogLocationReport.
+    This file is the single source of truth for location regex patterns.
+    Dot-sourced by:
+      - Get-NamedLogLocationReport (core)
+      - migration-location-helpers.ps1 (migration)
+      - margoworld-helpers.ps1 (plugin)
 #>
 
-# Strip trailing parenthetical like "(poziom: trudny)" before word splitting
-$script:RE_Difficulty = [regex]::new(
+# ── Canonical location-name regex patterns ──────────────────────────────────
+# These 9 patterns are applied iteratively until stable to strip map suffixes.
+
+$script:LocDifficultyPattern = [regex]::new(
     '\s*\(poziom:\s*[^)]+\)\s*$',
+    [System.Text.RegularExpressions.RegexOptions]::Compiled -bor
+    [System.Text.RegularExpressions.RegexOptions]::IgnoreCase)
+$script:LocFloorPattern = [regex]::new(
+    '\s+p\.\d+$',
     [System.Text.RegularExpressions.RegexOptions]::Compiled)
+$script:LocRoomSuffixPattern = [regex]::new(
+    '\s+s\.\d+$',
+    [System.Text.RegularExpressions.RegexOptions]::Compiled)
+$script:LocSalaPattern = [regex]::new(
+    '\s+-\s+sala\s+\d+$',
+    [System.Text.RegularExpressions.RegexOptions]::Compiled -bor
+    [System.Text.RegularExpressions.RegexOptions]::IgnoreCase)
+$script:LocNamedSalaPattern = [regex]::new(
+    '\s+-\s+Sala\s+.+$',
+    [System.Text.RegularExpressions.RegexOptions]::Compiled)
+$script:LocDirectionPattern = [regex]::new(
+    '\s+-\s+(północ|południe|wschód|zachód|góra|dół)$',
+    [System.Text.RegularExpressions.RegexOptions]::Compiled -bor
+    [System.Text.RegularExpressions.RegexOptions]::IgnoreCase)
+$script:LocPietroPattern = [regex]::new(
+    '\s+-\s+piętro(\s+\d+)?$',
+    [System.Text.RegularExpressions.RegexOptions]::Compiled -bor
+    [System.Text.RegularExpressions.RegexOptions]::IgnoreCase)
+$script:LocPiwnicaPattern = [regex]::new(
+    '\s+-\s+piwnica(\s+p\.\d+)?$',
+    [System.Text.RegularExpressions.RegexOptions]::Compiled -bor
+    [System.Text.RegularExpressions.RegexOptions]::IgnoreCase)
+$script:LocNamedSubareaPattern = [regex]::new(
+    '\s+-\s+[a-ząćęłńóśżź].+$',
+    [System.Text.RegularExpressions.RegexOptions]::Compiled)
+
+# Backward-compatible alias for existing callers
+$script:RE_Difficulty = $script:LocDifficultyPattern
 
 function Get-MapBaseName {
     <#

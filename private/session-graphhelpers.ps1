@@ -16,6 +16,8 @@
     - Read-SessionGraphMeta:      load operational metadata from _meta.json
     - Write-SessionGraphMeta:     persist operational metadata
     - Get-NameIndexVersion:       SHA256 of sorted entity names (detects name set changes)
+    - ConvertFrom-GraphEntryDate: parse date string from graph index entry into [datetime]
+    - Test-GraphEntryDateInRange: test whether a graph entry's date falls within a range
 
     Three-tier involvement model:
     - Tier 0 (Filesystem): session file is placed in an entity's directory
@@ -362,4 +364,47 @@ function Get-NameIndexVersion {
     }
 
     return [System.BitConverter]::ToString($HashBytes).Replace('-', '').ToLowerInvariant()
+}
+
+# Parse date string from a graph index entry into [datetime].
+# Returns $null if the entry has no Date key or the value is not valid yyyy-MM-dd.
+function ConvertFrom-GraphEntryDate {
+    param(
+        [Parameter(Mandatory)]
+        [hashtable]$Entry
+    )
+
+    if (-not $Entry.ContainsKey('Date') -or -not $Entry['Date']) { return $null }
+
+    [datetime]$Parsed = [datetime]::MinValue
+    if ([datetime]::TryParseExact($Entry['Date'], 'yyyy-MM-dd',
+        [System.Globalization.CultureInfo]::InvariantCulture,
+        [System.Globalization.DateTimeStyles]::None,
+        [ref]$Parsed)) {
+        return $Parsed
+    }
+
+    return $null
+}
+
+# Test whether a graph entry's date falls within [MinDate, MaxDate].
+# Entries with unparseable or missing dates are excluded when a bound is set.
+function Test-GraphEntryDateInRange {
+    param(
+        [Parameter(Mandatory)]
+        [hashtable]$Entry,
+
+        [Parameter()]
+        [Nullable[datetime]]$MinDate,
+
+        [Parameter()]
+        [Nullable[datetime]]$MaxDate
+    )
+
+    $SessionDate = ConvertFrom-GraphEntryDate -Entry $Entry
+
+    if ($MinDate -and ($null -eq $SessionDate -or $SessionDate -lt $MinDate)) { return $false }
+    if ($MaxDate -and ($null -eq $SessionDate -or $SessionDate -gt $MaxDate)) { return $false }
+
+    return $true
 }

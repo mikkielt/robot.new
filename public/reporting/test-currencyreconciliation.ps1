@@ -43,13 +43,8 @@ function Test-CurrencyReconciliation {
     $Warnings = [System.Collections.Generic.List[object]]::new()
     $Now = [datetime]::Now
 
-    # Collect all currency entities
-    $CurrencyEntities = [System.Collections.Generic.List[object]]::new()
-    foreach ($Entity in $Entities) {
-        if (Test-IsCurrencyEntity -Entity $Entity) {
-            $CurrencyEntities.Add($Entity)
-        }
-    }
+    # Collect all currency entities with enriched data (include all statuses for per-check filtering)
+    $CurrencyItems = Get-CurrencyEntitiesFiltered -Entities $Entities -IncludeInactive -IncludeDeleted
 
     # Build entity status lookup for orphan check
     $EntityStatusByName = [System.Collections.Generic.Dictionary[string, string]]::new([System.StringComparer]::OrdinalIgnoreCase)
@@ -59,32 +54,28 @@ function Test-CurrencyReconciliation {
     }
 
     # Check 1: Negative balance detection
-    foreach ($CurrEntity in $CurrencyEntities) {
-        $Status = if ($CurrEntity.Status) { $CurrEntity.Status } else { 'Aktywny' }
-        if ($Status -eq 'Usunięty') { continue }
+    foreach ($Item in $CurrencyItems) {
+        if ($Item.Status -eq 'Usunięty') { continue }
 
-        $QtyStr = if ($CurrEntity.Quantity) { $CurrEntity.Quantity } else { '0' }
-        [int]$QtyInt = 0
-        if ([int]::TryParse($QtyStr, [ref]$QtyInt) -and $QtyInt -lt 0) {
+        if ($Item.Quantity -lt 0) {
             $Warnings.Add([PSCustomObject]@{
                 Check      = 'NegativeBalance'
                 Severity   = 'Error'
-                Entity     = $CurrEntity.Name
-                Detail     = "Balance is $QtyInt"
+                Entity     = $Item.Entity.Name
+                Detail     = "Balance is $($Item.Quantity)"
             })
         }
     }
 
     # Check 2: Stale balance warning
     $StaleThreshold = $Now.AddMonths(-3)
-    foreach ($CurrEntity in $CurrencyEntities) {
-        $Status = if ($CurrEntity.Status) { $CurrEntity.Status } else { 'Aktywny' }
-        if ($Status -ne 'Aktywny') { continue }
-        if (-not $CurrEntity.Owner) { continue }
+    foreach ($Item in $CurrencyItems) {
+        if ($Item.Status -ne 'Aktywny') { continue }
+        if (-not $Item.Owner) { continue }
 
         $LastChangeDate = $null
-        if ($CurrEntity.QuantityHistory -and $CurrEntity.QuantityHistory.Count -gt 0) {
-            $LastEntry = $CurrEntity.QuantityHistory[-1]
+        if ($Item.Entity.QuantityHistory -and $Item.Entity.QuantityHistory.Count -gt 0) {
+            $LastEntry = $Item.Entity.QuantityHistory[-1]
             $LastChangeDate = $LastEntry.ValidFrom
         }
 
@@ -92,26 +83,25 @@ function Test-CurrencyReconciliation {
             $Warnings.Add([PSCustomObject]@{
                 Check      = 'StaleBalance'
                 Severity   = 'Warning'
-                Entity     = $CurrEntity.Name
-                Detail     = "Last change on $($LastChangeDate.ToString('yyyy-MM-dd')), owner: $($CurrEntity.Owner)"
+                Entity     = $Item.Entity.Name
+                Detail     = "Last change on $($LastChangeDate.ToString('yyyy-MM-dd')), owner: $($Item.Owner)"
             })
         }
     }
 
     # Check 3: Orphaned currency
-    foreach ($CurrEntity in $CurrencyEntities) {
-        $Status = if ($CurrEntity.Status) { $CurrEntity.Status } else { 'Aktywny' }
-        if ($Status -ne 'Aktywny') { continue }
-        if (-not $CurrEntity.Owner) { continue }
+    foreach ($Item in $CurrencyItems) {
+        if ($Item.Status -ne 'Aktywny') { continue }
+        if (-not $Item.Owner) { continue }
 
-        if ($EntityStatusByName.ContainsKey($CurrEntity.Owner)) {
-            $OwnerStatus = $EntityStatusByName[$CurrEntity.Owner]
+        if ($EntityStatusByName.ContainsKey($Item.Owner)) {
+            $OwnerStatus = $EntityStatusByName[$Item.Owner]
             if ($OwnerStatus -eq 'Usunięty' -or $OwnerStatus -eq 'Nieaktywny') {
                 $Warnings.Add([PSCustomObject]@{
                     Check      = 'OrphanedCurrency'
                     Severity   = 'Warning'
-                    Entity     = $CurrEntity.Name
-                    Detail     = "Owner '$($CurrEntity.Owner)' has status '$OwnerStatus'"
+                    Entity     = $Item.Entity.Name
+                    Detail     = "Owner '$($Item.Owner)' has status '$OwnerStatus'"
                 })
             }
         }
@@ -127,23 +117,15 @@ function Test-CurrencyReconciliation {
         $DenomDeltas = [System.Collections.Generic.Dictionary[string, int]]::new([System.StringComparer]::OrdinalIgnoreCase)
 
         foreach ($Change in $Session.Changes) {
-            # Find entity to check if it's a currency entity
-            $MatchEntity = $null
-            foreach ($CE in $CurrencyEntities) {
-                if ([string]::Equals($CE.Name, $Change.EntityName, [System.StringComparison]::OrdinalIgnoreCase)) {
-                    $MatchEntity = $CE
+            # Find matching enriched currency item
+            $MatchItem = $null
+            foreach ($Item in $CurrencyItems) {
+                if ([string]::Equals($Item.Entity.Name, $Change.EntityName, [System.StringComparison]::OrdinalIgnoreCase)) {
+                    $MatchItem = $Item
                     break
                 }
             }
-            if (-not $MatchEntity) { continue }
-
-            # Get denomination
-            $EntityDenom = $null
-            foreach ($GN in $MatchEntity.GenericNames) {
-                $Resolved = Resolve-CurrencyDenomination -Name $GN
-                if ($Resolved) { $EntityDenom = $Resolved; break }
-            }
-            if (-not $EntityDenom) { continue }
+            if (-not $MatchItem) { continue }
 
             # Find @ilość tag in changes
             foreach ($TagEntry in $Change.Tags) {
@@ -152,10 +134,10 @@ function Test-CurrencyReconciliation {
                 # Only count explicit deltas (+N/-N), not absolute values
                 if ($ValText -match '^[+-]\d+$') {
                     $Delta = [int]$ValText
-                    if (-not $DenomDeltas.ContainsKey($EntityDenom.Name)) {
-                        $DenomDeltas[$EntityDenom.Name] = 0
+                    if (-not $DenomDeltas.ContainsKey($MatchItem.Denomination.Name)) {
+                        $DenomDeltas[$MatchItem.Denomination.Name] = 0
                     }
-                    $DenomDeltas[$EntityDenom.Name] += $Delta
+                    $DenomDeltas[$MatchItem.Denomination.Name] += $Delta
                 }
             }
         }
@@ -178,32 +160,20 @@ function Test-CurrencyReconciliation {
 
     # Check 5: Total supply tracking per denomination
     $Supply = [System.Collections.Generic.Dictionary[string, int]]::new([System.StringComparer]::OrdinalIgnoreCase)
-    foreach ($CurrEntity in $CurrencyEntities) {
-        $Status = if ($CurrEntity.Status) { $CurrEntity.Status } else { 'Aktywny' }
-        if ($Status -eq 'Usunięty') { continue }
+    foreach ($Item in $CurrencyItems) {
+        if ($Item.Status -eq 'Usunięty') { continue }
 
-        $EntityDenom = $null
-        foreach ($GN in $CurrEntity.GenericNames) {
-            $Resolved = Resolve-CurrencyDenomination -Name $GN
-            if ($Resolved) { $EntityDenom = $Resolved; break }
+        if (-not $Supply.ContainsKey($Item.Denomination.Name)) {
+            $Supply[$Item.Denomination.Name] = 0
         }
-        if (-not $EntityDenom) { continue }
-
-        $QtyStr = if ($CurrEntity.Quantity) { $CurrEntity.Quantity } else { '0' }
-        [int]$QtyInt = 0
-        [void][int]::TryParse($QtyStr, [ref]$QtyInt)
-
-        if (-not $Supply.ContainsKey($EntityDenom.Name)) {
-            $Supply[$EntityDenom.Name] = 0
-        }
-        $Supply[$EntityDenom.Name] += $QtyInt
+        $Supply[$Item.Denomination.Name] += $Item.Quantity
     }
 
     return [PSCustomObject]@{
         Warnings     = @($Warnings)
         WarningCount = $Warnings.Count
         Supply       = $Supply
-        EntityCount  = $CurrencyEntities.Count
+        EntityCount  = $CurrencyItems.Count
         CheckedAt    = $Now
     }
 }

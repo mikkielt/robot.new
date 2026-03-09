@@ -162,8 +162,7 @@ function New-PlayerCharacter {
                     [void][System.IO.Directory]::CreateDirectory($Dir)
                 }
 
-                $UTF8NoBOM = [System.Text.UTF8Encoding]::new($false)
-                [System.IO.File]::WriteAllText($CharFilePath, $FileContent, $UTF8NoBOM)
+                Write-CharacterFile -Path $CharFilePath -Content $FileContent
             }
         }
     }
@@ -218,8 +217,7 @@ function New-PlayerCharacter {
 
             if ($PSCmdlet.ShouldProcess($CharFilePath, "New-PlayerCharacter: apply initial properties to character file")) {
                 $CharContent = [string]::Join($CharFileData.NL, $CharLines)
-                $UTF8NoBOM = [System.Text.UTF8Encoding]::new($false)
-                [System.IO.File]::WriteAllText($CharFilePath, $CharContent, $UTF8NoBOM)
+                Write-CharacterFile -Path $CharFilePath -Content $CharContent
             }
         }
     }

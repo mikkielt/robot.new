@@ -7,10 +7,11 @@
     transaction ledger. Supports filtering by entity (source or destination),
     denomination, and date range. When filtering by entity, computes a running balance.
 
-    Dot-sources currency-helpers.ps1 for denomination resolution.
+    Dot-sources currency-helpers.ps1 and reporting-helpers.ps1 for shared logic.
 #>
 
 . "$script:ModuleRoot/private/currency-helpers.ps1"
+. "$script:ModuleRoot/private/reporting-helpers.ps1"
 
 function Get-TransactionLedger {
     <#
@@ -45,12 +46,7 @@ function Get-TransactionLedger {
     if ($Quiet) { $script:SuppressWarnings = $true }
     try {
 
-    if (-not $Sessions) {
-        $FetchArgs = @{}
-        if ($MinDate) { $FetchArgs['MinDate'] = $MinDate }
-        if ($MaxDate) { $FetchArgs['MaxDate'] = $MaxDate }
-        $Sessions = Get-Session @FetchArgs
-    }
+    $Sessions = Get-SessionsForReport -Sessions $Sessions -MinDate $MinDate -MaxDate $MaxDate
 
     # Resolve denomination filter
     $DenomFilter = $null
@@ -62,54 +58,49 @@ function Get-TransactionLedger {
         }
     }
 
+    $EntryArgs = @{ Sessions = $Sessions; DirectiveName = 'Transfers' }
+    if ($MinDate) { $EntryArgs['MinDate'] = $MinDate }
+    if ($MaxDate) { $EntryArgs['MaxDate'] = $MaxDate }
+    $Entries = Get-SessionDirectiveEntries @EntryArgs
+
     $Ledger = [System.Collections.Generic.List[object]]::new()
 
-    foreach ($Session in $Sessions) {
-        $HasTransfers = $Session.PSObject.Properties['Transfers'] -and $Session.Transfers -and $Session.Transfers.Count -gt 0
-        if (-not $HasTransfers) { continue }
-        if ($null -eq $Session.Date) { continue }
+    foreach ($E in $Entries) {
+        $Transfer = $E.Directive
 
-        # Date range filtering
-        if ($MinDate -and $Session.Date -lt $MinDate) { continue }
-        if ($MaxDate -and $Session.Date -gt $MaxDate) { continue }
+        # Denomination filter
+        $ResolvedDenom = Resolve-CurrencyDenomination -Name $Transfer.Denomination
+        $DenomName = if ($ResolvedDenom) { $ResolvedDenom.Name } else { $Transfer.Denomination }
 
-        $NarratorName = if ($Session.Narrator) { $Session.Narrator.Name } else { $null }
-
-        foreach ($Transfer in $Session.Transfers) {
-            # Denomination filter
-            $ResolvedDenom = Resolve-CurrencyDenomination -Name $Transfer.Denomination
-            $DenomName = if ($ResolvedDenom) { $ResolvedDenom.Name } else { $Transfer.Denomination }
-
-            if ($DenomFilter -and -not [string]::Equals($DenomName, $DenomFilter.Name, [System.StringComparison]::OrdinalIgnoreCase)) {
-                continue
-            }
-
-            # Entity filter
-            $IsSource = $Entity -and [string]::Equals($Transfer.Source, $Entity, [System.StringComparison]::OrdinalIgnoreCase)
-            $IsDest = $Entity -and [string]::Equals($Transfer.Destination, $Entity, [System.StringComparison]::OrdinalIgnoreCase)
-
-            if ($Entity -and -not $IsSource -and -not $IsDest) {
-                continue
-            }
-
-            $Entry = [PSCustomObject]@{
-                Date         = $Session.Date
-                SessionTitle = $Session.Title
-                Narrator     = $NarratorName
-                Amount       = $Transfer.Amount
-                Denomination = $DenomName
-                Source       = $Transfer.Source
-                Destination  = $Transfer.Destination
-            }
-
-            # Add direction info when entity filter is active
-            if ($Entity) {
-                $Direction = if ($IsDest) { 'In' } else { 'Out' }
-                $Entry | Add-Member -NotePropertyName 'Direction' -NotePropertyValue $Direction
-            }
-
-            $Ledger.Add($Entry)
+        if ($DenomFilter -and -not [string]::Equals($DenomName, $DenomFilter.Name, [System.StringComparison]::OrdinalIgnoreCase)) {
+            continue
         }
+
+        # Entity filter
+        $IsSource = $Entity -and [string]::Equals($Transfer.Source, $Entity, [System.StringComparison]::OrdinalIgnoreCase)
+        $IsDest = $Entity -and [string]::Equals($Transfer.Destination, $Entity, [System.StringComparison]::OrdinalIgnoreCase)
+
+        if ($Entity -and -not $IsSource -and -not $IsDest) {
+            continue
+        }
+
+        $Entry = [PSCustomObject]@{
+            Date         = $E.Session.Date
+            SessionTitle = $E.Session.Title
+            Narrator     = $E.Session.Narrator
+            Amount       = $Transfer.Amount
+            Denomination = $DenomName
+            Source       = $Transfer.Source
+            Destination  = $Transfer.Destination
+        }
+
+        # Add direction info when entity filter is active
+        if ($Entity) {
+            $Direction = if ($IsDest) { 'In' } else { 'Out' }
+            $Entry | Add-Member -NotePropertyName 'Direction' -NotePropertyValue $Direction
+        }
+
+        $Ledger.Add($Entry)
     }
 
     # Sort chronologically

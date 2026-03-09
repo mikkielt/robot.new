@@ -39,7 +39,9 @@ function Remove-PlayerCharacter {
     )
 
     if (-not $EntitiesFile) {
-        $EntitiesFile = [System.IO.Path]::Combine((Get-RepoRoot), '.robot.new', 'entities.md')
+        . "$script:ModuleRoot/private/admin-config.ps1"
+        $Config = Get-AdminConfig
+        $EntitiesFile = $Config.EntitiesFile
     }
 
     if (-not $ValidFrom) {

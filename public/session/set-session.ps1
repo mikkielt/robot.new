@@ -25,6 +25,7 @@
 #>
 
 # Dot-source shared helpers
+. "$script:ModuleRoot/private/temporal-helpers.ps1"
 . "$script:ModuleRoot/private/format-sessionblock.ps1"
 . "$script:ModuleRoot/private/session-decomposehelpers.ps1"
 
