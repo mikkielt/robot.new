@@ -1,7 +1,7 @@
 <#
     .SYNOPSIS
     Reporting-domain CLI workflows - Intel preview, name search, log fetch,
-    log location report, and migration reports.
+    log location report, location graph, session graph, and migration reports.
 
     .DESCRIPTION
     This file contains workflow functions for reporting and diagnostics, consumed
@@ -12,6 +12,8 @@
     - Invoke-NameSearchWorkflow:          standalone name search via fuzzy picker
     - Invoke-FetchLogsWorkflow:           mass log fetch with CDN-safe throttling
     - Invoke-LogLocationReportWorkflow:   log location resolution analysis
+    - Invoke-LocationGraphWorkflow:       location connection graph analysis
+    - Invoke-SessionGraphWorkflow:        session participation graph queries
     - Invoke-MigrationQuickCheck:         migration quick diagnostics
     - Invoke-MigrationFullReport:         migration full report
 
@@ -424,6 +426,144 @@ function Invoke-LocationGraphWorkflow {
 
         if ($SelectedRow) {
             Show-DetailCard -Row $SelectedRow -Title 'Szczegóły węzła'
+        }
+    }
+    catch {
+        Write-CLILine -Text "Błąd: $_" -Color (Get-CLIColor -Role 'Error')
+        Write-Host ''
+    }
+
+    Write-CLILine -Text 'Naciśnij dowolny klawisz...' -Color $DisabledColor
+    [void](Read-ArrowKey)
+}
+
+function Invoke-SessionGraphWorkflow {
+    param([object]$State, [hashtable]$Entry)
+
+    $AccentColor   = Get-CLIColor -Role 'Accent'
+    $DisabledColor = Get-CLIColor -Role 'Disabled'
+    $WarningColor  = Get-CLIColor -Role 'Warning'
+
+    Write-CLILine -Text 'Graf sesji' -Color $AccentColor
+    Write-Host ''
+
+    # Mode selection
+    $ModeStep = [PSCustomObject]@{
+        Name = 'Mode'; Label = 'Tryb zapytania'; StepType = 'choice'; Required = $true
+        Source = $null; Options = @('Sesje encji', 'Współuczestnicy', 'Uczestnicy sesji', 'Podsumowanie')
+        SubSteps = $null; EntrySource = $null; Condition = $null; Transform = $null; Default = 'Sesje encji'
+    }
+    $ModeChoice = Invoke-WizardStep -Step $ModeStep -State $State
+    if ($ModeChoice -eq '__back__') { return }
+
+    $ModeMap = @{
+        'Sesje encji'        = 'Sessions'
+        'Współuczestnicy'    = 'CoParticipants'
+        'Uczestnicy sesji'   = 'EntityTimeline'
+        'Podsumowanie'       = 'Summary'
+    }
+    $Mode = $ModeMap[$ModeChoice]
+
+    # Entity name (required for Sessions/CoParticipants)
+    $EntityName = $null
+    if ($Mode -in @('Sessions', 'CoParticipants')) {
+        $NameStep = [PSCustomObject]@{
+            Name = 'EntityName'; Label = 'Nazwa encji'; StepType = 'text'; Required = $true
+            Source = $null; Options = $null; SubSteps = $null; EntrySource = $null
+            Condition = $null; Transform = $null; Default = $null
+        }
+        $EntityName = Invoke-WizardStep -Step $NameStep -State $State
+        if ($EntityName -eq '__back__') { return }
+    }
+
+    # Session header (required for EntityTimeline)
+    $SessionHeader = $null
+    if ($Mode -eq 'EntityTimeline') {
+        $HeaderStep = [PSCustomObject]@{
+            Name = 'SessionHeader'; Label = 'Nagłówek sesji (### YYYY-MM-DD, Tytuł, Narrator)'; StepType = 'text'; Required = $true
+            Source = $null; Options = $null; SubSteps = $null; EntrySource = $null
+            Condition = $null; Transform = $null; Default = $null
+        }
+        $SessionHeader = Invoke-WizardStep -Step $HeaderStep -State $State
+        if ($SessionHeader -eq '__back__') { return }
+    }
+
+    Write-Host '  Wczytywanie indeksu...' -ForegroundColor $DisabledColor
+
+    try {
+        $QueryParams = @{ Mode = $Mode; Quiet = $true }
+        if ($EntityName)    { $QueryParams['EntityName'] = $EntityName }
+        if ($SessionHeader) { $QueryParams['SessionHeader'] = $SessionHeader }
+
+        $Result = Get-SessionGraph @QueryParams
+
+        if ($Mode -eq 'Summary') {
+            Write-Host ''
+            Write-CLILine -Text "  Sesji ogółem:        $($Result.TotalSessions)" -Color $AccentColor
+            Write-CLILine -Text "  Uczestników ogółem:  $($Result.TotalParticipants)" -Color $AccentColor
+            Write-CLILine -Text "  Tier 0 (plik):       $($Result.Tier0Count)" -Color $AccentColor
+            Write-CLILine -Text "  Tier 1 (metadane):   $($Result.Tier1Count)" -Color $AccentColor
+            Write-CLILine -Text "  Tier 2 (tekst):      $($Result.Tier2Count)" -Color $AccentColor
+            Write-Host ''
+        }
+        elseif (-not $Result -or $Result.Count -eq 0) {
+            Write-CLILine -Text 'Brak wyników.' -Color $WarningColor
+            Write-Host ''
+        }
+        elseif ($Mode -eq 'Sessions') {
+            $TableData = $Result | ForEach-Object {
+                [PSCustomObject]@{
+                    Sesja  = $_.Header
+                    Data   = $_.Date
+                    Format = $_.Format
+                    Tier   = $_.EntityTier
+                    Waga   = if ($null -ne $_.EntityWeight) { $_.EntityWeight } else { '-' }
+                }
+            }
+            $SelectedRow = Show-ResultTable -Data @($TableData) `
+                -Columns @('Data', 'Sesja', 'Format', 'Tier', 'Waga') `
+                -Headers @('Data', 'Sesja', 'Format', 'Tier', 'Waga') `
+                -Widths @(12, 35, 6, 5, 6) `
+                -Title "Sesje: $EntityName"
+            if ($SelectedRow) {
+                Show-DetailCard -Row $SelectedRow -Title 'Szczegóły sesji'
+            }
+        }
+        elseif ($Mode -eq 'CoParticipants') {
+            $TableData = $Result | ForEach-Object {
+                [PSCustomObject]@{
+                    Nazwa          = $_.Name
+                    Typ            = if ($_.Type) { $_.Type } else { '-' }
+                    WspólneSesje   = $_.SharedSessions
+                }
+            }
+            $SelectedRow = Show-ResultTable -Data @($TableData) `
+                -Columns @('Nazwa', 'Typ', 'WspólneSesje') `
+                -Headers @('Nazwa', 'Typ', 'Wspólne sesje') `
+                -Widths @(25, 12, 14) `
+                -Title "Współuczestnicy: $EntityName"
+            if ($SelectedRow) {
+                Show-DetailCard -Row $SelectedRow -Title 'Szczegóły'
+            }
+        }
+        elseif ($Mode -eq 'EntityTimeline') {
+            $TableData = $Result | ForEach-Object {
+                [PSCustomObject]@{
+                    Nazwa  = $_.Name
+                    Typ    = if ($_.Type) { $_.Type } else { '-' }
+                    Tier   = $_.Tier
+                    Źródło = if ($_.Source) { $_.Source } else { '-' }
+                    Waga   = if ($null -ne $_.Weight) { $_.Weight } else { '-' }
+                }
+            }
+            $SelectedRow = Show-ResultTable -Data @($TableData) `
+                -Columns @('Nazwa', 'Typ', 'Tier', 'Źródło', 'Waga') `
+                -Headers @('Nazwa', 'Typ', 'Tier', 'Źródło', 'Waga') `
+                -Widths @(25, 12, 5, 10, 6) `
+                -Title "Uczestnicy sesji"
+            if ($SelectedRow) {
+                Show-DetailCard -Row $SelectedRow -Title 'Szczegóły'
+            }
         }
     }
     catch {

@@ -563,6 +563,16 @@ $script:MenuRegistry = @(
     }
 
     @{
+        ID               = 'session-graph'
+        Label            = 'Graf sesji'
+        Description      = 'Graf uczestnictwa encji w sesjach'
+        Menu             = 'Raporty i Narzędzia'
+        Mode             = 'Workflow'
+        WorkflowFunction = 'Invoke-SessionGraphWorkflow'
+        InfoText         = @('Indeks powiązań między sesjami a encjami (3 poziomy pewności).')
+    }
+
+    @{
         ID       = 'notification-log'
         Label    = 'Powiadomienia'
         Description = 'Dziennik wysłanych powiadomień'

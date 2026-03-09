@@ -1,0 +1,395 @@
+# Session Participation Graph - Technical Reference
+
+**Status**: Reference documentation.
+
+---
+
+## 1. Scope
+
+This document covers the session participation graph subsystem: three-tier entity involvement classification, persistent index storage, incremental updates, and multi-mode query API.
+
+| Function | File | Purpose |
+|---|---|---|
+| `Set-SessionGraph` | `public/workflow/set-sessiongraph.ps1` | Build/update persistent participation index |
+| `Get-SessionGraph` | `public/reporting/get-sessiongraph.ps1` | Query API with 4 output modes |
+| `Get-FilePathInvolvement` | `private/session-graphhelpers.ps1` | Classify file path → entity category/type |
+| `ConvertTo-ParticipantRecord` | `private/session-graphhelpers.ps1` | Merge three-tier involvement for a session |
+| `Read-SessionGraphIndex` | `private/session-graphhelpers.ps1` | Load index from `_index.json` |
+| `Write-SessionGraphIndex` | `private/session-graphhelpers.ps1` | Persist index to `_index.json` |
+| `Read-SessionGraphMeta` | `private/session-graphhelpers.ps1` | Load metadata from `_meta.json` |
+| `Write-SessionGraphMeta` | `private/session-graphhelpers.ps1` | Persist metadata |
+| `Get-NameIndexVersion` | `private/session-graphhelpers.ps1` | SHA256 of sorted entity names |
+
+`Set-SessionGraph` is a write command (`SupportsShouldProcess`). `Get-SessionGraph` is read-only.
+
+**Not covered**: Session parsing (`Get-Session`) — see [SESSIONS.md](SESSIONS.md). Name resolution (`Resolve-Name`, `Get-NameIndex`) — see [NAME-RESOLUTION.md](NAME-RESOLUTION.md). Session integrity hashing — see [SESSION-INTEGRITY.md](SESSION-INTEGRITY.md).
+
+---
+
+## 2. Architecture Overview
+
+```
+private/session-graphhelpers.ps1       Graph helpers (non-Verb-Noun, dot-sourced)
+├── Get-FilePathInvolvement            RelPath → { Category, Name, Type }
+├── ConvertTo-ParticipantRecord        Session → participant[] (3-tier merge)
+├── Read-SessionGraphIndex             _index.json → hashtable
+├── Write-SessionGraphIndex            hashtable → _index.json
+├── Read-SessionGraphMeta              _meta.json → hashtable
+├── Write-SessionGraphMeta             hashtable → _meta.json
+└── Get-NameIndexVersion               string[] → SHA256 hash
+
+public/workflow/set-sessiongraph.ps1   Index writer (exported, SupportsShouldProcess)
+└── dot-sources: session-graphhelpers.ps1, session-hashhelpers.ps1, admin-config.ps1
+
+public/reporting/get-sessiongraph.ps1  Query API (exported, read-only)
+└── dot-sources: session-graphhelpers.ps1, admin-config.ps1
+```
+
+### 2.1 Index Store Layout
+
+The graph uses a single index file (not per-file sidecars like session-hashes) because sessions span multiple source files via `Merge-SessionGroup`:
+
+```
+.robot/res/session-graph/
+├── _meta.json         Operational metadata (timestamps, name version, count)
+└── _index.json        All sessions with their participant lists
+```
+
+---
+
+## 3. Three-Tier Involvement Model
+
+Entity involvement in a session is classified into three tiers of decreasing confidence:
+
+| Tier | Signal | Available In | Weight? |
+|---|---|---|---|
+| **0 — Filesystem** | Session `.md` file placed in entity's directory | All formats (Gen1–Gen4) | No (binary) |
+| **1 — Structured** | Entity appears in `@PU`, `@Zmiany`, `@Transfer`, or `@Intel` | Gen3+ only | Yes (PU value) |
+| **2 — Body Text** | Entity name found via `Get-SessionMentions` | All formats (with `-IncludeMentions`) | No (binary) |
+
+### 3.1 Tier Coverage by Format Generation
+
+| Format | Tier 0 (Filesystem) | Tier 1 (Structured) | Tier 2 (Body Text) |
+|---|---|---|---|
+| Gen1 (–2022) | Binary participation | Not available | Cached mentions |
+| Gen2 (2022–2023) | Binary participation | Not available | Cached mentions |
+| Gen3 (2024–2025) | Binary participation | PU weights, Zmiany, Transfer | Cached mentions |
+| Gen4 (2026+) | Binary participation | All @-tags | Cached mentions |
+
+### 3.2 Deduplication Rules
+
+When the same entity appears at multiple tiers:
+1. **Lowest tier number wins** (Tier 0 > Tier 1 > Tier 2 in confidence)
+2. The winning tier's `Source` field is kept
+3. If Tier 1 provides a `Weight`, it is preserved only if Tier 1 is the winner
+
+---
+
+## 4. `Get-FilePathInvolvement`
+
+Maps a repo-relative file path (forward slashes) to an entity involvement record.
+
+### 4.1 Parameters
+
+| Parameter | Type | Mandatory | Description |
+|---|---|---|---|
+| `RelPath` | string | Yes | Repo-relative file path (forward slashes, e.g. `Postaci/Gracze/Xeron.md`) |
+
+### 4.2 Classification Rules
+
+Evaluated in order; first match wins. All comparisons use `OrdinalIgnoreCase`.
+
+| Rule | Path Pattern | Category | Entity Type | Name Derivation |
+|---|---|---|---|---|
+| 1 | `Postaci/Gracze/*.md` | Player | Postać | Filename stem |
+| 2 | `Postaci/NPC/**/*.md` | NPC | NPC | Filename stem |
+| 3 | `Świat gry/**/Sesje lokalne.md` | Location | Lokacja | Parent directory name |
+| 4 | `Wątki/*.md` | Thread | Wątek | Filename stem |
+| 5 | `Organizacje/**/*.md` | Org | Grupa | Filename stem |
+| 6 | Everything else | — | — | — |
+
+Implementation notes:
+- **Wątek** is a graph-only classification; no corresponding entity type exists in `entities.md`
+- **Grupa** maps the `Organizacje/` directory to the existing entity type
+- Rule 1 checks for no further `/` after the `Postaci/Gracze/` prefix (flat directory)
+- Rule 4 checks for no further `/` after `Wątki/` (flat directory)
+- Backslashes are normalized to forward slashes before matching
+
+### 4.3 Output
+
+Returns `[PSCustomObject]` with properties `Category`, `Name`, `Type`. Returns `$null` for unrecognized paths.
+
+---
+
+## 5. `ConvertTo-ParticipantRecord`
+
+Merges all three tiers of involvement for a single session into a deduplicated participant list.
+
+### 5.1 Parameters
+
+| Parameter | Type | Mandatory | Description |
+|---|---|---|---|
+| `Session` | object | Yes | Session object from `Get-Session` (must have `FilePaths`, `PU`, `Changes`, `Transfers`, `Intel`, `Mentions`) |
+
+### 5.2 Algorithm
+
+Three passes, each feeding into a `Dictionary[string, object]` keyed by entity name (`OrdinalIgnoreCase`):
+
+```
+Pass 1 (Tier 0): Session.FilePaths → Get-FilePathInvolvement → participant records
+Pass 2 (Tier 1): Session.PU         → Character/Value pairs (Source='PU', Weight=Value)
+                  Session.Changes    → EntityName entries (Source='Changes')
+                  Session.Transfers  → Source/Destination pairs (Source='Transfer')
+                  Session.Intel      → Recipient entries (Source='Intel')
+Pass 3 (Tier 2): Session.Mentions   → Name/Type pairs (Source='BodyText')
+```
+
+The `$MergeParticipant` scriptblock implements deduplication per §3.2. When the same name appears at a lower tier, the entire record is replaced. Equal-tier entries with a non-null `Weight` preserve the weight.
+
+### 5.3 Output
+
+Returns `PSCustomObject[]`:
+
+| Property | Type | Description |
+|---|---|---|
+| `Name` | string | Entity name |
+| `Type` | string | Entity type (`Postać`, `NPC`, `Lokacja`, `Wątek`, `Grupa`, or `$null` for unresolved) |
+| `Tier` | int | Involvement tier (0, 1, or 2) |
+| `Source` | string | Detection source (`FilePath`, `PU`, `Changes`, `Transfer`, `Intel`, `BodyText`) |
+| `Weight` | decimal or `$null` | PU weight (only from Tier 1 PU entries) |
+
+---
+
+## 6. `Set-SessionGraph`
+
+### 6.1 Parameters
+
+| Parameter | Type | Mandatory | Description |
+|---|---|---|---|
+| `Full` | switch | No | Rebuild entire index |
+| `Since` | string | No | Process sessions changed since this date (incremental) |
+| `ExcludeDirectory` | string[] | No | Directories to exclude from session scanning |
+| `Quiet` | switch | No | Suppress warning output to stderr |
+
+Supports `ShouldProcess` (`ConfirmImpact = 'Low'`).
+
+### 6.2 Algorithm
+
+1. Load helpers via dot-sourcing (`session-graphhelpers.ps1`, `session-hashhelpers.ps1`, `admin-config.ps1`)
+2. Resolve paths: `$Config.ResDir/session-graph/`
+3. Read `_meta.json` for `LastIncrementalUpdate` and `NameIndexVersion`
+4. **Determine scope**:
+   - `-Full`: process all sessions
+   - Incremental: `Get-GitChangeLog -MinDate $LastIncrementalUpdate -NoPatch` → changed `.md` files → affected sessions (any session whose `FilePaths` overlaps a changed file)
+   - Fallback: no stored timestamp or git fails → full scan
+5. Fetch sessions: `Get-Session -IncludeMentions -ExcludeDirectory $ExcludeDirectory`
+6. **NameIndex version check**: compute `Get-NameIndexVersion` from `Get-NameIndex` keys. If changed from stored → force full rebuild (Tier 2 matches invalidated by name set change)
+7. For each session → `ConvertTo-ParticipantRecord` → store in index keyed by session header
+8. Incremental mode: load existing `_index.json`, replace only affected entries
+9. Write `_index.json` and update `_meta.json` (both guarded by `ShouldProcess`)
+
+### 6.3 Output
+
+| Property | Type | Description |
+|---|---|---|
+| `SessionsProcessed` | int | Number of sessions processed in this run |
+| `ParticipantsFound` | int | Total participant records across all processed sessions |
+| `Tier0Count` | int | Participants detected via filesystem placement |
+| `Tier1Count` | int | Participants detected via structured metadata |
+| `Tier2Count` | int | Participants detected via body text mentions |
+
+Returns the zero-valued object when no sessions need processing.
+
+---
+
+## 7. `Get-SessionGraph`
+
+### 7.1 Parameters
+
+| Parameter | Type | Mandatory | Description |
+|---|---|---|---|
+| `EntityName` | string | No | Entity name to look up (required for Sessions, CoParticipants modes) |
+| `EntityType` | string[] | No | Filter co-participants/timeline by entity type |
+| `SessionHeader` | string | No | Session header to look up (required for EntityTimeline mode) |
+| `MinDate` | datetime | No | Include only sessions on or after this date |
+| `MaxDate` | datetime | No | Include only sessions on or before this date |
+| `MinTier` | int | No | Maximum tier to include (default 2; 0=filesystem only, 1=+metadata, 2=+bodytext) |
+| `Mode` | string | No | Output mode: `Sessions` (default), `CoParticipants`, `EntityTimeline`, `Summary` |
+| `Quiet` | switch | No | Suppress warning output to stderr |
+
+### 7.2 Output Modes
+
+**Sessions** (default) — requires `-EntityName`. Returns `PSCustomObject[]`:
+
+| Property | Type | Description |
+|---|---|---|
+| `Header` | string | Full session header |
+| `Date` | string | Session date (`yyyy-MM-dd`) |
+| `Format` | string | Session format generation (`Gen1`–`Gen4`) |
+| `EntityTier` | int | Tier at which the queried entity participates |
+| `EntitySource` | string | Detection source for the queried entity |
+| `EntityWeight` | decimal or `$null` | PU weight for the queried entity |
+| `Participants` | hashtable[] | All participants in the session |
+| `FilePaths` | string[] | Source file paths for the session |
+
+**CoParticipants** — requires `-EntityName`. Returns `PSCustomObject[]` sorted by `SharedSessions` descending:
+
+| Property | Type | Description |
+|---|---|---|
+| `Name` | string | Co-participant entity name |
+| `Type` | string | Entity type |
+| `SharedSessions` | int | Number of sessions shared with the queried entity |
+
+**EntityTimeline** — requires `-SessionHeader`. Returns `PSCustomObject[]`:
+
+| Property | Type | Description |
+|---|---|---|
+| `Session` | string | Session header |
+| `Name` | string | Participant entity name |
+| `Type` | string | Entity type |
+| `Tier` | int | Involvement tier |
+| `Source` | string | Detection source |
+| `Weight` | decimal or `$null` | PU weight |
+
+**Summary** — no entity required. Returns a single `PSCustomObject`:
+
+| Property | Type | Description |
+|---|---|---|
+| `TotalSessions` | int | Number of sessions in the filtered index |
+| `TotalParticipants` | int | Total participant records (within tier threshold) |
+| `FormatBreakdown` | PSCustomObject | Per-format session counts (e.g. `.Gen1 = 50`, `.Gen3 = 200`) |
+| `Tier0Count` | int | Filesystem-detected participations |
+| `Tier1Count` | int | Metadata-detected participations |
+| `Tier2Count` | int | Body-text-detected participations |
+
+---
+
+## 8. Index Schema
+
+### 8.1 `_meta.json`
+
+| Field | Type | Description |
+|---|---|---|
+| `Version` | int | Schema version (currently 1) |
+| `LastFullUpdate` | string or `$null` | Timestamp of last full build (`yyyy-MM-dd HH:mm:ss`) |
+| `LastIncrementalUpdate` | string or `$null` | Timestamp of last incremental update |
+| `NameIndexVersion` | string or `$null` | SHA256 of sorted entity name set |
+| `SessionCount` | int | Number of sessions in the index |
+
+Timestamps use non-ISO format `yyyy-MM-dd HH:mm:ss` to prevent `ConvertFrom-Json` auto-conversion. Read via `-AsHashtable`.
+
+### 8.2 `_index.json`
+
+Hashtable keyed by full session header string (e.g. `### 2024-06-15, Ucieczka z Erathii, Solmyr`). Each value:
+
+| Field | Type | Description |
+|---|---|---|
+| `Date` | string | `yyyy-MM-dd` |
+| `Format` | string | `Gen1`, `Gen2`, `Gen3`, or `Gen4` |
+| `Participants` | hashtable[] | Array of participant records (Name, Type, Tier, Source, Weight) |
+| `FilePaths` | string[] | Repo-relative source file paths |
+
+Keys sorted alphabetically (`StringComparer.Ordinal`) for deterministic output. Serialized at `ConvertTo-Json -Depth 5`.
+
+---
+
+## 9. `Get-NameIndexVersion`
+
+### 9.1 Parameters
+
+| Parameter | Type | Mandatory | Description |
+|---|---|---|---|
+| `Names` | string[] | Yes | Array of entity names from the name index |
+
+### 9.2 Algorithm
+
+1. Sort names using `StringComparer.Ordinal`
+2. Join with `|` separator
+3. Compute SHA256 hash (reuses `Get-ContentHash` if loaded, otherwise inline computation)
+
+Returns a 64-character lowercase hex string. Used by `Set-SessionGraph` to detect entity name set changes that would invalidate Tier 2 matches.
+
+---
+
+## 10. I/O Helpers
+
+### 10.1 `Read-SessionGraphIndex` / `Write-SessionGraphIndex`
+
+Follow the same pattern as `Read-SessionHashFile` / `Write-SessionHashFile` in `session-hashhelpers.ps1`:
+- Read returns empty hashtable on missing or corrupt file
+- Write creates parent directories as needed
+- Write sorts keys via `StringComparer.Ordinal` before serialization
+- Both use `.NET static I/O` with `$script:UTF8NoBOM` encoding
+
+### 10.2 `Read-SessionGraphMeta` / `Write-SessionGraphMeta`
+
+Follow the same pattern as `Read-SessionHashMeta` / `Write-SessionHashMeta`:
+- Read returns defaults on missing file: `Version=1, SessionCount=0, timestamps=$null, NameIndexVersion=$null`
+- Read uses `ConvertFrom-Json -AsHashtable` to prevent timestamp auto-conversion
+- Write creates parent directories as needed
+
+---
+
+## 11. Incremental Update Strategy
+
+The incremental path in `Set-SessionGraph`:
+1. Read `LastIncrementalUpdate` from `_meta.json`
+2. `Get-GitChangeLog -MinDate $LastUpdate -NoPatch` → list of changed `.md` file paths
+3. For each session: if any path in its `FilePaths` array matches a changed file (OrdinalIgnoreCase) → mark as affected
+4. Load existing `_index.json`, replace only affected session entries, preserve unaffected ones
+5. Write merged index
+
+`NameIndexVersion` provides a safety net: if the entity name set changes (new entity added, entity renamed, alias changed), all Tier 2 body text matches are potentially invalidated, forcing a full rebuild regardless of incremental scope.
+
+---
+
+## 12. Edge Cases
+
+| Scenario | Behavior |
+|---|---|
+| Session with no `FilePaths` | Only Tier 1/2 participants are produced |
+| File path not matching any classification rule | Silently skipped (`Get-FilePathInvolvement` returns `$null`) |
+| PU entry with `$null` Value | Participant created with `Weight = $null` |
+| Entity name is empty or whitespace | Skipped by `$MergeParticipant` guard |
+| Merged session (via `Merge-SessionGroup`) | Graph sees the merged result — `FilePaths`, `PU`, `Changes`, `Mentions` are already deduplicated |
+| `Get-SessionGraph` called with no index file | Returns `@()` with a warning, never throws |
+| `Get-SessionGraph` EntityTimeline without `-SessionHeader` | Returns `@()` with a warning |
+| `Get-SessionGraph` Sessions/CoParticipants without `-EntityName` | Returns `@()` with a warning |
+| `Set-SessionGraph -WhatIf` | No files written; `ShouldProcess` guards both `_index.json` and `_meta.json` writes |
+| Git changelog fails in incremental mode | Falls back to full scan with a warning |
+| Incremental mode with no stored timestamp | Falls back to full scan |
+
+---
+
+## 13. Testing
+
+Test file: `tests/set-sessiongraph.Tests.ps1` (31 tests, Pattern B)
+
+| Describe Block | Tests | Coverage |
+|---|---|---|
+| `Get-FilePathInvolvement` | 12 | All 5 categories + unknown, backslash normalization, spaces in names |
+| `ConvertTo-ParticipantRecord` | 9 | Per-tier extraction, dedup priority, weight preservation, tier upgrade |
+| `Get-NameIndexVersion` | 4 | Consistency, order independence, change detection, hex format |
+| Session Graph Index I/O | 6 | Read/Write round-trip, missing file defaults, parent directory creation |
+
+Test file: `tests/get-sessiongraph.Tests.ps1` (20 tests, Pattern B with mocked `Get-AdminConfig`)
+
+| Describe Block | Tests | Coverage |
+|---|---|---|
+| Missing index | 1 | Returns empty array when index file absent |
+| Sessions mode | 7 | Entity filter, date range, MinTier filter, detail field verification |
+| CoParticipants mode | 3 | Shared session counts, self-exclusion, tier filter on co-participants |
+| EntityTimeline mode | 4 | Participant listing, missing session, tier filter, missing parameter |
+| Summary mode | 3 | Global stats, format generation breakdown, date range |
+| Tier coverage by format | 2 | Gen1 has Tier 0+2 only, Gen3 has Tier 0+1+2 |
+
+Fixture data: in-memory hashtable with 5 sessions (1× Gen1, 1× Gen2, 2× Gen3, 1× Gen4) covering all tier combinations.
+
+---
+
+## 14. Related Documents
+
+- [SESSIONS.md](SESSIONS.md) — Session parsing, format generations, `Merge-SessionGroup`
+- [NAME-RESOLUTION.md](NAME-RESOLUTION.md) — Name index, fuzzy matching, mention extraction
+- [SESSION-INTEGRITY.md](SESSION-INTEGRITY.md) — Content hashing (similar architecture pattern)
+- [LOCATION-GRAPH.md](LOCATION-GRAPH.md) — Edge accumulation pattern reused in CoParticipants mode
