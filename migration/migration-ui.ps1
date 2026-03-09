@@ -15,23 +15,25 @@
     to hardcoded colors and Read-Host prompts - no dependency on the CLI engine.
 
     Helpers:
-    - Write-PhaseHeader:     renders phase banner with status badge
-    - Write-Step:            renders step-in-progress line
-    - Write-StepOK:          renders success step result
-    - Write-StepWarning:     renders warning step result
-    - Write-StepError:       renders error step result
-    - Write-ChecklistReport: renders checklist with checkboxes
-    - Write-ActionRequired:  renders action-required block
-    - Write-CommandHint:     renders copy-paste command suggestion
-    - Write-PhaseSummary:    renders end-of-phase summary box
-    - Write-SectionHeader:   renders sub-section header
-    - Write-TableRow:        renders a formatted table row
-    - Request-UserChoice:    menu selection (arrow-key or fallback Read-Host)
-    - Request-YesNo:         Tak/Nie prompt (arrow-key or fallback Read-Host)
-    - Request-Confirmation:  press any key / Enter to continue
-    - Request-StringInput:   text input (character-by-character or fallback Read-Host)
-    - Request-NumericInput:  numeric input with validation
-    - Show-ProgressSummary:  full migration status overview (arrow-menu or fallback)
+    - Initialize-MigrationLog: opens fresh log file with timestamp header
+    - Write-MigrationLog:      appends structured entry to migration-log.txt
+    - Write-PhaseHeader:       renders phase banner with status badge
+    - Write-Step:              renders step-in-progress line
+    - Write-StepOK:            renders success step result
+    - Write-StepWarning:       renders warning step result
+    - Write-StepError:         renders error step result
+    - Write-ChecklistReport:   renders checklist with checkboxes
+    - Write-ActionRequired:    renders action-required block
+    - Write-CommandHint:       renders copy-paste command suggestion
+    - Write-PhaseSummary:      renders end-of-phase summary box
+    - Write-SectionHeader:     renders sub-section header
+    - Write-TableRow:          renders a formatted table row
+    - Request-UserChoice:      menu selection (arrow-key or fallback Read-Host)
+    - Request-YesNo:           Tak/Nie prompt (arrow-key or fallback Read-Host)
+    - Request-Confirmation:    press any key / Enter to continue
+    - Request-StringInput:     text input (character-by-character or fallback Read-Host)
+    - Request-NumericInput:    numeric input with validation
+    - Show-ProgressSummary:    full migration status overview (arrow-menu or fallback)
 #>
 
 # ── CLI engine detection ────────────────────────────────────────────────────
@@ -39,6 +41,84 @@
 # Otherwise fall back to hardcoded colors.
 
 $script:CLIEngineAvailable = [bool](Get-Command 'Get-CLIColor' -ErrorAction SilentlyContinue)
+
+# ── Migration Log ─────────────────────────────────────────────────────────
+# Structured text log written to .robot/res/migration-log.txt.
+# Overwritten on each run (always fresh). Polish language, verbose output.
+
+$script:MigrationLogPath = $null
+$script:MigrationLogLines = $null
+
+# Opens a fresh log file. Called once at the start of each migration run.
+function Initialize-MigrationLog {
+    try {
+        $RepoRoot = Get-RepoRoot
+    } catch {
+        return
+    }
+    $ResDir = [System.IO.Path]::Combine($RepoRoot, '.robot', 'res')
+    if (-not [System.IO.Directory]::Exists($ResDir)) {
+        [void][System.IO.Directory]::CreateDirectory($ResDir)
+    }
+    $script:MigrationLogPath = [System.IO.Path]::Combine($ResDir, 'migration-log.txt')
+    $script:MigrationLogLines = [System.Collections.Generic.List[string]]::new(256)
+
+    $Timestamp = [datetime]::Now.ToString('yyyy-MM-dd HH:mm:ss')
+
+    $script:MigrationLogLines.Add(([string]::new([char]0x2550, 60)))
+    $script:MigrationLogLines.Add("  LOG MIGRACJI — wygenerowano $Timestamp")
+    $script:MigrationLogLines.Add("  UWAGA: Ten plik jest nadpisywany przy kazdym uruchomieniu.")
+    $script:MigrationLogLines.Add("         Zawiera wyniki OSTATNIEGO przebiegu migracji.")
+    $script:MigrationLogLines.Add(([string]::new([char]0x2550, 60)))
+    $script:MigrationLogLines.Add('')
+
+    Flush-MigrationLog
+}
+
+# Appends a structured entry to the migration log.
+# Level: INFO, WARN, ERROR, ACTION
+# Details: array of indented explanation lines (4-space indent applied automatically)
+function Write-MigrationLog {
+    param(
+        [ValidateSet('INFO','WARN','ERROR','ACTION')]
+        [string]$Level = 'INFO',
+        [string]$Phase,
+        [Parameter(Mandatory)] [string]$Summary,
+        [string[]]$Details
+    )
+
+    if (-not $script:MigrationLogLines) { return }
+
+    # Guard: predecessor checks call Write-StepWarning before Write-PhaseHeader sets context
+    $PhaseLabel = if ([string]::IsNullOrWhiteSpace($Phase)) { '(pre-phase)' } else { $Phase }
+
+    $Timestamp = [datetime]::Now.ToString('HH:mm:ss')
+    $script:MigrationLogLines.Add("[$Level] $Timestamp | $PhaseLabel")
+    $script:MigrationLogLines.Add("    $Summary")
+
+    if ($Details) {
+        foreach ($Line in $Details) {
+            $script:MigrationLogLines.Add("        $Line")
+        }
+    }
+    $script:MigrationLogLines.Add('')
+
+    Flush-MigrationLog
+}
+
+# Writes accumulated lines to disk (overwrites the entire file each time)
+function Flush-MigrationLog {
+    if (-not $script:MigrationLogPath -or -not $script:MigrationLogLines) { return }
+    try {
+        [System.IO.File]::WriteAllLines(
+            $script:MigrationLogPath,
+            $script:MigrationLogLines,
+            [System.Text.UTF8Encoding]::new($false)
+        )
+    } catch {
+        # Non-fatal: log is best-effort
+    }
+}
 
 function Resolve-MigrationColor {
     param([Parameter(Mandatory)] [string]$Role)
@@ -79,6 +159,10 @@ $script:StatusDisplay = @{
 
 # ── Output helpers ──────────────────────────────────────────────────────────
 
+# Current phase/step context for log attribution
+$script:LogPhaseContext = ''
+$script:LogStepContext  = ''
+
 # Renders "=== FAZA N: Name ===" banner with status badge
 function Write-PhaseHeader {
     param(
@@ -90,6 +174,9 @@ function Write-PhaseHeader {
     $Name = Get-PhaseName -Phase $Phase
     $StatusInfo = $script:StatusDisplay[$Status]
     $AccentColor = Resolve-MigrationColor -Role 'Accent'
+
+    $script:LogPhaseContext = "Faza $Phase"
+    $script:LogStepContext = ''
 
     Write-Host ''
     Write-Host ('=' * 60) -ForegroundColor $AccentColor
@@ -103,6 +190,9 @@ function Write-PhaseHeader {
     }
     Write-Host ''
     Write-Host ('=' * 60) -ForegroundColor $AccentColor
+
+    $StatusText = if ($StatusInfo) { $StatusInfo.Text } else { '' }
+    Write-MigrationLog -Level 'INFO' -Phase "Faza $Phase" -Summary "$Name — $StatusText"
 }
 
 # Renders step-in-progress line
@@ -111,26 +201,40 @@ function Write-Step {
         [Parameter(Mandatory)] [int]$Number,
         [Parameter(Mandatory)] [string]$Text
     )
+    $script:LogStepContext = "Krok $Number"
     Write-Host ''
     Write-Host "  Krok $Number`: $Text" -ForegroundColor (Resolve-MigrationColor -Role 'Accent')
+    Write-MigrationLog -Level 'INFO' -Phase "$script:LogPhaseContext, Krok $Number" -Summary $Text
 }
 
 # Renders success step result
 function Write-StepOK {
     param([Parameter(Mandatory)] [string]$Text)
     Write-Host "  $([char]0x2713) $Text" -ForegroundColor (Resolve-MigrationColor -Role 'Success')
+    $Ctx = if ($script:LogStepContext) { "$script:LogPhaseContext, $script:LogStepContext" } else { $script:LogPhaseContext }
+    Write-MigrationLog -Level 'INFO' -Phase $Ctx -Summary "OK: $Text"
 }
 
 # Renders warning step result
 function Write-StepWarning {
-    param([Parameter(Mandatory)] [string]$Text)
+    param(
+        [Parameter(Mandatory)] [string]$Text,
+        [string[]]$LogDetails
+    )
     Write-Host "  $([char]0x26A0) $Text" -ForegroundColor (Resolve-MigrationColor -Role 'Warning')
+    $Ctx = if ($script:LogStepContext) { "$script:LogPhaseContext, $script:LogStepContext" } else { $script:LogPhaseContext }
+    Write-MigrationLog -Level 'WARN' -Phase $Ctx -Summary $Text -Details $LogDetails
 }
 
 # Renders error step result
 function Write-StepError {
-    param([Parameter(Mandatory)] [string]$Text)
+    param(
+        [Parameter(Mandatory)] [string]$Text,
+        [string[]]$LogDetails
+    )
     Write-Host "  $([char]0x2717) $Text" -ForegroundColor (Resolve-MigrationColor -Role 'Error')
+    $Ctx = if ($script:LogStepContext) { "$script:LogPhaseContext, $script:LogStepContext" } else { $script:LogPhaseContext }
+    Write-MigrationLog -Level 'ERROR' -Phase $Ctx -Summary $Text -Details $LogDetails
 }
 
 # Renders a sub-section header
@@ -161,10 +265,15 @@ function Write-ChecklistReport {
 
 # Renders action-required block
 function Write-ActionRequired {
-    param([Parameter(Mandatory)] [string]$Text)
+    param(
+        [Parameter(Mandatory)] [string]$Text,
+        [string[]]$LogDetails
+    )
     Write-Host ''
     Write-Host "  WYMAGANE DZIAŁANIE:" -ForegroundColor (Resolve-MigrationColor -Role 'Warning')
     Write-Host "  $Text" -ForegroundColor (Resolve-MigrationColor -Role 'Warning')
+    $Ctx = if ($script:LogStepContext) { "$script:LogPhaseContext, $script:LogStepContext" } else { $script:LogPhaseContext }
+    Write-MigrationLog -Level 'ACTION' -Phase $Ctx -Summary "WYMAGANE: $Text" -Details $LogDetails
 }
 
 # Renders copy-paste command suggestion in DarkGray
@@ -213,6 +322,10 @@ function Write-PhaseSummary {
     Write-Host ('+' + ('-' * 58) + '+')
     Write-Host ("| $StatusLine".PadRight(59) + '|') -ForegroundColor $StatusColor
     Write-Host ('+' + ('-' * 58) + '+')
+
+    # Log phase summary
+    $LogLevel = if ($Status -eq 'Completed') { 'INFO' } elseif ($Status -eq 'InProgress') { 'WARN' } else { 'INFO' }
+    Write-MigrationLog -Level $LogLevel -Phase "Faza $Phase" -Summary "PODSUMOWANIE: $($StatusInfo.Text)" -Details $Lines
 }
 
 # Renders a formatted table row with padding
@@ -274,8 +387,14 @@ function Request-UserChoice {
     # Fallback: Read-Host
     while ($true) {
         Write-Host ''
-        Write-Host "  $Prompt" -NoNewline
-        Write-Host ' ' -NoNewline
+        # Display available options with labels before prompting
+        if ($Labels) {
+            foreach ($C in $ValidChoices) {
+                $Label = if ($Labels.ContainsKey($C)) { $Labels[$C] } else { $C }
+                Write-Host "    [$C] $Label" -ForegroundColor (Resolve-MigrationColor -Role 'Disabled')
+            }
+        }
+        Write-Host "  $Prompt ($($ValidChoices -join '/')) " -NoNewline
         $UserInput = Read-Host
         $Trimmed = $UserInput.Trim().ToUpperInvariant()
 

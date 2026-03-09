@@ -59,6 +59,7 @@ function Show-DiagnosticResults {
     # Category: unresolved character names
     if ($Diag.UnresolvedCharacters -and $Diag.UnresolvedCharacters.Count -gt 0) {
         Write-SectionHeader "NIEROZWIĄZANE NAZWY POSTACI ($($Diag.UnresolvedCharacters.Count))"
+        $LogDetails = [System.Collections.Generic.List[string]]::new()
         foreach ($Item in $Diag.UnresolvedCharacters) {
             Write-Host "    '$($Item.Character)' w sesji: $($Item.SessionHeader)" -ForegroundColor (Resolve-MigrationColor -Role 'Warning')
             if ($Item.FilePath) {
@@ -67,37 +68,88 @@ function Show-DiagnosticResults {
             Write-Host '      Opcja A: Popraw literówkę w pliku sesji' -ForegroundColor (Resolve-MigrationColor -Role 'Disabled')
             Write-Host "      Opcja B: Dodaj alias komendą:" -ForegroundColor (Resolve-MigrationColor -Role 'Disabled')
             Write-CommandHint "Set-PlayerCharacter -PlayerName `"...`" -CharacterName `"...`" -Aliases @(`"$($Item.Character)`")"
+            $LogDetails.Add("'$($Item.Character)' w sesji: $($Item.SessionHeader)")
+            $LogDetails.Add("    Naprawa A: Popraw literowke w pliku sesji")
+            $LogDetails.Add("    Naprawa B: Set-PlayerCharacter -PlayerName `"...`" -CharacterName `"...`" -Aliases @(`"$($Item.Character)`")")
         }
+        Write-MigrationLog -Level 'WARN' -Phase $script:LogPhaseContext -Summary "Nierozwiazane nazwy postaci: $($Diag.UnresolvedCharacters.Count)" -Details $LogDetails.ToArray()
     }
 
     # Category: malformed PU values
     if ($Diag.MalformedPU -and $Diag.MalformedPU.Count -gt 0) {
         Write-SectionHeader "BŁĘDNE WARTOŚCI PU ($($Diag.MalformedPU.Count))"
+        $LogDetails = [System.Collections.Generic.List[string]]::new()
         foreach ($Item in $Diag.MalformedPU) {
             Write-Host "    Postać '$($Item.Character)' w sesji '$($Item.SessionHeader)'" -ForegroundColor (Resolve-MigrationColor -Role 'Warning')
             Write-Host "      Wartość: '$($Item.Value)' (oczekiwana: liczba, np. 0.3)" -ForegroundColor (Resolve-MigrationColor -Role 'Disabled')
+            $LogDetails.Add("'$($Item.Character)' w sesji '$($Item.SessionHeader)' — wartosc: '$($Item.Value)'")
+            $LogDetails.Add("    Naprawa: Zmien wartosc na poprawna liczbe (np. 0.3)")
         }
+        Write-MigrationLog -Level 'WARN' -Phase $script:LogPhaseContext -Summary "Bledne wartosci PU: $($Diag.MalformedPU.Count)" -Details $LogDetails.ToArray()
     }
 
     # Category: duplicate PU entries
     if ($Diag.DuplicateEntries -and $Diag.DuplicateEntries.Count -gt 0) {
         Write-SectionHeader "DUPLIKATY PU ($($Diag.DuplicateEntries.Count))"
+        $LogDetails = [System.Collections.Generic.List[string]]::new()
         foreach ($Item in $Diag.DuplicateEntries) {
             Write-Host "    '$($Item.CharacterName)' x$($Item.Count) w sesji: $($Item.SessionHeader)" -ForegroundColor (Resolve-MigrationColor -Role 'Warning')
             Write-Host '      Usuń zduplikowane wpisy (zachowaj poprawną wartość)' -ForegroundColor (Resolve-MigrationColor -Role 'Disabled')
+            $LogDetails.Add("'$($Item.CharacterName)' x$($Item.Count) w sesji: $($Item.SessionHeader)")
+            $LogDetails.Add("    Naprawa: Usun zduplikowane wpisy PU (zachowaj poprawna wartosc)")
         }
+        Write-MigrationLog -Level 'WARN' -Phase $script:LogPhaseContext -Summary "Duplikaty PU: $($Diag.DuplicateEntries.Count)" -Details $LogDetails.ToArray()
     }
 
     # Category: sessions with malformed dates
     if ($Diag.FailedSessionsWithPU -and $Diag.FailedSessionsWithPU.Count -gt 0) {
         Write-SectionHeader "SESJE Z BŁĘDNĄ DATĄ ($($Diag.FailedSessionsWithPU.Count))"
+        $LogDetails = [System.Collections.Generic.List[string]]::new()
         foreach ($Item in $Diag.FailedSessionsWithPU) {
             Write-Host "    Nagłówek: '$($Item.Header)'" -ForegroundColor (Resolve-MigrationColor -Role 'Warning')
             if ($Item.FilePath) {
                 Write-Host "      Plik: $($Item.FilePath)" -ForegroundColor (Resolve-MigrationColor -Role 'Disabled')
             }
-            Write-Host '      Poprawka: zmień datę na format YYYY-MM-DD' -ForegroundColor (Resolve-MigrationColor -Role 'Disabled')
+
+            # Auto-detect the malformed date and suggest @Data override
+            # Header value has '### ' prefix stripped, so match date directly
+            $DateSuggestion = $null
+            if ($Item.Header -match '^(\d{4}-\d{2}-\d+)') {
+                $RawDate = $Matches[1]
+                # Detect extra digits in day part (e.g. 2024-07-014 → 2024-07-14)
+                if ($RawDate -match '^(\d{4}-\d{2}-)0*(\d{1,2})$') {
+                    $DayPart = [int]$Matches[2]
+                    if ($DayPart -ge 1 -and $DayPart -le 31) {
+                        $DateSuggestion = "$($Matches[1])$($DayPart.ToString('D2'))"
+                    }
+                }
+                # Detect missing separator (e.g. 20240714 → 2024-07-14)
+                if (-not $DateSuggestion -and $RawDate -match '^\d{8}$') {
+                    $DateSuggestion = "$($RawDate.Substring(0,4))-$($RawDate.Substring(4,2))-$($RawDate.Substring(6,2))"
+                }
+            }
+
+            if ($DateSuggestion) {
+                Write-Host "      Wykryto: data '$RawDate' zawiera literowke" -ForegroundColor (Resolve-MigrationColor -Role 'Warning')
+                Write-Host "      Poprawka A: zmien naglowek na '### $DateSuggestion, ...'" -ForegroundColor (Resolve-MigrationColor -Role 'Disabled')
+                Write-Host "      Poprawka B: dodaj '@Data: $DateSuggestion' w bloku metadanych sesji" -ForegroundColor (Resolve-MigrationColor -Role 'Disabled')
+                $LogDetails.Add("'$($Item.Header)'")
+                if ($Item.FilePath) { $LogDetails.Add("    Plik: $($Item.FilePath)") }
+                $LogDetails.Add("    Wykryto: data '$RawDate' zawiera literowke")
+                $LogDetails.Add("    Naprawa A: Zmien naglowek na '### $DateSuggestion, ...'")
+                $LogDetails.Add("    Naprawa B: Dodaj '@Data: $DateSuggestion' w bloku metadanych sesji (Gen4)")
+            } else {
+                Write-Host '      Poprawka: zmień datę na format YYYY-MM-DD' -ForegroundColor (Resolve-MigrationColor -Role 'Disabled')
+                Write-Host '      Robot nie rozpoznal wzorca blednej daty.' -ForegroundColor (Resolve-MigrationColor -Role 'Error')
+                Write-Host "      Format wymagany: '### YYYY-MM-DD, Tytul, Narrator'" -ForegroundColor (Resolve-MigrationColor -Role 'Disabled')
+                $LogDetails.Add("'$($Item.Header)'")
+                if ($Item.FilePath) { $LogDetails.Add("    Plik: $($Item.FilePath)") }
+                $LogDetails.Add("    BLAD: Robot nie rozpoznal wzorca blednej daty")
+                $LogDetails.Add("    Format wymagany: '### YYYY-MM-DD, Tytul, Narrator'")
+                $LogDetails.Add("    Naprawa: Popraw date recznie na format YYYY-MM-DD")
+            }
         }
+        Write-MigrationLog -Level 'WARN' -Phase $script:LogPhaseContext -Summary "Sesje z bledna data: $($Diag.FailedSessionsWithPU.Count)" -Details $LogDetails.ToArray()
     }
 
     # Category: stale history entries (informational only, non-blocking)
@@ -108,6 +160,7 @@ function Show-DiagnosticResults {
             Write-Host "    '$Header'" -ForegroundColor (Resolve-MigrationColor -Role 'Disabled')
         }
         Write-Host '    Status: informacyjny (nie blokuje operacji)' -ForegroundColor (Resolve-MigrationColor -Role 'Disabled')
+        Write-MigrationLog -Level 'INFO' -Phase $script:LogPhaseContext -Summary "Przestarzale wpisy historii: $($Diag.StaleHistoryEntries.Count) (informacyjnie, nie blokuje)"
     }
 }
 
@@ -124,7 +177,11 @@ function Invoke-QuickDiagnostics {
     Write-Host ('=' * 60) -ForegroundColor $AccentColor
 
     Write-Step -Number 1 -Text 'Diagnostyka PU...'
-    $Diag = Test-PlayerCharacterPUAssignment -ExcludeDirectory $script:MigrationExcludeDirs
+    $PrevSuppressState = $script:SuppressWarnings
+    $script:SuppressWarnings = $true
+    try {
+        $Diag = Test-PlayerCharacterPUAssignment -ExcludeDirectory $script:MigrationExcludeDirs
+    } finally { $script:SuppressWarnings = $PrevSuppressState }
     Show-DiagnosticResults -Diagnostics $Diag
 
     Write-Step -Number 2 -Text 'Rekoncyliacja walut...'
@@ -141,7 +198,7 @@ function Invoke-QuickDiagnostics {
     }
 
     Write-Step -Number 3 -Text 'Format sesji...'
-    $Sessions = Get-Session -ExcludeDirectory $script:MigrationExcludeDirs
+    $Sessions = Get-Session -ExcludeDirectory $script:MigrationExcludeDirs -Quiet
     $FormatGroups = $Sessions | Group-Object Format | Sort-Object Name
     foreach ($Group in $FormatGroups) {
         Write-Host "    $($Group.Name): $($Group.Count)" -ForegroundColor (Resolve-MigrationColor -Role 'Disabled')

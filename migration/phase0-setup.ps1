@@ -138,9 +138,9 @@ function Invoke-MigrationPhase0 {
             if (-not [System.IO.Directory]::Exists($ManifestDir)) {
                 [void][System.IO.Directory]::CreateDirectory($ManifestDir)
             }
-            $ManifestContent = "@{`n    EntitiesFile = 'entities.md'`n}`n"
+            $ManifestContent = "@{`n    EntitiesFile = '../entities.md'`n}`n"
             [System.IO.File]::WriteAllText($ManifestPath, $ManifestContent, [System.Text.UTF8Encoding]::new($false))
-            Write-StepOK 'Utworzono manifest .robot/robot-data.psd1 (EntitiesFile → entities.md)'
+            Write-StepOK 'Utworzono manifest .robot/robot-data.psd1 (EntitiesFile → ../entities.md)'
         }
     }
     Update-PhaseChecklist -State $State -Phase 0 -Item 'ManifestCreated' -Value $true

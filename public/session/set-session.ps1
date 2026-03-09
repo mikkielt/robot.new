@@ -311,7 +311,6 @@ function Set-Session {
 
                 if ($HasBody) {
                     [void]$NewSectionSB.Append($NL)
-                    [void]$NewSectionSB.Append($NL)
                     [void]$NewSectionSB.Append($Body)
                 }
 
@@ -379,37 +378,41 @@ function Set-Session {
                     }
 
                     # Eager graph refresh for Tiers 0+1
-                    try {
-                        if (-not (Get-Command 'Read-SessionGraphMeta' -ErrorAction SilentlyContinue)) {
-                            . "$script:ModuleRoot/private/session-graphhelpers.ps1"
-                        }
-                        if (-not (Get-Command 'Get-AdminConfig' -ErrorAction SilentlyContinue)) {
-                            . "$script:ModuleRoot/private/admin-config.ps1"
-                        }
-                        $EagerConfig = Get-AdminConfig
-                        $EagerGraphDir = [System.IO.Path]::Combine($EagerConfig.ResDir, 'session-graph')
-                        $EagerMetaPath = [System.IO.Path]::Combine($EagerGraphDir, '_meta.json')
-                        $EagerIndexPath = [System.IO.Path]::Combine($EagerGraphDir, '_index.json')
-                        $EagerMeta = Read-SessionGraphMeta -MetaPath $EagerMetaPath
-                        if ($EagerMeta -and $EagerMeta['SessionCount'] -gt 0 -and [System.IO.File]::Exists($EagerIndexPath)) {
-                            $EagerIndex = Read-SessionGraphIndex -IndexPath $EagerIndexPath
-                            $HeaderText = $Match.HeaderText
-
-                            # Get current session data for the affected header
-                            $AffectedSessions = @(Get-Session -File $FilePath | Where-Object { $_.Header -eq $HeaderText })
-                            foreach ($AffSess in $AffectedSessions) {
-                                Update-SessionGraphEntry -SessionHeader $AffSess.Header -Session $AffSess -Index $EagerIndex
+                    # Skip during batch format upgrades — caller rebuilds
+                    # the full graph afterward, so per-session refresh is O(n²) waste.
+                    if (-not $UpgradeFormat) {
+                        try {
+                            if (-not (Get-Command 'Read-SessionGraphMeta' -ErrorAction SilentlyContinue)) {
+                                . "$script:ModuleRoot/private/session-graphhelpers.ps1"
                             }
+                            if (-not (Get-Command 'Get-AdminConfig' -ErrorAction SilentlyContinue)) {
+                                . "$script:ModuleRoot/private/admin-config.ps1"
+                            }
+                            $EagerConfig = Get-AdminConfig
+                            $EagerGraphDir = [System.IO.Path]::Combine($EagerConfig.ResDir, 'session-graph')
+                            $EagerMetaPath = [System.IO.Path]::Combine($EagerGraphDir, '_meta.json')
+                            $EagerIndexPath = [System.IO.Path]::Combine($EagerGraphDir, '_index.json')
+                            $EagerMeta = Read-SessionGraphMeta -MetaPath $EagerMetaPath
+                            if ($EagerMeta -and $EagerMeta['SessionCount'] -gt 0 -and [System.IO.File]::Exists($EagerIndexPath)) {
+                                $EagerIndex = Read-SessionGraphIndex -IndexPath $EagerIndexPath
+                                $HeaderText = $Match.HeaderText
 
-                            Write-SessionGraphIndex -IndexPath $EagerIndexPath -Index $EagerIndex
-                            $EagerMeta['LastEagerRefresh'] = [datetime]::Now.ToString('yyyy-MM-dd HH:mm:ss')
-                            $EagerMeta['EagerRefreshCount'] = $EagerMeta['EagerRefreshCount'] + 1
-                            $EagerMeta['SessionCount'] = $EagerIndex.Count
-                            Write-SessionGraphMeta -MetaPath $EagerMetaPath -Meta $EagerMeta
+                                # Get current session data for the affected header
+                                $AffectedSessions = @(Get-Session -File $FilePath | Where-Object { $_.Header -eq $HeaderText })
+                                foreach ($AffSess in $AffectedSessions) {
+                                    Update-SessionGraphEntry -SessionHeader $AffSess.Header -Session $AffSess -Index $EagerIndex
+                                }
+
+                                Write-SessionGraphIndex -IndexPath $EagerIndexPath -Index $EagerIndex
+                                $EagerMeta['LastEagerRefresh'] = [datetime]::Now.ToString('yyyy-MM-dd HH:mm:ss')
+                                $EagerMeta['EagerRefreshCount'] = $EagerMeta['EagerRefreshCount'] + 1
+                                $EagerMeta['SessionCount'] = $EagerIndex.Count
+                                Write-SessionGraphMeta -MetaPath $EagerMetaPath -Meta $EagerMeta
+                            }
+                        } catch {
+                            # Eager refresh is best-effort; do not fail the session write
+                            Write-RobotWarning "[WARN Set-Session] Eager graph refresh failed: $_"
                         }
-                    } catch {
-                        # Eager refresh is best-effort; do not fail the session write
-                        Write-RobotWarning "[WARN Set-Session] Eager graph refresh failed: $_"
                     }
                 }
             }

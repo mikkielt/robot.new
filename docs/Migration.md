@@ -96,6 +96,8 @@ The migration is divided into 7 phases (0-6). Not all require involvement from t
 
 **Total estimated time**: 4-6 weeks, most of which is the parallel/cutover period.
 
+**Diagnostic log**: Each migration run produces a diagnostic log file in `.robot/res/`. This log captures every step, warning, and error with timestamps and detailed repair instructions. The log is overwritten on each run and contains results from the last run only. The coordinator can review this file after running the migration to see all issues that were encountered and their suggested fixes.
+
 ### Phase 0 - Przygotowanie i bootstrap
 
 The coordinator secures the current state before any changes, then generates the entity store from legacy data. This phase combines preparation and bootstrap into a single step (`phase0-setup.ps1`):
@@ -176,6 +178,14 @@ The coordinator upgrades active session files from Gen1/Gen2/Gen3 to the current
 - **Warnings** - fuzzy matches, case variants, or hierarchy inconsistencies. Shown for awareness but don't block the process.
 
 Non-location exclusions are stored in `.robot/res/location-exclusions.txt` and persist across re-runs. The commit step is blocked until all truly unresolved locations are handled.
+
+**Session review file**: After the format upgrade and location review, a review file (`all-sessions-to-review.md`) is generated in `.robot/res/`. This file contains every session sorted chronologically, with source file paths embedded as HTML comments. The coordinator can:
+
+- **Edit** session content directly in the review file (fix typos, upgrade old formats, correct metadata)
+- **Delete** session blocks to remove them from source files
+- **Add** new session blocks (these are placed in `.robot/res/review-additions/` for manual integration)
+
+On subsequent runs of Phase 4, the coordinator can choose to **apply** edits from the review file back to source files, **regenerate** the review file, or **refresh hashes** after manual source edits. The review workflow is optional — Phase 4 can complete without it.
 
 ### Phase 5 - Enrollment walut
 

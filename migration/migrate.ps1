@@ -60,10 +60,16 @@ if (-not $SkipModuleImport) {
 # Exclude .robot.new/ from session and data scanning during migration
 $script:MigrationExcludeDirs = @($ModuleRoot)
 
+# Dot-source private module helpers needed by migration phases
+. ([System.IO.Path]::Combine($ModuleRoot, 'private', 'admin-config.ps1'))
+
 # Dot-source helper files
 . ([System.IO.Path]::Combine($MigrationRoot, 'migration-ui.ps1'))
 . ([System.IO.Path]::Combine($MigrationRoot, 'migration-state.ps1'))
 . ([System.IO.Path]::Combine($MigrationRoot, 'migration-phases.ps1'))
+
+# Initialize migration log (overwrites previous run)
+Initialize-MigrationLog
 
 # Load migration state
 $MigrationState = Get-MigrationState
@@ -102,6 +108,13 @@ function Invoke-PhaseByNumber {
         Write-Host '  Szczegóły:' -ForegroundColor DarkGray
         Write-Host "  $($_.ScriptStackTrace)" -ForegroundColor DarkGray
     }
+}
+
+# Inform the user about the log file
+if ($script:MigrationLogPath) {
+    Write-Host ''
+    Write-Host "  Log migracji: $script:MigrationLogPath" -ForegroundColor DarkGray
+    Write-Host '  (nadpisywany przy kazdym uruchomieniu — zawiera wyniki ostatniego przebiegu)' -ForegroundColor DarkGray
 }
 
 # WhatIf badge

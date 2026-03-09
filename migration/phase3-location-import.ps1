@@ -28,7 +28,6 @@
 # ============================================================================
 
 function Invoke-MigrationPhase3 {
-    [CmdletBinding(SupportsShouldProcess)]
     param(
         [Parameter(Mandatory)] [hashtable]$State,
         [switch]$WhatIf

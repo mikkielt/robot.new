@@ -335,7 +335,7 @@ Enabled via `-IncludeMentions` switch.
 | `TargetHeader` | string | No | Exact header text to match (Ordinal comparison) |
 | `TargetDate` | datetime | No | Date to match via regex |
 
-Linear scan for `### ` headers. When `TargetHeader` is specified, matches by exact string. When `TargetDate` is specified, matches by date regex extraction. Section end = next `### ` header or EOF.
+Linear scan for `### ` headers. Extracts header text via `Substring(4).Trim()` (strips both leading and trailing whitespace). When `TargetHeader` is specified, matches by exact string. When `TargetDate` is specified, matches by date regex extraction. Section end = next `### ` header or EOF.
 
 Returns `List[object]` of match objects with `HeaderLineIdx`, `SectionStartIdx`, `SectionEndIdx`, `HeaderText`.
 
@@ -487,6 +487,7 @@ Returns `$null` if items are empty/null - caller must check before including in 
 | Intel target unresolvable | Warns to stderr, continues |
 | Newline style (CRLF vs LF) | Detected and preserved on round-trip |
 | Preserved blocks during upgrade | `Objaśnienia`, `Efekty`, etc. written back unchanged |
+| Batch format upgrade (`-UpgradeFormat`) | Skips eager session graph refresh (caller rebuilds full graph afterward, avoiding O(n²) per-session updates) |
 | Transfer with invalid amount | Skipped (amount must be positive integer) |
 | Transfer missing source/destination | Skipped |
 

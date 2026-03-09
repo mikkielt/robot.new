@@ -170,7 +170,12 @@ function Invoke-MigrationPhase2 {
 
     # Step 6: Run full PU diagnostics
     Write-Step -Number 6 -Text 'Uruchamianie diagnostyki PU...'
-    $Diag = Test-PlayerCharacterPUAssignment -ExcludeDirectory $script:MigrationExcludeDirs
+    # Suppress dedup warnings (Get-Session inside diagnostic emits them for format conflicts)
+    $PrevSuppressState = $script:SuppressWarnings
+    $script:SuppressWarnings = $true
+    try {
+        $Diag = Test-PlayerCharacterPUAssignment -ExcludeDirectory $script:MigrationExcludeDirs
+    } finally { $script:SuppressWarnings = $PrevSuppressState }
     Show-DiagnosticResults -Diagnostics $Diag
     Update-PhaseChecklist -State $State -Phase 2 -Item 'DiagnosticsRun' -Value $true
     Update-PhaseChecklist -State $State -Phase 2 -Item 'DiagnosticsOK' -Value $Diag.OK
@@ -208,7 +213,7 @@ function Invoke-MigrationPhase2 {
     if (-not $NarratorNormDone) {
         Write-Step -Number 8 -Text 'Diagnostyka narratorów...'
 
-        $NarrSessions = Get-Session -ExcludeDirectory $script:MigrationExcludeDirs
+        $NarrSessions = Get-Session -ExcludeDirectory $script:MigrationExcludeDirs -Quiet
         $NarrReport = Get-NarratorReport -Sessions $NarrSessions -UnresolvedOnly
         # Filter to Confidence = None and no existing mapping
         $UnresolvedNarrators = @($NarrReport | Where-Object { $_.Confidence -eq 'None' -and -not $_.HasMapping })
@@ -218,7 +223,14 @@ function Invoke-MigrationPhase2 {
             Write-StepOK 'Wszyscy narratorzy rozwiązani lub zamapowani'
             Update-PhaseChecklist -State $State -Phase 2 -Item 'NarratorNormalizationDone' -Value $true
         } else {
-            Write-StepWarning "$UnresolvedNarratorCount nierozwiązanych narratorów"
+            $NarrLogDetails = [System.Collections.Generic.List[string]]::new()
+            foreach ($UN in $UnresolvedNarrators) {
+                $NarrLogDetails.Add("'$($UN.RawText)' ($($UN.OccurrenceCount)x)")
+                $NarrLogDetails.Add("    Naprawa: Uruchom Faze 2, wybierz A (alias) lub M (mapowanie)")
+                $NarrLogDetails.Add("    Alternatywa: Dodaj wpis w .robot/res/narrator-mappings.txt:")
+                $NarrLogDetails.Add("                 $($UN.RawText)<TAB>KanonicznaGracza")
+            }
+            Write-StepWarning "$UnresolvedNarratorCount nierozwiązanych narratorów" -LogDetails $NarrLogDetails.ToArray()
 
             if (-not $WhatIf) {
                 $NarrMappings = Import-NarratorMappings

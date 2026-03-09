@@ -63,7 +63,7 @@ function Invoke-MigrationPhase5 {
             'Nie = pomiń, skarbiec trzeba będzie utworzyć ręcznie'
         )) {
             try {
-                New-Entity -Type 'Grupa' -Name 'Skarbiec Koordynatorów' -Confirm:$false
+                [void](New-Entity -Type 'Grupa' -Name 'Skarbiec Koordynatorów' -Confirm:$false)
                 Write-StepOK 'Utworzono grupę Skarbiec Koordynatorów'
 
                 # Prompt for initial treasury reserves
@@ -74,15 +74,15 @@ function Invoke-MigrationPhase5 {
                 $Kogi = Request-NumericInput -Prompt 'Kogi (miedź)' -AllowSkip
 
                 if ($null -ne $Korony -and $Korony -gt 0) {
-                    New-CurrencyEntity -Denomination 'Korony' -Owner 'Skarbiec Koordynatorów' -Amount $Korony -Confirm:$false
+                    [void](New-CurrencyEntity -Denomination 'Korony' -Owner 'Skarbiec Koordynatorów' -Amount $Korony -Confirm:$false)
                     Write-StepOK "Korony: $Korony"
                 }
                 if ($null -ne $Talary -and $Talary -gt 0) {
-                    New-CurrencyEntity -Denomination 'Talary' -Owner 'Skarbiec Koordynatorów' -Amount $Talary -Confirm:$false
+                    [void](New-CurrencyEntity -Denomination 'Talary' -Owner 'Skarbiec Koordynatorów' -Amount $Talary -Confirm:$false)
                     Write-StepOK "Talary: $Talary"
                 }
                 if ($null -ne $Kogi -and $Kogi -gt 0) {
-                    New-CurrencyEntity -Denomination 'Kogi' -Owner 'Skarbiec Koordynatorów' -Amount $Kogi -Confirm:$false
+                    [void](New-CurrencyEntity -Denomination 'Kogi' -Owner 'Skarbiec Koordynatorów' -Amount $Kogi -Confirm:$false)
                     Write-StepOK "Kogi: $Kogi"
                 }
 
@@ -279,15 +279,15 @@ function Invoke-CurrencyCSVImport {
             [void][int]::TryParse($Row.Kogi, [ref]$Kogi)
 
             if ($Korony -gt 0) {
-                New-CurrencyEntity -Denomination 'Korony' -Owner $CharName -Amount $Korony -Confirm:$false
+                [void](New-CurrencyEntity -Denomination 'Korony' -Owner $CharName -Amount $Korony -Confirm:$false)
                 $Created++
             }
             if ($Talary -gt 0) {
-                New-CurrencyEntity -Denomination 'Talary' -Owner $CharName -Amount $Talary -Confirm:$false
+                [void](New-CurrencyEntity -Denomination 'Talary' -Owner $CharName -Amount $Talary -Confirm:$false)
                 $Created++
             }
             if ($Kogi -gt 0) {
-                New-CurrencyEntity -Denomination 'Kogi' -Owner $CharName -Amount $Kogi -Confirm:$false
+                [void](New-CurrencyEntity -Denomination 'Kogi' -Owner $CharName -Amount $Kogi -Confirm:$false)
                 $Created++
             }
         }
@@ -312,15 +312,15 @@ function Invoke-CurrencyInteractiveEntry {
         $Kogi = Request-NumericInput -Prompt 'Kogi (miedź)' -AllowSkip
 
         if ($null -ne $Korony -and $Korony -gt 0) {
-            New-CurrencyEntity -Denomination 'Korony' -Owner $Item.CharacterName -Amount $Korony -Confirm:$false
+            [void](New-CurrencyEntity -Denomination 'Korony' -Owner $Item.CharacterName -Amount $Korony -Confirm:$false)
             $Created++
         }
         if ($null -ne $Talary -and $Talary -gt 0) {
-            New-CurrencyEntity -Denomination 'Talary' -Owner $Item.CharacterName -Amount $Talary -Confirm:$false
+            [void](New-CurrencyEntity -Denomination 'Talary' -Owner $Item.CharacterName -Amount $Talary -Confirm:$false)
             $Created++
         }
         if ($null -ne $Kogi -and $Kogi -gt 0) {
-            New-CurrencyEntity -Denomination 'Kogi' -Owner $Item.CharacterName -Amount $Kogi -Confirm:$false
+            [void](New-CurrencyEntity -Denomination 'Kogi' -Owner $Item.CharacterName -Amount $Kogi -Confirm:$false)
             $Created++
         }
     }
@@ -339,13 +339,13 @@ function Invoke-NarratorBudgetEntry {
         $Kogi = Request-NumericInput -Prompt 'Kogi' -AllowSkip
 
         if ($null -ne $Korony -and $Korony -gt 0) {
-            New-CurrencyEntity -Denomination 'Korony' -Owner $NarratorName -Amount $Korony -Confirm:$false
+            [void](New-CurrencyEntity -Denomination 'Korony' -Owner $NarratorName -Amount $Korony -Confirm:$false)
         }
         if ($null -ne $Talary -and $Talary -gt 0) {
-            New-CurrencyEntity -Denomination 'Talary' -Owner $NarratorName -Amount $Talary -Confirm:$false
+            [void](New-CurrencyEntity -Denomination 'Talary' -Owner $NarratorName -Amount $Talary -Confirm:$false)
         }
         if ($null -ne $Kogi -and $Kogi -gt 0) {
-            New-CurrencyEntity -Denomination 'Kogi' -Owner $NarratorName -Amount $Kogi -Confirm:$false
+            [void](New-CurrencyEntity -Denomination 'Kogi' -Owner $NarratorName -Amount $Kogi -Confirm:$false)
         }
         Write-StepOK "Zarejestrowano budżet dla $NarratorName"
     }

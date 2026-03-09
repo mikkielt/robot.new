@@ -47,6 +47,6 @@ $script:PhaseRegistry = @(
 . ([System.IO.Path]::Combine($PSScriptRoot, 'narrator-normalization.ps1'))
 
 # ── Dynamic dot-sourcing from registry ──────────────────────────────────────
-foreach ($Phase in $script:PhaseRegistry) {
-    . ([System.IO.Path]::Combine($PSScriptRoot, $Phase.Script))
+foreach ($PhaseEntry in $script:PhaseRegistry) {
+    . ([System.IO.Path]::Combine($PSScriptRoot, $PhaseEntry.Script))
 }

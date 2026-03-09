@@ -33,7 +33,7 @@ function Invoke-MigrationPhase4 {
 
     # Step 1: Show current session format distribution
     Write-Step -Number 1 -Text 'Sprawdzanie dystrybucji formatów sesji...'
-    $AllSessions = Get-Session -ExcludeDirectory $script:MigrationExcludeDirs
+    $AllSessions = Get-Session -ExcludeDirectory $script:MigrationExcludeDirs -Quiet
     $FormatGroups = $AllSessions | Group-Object Format | Sort-Object Name
     foreach ($Group in $FormatGroups) {
         Write-Host "    $($Group.Name): $($Group.Count) sesji" -ForegroundColor DarkGray
@@ -59,7 +59,7 @@ function Invoke-MigrationPhase4 {
             # Scan each file individually to get per-copy format
             $PerFileSessions = @{}
             foreach ($FPath in $DedupFiles) {
-                $PerFileSessions[$FPath] = @(Get-Session -File $FPath)
+                $PerFileSessions[$FPath] = @(Get-Session -File $FPath -Quiet)
             }
 
             # Detect format conflicts
@@ -187,10 +187,19 @@ function Invoke-MigrationPhase4 {
         # Hashes still valid (no format change occurred)
         Update-PhaseChecklist -State $State -Phase 4 -Item 'HashesRefreshed' -Value $true
 
+        # Generate session review file if not already generated
+        $ReviewDone = $State.Phases.ContainsKey('4') -and $State.Phases['4'].ContainsKey('Checklist') -and $State.Phases['4'].Checklist.ContainsKey('SessionReviewFileGenerated') -and $State.Phases['4'].Checklist['SessionReviewFileGenerated']
+        if (-not $ReviewDone -and -not $WhatIf) {
+            Write-Step -Number 4 -Text 'Generowanie pliku przeglądu sesji...'
+            $Count = Export-SessionReviewFile -RepoRoot $RepoRoot
+            Write-StepOK "Plik przeglądu: $Count sesji → all-sessions-to-review.md"
+            Update-PhaseChecklist -State $State -Phase 4 -Item 'SessionReviewFileGenerated' -Value $true
+        }
+
         # Build session graph if not already built
         $GraphDone = $State.Phases.ContainsKey('4') -and $State.Phases['4'].ContainsKey('Checklist') -and $State.Phases['4'].Checklist.ContainsKey('SessionGraphBuilt') -and $State.Phases['4'].Checklist['SessionGraphBuilt']
         if (-not $GraphDone -and -not $WhatIf) {
-            Write-Step -Number 4 -Text 'Budowanie grafu sesji...'
+            Write-Step -Number 5 -Text 'Budowanie grafu sesji...'
             try {
                 $GraphResult = Set-SessionGraph -Full -Confirm:$false
                 Write-StepOK "Graf sesji: $($GraphResult.SessionsProcessed) sesji, $($GraphResult.ParticipantsFound) uczestników"
@@ -205,7 +214,7 @@ function Invoke-MigrationPhase4 {
         $GraphBuilt = $State.Phases.ContainsKey('4') -and $State.Phases['4'].ContainsKey('Checklist') -and $State.Phases['4'].Checklist.ContainsKey('SessionGraphBuilt') -and $State.Phases['4'].Checklist['SessionGraphBuilt']
         if ($DedupAlsoResolved -and $GraphBuilt) {
             Set-PhaseCompleted -State $State -Phase 4
-            Write-PhaseSummary -Phase 4 -Status 'Completed' -Lines @('[OK] Wszystkie aktywne sesje w Gen4', '[OK] Konflikty formatu rozwiązane', '[OK] Graf sesji zbudowany')
+            Write-PhaseSummary -Phase 4 -Status 'Completed' -Lines @('[OK] Wszystkie aktywne sesje w Gen4', '[OK] Konflikty formatu rozwiązane', '[OK] Plik przeglądu sesji wygenerowany', '[OK] Graf sesji zbudowany')
         } else {
             Set-PhaseInProgress -State $State -Phase 4
         }
@@ -271,7 +280,13 @@ function Invoke-MigrationPhase4 {
             }
             catch {
                 Write-Host " - BŁĄD" -ForegroundColor Red
-                Write-StepError "  Plik $RelPath`: $_"
+                Write-StepError "  Plik $RelPath`: $_" -LogDetails @(
+                    "Plik: $RelPath ($Count sesji)",
+                    "Blad: $($_.Exception.Message)",
+                    "Naprawa: Sprawdz strukture plikow Markdown — naglowki sesji",
+                    "         musza miec format '### YYYY-MM-DD, Tytul, Narrator'",
+                    "         Jesli plik jest bardzo duzy, sprobuj podzielic go na mniejsze."
+                )
                 $FailedFiles.Add($RelPath)
             }
         }
@@ -279,7 +294,13 @@ function Invoke-MigrationPhase4 {
     }
 
     if ($FailedFiles.Count -gt 0) {
-        Write-StepWarning "Nie udało się zaktualizować $($FailedFiles.Count) plików:"
+        $FailDetails = [System.Collections.Generic.List[string]]::new()
+        foreach ($F in $FailedFiles) { $FailDetails.Add("- $F") }
+        $FailDetails.Add('')
+        $FailDetails.Add('Naprawa: Sprawdz czy pliki nie sa zbyt duze lub nie zawieraja')
+        $FailDetails.Add('         blednych naglowkow sesji. Uruchom Faze 4 ponownie')
+        $FailDetails.Add('         po naprawieniu plikow.')
+        Write-StepWarning "Nie udało się zaktualizować $($FailedFiles.Count) plików:" -LogDetails $FailDetails.ToArray()
         foreach ($F in $FailedFiles) { Write-Host "    - $F" -ForegroundColor Yellow }
     }
 
@@ -291,7 +312,7 @@ function Invoke-MigrationPhase4 {
 
     # Step 6: Verify post-upgrade format distribution
     Write-Step -Number 5 -Text 'Weryfikacja po upgrade...'
-    $PostSessions = Get-Session -ExcludeDirectory $script:MigrationExcludeDirs
+    $PostSessions = Get-Session -ExcludeDirectory $script:MigrationExcludeDirs -Quiet
     $PostActive = $PostSessions | Where-Object { $_.Date -and $_.Date -ge $Cutoff }
     $StillNonGen4 = ($PostActive | Where-Object { $_.Format -ne 'Gen4' } | Measure-Object).Count
 
@@ -509,8 +530,58 @@ function Invoke-MigrationPhase4 {
         }
     }
 
-    # Step 9: Refresh session hashes (format change invalidates Phase 1 baseline)
-    Write-Step -Number 9 -Text 'Odświeżenie hashy sesji po upgrade formatu...'
+    # Step 9: Session review file (generate / apply / refresh)
+    $ReviewDone = $State.Phases.ContainsKey('4') -and $State.Phases['4'].ContainsKey('Checklist') -and $State.Phases['4'].Checklist.ContainsKey('SessionReviewFileGenerated') -and $State.Phases['4'].Checklist['SessionReviewFileGenerated']
+    $ReviewPath = [System.IO.Path]::Combine($RepoRoot, '.robot', 'res', 'all-sessions-to-review.md')
+
+    if (-not $ReviewDone) {
+        # FIRST RUN: Generate review file
+        Write-Step -Number 9 -Text 'Generowanie pliku przeglądu sesji...'
+        $Count = Export-SessionReviewFile -RepoRoot $RepoRoot -WhatIf:$WhatIf
+        if (-not $WhatIf) {
+            Write-StepOK "Plik przeglądu: $Count sesji → all-sessions-to-review.md"
+            Update-PhaseChecklist -State $State -Phase 4 -Item 'SessionReviewFileGenerated' -Value $true
+        }
+    } else {
+        # SUBSEQUENT RUNS: Review file exists — offer apply/regenerate/skip
+        Write-Step -Number 9 -Text 'Plik przeglądu sesji...'
+        Write-StepOK 'Plik przeglądu sesji już wygenerowany'
+
+        $Choice = Request-UserChoice `
+            -Prompt 'Plik przeglądu sesji' `
+            -ValidChoices @('P', 'Z', 'R', 'H') `
+            -Labels @{
+                'P' = 'Pomiń'
+                'Z' = 'Zastosuj zmiany z pliku przeglądu'
+                'R' = 'Regeneruj plik przeglądu'
+                'H' = 'Odśwież hashe (po ręcznej edycji źródeł)'
+            } `
+            -HelpText @(
+                'Plik all-sessions-to-review.md został już wygenerowany.',
+                '',
+                'P = kontynuuj bez zmian',
+                'Z = wczytaj edycje z pliku przeglądu i zastosuj do plików źródłowych',
+                '    (modyfikacje, nowe sesje, usunięcia, deduplikacja)',
+                'R = nadpisz plik przeglądu (jeśli sesje źródłowe się zmieniły)',
+                'H = odśwież hashe sesji po ręcznej edycji plików źródłowych'
+            )
+
+        if ($Choice -eq 'Z') {
+            $Result = Import-SessionReviewFile -RepoRoot $RepoRoot -WhatIf:$WhatIf
+        } elseif ($Choice -eq 'R') {
+            $Count = Export-SessionReviewFile -RepoRoot $RepoRoot -WhatIf:$WhatIf
+            if (-not $WhatIf) {
+                Write-StepOK "Plik przeglądu zregenerowany: $Count sesji"
+            }
+        } elseif ($Choice -eq 'H') {
+            Set-SessionHash -Full -Confirm:$false
+            Update-PhaseChecklist -State $State -Phase 4 -Item 'HashesRefreshed' -Value $true
+            Write-StepOK 'Hashe sesji odświeżone'
+        }
+    }
+
+    # Step 10: Refresh session hashes (format change invalidates Phase 1 baseline)
+    Write-Step -Number 10 -Text 'Odświeżenie hashy sesji po upgrade formatu...'
     try {
         Set-SessionHash -Full -Confirm:$false
         Write-StepOK 'Hashe sesji odświeżone'
@@ -520,8 +591,8 @@ function Invoke-MigrationPhase4 {
         Write-StepError "Odświeżenie hashy nie powiodło się: $_"
     }
 
-    # Step 10: Build session graph index
-    Write-Step -Number 10 -Text 'Budowanie grafu sesji...'
+    # Step 11: Build session graph index
+    Write-Step -Number 11 -Text 'Budowanie grafu sesji...'
     try {
         $GraphResult = Set-SessionGraph -Full -Confirm:$false
         Write-StepOK "Graf sesji: $($GraphResult.SessionsProcessed) sesji, $($GraphResult.ParticipantsFound) uczestników"
@@ -537,10 +608,344 @@ function Invoke-MigrationPhase4 {
     $GraphDone = $State.Phases.ContainsKey('4') -and $State.Phases['4'].ContainsKey('Checklist') -and $State.Phases['4'].Checklist.ContainsKey('SessionGraphBuilt') -and $State.Phases['4'].Checklist['SessionGraphBuilt']
     if ($StillNonGen4 -eq 0 -and $DedupAlsoResolved -and $HashesDone -and $GraphDone) {
         Set-PhaseCompleted -State $State -Phase 4
-        Write-PhaseSummary -Phase 4 -Status 'Completed' -Lines @("[OK] $UpgradeCount sesji zaktualizowanych do Gen4", '[OK] Konflikty formatu rozwiązane', '[OK] Hashe sesji odświeżone', '[OK] Graf sesji zbudowany')
+        Write-PhaseSummary -Phase 4 -Status 'Completed' -Lines @("[OK] $UpgradeCount sesji zaktualizowanych do Gen4", '[OK] Konflikty formatu rozwiązane', '[OK] Plik przeglądu sesji wygenerowany', '[OK] Hashe sesji odświeżone', '[OK] Graf sesji zbudowany')
     } else {
         Set-PhaseInProgress -State $State -Phase 4
     }
 
     if (-not $WhatIf) { Save-MigrationState -State $State }
+}
+
+# ============================================================================
+# HELPER: Export-SessionReviewFile
+# ============================================================================
+
+function Export-SessionReviewFile {
+    param(
+        [Parameter(Mandatory)] [string]$RepoRoot,
+        [switch]$WhatIf
+    )
+
+    $AllSessions = Get-Session -ExcludeDirectory $script:MigrationExcludeDirs -IncludeContent -Quiet
+    $Sorted = $AllSessions | Sort-Object { $_.Header }
+
+    $Lines = [System.Collections.Generic.List[string]]::new()
+    [void]$Lines.Add('# Przegląd wszystkich sesji')
+    [void]$Lines.Add("<!-- Wygenerowano: $([datetime]::Now.ToString('yyyy-MM-dd HH:mm')) -->")
+    [void]$Lines.Add("<!-- Sesji: $($Sorted.Count) -->")
+    [void]$Lines.Add('<!-- ARTEFAKT PRZEGLĄDU — edytuj treść sesji, a następnie zastosuj zmiany w Fazie 4. -->')
+    [void]$Lines.Add('<!-- Instrukcje:')
+    [void]$Lines.Add('     - Edytuj treść sesji bezpośrednio w tym pliku')
+    [void]$Lines.Add('     - Aby USUNĄĆ sesję: usuń cały blok (od --- do następnego ---)')
+    [void]$Lines.Add('     - Aby DODAĆ sesję: wstaw nowy blok z nagłówkiem ### i komentarzem Źródło')
+    [void]$Lines.Add('       (nowe sesje trafią do .robot/res/review-additions/)')
+    [void]$Lines.Add('     - Duplikaty: edytuj treść — zmiany trafią do wylistowanych plików źródłowych')
+    [void]$Lines.Add('       (usuwanie duplikatów z innych plików — ręcznie po zastosowaniu)')
+    [void]$Lines.Add('     - Po edycji uruchom Fazę 4 → wybierz Z (Zastosuj zmiany)')
+    [void]$Lines.Add('-->')
+
+    foreach ($S in $Sorted) {
+        [void]$Lines.Add('')
+        [void]$Lines.Add('---')
+        [void]$Lines.Add('')
+        [void]$Lines.Add("### $($S.Header)")
+        [void]$Lines.Add('')
+
+        # Split content into lines
+        if ($S.Content) {
+            $ContentLines = $S.Content.Split([char]10)
+            foreach ($CL in $ContentLines) {
+                [void]$Lines.Add($CL.TrimEnd([char]13))
+            }
+        }
+
+        [void]$Lines.Add('')
+
+        # Build relative source paths
+        $SourcePaths = [System.Collections.Generic.List[string]]::new()
+        $Paths = if ($S.FilePaths) { $S.FilePaths } else { @($S.FilePath) }
+        foreach ($FP in $Paths) {
+            $RelPath = $FP
+            if ($RelPath.StartsWith($RepoRoot)) { $RelPath = $RelPath.Substring($RepoRoot.Length + 1) }
+            [void]$SourcePaths.Add($RelPath)
+        }
+        [void]$Lines.Add("<!-- Źródło: $($SourcePaths -join ', ') -->")
+    }
+
+    if (-not $WhatIf) {
+        $ResDir = [System.IO.Path]::Combine($RepoRoot, '.robot', 'res')
+        if (-not [System.IO.Directory]::Exists($ResDir)) {
+            [void][System.IO.Directory]::CreateDirectory($ResDir)
+        }
+        $OutPath = [System.IO.Path]::Combine($ResDir, 'all-sessions-to-review.md')
+        [System.IO.File]::WriteAllLines($OutPath, $Lines, [System.Text.UTF8Encoding]::new($false))
+    }
+
+    return $Sorted.Count
+}
+
+# ============================================================================
+# HELPER: Import-SessionReviewFile
+# ============================================================================
+
+function Import-SessionReviewFile {
+    param(
+        [Parameter(Mandatory)] [string]$RepoRoot,
+        [switch]$WhatIf
+    )
+
+    $ReviewPath = [System.IO.Path]::Combine($RepoRoot, '.robot', 'res', 'all-sessions-to-review.md')
+    if (-not [System.IO.File]::Exists($ReviewPath)) {
+        Write-StepError 'Plik przeglądu sesji nie istnieje'
+        return $null
+    }
+
+    $ReviewLines = [System.IO.File]::ReadAllLines($ReviewPath)
+
+    # Parse review file into session blocks
+    $ReviewSessions = [System.Collections.Generic.List[object]]::new()
+    $HeaderPattern = [regex]'^###\s+(.+)$'
+    $SourcePattern = [regex]'^<!--\s*Źródło:\s*(.+?)\s*-->$'
+
+    $CurrentHeader = $null
+    $CurrentBody = [System.Collections.Generic.List[string]]::new()
+    $CurrentSource = $null
+    $InBlock = $false
+    $PastFileHeader = $false
+
+    foreach ($Line in $ReviewLines) {
+        # Skip file header (lines before first ---)
+        if (-not $PastFileHeader) {
+            if ($Line.Trim() -eq '---') { $PastFileHeader = $true }
+            continue
+        }
+
+        # Block separator
+        if ($Line.Trim() -eq '---') {
+            # Save previous block if any
+            if ($CurrentHeader) {
+                $ReviewSessions.Add([PSCustomObject]@{
+                    Header     = $CurrentHeader
+                    Body       = ($CurrentBody -join "`n").Trim()
+                    SourceLine = $CurrentSource
+                })
+            }
+            $CurrentHeader = $null
+            $CurrentBody = [System.Collections.Generic.List[string]]::new()
+            $CurrentSource = $null
+            $InBlock = $true
+            continue
+        }
+
+        # Header line
+        $HMatch = $HeaderPattern.Match($Line)
+        if ($HMatch.Success -and -not $CurrentHeader) {
+            $CurrentHeader = $HMatch.Groups[1].Value
+            continue
+        }
+
+        # Source comment
+        $SMatch = $SourcePattern.Match($Line)
+        if ($SMatch.Success) {
+            $CurrentSource = $SMatch.Groups[1].Value
+            continue
+        }
+
+        # Body line
+        if ($CurrentHeader) {
+            [void]$CurrentBody.Add($Line)
+        }
+    }
+
+    # Save last block
+    if ($CurrentHeader) {
+        $ReviewSessions.Add([PSCustomObject]@{
+            Header     = $CurrentHeader
+            Body       = ($CurrentBody -join "`n").Trim()
+            SourceLine = $CurrentSource
+        })
+    }
+
+    # Fetch current state from source files
+    $CurrentSessions = Get-Session -ExcludeDirectory $script:MigrationExcludeDirs -IncludeContent -Quiet
+    $CurrentByHeader = @{}
+    foreach ($CS in $CurrentSessions) {
+        $CurrentByHeader[$CS.Header] = $CS
+    }
+
+    $ReviewByHeader = @{}
+    foreach ($RS in $ReviewSessions) {
+        $ReviewByHeader[$RS.Header] = $RS
+    }
+
+    # Classify changes
+    $Modified = [System.Collections.Generic.List[object]]::new()
+    $New      = [System.Collections.Generic.List[object]]::new()
+    $Deleted  = [System.Collections.Generic.List[object]]::new()
+    $Unchanged = 0
+
+    foreach ($RS in $ReviewSessions) {
+        if ($CurrentByHeader.ContainsKey($RS.Header)) {
+            $CS = $CurrentByHeader[$RS.Header]
+            $CurrentBody = if ($CS.Content) { $CS.Content.TrimEnd() } else { '' }
+            if ($RS.Body -ne $CurrentBody) {
+                $Modified.Add([PSCustomObject]@{
+                    Header      = $RS.Header
+                    NewBody     = $RS.Body
+                    SourceLine  = $RS.SourceLine
+                    CurrentSession = $CS
+                })
+            } else {
+                $Unchanged++
+            }
+        } else {
+            $New.Add($RS)
+        }
+    }
+
+    foreach ($CS in $CurrentSessions) {
+        if (-not $ReviewByHeader.ContainsKey($CS.Header)) {
+            $Deleted.Add($CS)
+        }
+    }
+
+    # Display summary
+    Write-Host ''
+    Write-Host "    Podsumowanie zmian:" -ForegroundColor Cyan
+    Write-Host "      Zmodyfikowanych: $($Modified.Count)" -ForegroundColor $(if ($Modified.Count -gt 0) { 'Yellow' } else { 'DarkGray' })
+    Write-Host "      Nowych:          $($New.Count)" -ForegroundColor $(if ($New.Count -gt 0) { 'Green' } else { 'DarkGray' })
+    Write-Host "      Usuniętych:      $($Deleted.Count)" -ForegroundColor $(if ($Deleted.Count -gt 0) { 'Red' } else { 'DarkGray' })
+    Write-Host "      Bez zmian:       $Unchanged" -ForegroundColor DarkGray
+
+    if ($Modified.Count -eq 0 -and $New.Count -eq 0 -and $Deleted.Count -eq 0) {
+        Write-StepOK 'Brak zmian do zastosowania'
+        return [PSCustomObject]@{ Modified = 0; New = 0; Deleted = 0; Unchanged = $Unchanged }
+    }
+
+    # Show deletions prominently
+    if ($Deleted.Count -gt 0) {
+        Write-Host ''
+        Write-Host '    USUNIĘCIA:' -ForegroundColor Red
+        foreach ($D in $Deleted) {
+            $RelPath = $D.FilePath
+            if ($RelPath.StartsWith($RepoRoot)) { $RelPath = $RelPath.Substring($RepoRoot.Length + 1) }
+            Write-Host "      - $($D.Header) ($RelPath)" -ForegroundColor Red
+        }
+    }
+
+    # Confirmation gate
+    if (-not $WhatIf) {
+        if (-not (Request-YesNo -Prompt 'Zastosować zmiany?' -Default $false -HelpText @(
+            "Zmodyfikowanych: $($Modified.Count), Nowych: $($New.Count), Usuniętych: $($Deleted.Count)",
+            '',
+            'Tak = zastosuj wszystkie zmiany do plików źródłowych',
+            'Nie = anuluj, pliki źródłowe pozostaną bez zmian'
+        ))) {
+            Write-Host '  Anulowano zastosowanie zmian.' -ForegroundColor DarkGray
+            return [PSCustomObject]@{ Modified = 0; New = 0; Deleted = 0; Unchanged = $Unchanged }
+        }
+    }
+
+    $UTF8NoBOM = [System.Text.UTF8Encoding]::new($false)
+    $ModifiedCount = 0
+    $DeletedCount = 0
+    $NewCount = 0
+
+    # Apply modified sessions
+    foreach ($M in $Modified) {
+        $TargetPaths = @()
+        if ($M.SourceLine) {
+            $TargetPaths = @($M.SourceLine.Split(',') | ForEach-Object { $_.Trim() } | ForEach-Object {
+                [System.IO.Path]::Combine($RepoRoot, $_)
+            })
+        } else {
+            $CS = $M.CurrentSession
+            $TargetPaths = if ($CS.FilePaths) { @($CS.FilePaths) } else { @($CS.FilePath) }
+        }
+
+        $NewBodyLines = @($M.NewBody.Split("`n"))
+
+        foreach ($TP in $TargetPaths) {
+            if (-not [System.IO.File]::Exists($TP)) { continue }
+            $FileLines = [System.IO.File]::ReadAllLines($TP)
+            $Matches = Find-SessionInFile -Lines $FileLines -TargetHeader $M.Header
+            if ($Matches.Count -eq 0) { continue }
+            $Match = $Matches[0]
+
+            # Rebuild: lines up to and including header + new body + lines from next section onward
+            $Before = @()
+            if ($Match.HeaderLineIdx -ge 0) {
+                $Before = $FileLines[0..$Match.HeaderLineIdx]
+            }
+            $After = @()
+            if ($Match.SectionEndIdx -lt $FileLines.Count) {
+                $After = $FileLines[$Match.SectionEndIdx..($FileLines.Count - 1)]
+            }
+
+            $NewLines = @($Before) + @('') + $NewBodyLines + @('') + @($After)
+
+            if (-not $WhatIf) {
+                [System.IO.File]::WriteAllLines($TP, $NewLines, $UTF8NoBOM)
+            }
+        }
+        $ModifiedCount++
+    }
+
+    # Apply deletions
+    foreach ($D in $Deleted) {
+        $FilePath = $D.FilePath
+        if (-not [System.IO.File]::Exists($FilePath)) { continue }
+        $FileLines = [System.IO.File]::ReadAllLines($FilePath)
+        $Matches = Find-SessionInFile -Lines $FileLines -TargetHeader $D.Header
+        if ($Matches.Count -eq 0) { continue }
+        $Match = $Matches[0]
+
+        # Rebuild: lines before header + lines from next section onward
+        $Before = @()
+        if ($Match.HeaderLineIdx -gt 0) {
+            $Before = $FileLines[0..($Match.HeaderLineIdx - 1)]
+        }
+        $After = @()
+        if ($Match.SectionEndIdx -lt $FileLines.Count) {
+            $After = $FileLines[$Match.SectionEndIdx..($FileLines.Count - 1)]
+        }
+
+        $NewLines = @($Before) + @($After)
+
+        if (-not $WhatIf) {
+            [System.IO.File]::WriteAllLines($FilePath, $NewLines, $UTF8NoBOM)
+        }
+        $DeletedCount++
+    }
+
+    # Create new session files
+    if ($New.Count -gt 0) {
+        $AdditionsDir = [System.IO.Path]::Combine($RepoRoot, '.robot', 'res', 'review-additions')
+        if (-not $WhatIf -and -not [System.IO.Directory]::Exists($AdditionsDir)) {
+            [void][System.IO.Directory]::CreateDirectory($AdditionsDir)
+        }
+
+        foreach ($N in $New) {
+            # Generate filename from header: YYYY-MM-DD-slugified-title.md
+            $Parts = $N.Header -split ',\s*'
+            $DatePart = if ($Parts.Count -gt 0) { $Parts[0].Trim() } else { 'unknown' }
+            $TitlePart = if ($Parts.Count -gt 1) { $Parts[1].Trim() } else { 'session' }
+            $Slug = ($TitlePart -replace '[^\w\s-]', '' -replace '\s+', '-').ToLower()
+            if ($Slug.Length -gt 50) { $Slug = $Slug.Substring(0, 50) }
+            $FileName = "$DatePart-$Slug.md"
+
+            $NewFileLines = @("### $($N.Header)", '', $N.Body)
+
+            if (-not $WhatIf) {
+                $NewFilePath = [System.IO.Path]::Combine($AdditionsDir, $FileName)
+                [System.IO.File]::WriteAllLines($NewFilePath, $NewFileLines, $UTF8NoBOM)
+            }
+            $NewCount++
+        }
+    }
+
+    $ActionLabel = if ($WhatIf) { '[SUCHY PRZEBIEG] ' } else { '' }
+    Write-StepOK "${ActionLabel}Zastosowano: $ModifiedCount zmodyfikowanych, $NewCount nowych, $DeletedCount usuniętych"
+
+    return [PSCustomObject]@{ Modified = $ModifiedCount; New = $NewCount; Deleted = $DeletedCount; Unchanged = $Unchanged }
 }

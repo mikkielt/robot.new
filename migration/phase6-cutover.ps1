@@ -88,7 +88,7 @@ function Invoke-MigrationPhase6 {
 
     # Dashboard section 3: Recent session format check
     Write-SectionHeader 'Format sesji'
-    $RecentSessions = Get-Session -ExcludeDirectory $script:MigrationExcludeDirs | Where-Object { $_.Date -and $_.Date -ge [datetime]::Now.AddMonths(-2) }
+    $RecentSessions = Get-Session -ExcludeDirectory $script:MigrationExcludeDirs -Quiet | Where-Object { $_.Date -and $_.Date -ge [datetime]::Now.AddMonths(-2) }
     $NonGen4Recent = $RecentSessions | Where-Object { $_.Format -ne 'Gen4' }
     $NonGen4Count = ($NonGen4Recent | Measure-Object).Count
     if ($NonGen4Count -eq 0) {

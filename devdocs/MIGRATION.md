@@ -368,14 +368,14 @@ The automated migration is orchestrated by `migration/migrate.ps1` (`Invoke-Phas
 | `migrate.ps1` | Entry point and phase dispatcher | `Invoke-PhaseByNumber` |
 | `migration-state.ps1` | State persistence | `Resolve-MigrationStatePath`, `New-DefaultMigrationState`, `ConvertTo-HashtableDeep`, `Get-MigrationState`, `Save-MigrationState`, `Get-PhaseStatus`, `Set-PhaseCompleted`, `Set-PhaseInProgress`, `Update-PhaseChecklist`, `Add-DiagnosticSnapshot` |
 | `migration-shared.ps1` | Shared diagnostics and menu shortcuts | `Test-PhasePredecessor`, `Show-DiagnosticResults`, `Invoke-QuickDiagnostics`, `Invoke-FullReport` |
-| `migration-ui.ps1` | Polish-language UI helpers (19 functions) | `Resolve-MigrationColor`, `Get-PhaseName`, `Write-PhaseHeader`, `Write-Step`, `Write-StepOK`, `Write-StepWarning`, `Write-StepError`, `Write-SectionHeader`, `Write-ChecklistReport`, `Write-ActionRequired`, `Write-CommandHint`, `Write-PhaseSummary`, `Write-TableRow`, `Request-UserChoice`, `Request-YesNo`, `Request-Confirmation`, `Request-StringInput`, `Request-NumericInput`, `Show-ProgressSummary` |
+| `migration-ui.ps1` | Polish-language UI helpers (22 functions) | `Initialize-MigrationLog`, `Write-MigrationLog`, `Flush-MigrationLog`, `Resolve-MigrationColor`, `Get-PhaseName`, `Write-PhaseHeader`, `Write-Step`, `Write-StepOK`, `Write-StepWarning`, `Write-StepError`, `Write-SectionHeader`, `Write-ChecklistReport`, `Write-ActionRequired`, `Write-CommandHint`, `Write-PhaseSummary`, `Write-TableRow`, `Request-UserChoice`, `Request-YesNo`, `Request-Confirmation`, `Request-StringInput`, `Request-NumericInput`, `Show-ProgressSummary` |
 | `migration-location-helpers.ps1` | Self-contained location name helpers; dot-sourced by Phase 3 | `Get-MapBaseNameDeterministic`, `Get-MapBaseNameCandidates` |
 | `narrator-normalization.ps1` | Narrator mapping I/O | `Get-NarratorMappingsPath`, `Import-NarratorMappings`, `Export-NarratorMappings` |
 | `phase0-setup.ps1` | Phase 0: Przygotowanie i bootstrap | `Invoke-MigrationPhase0` |
 | `phase1-session-hashes.ps1` | Phase 1: Baseline integralności sesji | `Invoke-MigrationPhase1` |
 | `phase2-validation.ps1` | Phase 2: Walidacja i naprawa danych | `Invoke-MigrationPhase2`, `Show-BRAKCharacters` |
 | `phase3-location-import.ps1` | Phase 3: Import lokalizacji z mapy | `Invoke-MigrationPhase3` |
-| `phase4-session-upgrade.ps1` | Phase 4: Upgrade formatu sesji | `Invoke-MigrationPhase4` |
+| `phase4-session-upgrade.ps1` | Phase 4: Upgrade formatu sesji | `Invoke-MigrationPhase4`, `Export-SessionReviewFile`, `Import-SessionReviewFile` |
 | `phase5-currency.ps1` | Phase 5: Enrollment walut | `Invoke-MigrationPhase5`, `Invoke-CurrencyCSVImport`, `Invoke-CurrencyInteractiveEntry`, `Invoke-NarratorBudgetEntry` |
 | `phase6-cutover.ps1` | Phase 6: Przełączenie (cutover) | `Invoke-MigrationPhase6` |
 
@@ -439,9 +439,48 @@ Entities are sorted alphabetically within the `## Mapa` section. The overflow fi
 
 **Checklist**: `MapsJsonLoaded`, `HierarchyInferred`, `MapaBulkImportDone` (or legacy `BulkImportDone`), `LokacjaDerivationDone`, `OverridesExported`, `OverridesImported`, `Committed`. Phase completes when `MapaBulkImportDone` AND `LokacjaDerivationDone` AND `OverridesImported` are all true.
 
-### 9.5 Phase 6: Cutover
+### 9.5 Phase 4: Session Review File
+
+After format upgrade, narrator verification, and location review, Phase 4 generates a review artifact at `.robot/res/all-sessions-to-review.md` via `Export-SessionReviewFile`. The file contains all sessions sorted by header (chronological), with source file paths in `<!-- Źródło: relative/path -->` HTML comments.
+
+**Export** (`Export-SessionReviewFile`): Calls `Get-Session -ExcludeDirectory $script:MigrationExcludeDirs -IncludeContent -Quiet`, sorts by `Header`, splits `Content` on `[char]10` with `.TrimEnd([char]13)`, builds relative paths from `FilePaths` via `$P.Substring($RepoRoot.Length + 1)`. Writes via `[System.IO.File]::WriteAllLines()` with UTF-8 no BOM.
+
+**Import** (`Import-SessionReviewFile`): Parses the edited review file into session blocks (header + body + source comment). Fetches current state via `Get-Session -IncludeContent`. Classifies changes into Modified (header exists in both, content differs), New (header in review but not source), and Deleted (header in source but not review). Uses `Find-SessionInFile` for line-range lookup and array splicing for updates. New sessions are written to `.robot/res/review-additions/YYYY-MM-DD-slug.md`. Requires `Request-YesNo` confirmation before applying.
+
+**Step lifecycle**: On first run (checklist `SessionReviewFileGenerated` not set), generates the file. On subsequent runs, presents a `Request-UserChoice` menu: **P** (skip), **Z** (apply edits), **R** (regenerate), **H** (refresh hashes via `Set-SessionHash -Full`). The review step is Step 9; hash refresh is Step 10; graph build is Step 11.
+
+**Checklist**: `SessionReviewFileGenerated`. Not included in the phase completion gate — the review workflow is optional and asynchronous.
+
+### 9.6 Phase 6: Cutover
 
 Runs final PU diagnostics (must pass to proceed), freezes `Gracze.md` with a read-only comment header, marks the legacy system as deprecated, executes the first standalone PU assignment, creates a post-migration git tag, and displays an announcement template.
+
+### 9.7 Migration Logging System
+
+Implemented in `migration/migration-ui.ps1`. Three functions provide a structured text log written to `.robot/res/migration-log.txt`:
+
+| Function | Purpose |
+|---|---|
+| `Initialize-MigrationLog` | Opens a fresh log file with timestamp header. Called once at migration start (`migrate.ps1`). Overwrites any previous log. |
+| `Write-MigrationLog` | Appends a structured entry with level, phase context, summary, and optional detail lines. |
+| `Flush-MigrationLog` | Writes accumulated lines to disk via `[System.IO.File]::WriteAllLines()` (UTF-8 no BOM). Called after every `Write-MigrationLog`. |
+
+#### `Write-MigrationLog` Parameters
+
+| Parameter | Type | Description |
+|---|---|---|
+| `Level` | string | `INFO`, `WARN`, `ERROR`, or `ACTION` |
+| `Phase` | string | Phase/step context label (auto-set by `Write-PhaseHeader`/`Write-Step` via `$script:LogPhaseContext`/`$script:LogStepContext`) |
+| `Summary` | string | One-line summary (mandatory) |
+| `Details` | string[] | Optional indented explanation lines |
+
+The log is **best-effort** — failures in `Flush-MigrationLog` are silently caught. The file is overwritten on each migration run and contains results from the last run only.
+
+#### Logging Integration
+
+`Write-StepWarning`, `Write-StepError`, and `Write-ActionRequired` accept an optional `-LogDetails` string array parameter that is forwarded to `Write-MigrationLog`. `Write-PhaseHeader`, `Write-Step`, `Write-StepOK`, and `Write-PhaseSummary` automatically log their output. Phase/step context is tracked via `$script:LogPhaseContext` and `$script:LogStepContext` module-scoped variables.
+
+`Show-DiagnosticResults` in `migration-shared.ps1` builds detailed `$LogDetails` arrays for each diagnostic category (unresolved characters, malformed PU, duplicates, malformed dates) and passes them to `Write-MigrationLog` with `WARN` level. The malformed date handler auto-detects common typo patterns (extra digits in day part, missing separators) and suggests both header correction and `@Data:` override as repair options.
 
 ## 10. Manual Migration Steps
 
@@ -549,6 +588,9 @@ Unresolved names in `Get-EntityState` / narrator resolution should be cleaned up
 | `robot.psm1` | Module loader (auto-discovers Verb-Noun `.ps1` files) |
 | `templates/*.md.template` | Character file and player entry templates |
 | `local.config.psd1` | Local config (git-ignored) |
+| `.robot/res/migration-log.txt` | Structured diagnostic log (overwritten each run) |
+| `.robot/res/all-sessions-to-review.md` | Session review artifact (Phase 4) |
+| `.robot/res/review-additions/*.md` | New sessions from review import (Phase 4) |
 
 ---
 
