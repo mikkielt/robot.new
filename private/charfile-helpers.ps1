@@ -23,6 +23,9 @@
 # Dot-source reputation helpers (Read-ReputationTier, Format-ReputationSection)
 . "$PSScriptRoot/charfile-reputation.ps1"
 
+# Check for operation context availability
+$script:HasOpCtx = $null -ne (Get-Command 'Add-OperationFile' -ErrorAction SilentlyContinue)
+
 # Precompiled regex patterns
 # Bold-header sections: **Header:** with optional inline content
 $script:CharSectionPattern = [regex]::new(
@@ -381,6 +384,8 @@ function Write-CharacterFile {
 
     $UTF8NoBOM = [System.Text.UTF8Encoding]::new($false)
     [System.IO.File]::WriteAllText($Path, $Content, $UTF8NoBOM)
+
+    if ($script:HasOpCtx) { Add-OperationFile -Path $Path }
 
     if ($HasHooks) {
         Invoke-PluginHook -Operation 'Write-CharacterFile' -Phase 'AfterWrite' -Context @{

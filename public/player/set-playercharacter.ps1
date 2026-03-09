@@ -107,6 +107,8 @@ function Set-PlayerCharacter {
     if ($Quiet) { $script:SuppressWarnings = $true }
     try {
 
+    if ($script:HasOpCtx) { Clear-OperationContext }
+
     if (-not $EntitiesFile) {
         . "$script:ModuleRoot/private/admin-config.ps1"
         $Config = Get-AdminConfig
@@ -309,6 +311,11 @@ function Set-PlayerCharacter {
             $CharContent = [string]::Join($CharData.NL, $CharLines)
             Write-CharacterFile -Path $CharacterFile -Content $CharContent
         }
+    }
+
+    if ($script:HasOpCtx) {
+        return (New-OperationResult -Success $true -Action 'Update' `
+            -TargetType 'Postać' -TargetName $CharacterName -UndoHint $null)
     }
 
     } finally { $script:SuppressWarnings = $PrevSuppress }

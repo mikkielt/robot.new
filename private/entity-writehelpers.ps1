@@ -31,6 +31,11 @@
 # Load find helpers (patterns, type maps, Find-EntitySection/Bullet/Tag)
 . "$PSScriptRoot/entity-findhelpers.ps1"
 
+# Load operation context if available (non-fatal if missing)
+$OpCtxPath = [System.IO.Path]::Combine($PSScriptRoot, 'operation-context.ps1')
+if ([System.IO.File]::Exists($OpCtxPath)) { . $OpCtxPath }
+$script:HasOpCtx = $null -ne (Get-Command 'Add-OperationChange' -ErrorAction SilentlyContinue)
+
 # Helper: add or update a @tag: value line under an entity
 # Operates on a List[string] of file lines, modifying in-place.
 # Returns the updated children end index.
@@ -50,6 +55,12 @@ function Set-EntityTag {
 
     $TagLine = "    - @${NormalizedTag}: $Value"
     $Existing = Find-EntityTag -Lines $Lines.ToArray() -ChildrenStart $ChildrenStart -ChildrenEnd $ChildrenEnd -TagName $NormalizedTag
+
+    if ($script:HasOpCtx) {
+        Add-OperationChange -Property "@$NormalizedTag" `
+            -OldValue $(if ($Existing) { $Existing.Value } else { $null }) `
+            -NewValue $Value
+    }
 
     if ($Existing) {
         # Update existing tag (replace the line)
@@ -205,6 +216,8 @@ function Write-EntityFile {
     $Content = [string]::Join($NL, $Lines)
     $UTF8NoBOM = [System.Text.UTF8Encoding]::new($false)
     [System.IO.File]::WriteAllText($Path, $Content, $UTF8NoBOM)
+
+    if ($script:HasOpCtx) { Add-OperationFile -Path $Path }
 
     if ($HasHooks) {
         Invoke-PluginHook -Operation 'Write-EntityFile' -Phase 'AfterWrite' -Context @{

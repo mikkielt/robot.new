@@ -111,4 +111,17 @@ Describe 'New-Entity' {
         $Content | Should -Match '@status:\s*Aktywny'
         $Content | Should -Match '@rasa:\s*Elf'
     }
+
+    It 'return object has OperationResult NoteProperty' {
+        $Result = New-Entity -Type 'NPC' -Name 'Strażnik Bramy' `
+            -Tags @{ lokacja = 'Brama' } `
+            -EntitiesFile $script:EntFile
+
+        $Result.OperationResult | Should -Not -BeNullOrEmpty
+        $Result.OperationResult.PSObject.TypeNames | Should -Contain 'Robot.OperationResult'
+        $Result.OperationResult.Action | Should -Be 'Create'
+        $Result.OperationResult.TargetType | Should -Be 'NPC'
+        $Result.OperationResult.TargetName | Should -Be 'Strażnik Bramy'
+        $Result.OperationResult.UndoHint | Should -Match 'Remove-Entity'
+    }
 }

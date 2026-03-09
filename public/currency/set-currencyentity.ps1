@@ -59,6 +59,7 @@ function Set-CurrencyEntity {
     }
 
     $Config = Get-AdminConfig
+    if ($script:HasOpCtx) { Clear-OperationContext }
 
     if (-not $EntitiesFile) {
         $EntitiesFile = $Config.EntitiesFile
@@ -117,5 +118,10 @@ function Set-CurrencyEntity {
 
     if ($PSCmdlet.ShouldProcess($EntitiesFilePath, "Set-CurrencyEntity: update '$Name'")) {
         Write-EntityFile -Path $EntitiesFilePath -Lines $Lines -NL $File.NL
+
+        if ($script:HasOpCtx) {
+            return (New-OperationResult -Success $true -Action 'Update' `
+                -TargetType 'Przedmiot' -TargetName $Name -UndoHint $null)
+        }
     }
 }

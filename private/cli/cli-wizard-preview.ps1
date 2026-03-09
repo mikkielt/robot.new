@@ -95,6 +95,60 @@ function Show-Preview {
         Write-Host ''
         Write-CLILine -Text "$([char]0x2713) Operacja zakończona pomyślnie." -Color $SuccessColor
 
+        # Render OperationResult if available
+        $OpResult = $null
+        if ($ExecResult -is [PSCustomObject]) {
+            if ($ExecResult.PSObject.TypeNames -contains 'Robot.OperationResult') {
+                $OpResult = $ExecResult
+            } elseif ($ExecResult.PSObject.Properties['OperationResult']) {
+                $OpResult = $ExecResult.OperationResult
+            }
+        }
+
+        if ($OpResult) {
+            $ActionLabel = switch ($OpResult.Action) {
+                'Create'     { 'Utworzono' }
+                'Update'     { 'Zaktualizowano' }
+                'SoftDelete' { 'Usunięto (soft)' }
+                'Skipped'    { 'Pominięto' }
+                default      { $OpResult.Action }
+            }
+
+            Write-Host ''
+            Write-CLILine -Text "$([char]0x2713) $ActionLabel $($OpResult.TargetType) '$($OpResult.TargetName)'" -Color $SuccessColor
+
+            if ($OpResult.Changes -and $OpResult.Changes.Count -gt 0) {
+                Write-Host ''
+                Write-CLILine -Text 'Zmiany:' -Color $AccentColor
+                foreach ($Change in $OpResult.Changes) {
+                    $OldStr = if ($null -eq $Change.OldValue) { '(brak)' } else { $Change.OldValue }
+                    $NewStr = if ($null -eq $Change.NewValue) { '(brak)' } else { $Change.NewValue }
+                    Write-Host "    $($Change.Property): $OldStr $([char]0x2192) $NewStr"
+                }
+            }
+
+            if ($OpResult.FilePath) {
+                Write-Host ''
+                $FileDisplay = if ($OpResult.FilePath -is [array]) { $OpResult.FilePath -join ', ' } else { $OpResult.FilePath }
+                Write-Host "  Plik: $([System.IO.Path]::GetFileName($FileDisplay))" -ForegroundColor (Get-CLIColor -Role 'Disabled')
+            }
+
+            if ($OpResult.Warnings -and $OpResult.Warnings.Count -gt 0) {
+                Write-Host ''
+                foreach ($Warn in $OpResult.Warnings) {
+                    Write-CLILine -Text "$([char]0x26A0) $($Warn.Message)" -Color $WarningColor
+                    if ($Warn.ActionHint) {
+                        Write-Host "      $($Warn.ActionHint)" -ForegroundColor (Get-CLIColor -Role 'Disabled')
+                    }
+                }
+            }
+
+            if ($OpResult.UndoHint) {
+                Write-Host ''
+                Write-Host "  Cofnięcie: $($OpResult.UndoHint)" -ForegroundColor (Get-CLIColor -Role 'Disabled')
+            }
+        }
+
         # Refresh NavState
         try {
             Refresh-NavState -State $State

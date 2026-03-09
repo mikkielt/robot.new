@@ -38,6 +38,8 @@ function Remove-PlayerCharacter {
         [string]$EntitiesFile
     )
 
+    if ($script:HasOpCtx) { Clear-OperationContext }
+
     if (-not $EntitiesFile) {
         . "$script:ModuleRoot/private/admin-config.ps1"
         $Config = Get-AdminConfig
@@ -61,5 +63,11 @@ function Remove-PlayerCharacter {
 
     if ($PSCmdlet.ShouldProcess($Target.FilePath, "Remove-PlayerCharacter: soft-delete '$CharacterName' (owner: $PlayerName, @status: Usunięty ($ValidFrom`:))")) {
         Write-EntityFile -Path $Target.FilePath -Lines $Lines -NL $Target.NL
+
+        if ($script:HasOpCtx) {
+            return (New-OperationResult -Success $true -Action 'SoftDelete' `
+                -TargetType 'Postać' -TargetName $CharacterName `
+                -UndoHint "Set-PlayerCharacter -PlayerName '$PlayerName' -CharacterName '$CharacterName' -Status 'Aktywny'")
+        }
     }
 }

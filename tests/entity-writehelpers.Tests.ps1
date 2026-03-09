@@ -106,6 +106,24 @@ Describe 'Set-EntityTag' {
         $ChildEnd = Set-EntityTag -Lines $Lines -ChildrenStart 3 -ChildrenEnd 4 -TagName 'margonemid' -Value '99999'
         $Lines[3] | Should -BeLike '*@margonemid: 99999*'
     }
+
+    It 'still returns [int] (return type unchanged)' {
+        $Lines = [System.Collections.Generic.List[string]]::new([string[]]@('## Gracz', '', '* Kilgor'))
+        $ChildEnd = Set-EntityTag -Lines $Lines -ChildrenStart 3 -ChildrenEnd 3 -TagName 'status' -Value 'Aktywny'
+        $ChildEnd | Should -BeOfType [int]
+    }
+
+    It 'populates OpChanges when operation context is loaded' {
+        Clear-OperationContext
+        $Lines = [System.Collections.Generic.List[string]]::new([string[]]@('## Gracz', '', '* Kilgor', '    - @margonemid: 12345'))
+        $null = Set-EntityTag -Lines $Lines -ChildrenStart 3 -ChildrenEnd 4 -TagName 'margonemid' -Value '99999'
+
+        $script:OpChanges.Count | Should -Be 1
+        $script:OpChanges[0].Property | Should -Be '@margonemid'
+        $script:OpChanges[0].OldValue | Should -Be '12345'
+        $script:OpChanges[0].NewValue | Should -Be '99999'
+        Clear-OperationContext
+    }
 }
 
 Describe 'New-EntityBullet' {

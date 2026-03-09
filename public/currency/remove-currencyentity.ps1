@@ -43,6 +43,7 @@ function Remove-CurrencyEntity {
     try {
 
     $Config = Get-AdminConfig
+    if ($script:HasOpCtx) { Clear-OperationContext }
 
     if (-not $EntitiesFile) {
         $EntitiesFile = $Config.EntitiesFile
@@ -84,6 +85,12 @@ function Remove-CurrencyEntity {
 
     if ($PSCmdlet.ShouldProcess($EntitiesFilePath, "Remove-CurrencyEntity: soft-delete '$Name' (@status: Usunięty ($ValidFrom`:))")) {
         Write-EntityFile -Path $EntitiesFilePath -Lines $Lines -NL $File.NL
+
+        if ($script:HasOpCtx) {
+            return (New-OperationResult -Success $true -Action 'SoftDelete' `
+                -TargetType 'Przedmiot' -TargetName $Name `
+                -UndoHint "Set-Entity -Name '$Name' -Tags @{status='Aktywny'}")
+        }
     }
 
     } finally { $script:SuppressWarnings = $PrevSuppress }

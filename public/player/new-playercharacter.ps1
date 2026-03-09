@@ -76,6 +76,7 @@ function New-PlayerCharacter {
     try {
 
     $Config = Get-AdminConfig
+    if ($script:HasOpCtx) { Clear-OperationContext }
 
     if (-not $EntitiesFile) {
         $EntitiesFile = $Config.EntitiesFile
@@ -223,7 +224,7 @@ function New-PlayerCharacter {
     }
 
     # Return summary object
-    return [PSCustomObject]@{
+    $ReturnObj = [PSCustomObject]@{
         PlayerName    = $PlayerName
         CharacterName = $CharacterName
         PUStart       = $PUStartValue
@@ -231,6 +232,15 @@ function New-PlayerCharacter {
         CharacterFile = if (-not $NoCharacterFile) { $CharFilePath } else { $null }
         PlayerCreated = $PlayerTarget.Created
     }
+
+    if ($script:HasOpCtx) {
+        $OpResult = New-OperationResult -Success $true -Action 'Create' `
+            -TargetType 'Postać' -TargetName $CharacterName `
+            -UndoHint "Remove-PlayerCharacter -PlayerName '$PlayerName' -CharacterName '$CharacterName'"
+        $ReturnObj | Add-Member -NotePropertyName 'OperationResult' -NotePropertyValue $OpResult
+    }
+
+    return $ReturnObj
 
     } finally { $script:SuppressWarnings = $PrevSuppress }
 }

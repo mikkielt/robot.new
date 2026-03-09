@@ -44,6 +44,7 @@ function New-CurrencyEntity {
     )
 
     $Config = Get-AdminConfig
+    if ($script:HasOpCtx) { Clear-OperationContext }
 
     if (-not $EntitiesFile) {
         $EntitiesFile = $Config.EntitiesFile
@@ -92,7 +93,7 @@ function New-CurrencyEntity {
         Write-EntityFile -Path $Target.FilePath -Lines $Target.Lines -NL $Target.NL
     }
 
-    return [PSCustomObject]@{
+    $ReturnObj = [PSCustomObject]@{
         EntityName   = $EntityName
         Denomination = $ResolvedDenom.Name
         DenomShort   = $ResolvedDenom.Short
@@ -100,4 +101,13 @@ function New-CurrencyEntity {
         Amount       = $Amount
         EntitiesFile = $EntitiesFile
     }
+
+    if ($script:HasOpCtx) {
+        $OpResult = New-OperationResult -Success $true -Action 'Create' `
+            -TargetType 'Przedmiot' -TargetName $EntityName `
+            -UndoHint "Remove-CurrencyEntity -Name '$EntityName'"
+        $ReturnObj | Add-Member -NotePropertyName 'OperationResult' -NotePropertyValue $OpResult
+    }
+
+    return $ReturnObj
 }

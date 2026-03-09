@@ -180,7 +180,46 @@ function Show-Breadcrumb {
         [void]$SB.Append($Parts[$I])
     }
 
-    Write-Host "  $($SB.ToString())" -ForegroundColor $AccentColor
+    # Health badges (right-aligned after breadcrumb)
+    $BadgeStr = ''
+    if ($State.PSObject.Properties['HealthCache'] -and $State.HealthCache) {
+        $HC = $State.HealthCache
+        $BadgeParts = [System.Collections.Generic.List[string]]::new()
+
+        # PU badge
+        if ($HC.PU) {
+            $PUWarnCount = @($HC.PU | Where-Object { $_.Status -ne 'OK' }).Count
+            if ($PUWarnCount -eq 0) { [void]$BadgeParts.Add("PU:$([char]0x2713)") }
+            else { [void]$BadgeParts.Add("PU:$([char]0x26A0)$PUWarnCount") }
+        }
+
+        # Currency badge
+        if ($HC.Currency) {
+            $CWarnCount = if ($HC.Currency.WarningCount) { $HC.Currency.WarningCount } else { 0 }
+            if ($CWarnCount -eq 0) { [void]$BadgeParts.Add("Waluta:$([char]0x2713)") }
+            else { [void]$BadgeParts.Add("Waluta:$([char]0x26A0)$CWarnCount") }
+        }
+
+        # Integrity badge
+        if ($HC.Integrity) {
+            $IWarnCount = @($HC.Integrity | Where-Object { -not $_.IsValid }).Count
+            if ($IWarnCount -eq 0) { [void]$BadgeParts.Add("Sesje:$([char]0x2713)") }
+            else { [void]$BadgeParts.Add("Sesje:$([char]0x26A0)$IWarnCount") }
+        }
+
+        # Graph badge
+        if ($HC.Graph) {
+            $GWarnCount = if ($HC.Graph.WarningCount) { $HC.Graph.WarningCount } else { 0 }
+            if ($GWarnCount -eq 0) { [void]$BadgeParts.Add("Graf:$([char]0x2713)") }
+            else { [void]$BadgeParts.Add("Graf:$([char]0x26A0)$GWarnCount") }
+        }
+
+        if ($BadgeParts.Count -gt 0) {
+            $BadgeStr = "    [$($BadgeParts -join '  ')]"
+        }
+    }
+
+    Write-Host "  $($SB.ToString())$BadgeStr" -ForegroundColor $AccentColor
     Write-Host ''
 }
 

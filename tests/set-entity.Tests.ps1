@@ -110,4 +110,17 @@ Describe 'Set-Entity' {
         $Content | Should -Match '@rasa:\s*Człowiek'
         $Content | Should -Match '@profesja:\s*Handlarz'
     }
+
+    It 'returns Robot.OperationResult with Action=Update' {
+        $Result = Set-Entity -Name 'Kupiec Orrin' -Tags @{ status = 'Nieaktywny' } `
+            -EntitiesFile $script:EntFile
+
+        $Result | Should -Not -BeNullOrEmpty
+        $Result.PSObject.TypeNames | Should -Contain 'Robot.OperationResult'
+        $Result.Action | Should -Be 'Update'
+        $Result.TargetName | Should -Be 'Kupiec Orrin'
+        $Result.Success | Should -Be $true
+        $Result.FilePath | Should -Not -BeNullOrEmpty
+        $Result.Changes.Count | Should -BeGreaterThan 0
+    }
 }

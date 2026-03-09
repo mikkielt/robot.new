@@ -55,6 +55,8 @@ function Set-Player {
         [string]$EntitiesFile
     )
 
+    if ($script:HasOpCtx) { Clear-OperationContext }
+
     if (-not $EntitiesFile) {
         . "$script:ModuleRoot/private/admin-config.ps1"
         $Config = Get-AdminConfig
@@ -137,5 +139,10 @@ function Set-Player {
     # Write with ShouldProcess
     if ($PSCmdlet.ShouldProcess($Target.FilePath, "Set-Player: update '$Name'")) {
         Write-EntityFile -Path $Target.FilePath -Lines $Lines -NL $Target.NL
+
+        if ($script:HasOpCtx) {
+            return (New-OperationResult -Success $true -Action 'Update' `
+                -TargetType 'Gracz' -TargetName $Name -UndoHint $null)
+        }
     }
 }

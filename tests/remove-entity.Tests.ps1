@@ -99,4 +99,16 @@ Describe 'Remove-Entity' {
         $Content | Should -Match '\*\s*Miecz Słońca'
         $Content | Should -Match '@status:\s*Usunięty\s*\(2026-03:\)'
     }
+
+    It 'returns Robot.OperationResult with Action=SoftDelete and UndoHint' {
+        $Result = Remove-Entity -Name 'Kupiec Orrin' -ValidFrom '2026-03' `
+            -EntitiesFile $script:EntFile -Confirm:$false
+
+        $Result | Should -Not -BeNullOrEmpty
+        $Result.PSObject.TypeNames | Should -Contain 'Robot.OperationResult'
+        $Result.Action | Should -Be 'SoftDelete'
+        $Result.TargetName | Should -Be 'Kupiec Orrin'
+        $Result.UndoHint | Should -Not -BeNullOrEmpty
+        $Result.UndoHint | Should -Match 'Aktywny'
+    }
 }

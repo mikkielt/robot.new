@@ -112,6 +112,25 @@ function Invoke-RobotCLI {
     $Players  = Get-Player
     $NameIdx  = Get-NameIndex -Players $Players -Entities $Entities
 
+    # Health dashboard: run quick checks and cache results
+    Write-Host "  Sprawdzanie stanu systemu..." -ForegroundColor DarkGray
+    $HealthCache = @{
+        PU        = $null
+        Currency  = $null
+        Integrity = $null
+        Graph     = $null
+        CheckedAt = Get-Date
+        Errors    = @()
+    }
+    try { $HealthCache.PU        = Test-PlayerCharacterPUAssignment -Quiet }
+    catch { $HealthCache.Errors += "PU: $($_.Exception.Message)" }
+    try { $HealthCache.Currency  = Test-CurrencyReconciliation -Quiet }
+    catch { $HealthCache.Errors += "Waluta: $($_.Exception.Message)" }
+    try { $HealthCache.Integrity = Test-SessionIntegrity -Quiet -Since (Get-Date).AddMonths(-2) }
+    catch { $HealthCache.Errors += "Sesje: $($_.Exception.Message)" }
+    try { $HealthCache.Graph     = Test-SessionGraphIntegrity -Quiet }
+    catch { $HealthCache.Errors += "Graf: $($_.Exception.Message)" }
+
     $NavState = [PSCustomObject]@{
         BreadcrumbStack = [System.Collections.Generic.Stack[string]]::new()
         NameIndex       = $NameIdx
@@ -119,6 +138,7 @@ function Invoke-RobotCLI {
         Entities        = $Entities
         ResolveCache    = @{}
         Theme           = $Theme
+        HealthCache     = $HealthCache
     }
     [void]$NavState.BreadcrumbStack.Push('Robot')
 

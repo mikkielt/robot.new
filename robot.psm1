@@ -52,6 +52,9 @@ function Write-RobotWarning {
     if (-not $script:SuppressWarnings) {
         [System.Console]::Error.WriteLine($Message)
     }
+    if (Get-Command 'Add-OperationWarning' -ErrorAction SilentlyContinue) {
+        Add-OperationWarning -Message $Message -Severity 'Warn'
+    }
 }
 
 function Write-RobotInfo {

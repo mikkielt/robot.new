@@ -55,6 +55,7 @@ function New-Player {
     )
 
     $Config = Get-AdminConfig
+    if ($script:HasOpCtx) { Clear-OperationContext }
 
     if (-not $EntitiesFile) {
         $EntitiesFile = $Config.EntitiesFile
@@ -131,7 +132,7 @@ function New-Player {
     }
 
     # Return summary object
-    return [PSCustomObject]@{
+    $ReturnObj = [PSCustomObject]@{
         PlayerName    = $Name
         MargonemID    = $MargonemID
         PRFWebhook    = $PRFWebhook
@@ -140,4 +141,12 @@ function New-Player {
         CharacterName = if ($CharacterResult) { $CharacterResult.CharacterName } else { $null }
         CharacterFile = if ($CharacterResult) { $CharacterResult.CharacterFile } else { $null }
     }
+
+    if ($script:HasOpCtx) {
+        $OpResult = New-OperationResult -Success $true -Action 'Create' `
+            -TargetType 'Gracz' -TargetName $Name -UndoHint "Remove-Entity -Name '$Name' -Type 'Gracz'"
+        $ReturnObj | Add-Member -NotePropertyName 'OperationResult' -NotePropertyValue $OpResult
+    }
+
+    return $ReturnObj
 }

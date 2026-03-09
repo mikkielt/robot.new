@@ -51,6 +51,8 @@ function Set-SessionHash {
     if ($Quiet) { $script:SuppressWarnings = $true }
     try {
 
+    if ($script:HasOpCtx) { Clear-OperationContext }
+
     # Load helpers
     if (-not (Get-Command 'Get-ContentHash' -ErrorAction SilentlyContinue)) {
         . "$PSScriptRoot/../../private/session-hashhelpers.ps1"
@@ -196,12 +198,20 @@ function Set-SessionHash {
         Write-SessionHashMeta -MetaPath $MetaPath -Meta $Meta
     }
 
-    return [PSCustomObject]@{
+    $ReturnObj = [PSCustomObject]@{
         FilesProcessed = $FilesWritten
         HashesComputed = $TotalHashes
         HashesUpdated  = $TotalUpdated
         HashesNew      = $TotalNew
     }
+
+    if ($script:HasOpCtx) {
+        $OpResult = New-OperationResult -Success $true -Action 'Update' `
+            -TargetType 'SessionHash' -TargetName "($FilesWritten files)" -UndoHint $null
+        $ReturnObj | Add-Member -NotePropertyName 'OperationResult' -NotePropertyValue $OpResult
+    }
+
+    return $ReturnObj
 
     } finally { $script:SuppressWarnings = $PrevSuppress }
 }
