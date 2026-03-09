@@ -18,6 +18,15 @@ A PowerShell module for managing an online RPG lore repository ([Nerthus](https:
 - Git in `PATH`
 - [Pester](https://pester.dev/) v5.0+ (tests only)
 
+## Adding as a Submodule
+
+From the root of your lore repository:
+
+```bash
+git submodule add git@github.com:mikkielt/robot.new.git .robot.new
+git submodule update --init
+```
+
 ## Quick Start
 
 ```powershell
