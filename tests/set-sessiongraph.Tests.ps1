@@ -353,10 +353,14 @@ Describe 'Session Graph Index I/O' {
     Context 'Read/Write-SessionGraphMeta' {
         It 'returns defaults when file does not exist' {
             $Result = Read-SessionGraphMeta -MetaPath (Join-Path $script:TempDir 'nonexistent.json')
-            $Result['Version'] | Should -Be 1
+            $Result['Version'] | Should -Be 2
             $Result['SessionCount'] | Should -Be 0
             $Result['LastFullUpdate'] | Should -BeNullOrEmpty
             $Result['NameIndexVersion'] | Should -BeNullOrEmpty
+            $Result['Tier2Stale'] | Should -Be $false
+            $Result['Tier2StaleReason'] | Should -BeNullOrEmpty
+            $Result['LastEagerRefresh'] | Should -BeNullOrEmpty
+            $Result['EagerRefreshCount'] | Should -Be 0
         }
 
         It 'round-trips metadata' {
@@ -373,6 +377,232 @@ Describe 'Session Graph Index I/O' {
             $Result['LastFullUpdate'] | Should -Be '2026-03-01 14:30:00'
             $Result['NameIndexVersion'] | Should -Be 'abc123'
             $Result['SessionCount'] | Should -Be 42
+        }
+
+        It 'round-trips Tier2Stale metadata fields' {
+            $Path = Join-Path $script:TempDir '_meta.json'
+            $Meta = @{
+                Version = 2
+                LastFullUpdate = '2026-03-01 14:30:00'
+                LastIncrementalUpdate = '2026-03-08 10:00:00'
+                NameIndexVersion = 'abc123'
+                SessionCount = 42
+                Tier2Stale = $true
+                Tier2StaleReason = "Encja 'Sandro' została zmodyfikowana"
+                LastEagerRefresh = '2026-03-09 08:00:00'
+                EagerRefreshCount = 5
+            }
+            Write-SessionGraphMeta -MetaPath $Path -Meta $Meta
+            $Result = Read-SessionGraphMeta -MetaPath $Path
+            $Result['Tier2Stale'] | Should -Be $true
+            $Result['Tier2StaleReason'] | Should -Be "Encja 'Sandro' została zmodyfikowana"
+            $Result['LastEagerRefresh'] | Should -Be '2026-03-09 08:00:00'
+            $Result['EagerRefreshCount'] | Should -Be 5
+        }
+
+        It 'handles legacy meta without Tier2 fields gracefully' {
+            $Path = Join-Path $script:TempDir '_meta.json'
+            $LegacyJson = '{"Version":1,"LastFullUpdate":"2026-03-01","SessionCount":10,"NameIndexVersion":"abc"}'
+            Write-TestFile -Path $Path -Content $LegacyJson
+
+            $Result = Read-SessionGraphMeta -MetaPath $Path
+            $Result['Tier2Stale'] | Should -Be $false
+            $Result['Tier2StaleReason'] | Should -BeNullOrEmpty
+            $Result['LastEagerRefresh'] | Should -BeNullOrEmpty
+            $Result['EagerRefreshCount'] | Should -Be 0
+        }
+    }
+}
+
+Describe 'Update-SessionGraphEntry' {
+    It 'preserves Tier 2 entries from existing index' {
+        $Index = @{
+            '### 2024-06-15, Test, N' = @{
+                Date = '2024-06-15'
+                Format = 'Gen3'
+                Participants = @(
+                    @{ Name = 'Xeron'; Type = 'Postać'; Tier = 0; Source = 'FilePath'; Weight = $null }
+                    @{ Name = 'Gelu'; Type = 'NPC'; Tier = 2; Source = 'BodyText'; Weight = $null }
+                )
+                FilePaths = @('Postaci/Gracze/Xeron.md')
+            }
+        }
+
+        $Session = [PSCustomObject]@{
+            Header    = '### 2024-06-15, Test, N'
+            Date      = [datetime]'2024-06-15'
+            Format    = 'Gen3'
+            FilePaths = @('Postaci/Gracze/Xeron.md')
+            PU        = @(@{ Character = 'Sandro'; Value = 0.3 })
+            Changes   = @()
+            Transfers = @()
+            Intel     = @()
+            Mentions  = @()
+        }
+
+        Update-SessionGraphEntry -SessionHeader $Session.Header -Session $Session -Index $Index
+
+        $Entry = $Index[$Session.Header]
+        $Entry | Should -Not -BeNullOrEmpty
+
+        # Tier 0 (Xeron) should still be there from FilePath
+        $Xeron = $Entry['Participants'] | Where-Object { $_['Name'] -eq 'Xeron' -or $_.Name -eq 'Xeron' }
+        $Xeron | Should -Not -BeNullOrEmpty
+
+        # Tier 1 (Sandro) should be added from PU
+        $Sandro = $Entry['Participants'] | Where-Object { $_['Name'] -eq 'Sandro' -or $_.Name -eq 'Sandro' }
+        $Sandro | Should -Not -BeNullOrEmpty
+
+        # Tier 2 (Gelu) should be preserved
+        $Gelu = $Entry['Participants'] | Where-Object { $_['Name'] -eq 'Gelu' -or $_.Name -eq 'Gelu' }
+        $Gelu | Should -Not -BeNullOrEmpty
+    }
+
+    It 'overwrites Tier 0+1 data from fresh session' {
+        $Index = @{
+            '### 2024-06-15, Test, N' = @{
+                Date = '2024-06-15'
+                Format = 'Gen3'
+                Participants = @(
+                    @{ Name = 'Xeron'; Type = 'Postać'; Tier = 0; Source = 'FilePath'; Weight = $null }
+                    @{ Name = 'Sandro'; Type = 'NPC'; Tier = 1; Source = 'PU'; Weight = 0.5 }
+                )
+                FilePaths = @('Postaci/Gracze/Xeron.md')
+            }
+        }
+
+        # Session now has different PU weight
+        $Session = [PSCustomObject]@{
+            Header    = '### 2024-06-15, Test, N'
+            Date      = [datetime]'2024-06-15'
+            Format    = 'Gen3'
+            FilePaths = @('Postaci/Gracze/Xeron.md')
+            PU        = @(@{ Character = 'Sandro'; Value = 0.8 })
+            Changes   = @()
+            Transfers = @()
+            Intel     = @()
+            Mentions  = @()
+        }
+
+        Update-SessionGraphEntry -SessionHeader $Session.Header -Session $Session -Index $Index
+
+        $Entry = $Index[$Session.Header]
+        $Sandro = $Entry['Participants'] | Where-Object { $_['Name'] -eq 'Sandro' -or $_.Name -eq 'Sandro' }
+        $SandroWeight = if ($Sandro.ContainsKey) { $Sandro['Weight'] } else { $Sandro.Weight }
+        $SandroWeight | Should -Be 0.8
+    }
+
+    It 'creates new entry when session not in index' {
+        $Index = @{}
+
+        $Session = [PSCustomObject]@{
+            Header    = '### 2024-08-01, New Session, N'
+            Date      = [datetime]'2024-08-01'
+            Format    = 'Gen4'
+            FilePaths = @('Postaci/Gracze/Xeron.md')
+            PU        = @()
+            Changes   = @()
+            Transfers = @()
+            Intel     = @()
+            Mentions  = @()
+        }
+
+        Update-SessionGraphEntry -SessionHeader $Session.Header -Session $Session -Index $Index
+
+        $Index.ContainsKey('### 2024-08-01, New Session, N') | Should -BeTrue
+        $Entry = $Index['### 2024-08-01, New Session, N']
+        $Entry['Date'] | Should -Be '2024-08-01'
+        $Entry['Participants'].Count | Should -Be 1
+    }
+}
+
+Describe 'Mention Cache' {
+    BeforeEach {
+        $script:TempDir = New-TestTempDir
+    }
+
+    AfterEach {
+        Remove-TestTempDir
+    }
+
+    Context 'Read/Write-MentionCache' {
+        It 'returns empty hashtable when file does not exist' {
+            $Result = Read-MentionCache -CachePath (Join-Path $script:TempDir 'nonexistent.json')
+            $Result | Should -BeOfType [hashtable]
+            $Result.Count | Should -Be 0
+        }
+
+        It 'round-trips mention cache' {
+            $Path = Join-Path $script:TempDir '_mentions.json'
+            $Cache = @{
+                '### 2024-06-15, Test, N' = @{
+                    CacheKey = 'nameversion:contenthash'
+                    Mentions = @(
+                        @{ Name = 'Gelu'; Type = 'NPC' }
+                    )
+                }
+            }
+            Write-MentionCache -CachePath $Path -Cache $Cache
+            $Result = Read-MentionCache -CachePath $Path
+            $Result.Count | Should -Be 1
+            $Result.ContainsKey('### 2024-06-15, Test, N') | Should -BeTrue
+            $Result['### 2024-06-15, Test, N']['CacheKey'] | Should -Be 'nameversion:contenthash'
+        }
+    }
+
+    Context 'Get-CachedMentions' {
+        It 'returns cached mentions on cache hit' {
+            $Cache = @{
+                '### 2024-06-15, Test, N' = @{
+                    CacheKey = 'abc123:def456'
+                    Mentions = @(
+                        @{ Name = 'Gelu'; Type = 'NPC' }
+                    )
+                }
+            }
+
+            $Result = Get-CachedMentions -SessionHeader '### 2024-06-15, Test, N' `
+                -NameIndexVersion 'abc123' -ContentHash 'def456' -Cache $Cache
+
+            $Result | Should -Not -BeNullOrEmpty
+            $Result.Count | Should -Be 1
+        }
+
+        It 'returns null on NameIndexVersion mismatch' {
+            $Cache = @{
+                '### 2024-06-15, Test, N' = @{
+                    CacheKey = 'abc123:def456'
+                    Mentions = @(@{ Name = 'Gelu'; Type = 'NPC' })
+                }
+            }
+
+            $Result = Get-CachedMentions -SessionHeader '### 2024-06-15, Test, N' `
+                -NameIndexVersion 'different_version' -ContentHash 'def456' -Cache $Cache
+
+            $Result | Should -BeNullOrEmpty
+        }
+
+        It 'returns null on ContentHash mismatch' {
+            $Cache = @{
+                '### 2024-06-15, Test, N' = @{
+                    CacheKey = 'abc123:def456'
+                    Mentions = @(@{ Name = 'Gelu'; Type = 'NPC' })
+                }
+            }
+
+            $Result = Get-CachedMentions -SessionHeader '### 2024-06-15, Test, N' `
+                -NameIndexVersion 'abc123' -ContentHash 'different_hash' -Cache $Cache
+
+            $Result | Should -BeNullOrEmpty
+        }
+
+        It 'returns null when session not in cache' {
+            $Cache = @{}
+
+            $Result = Get-CachedMentions -SessionHeader '### 2024-06-15, Test, N' `
+                -NameIndexVersion 'abc123' -ContentHash 'def456' -Cache $Cache
+
+            $Result | Should -BeNullOrEmpty
         }
     }
 }

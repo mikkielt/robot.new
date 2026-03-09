@@ -194,6 +194,35 @@ Describe 'Test-SessionGraphIntegrity' {
         }
     }
 
+    Context 'Tier2Stale metadata' {
+        It 'Tier2Stale flag is readable from meta after write' {
+            Write-SessionGraphMeta -MetaPath $script:MetaPath -Meta @{
+                NameIndexVersion = 'abc123'
+                SessionCount = 3
+                Tier2Stale = $true
+                Tier2StaleReason = "Encja 'Sandro' została zmodyfikowana"
+                LastEagerRefresh = '2026-03-09 08:00:00'
+                EagerRefreshCount = 5
+            }
+
+            $Meta = Read-SessionGraphMeta -MetaPath $script:MetaPath
+            $Meta['Tier2Stale'] | Should -Be $true
+            $Meta['Tier2StaleReason'] | Should -Be "Encja 'Sandro' została zmodyfikowana"
+            $Meta['LastEagerRefresh'] | Should -Be '2026-03-09 08:00:00'
+            $Meta['EagerRefreshCount'] | Should -Be 5
+        }
+
+        It 'Tier2Stale defaults to false when not present' {
+            Write-SessionGraphMeta -MetaPath $script:MetaPath -Meta @{
+                NameIndexVersion = 'abc123'
+                SessionCount = 3
+            }
+
+            $Meta = Read-SessionGraphMeta -MetaPath $script:MetaPath
+            $Meta['Tier2Stale'] | Should -Be $false
+        }
+    }
+
     Context 'Stale name version' {
         It 'detects name set change since last build' {
             Write-SessionGraphIndex -IndexPath $script:IndexPath -Index $script:FixtureIndex

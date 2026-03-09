@@ -44,6 +44,7 @@ function Remove-Entity {
     )
 
     $Config = Get-AdminConfig
+    if ($script:HasOpCtx) { Clear-OperationContext }
 
     if (-not $EntitiesFile) {
         $EntitiesFile = $Config.EntitiesFile
@@ -93,5 +94,28 @@ function Remove-Entity {
 
     if ($PSCmdlet.ShouldProcess($EntitiesFilePath, "Remove-Entity: soft-delete '$Name' (## $FoundType, @status: Usunięty ($ValidFrom`:))")) {
         Write-EntityFile -Path $EntitiesFilePath -Lines $Lines -NL $File.NL
+
+        # Flag Tier 2 as stale — removed entity changes the name index
+        try {
+            if (-not (Get-Command 'Read-SessionGraphMeta' -ErrorAction SilentlyContinue)) {
+                . "$script:ModuleRoot/private/session-graphhelpers.ps1"
+            }
+            $GraphDir = [System.IO.Path]::Combine($Config.ResDir, 'session-graph')
+            $MetaPath = [System.IO.Path]::Combine($GraphDir, '_meta.json')
+            if ([System.IO.File]::Exists($MetaPath)) {
+                $GraphMeta = Read-SessionGraphMeta -MetaPath $MetaPath
+                $GraphMeta['Tier2Stale'] = $true
+                $GraphMeta['Tier2StaleReason'] = "Encja '$Name' została usunięta"
+                Write-SessionGraphMeta -MetaPath $MetaPath -Meta $GraphMeta
+            }
+        } catch {
+            # Best-effort; do not fail the entity write
+        }
+
+        if ($script:HasOpCtx) {
+            return (New-OperationResult -Success $true -Action 'SoftDelete' `
+                -TargetType $(if ($FoundType) { $FoundType } else { 'Entity' }) -TargetName $Name `
+                -UndoHint "Set-Entity -Name '$Name' -Tags @{status='Aktywny'}")
+        }
     }
 }

@@ -588,6 +588,31 @@ function Invoke-SessionGraphWorkflow {
     Write-CLILine -Text 'Graf sesji' -Color $AccentColor
     Write-Host ''
 
+    # Tier 2 staleness warning
+    try {
+        if (-not (Get-Command 'Read-SessionGraphMeta' -ErrorAction SilentlyContinue)) {
+            . "$script:ModuleRoot/private/session-graphhelpers.ps1"
+        }
+        if (-not (Get-Command 'Get-AdminConfig' -ErrorAction SilentlyContinue)) {
+            . "$script:ModuleRoot/private/admin-config.ps1"
+        }
+        $WfConfig = Get-AdminConfig
+        $WfGraphDir = [System.IO.Path]::Combine($WfConfig.ResDir, 'session-graph')
+        $WfMetaPath = [System.IO.Path]::Combine($WfGraphDir, '_meta.json')
+        if ([System.IO.File]::Exists($WfMetaPath)) {
+            $WfMeta = Read-SessionGraphMeta -MetaPath $WfMetaPath
+            if ($WfMeta['Tier2Stale']) {
+                Write-Host ''
+                Write-CLILine -Text '  ⚠ Wyniki mogą być nieaktualne — indeks wymaga odświeżenia' -Color $WarningColor
+                Write-CLILine -Text '    (zmieniono encje od ostatniej pełnej aktualizacji)' -Color $DisabledColor
+                Write-CLILine -Text '    Uruchom: Set-SessionGraph -Full' -Color $DisabledColor
+                Write-Host ''
+            }
+        }
+    } catch {
+        # Ignore meta read failures in CLI
+    }
+
     # Mode selection
     $ModeStep = [PSCustomObject]@{
         Name = 'Mode'; Label = 'Tryb zapytania'; StepType = 'choice'; Required = $true

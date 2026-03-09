@@ -18,6 +18,10 @@
     - Get-NameIndexVersion:       SHA256 of sorted entity names (detects name set changes)
     - ConvertFrom-GraphEntryDate: parse date string from graph index entry into [datetime]
     - Test-GraphEntryDateInRange: test whether a graph entry's date falls within a range
+    - Update-SessionGraphEntry:   recompute Tier 0+1 for a session, preserve Tier 2 (eager refresh)
+    - Read-MentionCache:          load Tier 2 mention cache from _mentions.json
+    - Write-MentionCache:         persist mention cache
+    - Get-CachedMentions:         return cached mentions if cache key matches
 
     Three-tier involvement model:
     - Tier 0 (Filesystem): session file is placed in an entity's directory
@@ -289,7 +293,11 @@ function Read-SessionGraphMeta {
         LastIncrementalUpdate = $null
         NameIndexVersion      = $null
         SessionCount          = 0
-        Version               = 1
+        Version               = 2
+        Tier2Stale            = $false
+        Tier2StaleReason      = $null
+        LastEagerRefresh      = $null
+        EagerRefreshCount     = 0
     }
 
     if (-not [System.IO.File]::Exists($MetaPath)) {
@@ -300,7 +308,7 @@ function Read-SessionGraphMeta {
         $RawJson = [System.IO.File]::ReadAllText($MetaPath, $script:UTF8NoBOM)
         # Use -AsHashtable to prevent automatic DateTime conversion
         $Parsed = $RawJson | ConvertFrom-Json -AsHashtable
-        foreach ($Key in @('LastFullUpdate', 'LastIncrementalUpdate', 'NameIndexVersion')) {
+        foreach ($Key in @('LastFullUpdate', 'LastIncrementalUpdate', 'NameIndexVersion', 'Tier2StaleReason', 'LastEagerRefresh')) {
             if ($Parsed.ContainsKey($Key) -and $null -ne $Parsed[$Key]) {
                 $Defaults[$Key] = [string]$Parsed[$Key]
             }
@@ -310,6 +318,12 @@ function Read-SessionGraphMeta {
         }
         if ($Parsed.ContainsKey('Version') -and $null -ne $Parsed['Version']) {
             $Defaults['Version'] = $Parsed['Version']
+        }
+        if ($Parsed.ContainsKey('Tier2Stale') -and $null -ne $Parsed['Tier2Stale']) {
+            $Defaults['Tier2Stale'] = [bool]$Parsed['Tier2Stale']
+        }
+        if ($Parsed.ContainsKey('EagerRefreshCount') -and $null -ne $Parsed['EagerRefreshCount']) {
+            $Defaults['EagerRefreshCount'] = [int]$Parsed['EagerRefreshCount']
         }
     } catch {
         Write-RobotWarning "[WARN Read-SessionGraphMeta] Failed to parse '$MetaPath': $_"
@@ -407,4 +421,162 @@ function Test-GraphEntryDateInRange {
     if ($MaxDate -and ($null -eq $SessionDate -or $SessionDate -gt $MaxDate)) { return $false }
 
     return $true
+}
+
+# Recompute Tier 0 + Tier 1 participants for a single session and update
+# the index entry in-place. Preserves existing Tier 2 entries (body text mentions).
+# Used for eager graph refresh after Set-Session writes.
+function Update-SessionGraphEntry {
+    param(
+        [Parameter(Mandatory, HelpMessage = "Session header string")]
+        [string]$SessionHeader,
+
+        [Parameter(Mandatory, HelpMessage = "Session object from Get-Session")]
+        [object]$Session,
+
+        [Parameter(Mandatory, HelpMessage = "Graph index hashtable (mutated in-place)")]
+        [hashtable]$Index
+    )
+
+    # Collect existing Tier 2 entries for this session (preserve mentions)
+    $ExistingTier2 = [System.Collections.Generic.Dictionary[string, object]]::new(
+        [System.StringComparer]::OrdinalIgnoreCase)
+
+    if ($Index.ContainsKey($SessionHeader)) {
+        $ExistingEntry = $Index[$SessionHeader]
+        if ($ExistingEntry.ContainsKey('Participants') -and $ExistingEntry['Participants']) {
+            foreach ($P in $ExistingEntry['Participants']) {
+                $PTier = if ($P.ContainsKey('Tier')) { $P['Tier'] } else { 2 }
+                if ($PTier -eq 2) {
+                    $PName = if ($P.ContainsKey('Name')) { $P['Name'] } else { $null }
+                    if ($PName -and -not $ExistingTier2.ContainsKey($PName)) {
+                        $ExistingTier2[$PName] = $P
+                    }
+                }
+            }
+        }
+    }
+
+    # Recompute Tier 0 + 1 via the standard pipeline, but with Mentions suppressed
+    $SessionCopy = [PSCustomObject]@{
+        FilePaths  = $Session.FilePaths
+        PU         = $Session.PU
+        Changes    = $Session.Changes
+        Transfers  = $Session.Transfers
+        Intel      = $Session.Intel
+        Mentions   = @()  # suppress Tier 2 — we preserve existing
+    }
+    $FreshParticipants = ConvertTo-ParticipantRecord -Session $SessionCopy
+
+    # Build merged participants: fresh Tier 0+1 first, then preserved Tier 2
+    $Merged = [System.Collections.Generic.Dictionary[string, object]]::new(
+        [System.StringComparer]::OrdinalIgnoreCase)
+
+    foreach ($P in $FreshParticipants) {
+        $Merged[$P.Name] = @{
+            Name   = $P.Name
+            Type   = $P.Type
+            Tier   = $P.Tier
+            Source = $P.Source
+            Weight = $P.Weight
+        }
+    }
+
+    # Add back Tier 2 entries that are not already covered by Tier 0/1
+    foreach ($Key in $ExistingTier2.Keys) {
+        if (-not $Merged.ContainsKey($Key)) {
+            $Merged[$Key] = $ExistingTier2[$Key]
+        }
+    }
+
+    # Build updated index entry
+    $DateStr = if ($Session.Date) { $Session.Date.ToString('yyyy-MM-dd') } else { $null }
+    $Format = if ($Session.PSObject.Properties['Format']) { $Session.Format } else { $null }
+
+    $Index[$SessionHeader] = @{
+        Date         = $DateStr
+        Format       = $Format
+        Participants = @($Merged.Values)
+        FilePaths    = @($Session.FilePaths)
+    }
+}
+
+# Read the mention cache from _mentions.json.
+# Returns hashtable: session header → @{ CacheKey = ".."; Mentions = @(...) }
+function Read-MentionCache {
+    param(
+        [Parameter(Mandatory, HelpMessage = "Path to _mentions.json")]
+        [string]$CachePath
+    )
+
+    $Result = @{}
+
+    if (-not [System.IO.File]::Exists($CachePath)) {
+        return $Result
+    }
+
+    try {
+        $RawJson = [System.IO.File]::ReadAllText($CachePath, $script:UTF8NoBOM)
+        $Parsed = $RawJson | ConvertFrom-Json -AsHashtable
+        if ($Parsed) {
+            return $Parsed
+        }
+    } catch {
+        Write-RobotWarning "[WARN Read-MentionCache] Failed to parse '$CachePath': $_"
+    }
+
+    return $Result
+}
+
+# Write mention cache to _mentions.json.
+function Write-MentionCache {
+    param(
+        [Parameter(Mandatory, HelpMessage = "Path to _mentions.json")]
+        [string]$CachePath,
+
+        [Parameter(Mandatory, HelpMessage = "Cache hashtable")]
+        [hashtable]$Cache
+    )
+
+    $Dir = [System.IO.Path]::GetDirectoryName($CachePath)
+    if (-not [System.IO.Directory]::Exists($Dir)) {
+        [void][System.IO.Directory]::CreateDirectory($Dir)
+    }
+
+    $Json = $Cache | ConvertTo-Json -Depth 5
+    [System.IO.File]::WriteAllText($CachePath, $Json, $script:UTF8NoBOM)
+}
+
+# Return cached mentions for a session if the cache key matches.
+# Cache key = "$NameIndexVersion:$ContentHash". Returns $null on miss.
+function Get-CachedMentions {
+    param(
+        [Parameter(Mandatory, HelpMessage = "Session header")]
+        [string]$SessionHeader,
+
+        [Parameter(Mandatory, HelpMessage = "Current NameIndexVersion hash")]
+        [string]$NameIndexVersion,
+
+        [Parameter(Mandatory, HelpMessage = "Content hash of session body")]
+        [string]$ContentHash,
+
+        [Parameter(Mandatory, HelpMessage = "Mention cache hashtable")]
+        [hashtable]$Cache
+    )
+
+    if (-not $Cache.ContainsKey($SessionHeader)) { return $null }
+
+    $Entry = $Cache[$SessionHeader]
+    $ExpectedKey = "${NameIndexVersion}:${ContentHash}"
+
+    if ($Entry.ContainsKey('CacheKey') -and [string]::Equals($Entry['CacheKey'], $ExpectedKey, [System.StringComparison]::Ordinal)) {
+        if ($Entry.ContainsKey('Mentions')) {
+            $Mentions = $Entry['Mentions']
+            if ($null -eq $Mentions) { return @() }
+            # Return as-is — already an array from JSON or construction
+            return , $Mentions
+        }
+    }
+
+    return $null
 }
