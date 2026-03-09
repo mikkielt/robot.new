@@ -574,10 +574,15 @@ Describe 'Test-PluginScope' {
 
 Describe 'Get-LoadedPlugins' {
     It 'returns empty list when no plugins loaded' {
-        $Result = Get-LoadedPlugins
-        # In CI / test runs with no plugins/ directory, this should be empty
-        # The function always returns a list; with no plugins it should be count 0
-        $Result | Should -HaveCount 0
+        $Mod = Get-Module robot
+        $Saved = & $Mod { $script:LoadedPlugins }
+        try {
+            & $Mod { $script:LoadedPlugins = @{} }
+            $Result = Get-LoadedPlugins
+            $Result | Should -HaveCount 0
+        } finally {
+            & $Mod { param($V) $script:LoadedPlugins = $V } $Saved
+        }
     }
 }
 
@@ -673,7 +678,14 @@ Describe 'Plugin CLI metadata extraction' {
     }
 
     It 'Get-LoadedPlugins returns empty list when no plugins loaded' {
-        $Result = Get-LoadedPlugins
-        $Result | Should -HaveCount 0
+        $Mod = Get-Module robot
+        $Saved = & $Mod { $script:LoadedPlugins }
+        try {
+            & $Mod { $script:LoadedPlugins = @{} }
+            $Result = Get-LoadedPlugins
+            $Result | Should -HaveCount 0
+        } finally {
+            & $Mod { param($V) $script:LoadedPlugins = $V } $Saved
+        }
     }
 }
