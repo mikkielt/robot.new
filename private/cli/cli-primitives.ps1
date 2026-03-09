@@ -9,15 +9,17 @@
     The interactive menu components (Show-ArrowMenu, Show-ResultTable) live in
     cli-menus.ps1, which is chain-loaded via dot-source at the end of this file.
 
-    Helpers:
+    Active helpers (NOT deprecated):
     - Resolve-CLITheme:   background-adaptive Dark/Light detection
     - Get-CLIColor:       semantic role → ConsoleColor (colorblind-safe)
     - Write-CLILine:      consistent indented Write-Host wrapper
-    - Read-ArrowKey:      [Console]::ReadKey wrapper
-    - Clear-MenuArea:     overwrite lines without full screen clear
-    - Show-Banner:        ASCII "Nerthus" art + version from VERSION file
-    - Show-Breadcrumb:    path display (Robot > Sesje > Nowa sesja)
-    - Show-InfoBox:       pre-check description box
+
+    DEPRECATED helpers (use engine equivalents instead):
+    - Read-ArrowKey:      → engine input handling (Start-InputLoop)
+    - Clear-MenuArea:     → engine buffer (Write-BufferRegion)
+    - Show-Banner:        → engine TopBar chrome
+    - Show-Breadcrumb:    → engine TopBar chrome
+    - Show-InfoBox:       → engine overlay components
 
     Module-level data:
     - $script:CLIColorScheme: dark/light adaptive color mappings
@@ -113,6 +115,8 @@ function Write-CLILine {
 }
 
 # ── Read-ArrowKey ────────────────────────────────────────────────────────────
+# DEPRECATED: Use engine input handling (Start-InputLoop) instead.
+# Retained for plugin/migration compatibility. Will be removed in a future version.
 
 function Read-ArrowKey {
     $KeyInfo = [System.Console]::ReadKey($true)
@@ -120,6 +124,8 @@ function Read-ArrowKey {
 }
 
 # ── Clear-MenuArea ───────────────────────────────────────────────────────────
+# DEPRECATED: Use engine buffer (Write-BufferRegion) instead.
+# Retained for plugin/migration compatibility. Will be removed in a future version.
 
 # Overwrites N lines starting at the given row with spaces, without clearing the screen
 function Clear-MenuArea {
@@ -136,6 +142,8 @@ function Clear-MenuArea {
 }
 
 # ── Show-Banner ──────────────────────────────────────────────────────────────
+# DEPRECATED: Banner is now rendered by engine TopBar chrome.
+# Retained for plugin/migration compatibility. Will be removed in a future version.
 
 function Show-Banner {
     $AccentColor = Get-CLIColor -Role 'Accent'
@@ -159,6 +167,8 @@ function Show-Banner {
 }
 
 # ── Show-Breadcrumb ──────────────────────────────────────────────────────────
+# DEPRECATED: Breadcrumb is now rendered by engine TopBar chrome.
+# Retained for plugin/migration compatibility. Will be removed in a future version.
 
 function Show-Breadcrumb {
     param([object]$State)
@@ -224,6 +234,8 @@ function Show-Breadcrumb {
 }
 
 # ── Show-InfoBox ─────────────────────────────────────────────────────────────
+# DEPRECATED: Use engine overlay components instead.
+# Retained for core/plugin compatibility. Will be removed in a future version.
 
 function Show-InfoBox {
     param([string[]]$Checks)
@@ -241,3 +253,18 @@ function Show-InfoBox {
 # ── Chain-load interactive menu components ───────────────────────────────────
 
 . "$PSScriptRoot/cli-menus.ps1"
+
+# ── Chain-load TUI engine files in dependency order ─────────────────────────
+
+$EngineDir = "$PSScriptRoot/engine"
+if ([System.IO.Directory]::Exists($EngineDir)) {
+    . "$EngineDir/cli-engine.ps1"
+    . "$EngineDir/cli-buffer.ps1"
+    . "$EngineDir/cli-input.ps1"
+    . "$EngineDir/cli-chrome.ps1"
+    . "$EngineDir/cli-menulist.ps1"
+    . "$EngineDir/cli-table.ps1"
+    . "$EngineDir/cli-detail.ps1"
+    . "$EngineDir/cli-overlays.ps1"
+    . "$EngineDir/cli-wizard-step.ps1"
+}

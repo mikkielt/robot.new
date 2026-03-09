@@ -148,7 +148,7 @@ function Invoke-Wizard {
         Write-CLILine -Text "Funkcja '$FunctionName' nie jest dostępna." -Color (Get-CLIColor -Role 'Error')
         Write-Host ''
         Write-CLILine -Text 'Naciśnij dowolny klawisz...' -Color (Get-CLIColor -Role 'Disabled')
-        [void](Read-ArrowKey)
+        [void][System.Console]::ReadKey($true)
         return $null
     }
 
@@ -196,7 +196,8 @@ function Invoke-Wizard {
             $CollectedParams[$CurrentStep.Name]
         } else { $null }
 
-        $Result = Invoke-WizardStep -Step $CurrentStep -State $State -CurrentValue $PrevValue
+        $Result = Invoke-WizardStep -Step $CurrentStep -State $State -CurrentValue $PrevValue `
+            -StepNumber ($StepIndex + 1) -TotalSteps $Steps.Count
 
         if ($Result -eq '__back__') {
             if ($StepIndex -gt 0) {
@@ -226,5 +227,7 @@ function Invoke-Wizard {
     }
 
     # Show preview and execute
-    return (Show-Preview -FunctionName $FunctionName -Parameters $CollectedParams -State $State)
+    $PreviewResult = Show-Preview -FunctionName $FunctionName -Parameters $CollectedParams -State $State
+    if ($PreviewResult -eq '__quit__') { return '__quit__' }
+    return $PreviewResult
 }

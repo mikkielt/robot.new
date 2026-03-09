@@ -38,21 +38,21 @@ function Invoke-NewPlayerWorkflow {
     }
 
     $PlayerResult = Invoke-Wizard -RegistryEntry $PlayerEntry -State $State
+    if ($PlayerResult -eq '__quit__') { return '__quit__' }
     if (-not $PlayerResult) { return }
 
     # Step 2: Ask "Add first character?"
     [System.Console]::Clear()
     Write-CLILine -Text "$([char]0x2713) Gracz utworzony pomyślnie." -Color (Get-CLIColor -Role 'Success')
     Write-Host ''
-    Write-CLILine -Text 'Dodać pierwszą postać?' -Color $AccentColor
+    $AddCharComponent = New-WizardStepComponent -Label 'Dodać pierwszą postać?' `
+        -StepNumber 0 -TotalSteps 0 -StepType 'yesno'
+    $AddCharChoice = Invoke-EngineLifecycle -Component $AddCharComponent -State $State
+    if ($AddCharChoice -eq '__quit__') { return '__quit__' }
 
-    $AddCharChoice = Show-ArrowMenu -Items @(
-        [PSCustomObject]@{ ID = 'yes'; Label = 'Tak, dodaj postać'; Description = ''; RoleTag = $null; InfoText = $null; Disabled = $false }
-        [PSCustomObject]@{ ID = 'no';  Label = 'Nie, tylko gracz';  Description = ''; RoleTag = $null; InfoText = $null; Disabled = $false }
-    ) -ShowBack
-
-    if ($AddCharChoice -eq 'yes') {
-        Invoke-NewCharacterWorkflow -State $State -Entry $Entry
+    if ($AddCharChoice -eq $true) {
+        $CharWfResult = Invoke-NewCharacterWorkflow -State $State -Entry $Entry
+        if ($CharWfResult -eq '__quit__') { return '__quit__' }
     }
 }
 
@@ -80,20 +80,19 @@ function Invoke-NewCharacterWorkflow {
     }
 
     $CharResult = Invoke-Wizard -RegistryEntry $CharEntry -State $State
+    if ($CharResult -eq '__quit__') { return '__quit__' }
     if (-not $CharResult) { return }
 
     # Step 2: Ask "Add starting currency?"
     [System.Console]::Clear()
     Write-CLILine -Text "$([char]0x2713) Postać utworzona pomyślnie." -Color (Get-CLIColor -Role 'Success')
     Write-Host ''
-    Write-CLILine -Text 'Dodać walutę startową?' -Color $AccentColor
+    $AddCurrencyComponent = New-WizardStepComponent -Label 'Dodać walutę startową?' `
+        -StepNumber 0 -TotalSteps 0 -StepType 'yesno'
+    $AddCurrencyChoice = Invoke-EngineLifecycle -Component $AddCurrencyComponent -State $State
+    if ($AddCurrencyChoice -eq '__quit__') { return '__quit__' }
 
-    $AddCurrencyChoice = Show-ArrowMenu -Items @(
-        [PSCustomObject]@{ ID = 'yes'; Label = 'Tak, dodaj walutę';  Description = ''; RoleTag = $null; InfoText = $null; Disabled = $false }
-        [PSCustomObject]@{ ID = 'no';  Label = 'Nie, zakończ';       Description = ''; RoleTag = $null; InfoText = $null; Disabled = $false }
-    ) -ShowBack
-
-    if ($AddCurrencyChoice -eq 'yes') {
+    if ($AddCurrencyChoice -eq $true) {
         # Loop: add currency entries
         while ($true) {
             $CurrEntry = @{
@@ -106,17 +105,18 @@ function Invoke-NewCharacterWorkflow {
             }
 
             $CurrResult = Invoke-Wizard -RegistryEntry $CurrEntry -State $State
+            if ($CurrResult -eq '__quit__') { return '__quit__' }
             if (-not $CurrResult) { break }
 
             [System.Console]::Clear()
             Write-CLILine -Text "$([char]0x2713) Waluta dodana." -Color (Get-CLIColor -Role 'Success')
             Write-Host ''
-            $MoreCurrency = Show-ArrowMenu -Items @(
-                [PSCustomObject]@{ ID = 'yes'; Label = 'Dodaj kolejną walutę'; Description = ''; RoleTag = $null; InfoText = $null; Disabled = $false }
-                [PSCustomObject]@{ ID = 'no';  Label = 'Zakończ';              Description = ''; RoleTag = $null; InfoText = $null; Disabled = $false }
-            ) -ShowBack
+            $MoreComponent = New-WizardStepComponent -Label 'Dodaj kolejną walutę?' `
+                -StepNumber 0 -TotalSteps 0 -StepType 'yesno'
+            $MoreCurrency = Invoke-EngineLifecycle -Component $MoreComponent -State $State
+            if ($MoreCurrency -eq '__quit__') { return '__quit__' }
 
-            if ($MoreCurrency -ne 'yes') { break }
+            if ($MoreCurrency -ne $true) { break }
         }
     }
 }
@@ -133,10 +133,10 @@ function Invoke-EditCharacterWorkflow {
     Write-Host ''
 
     # Pick player then character
-    $Player = Show-FuzzySearch -Prompt 'Wybierz gracza' -Source 'players' -State $State
+    $Player = Invoke-EngineFuzzySearch -Prompt 'Wybierz gracza' -Source 'players' -State $State
     if (-not $Player) { return }
 
-    $Character = Show-FuzzySearch -Prompt 'Wybierz postać' -Source 'characters' -State $State
+    $Character = Invoke-EngineFuzzySearch -Prompt 'Wybierz postać' -Source 'characters' -State $State
     if (-not $Character) { return }
 
     # Auto-gen wizard for Set-PlayerCharacter with pre-filled values
@@ -161,7 +161,7 @@ function Invoke-EditCharacterWorkflow {
     $Cmd = Get-Command 'Set-PlayerCharacter' -ErrorAction SilentlyContinue
     if (-not $Cmd) {
         Write-CLILine -Text "Funkcja 'Set-PlayerCharacter' nie jest dostępna." -Color (Get-CLIColor -Role 'Error')
-        [void](Read-ArrowKey)
+        [void][System.Console]::ReadKey($true)
         return
     }
 
@@ -222,7 +222,7 @@ function Invoke-EditCharacterWorkflow {
     if ($FinalParams.Count -le 2) {
         Write-CLILine -Text 'Brak zmian do zapisania.' -Color $DisabledColor
         Write-CLILine -Text 'Naciśnij dowolny klawisz...' -Color $DisabledColor
-        [void](Read-ArrowKey)
+        [void][System.Console]::ReadKey($true)
         return
     }
 
@@ -239,7 +239,7 @@ function Invoke-CharacterCardWorkflow {
     Write-CLILine -Text 'Karta postaci' -Color $AccentColor
     Write-Host ''
 
-    $Candidate = Show-FuzzySearch -Prompt 'Wybierz postać' -Source 'characters' -State $State
+    $Candidate = Invoke-EngineFuzzySearch -Prompt 'Wybierz postać' -Source 'characters' -State $State
     if (-not $Candidate) { return }
 
     $Ch = $Candidate.Owner  # Character sub-object
@@ -325,7 +325,7 @@ function Show-CharacterCard {
     Write-Host ''
     Write-Host "  $Sep" -ForegroundColor $DisabledColor
     Write-Host "  Esc wstecz" -ForegroundColor $DisabledColor
-    [void](Read-ArrowKey)
+    [void][System.Console]::ReadKey($true)
 }
 
 function Show-PlayerCard {
@@ -383,5 +383,5 @@ function Show-PlayerCard {
     Write-Host ''
     Write-Host "  $Sep" -ForegroundColor $DisabledColor
     Write-Host "  Esc wstecz" -ForegroundColor $DisabledColor
-    [void](Read-ArrowKey)
+    [void][System.Console]::ReadKey($true)
 }

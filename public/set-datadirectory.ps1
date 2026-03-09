@@ -23,7 +23,7 @@ function Set-DataDirectory {
     #>
 
     [CmdletBinding()] param(
-        [Parameter(Mandatory, ParameterSetName = "Path", HelpMessage = "Absolute path to the directory to use as the data root")]
+        [Parameter(Mandatory, Position = 0, ParameterSetName = "Path", HelpMessage = "Absolute path to the directory to use as the data root")]
         [string]$Path,
 
         [Parameter(Mandatory, ParameterSetName = "Reset", HelpMessage = "Clear the override and revert to git-based detection")]

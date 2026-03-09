@@ -104,7 +104,7 @@ function Invoke-MigrationPhaseAction {
     if (-not $script:MigrationAvailable) {
         Write-CLILine -Text 'Migracja nie jest dostępna.' -Color (Get-CLIColor -Role 'Error')
         Write-CLILine -Text 'Naciśnij dowolny klawisz...' -Color (Get-CLIColor -Role 'Disabled')
-        [void](Read-ArrowKey)
+        [void][System.Console]::ReadKey($true)
         return
     }
 
@@ -116,7 +116,7 @@ function Invoke-MigrationPhaseAction {
 
     if ($PhaseNum -lt 0) {
         Write-CLILine -Text "Nieznana faza: $PhaseID" -Color (Get-CLIColor -Role 'Error')
-        [void](Read-ArrowKey)
+        [void][System.Console]::ReadKey($true)
         return
     }
 
@@ -138,7 +138,7 @@ function Invoke-MigrationPhaseAction {
     if (-not $Cmd) {
         Write-CLILine -Text "Funkcja '$FunctionName' nie jest dostępna." -Color (Get-CLIColor -Role 'Error')
         Write-CLILine -Text 'Naciśnij dowolny klawisz...' -Color (Get-CLIColor -Role 'Disabled')
-        [void](Read-ArrowKey)
+        [void][System.Console]::ReadKey($true)
         return
     }
 
@@ -160,5 +160,5 @@ function Invoke-MigrationPhaseAction {
 
     Write-Host ''
     Write-CLILine -Text 'Naciśnij dowolny klawisz...' -Color (Get-CLIColor -Role 'Disabled')
-    [void](Read-ArrowKey)
+    [void][System.Console]::ReadKey($true)
 }

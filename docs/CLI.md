@@ -57,9 +57,24 @@ The CLI loads game data and presents the main menu. This may take a few seconds 
 | Up/Down arrows | Move between menu items |
 | Enter | Select the highlighted item |
 | Escape | Go back one level |
-| Q | Quit the CLI |
+| `/` followed by a letter | Open the command palette (see Komendy below) |
 
 The breadcrumb at the top of the screen shows your current location (e.g., `Robot > Encje > Nowa encja`).
+
+## Komendy
+
+Press `/` followed by a letter to execute a command from any screen:
+
+| Komenda | Opis |
+|---|---|
+| `/h` | Otwiera nakładkę pomocy z opisem aktualnego widoku |
+| `/h tekst` | Wyszukuje tematy pomocy pasujące do wpisanego tekstu |
+| `/s` | Pokazuje panel stanu systemu — statusy PU, walut, integralności sesji i grafu sesji |
+| `/r` | Odświeża dane (encje, gracze, indeks nazw) bez wychodzenia z CLI |
+| `/b` | Cofnij — działa tak samo jak Escape |
+| `/q` | Zamyka CLI |
+
+Commands execute immediately — there is no need to press Enter after the letter.
 
 ## Main Menu Categories
 
@@ -169,30 +184,76 @@ When the CLI asks to select a player, character, entity, or location, a fuzzy se
 4. Press Enter to select
 5. Press Escape to cancel
 
-The search is case-insensitive and matches anywhere in the name.
+The search is case-insensitive and matches anywhere in the name. Approximate matches (based on similar spelling) appear after a short delay and are marked with `≈`.
+
+## Filtrowanie
+
+In table views (lists of sessions, entities, players, etc.), start typing to filter results in real time. The filter matches across all visible columns.
+
+### Filtrowanie po kolumnie
+
+Type a prefix followed by `:` and the search text to filter only a specific column. Available prefixes depend on the view:
+
+| Widok | Dostępne filtry |
+|---|---|
+| Przeglądaj sesje | `narrator:` — filtruj po narratorze |
+| Przeglądaj graczy | `postac:` — filtruj po aktywnej postaci |
+| Przeglądaj encje | `typ:` — filtruj po typie (NPC, Lokacja, Grupa, Przedmiot); `status:` — filtruj po statusie |
+| Salda walut | `nominal:` — filtruj po nominale waluty; `wlasciciel:` — filtruj po właścicielu |
+| Log zmian | `encja:` — filtruj po nazwie encji; `tag:` — filtruj po tagu |
+| Raport lokacji | `encja:` — filtruj po nazwie encji |
+| Powiadomienia | `cel:` — filtruj po odbiorcy; `typ:` — filtruj po rodzaju powiadomienia |
+
+Example: typing `typ:NPC` in the entity browser shows only NPCs. Typing `narrator:Anna` in the session list shows only sessions narrated by Anna.
+
+Press Escape to clear the filter and return to the full list.
 
 ## Preview and Confirmation
 
 Before any write operation, the CLI shows a preview:
 
-- The function that will be called
+- The action that will be performed
 - All parameters and their values
-- A "What If" output showing what would change
+- A simulation showing what would change
 
 You can confirm (execute) or cancel (discard). This prevents accidental modifications.
 
+## Pomoc
+
+### Pomoc kontekstowa
+
+Press `/h` in any view to open a help overlay describing the current screen — available actions, expected inputs, and tips. The overlay scrolls with arrow keys. Press Escape to close it.
+
+### Wyszukiwanie pomocy
+
+Press `/h` followed by a space and a search term (e.g., `/h waluta`) to search across all help topics. The CLI shows matching entries from all menu items. Select an entry to view its full help text.
+
+### Panel stanu systemu
+
+Press `/s` to open the health dashboard showing the status of four subsystems:
+
+| Sekcja | Co sprawdza |
+|---|---|
+| PU | Czy przydział PU jest gotowy do wykonania |
+| Waluta | Czy salda walut są spójne |
+| Integralność sesji | Czy sesje nie zostały zmodyfikowane po weryfikacji |
+| Graf sesji | Czy indeks grafu sesji jest aktualny |
+
+Each section shows ✓ (OK) or ⚠ (warnings found) with a count of issues. The dashboard also shows when the last check was performed.
+
 ## Refreshing Data
 
-Select **Odswież dane** from the main menu to reload entities, players, and the name index. This is useful after making changes outside the CLI or if data seems stale.
+Select **Odswież dane** from the main menu or press `/r` from any screen to reload entities, players, and the name index. This is useful after making changes outside the CLI or if data seems stale.
 
 ## Troubleshooting
 
 | Issue | Solution |
 |---|---|
 | "Terminal nie wspiera trybu interaktywnego" | Use a standard terminal, not PowerShell ISE |
-| Fuzzy search returns no results | Check spelling; try a shorter prefix; refresh data |
+| "Terminal jest za mały" or garbled display | Resize the terminal to at least 60 columns × 15 rows |
+| Fuzzy search returns no results | Check spelling; try a shorter prefix; press `/r` to refresh data |
 | "Funkcja nie jest dostepna" | The target function may not be loaded; check module import |
-| Menu items show unexpected state | Select "Odswież dane" to reload |
+| Menu items show unexpected state | Press `/r` to refresh or select "Odswież dane" from the main menu |
 | Migration menu shows "niedostepna" | Migration files are not present in the repository |
 
 ## Related Documents

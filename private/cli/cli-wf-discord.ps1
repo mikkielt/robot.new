@@ -23,7 +23,7 @@ function Invoke-DiscordPUNotificationWorkflow {
     Write-CLILine -Text 'Ponowne powiadomienie PU' -Color $AccentColor
     Write-Host ''
 
-    $Player = Show-FuzzySearch -Prompt 'Wybierz gracza' -Source 'players' -State $State
+    $Player = Invoke-EngineFuzzySearch -Prompt 'Wybierz gracza' -Source 'players' -State $State
     if (-not $Player) { return }
 
     $MonthStep = [PSCustomObject]@{
@@ -36,7 +36,7 @@ function Invoke-DiscordPUNotificationWorkflow {
 
     Write-CLILine -Text 'Nie zaimplementowano - wymaga integracji z logiem PU.' -Color (Get-CLIColor -Role 'Disabled')
     Write-CLILine -Text 'Naciśnij dowolny klawisz...' -Color (Get-CLIColor -Role 'Disabled')
-    [void](Read-ArrowKey)
+    [void][System.Console]::ReadKey($true)
 }
 
 # ── Discord Announcement Workflow ────────────────────────────────────────────
@@ -106,13 +106,12 @@ function Invoke-DiscordAnnouncementWorkflow {
     Write-Host "  $([string][char]0x2500 * 50)" -ForegroundColor $DisabledColor
     Write-Host ''
 
-    Write-CLILine -Text 'Wysłać?' -Color $AccentColor
-    $Confirm = Show-ArrowMenu -Items @(
-        [PSCustomObject]@{ ID = 'yes'; Label = 'Tak, wyślij'; Description = ''; RoleTag = $null; InfoText = $null; Disabled = $false }
-        [PSCustomObject]@{ ID = 'no';  Label = 'Anuluj';      Description = ''; RoleTag = $null; InfoText = $null; Disabled = $false }
-    ) -ShowBack
+    $ConfirmComponent = New-WizardStepComponent -Label 'Wysłać wiadomość?' `
+        -StepNumber 0 -TotalSteps 0 -StepType 'yesno'
+    $Confirm = Invoke-EngineLifecycle -Component $ConfirmComponent -State $State
+    if ($Confirm -eq '__quit__') { return '__quit__' }
 
-    if ($Confirm -ne 'yes') {
+    if ($Confirm -ne $true) {
         Write-CLILine -Text 'Anulowano.' -Color $DisabledColor
         return
     }
@@ -126,5 +125,5 @@ function Invoke-DiscordAnnouncementWorkflow {
     }
 
     Write-CLILine -Text 'Naciśnij dowolny klawisz...' -Color $DisabledColor
-    [void](Read-ArrowKey)
+    [void][System.Console]::ReadKey($true)
 }

@@ -39,7 +39,8 @@ function Invoke-EditSessionWorkflow {
         }
     }
 
-    [void](Invoke-Wizard -RegistryEntry $EditEntry -State $State)
+    $WizResult = Invoke-Wizard -RegistryEntry $EditEntry -State $State
+    if ($WizResult -eq '__quit__') { return '__quit__' }
 }
 
 # ── Session Validation ───────────────────────────────────────────────────────
@@ -151,5 +152,5 @@ function Invoke-SessionValidation {
 
     Write-Host ''
     Write-CLILine -Text 'Naciśnij dowolny klawisz...' -Color (Get-CLIColor -Role 'Disabled')
-    [void](Read-ArrowKey)
+    [void][System.Console]::ReadKey($true)
 }

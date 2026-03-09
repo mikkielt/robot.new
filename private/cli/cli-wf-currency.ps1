@@ -30,7 +30,7 @@ function Invoke-CurrencyTransferWorkflow {
     Write-Host "  $Sep" -ForegroundColor (Get-CLIColor -Role 'Disabled')
     Write-Host ''
 
-    $Source = Show-FuzzySearch -Prompt 'Źródło (waluta do obciążenia)' -Source 'currency' -State $State
+    $Source = Invoke-EngineFuzzySearch -Prompt 'Źródło (waluta do obciążenia)' -Source 'currency' -State $State
     if (-not $Source) { return }
 
     # Step 2: Amount
@@ -53,7 +53,7 @@ function Invoke-CurrencyTransferWorkflow {
     Write-Host "$Amount"
     Write-Host ''
 
-    $Dest = Show-FuzzySearch -Prompt 'Cel (waluta do zasilenia)' -Source 'currency' -State $State
+    $Dest = Invoke-EngineFuzzySearch -Prompt 'Cel (waluta do zasilenia)' -Source 'currency' -State $State
     if (-not $Dest) { return }
 
     # Preview both operations
@@ -68,13 +68,12 @@ function Invoke-CurrencyTransferWorkflow {
     Write-Host "  $Sep" -ForegroundColor (Get-CLIColor -Role 'Disabled')
     Write-Host ''
 
-    Write-CLILine -Text 'Wykonać transfer?' -Color $AccentColor
-    $Confirm = Show-ArrowMenu -Items @(
-        [PSCustomObject]@{ ID = 'yes'; Label = 'Tak, wykonaj'; Description = ''; RoleTag = $null; InfoText = $null; Disabled = $false }
-        [PSCustomObject]@{ ID = 'no';  Label = 'Anuluj';       Description = ''; RoleTag = $null; InfoText = $null; Disabled = $false }
-    ) -ShowBack
+    $ConfirmComponent = New-WizardStepComponent -Label 'Wykonać transfer?' `
+        -StepNumber 0 -TotalSteps 0 -StepType 'yesno'
+    $Confirm = Invoke-EngineLifecycle -Component $ConfirmComponent -State $State
+    if ($Confirm -eq '__quit__') { return '__quit__' }
 
-    if ($Confirm -ne 'yes') {
+    if ($Confirm -ne $true) {
         Write-CLILine -Text 'Anulowano.' -Color (Get-CLIColor -Role 'Disabled')
         return
     }
@@ -97,7 +96,7 @@ function Invoke-CurrencyTransferWorkflow {
 
     Write-Host ''
     Write-CLILine -Text 'Naciśnij dowolny klawisz...' -Color (Get-CLIColor -Role 'Disabled')
-    [void](Read-ArrowKey)
+    [void][System.Console]::ReadKey($true)
 }
 
 # ── Currency Reconciliation Display ──────────────────────────────────────────
@@ -157,5 +156,5 @@ function Invoke-CurrencyReconciliationDisplay {
 
     Write-Host ''
     Write-CLILine -Text 'Naciśnij dowolny klawisz...' -Color $DisabledColor
-    [void](Read-ArrowKey)
+    [void][System.Console]::ReadKey($true)
 }

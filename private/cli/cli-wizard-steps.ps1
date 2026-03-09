@@ -12,9 +12,45 @@
     cli-wizard.ps1 at load time.
 
     Back-navigation is signalled by returning the sentinel string '__back__'.
-    Both q and Esc return '__back__'. A $null return on a required field means
-    "retry this step".
+    Uses the TUI engine (WizardStepComponent + Start-InputLoop) for rendering
+    of all step types except multitext (which uses inline ReadKey collection).
+
+    Helpers:
+    - Invoke-EngineLifecycle: runs a component through engine lifecycle
+    - Invoke-WizardStep:       dispatches by StepType using engine components
 #>
+
+# ── Engine lifecycle helper ──────────────────────────────────────────────────
+
+# Runs a component through the standard engine lifecycle: Initialize-Screen →
+# Initialize-Buffers → render → Start-InputLoop → Restore-Cursor.
+# Returns the value from Start-InputLoop ('__back__', '__quit__', or step value).
+function Invoke-EngineLifecycle {
+    param(
+        [Parameter(Mandatory)] [object]$Component,
+        [Parameter(Mandatory)] [object]$State
+    )
+
+    $ScreenOK = Initialize-Screen -State $State
+    if (-not $ScreenOK) {
+        [void][System.Console]::ReadKey($true)
+        return '__back__'
+    }
+
+    Initialize-Buffers
+    $RenderCB = { param($S, $C) Invoke-EngineRender -State $S -Component $C }
+    $CmdHandler = { param($CA, $S, $C, $RCB) Invoke-EngineCommand -CmdAction $CA -State $S -Component $C -RenderCallback $RCB }
+
+    & $RenderCB $State $Component
+    Render-FullBuffer
+
+    try {
+        return (Start-InputLoop -State $State -Component $Component `
+            -RenderCallback $RenderCB -CommandHandler $CmdHandler)
+    } finally {
+        Restore-Cursor
+    }
+}
 
 # ── Invoke-WizardStep ────────────────────────────────────────────────────────
 
@@ -22,287 +58,162 @@ function Invoke-WizardStep {
     param(
         [Parameter(Mandatory)] [PSCustomObject]$Step,
         [object]$State,
-        [object]$CurrentValue
+        [object]$CurrentValue,
+        [int]$StepNumber = 0,
+        [int]$TotalSteps = 0
     )
 
     $Label = $Step.Label
     $Required = $Step.Required
-    $AccentColor = Get-CLIColor -Role 'Accent'
-    $DisabledColor = Get-CLIColor -Role 'Disabled'
-    $ErrorColor = Get-CLIColor -Role 'Error'
-
-    $OptionalHint = if (-not $Required) { " (opcjonalne, Enter = pomiń)" } else { '' }
 
     switch ($Step.StepType) {
         'text' {
-            $DefaultHint = ''
-            if ($CurrentValue) { $DefaultHint = " [$CurrentValue]" }
-            elseif ($Step.Default) { $DefaultHint = " [$($Step.Default)]" }
+            $DefaultVal = if ($CurrentValue) { [string]$CurrentValue }
+                          elseif ($Step.Default) { [string]$Step.Default }
+                          else { $null }
 
-            Write-Host "  $Label$DefaultHint$OptionalHint`: " -NoNewline -ForegroundColor $AccentColor
+            $StepComponent = New-WizardStepComponent -Label $Label `
+                -StepNumber $StepNumber -TotalSteps $TotalSteps `
+                -StepType 'text' -DefaultValue $DefaultVal -Required:$Required
 
-            # Character-by-character input via ReadKey
-            $Buffer = [System.Text.StringBuilder]::new()
-            if ($CurrentValue) { [void]$Buffer.Append($CurrentValue) }
+            $Result = Invoke-EngineLifecycle -Component $StepComponent -State $State
+            if ($Result -eq '__back__' -or $Result -eq '__quit__') { return '__back__' }
 
-            $InputStartCol = [System.Console]::CursorLeft
-            $InputRow = [System.Console]::CursorTop
-
-            # Show pre-filled value
-            if ($Buffer.Length -gt 0) {
-                [System.Console]::Write($Buffer.ToString())
+            if ([string]::IsNullOrWhiteSpace($Result)) {
+                if ($CurrentValue) { return $CurrentValue }
+                if ($Step.Default) { return $Step.Default }
+                return $null
             }
-
-            while ($true) {
-                $K = [System.Console]::ReadKey($true)
-
-                if ($K.Key -eq 'Enter') {
-                    Write-Host ''
-                    $Result = $Buffer.ToString()
-                    if ([string]::IsNullOrWhiteSpace($Result)) {
-                        if ($CurrentValue) { return $CurrentValue }
-                        if ($Step.Default) { return $Step.Default }
-                        if ($Required) {
-                            Write-CLILine -Text "To pole jest wymagane." -Color $ErrorColor
-                            return $null  # Signal: retry
-                        }
-                        return $null
-                    }
-                    return $Result
-                }
-                elseif ($K.Key -eq 'Escape') {
-                    Write-Host ''
-                    return '__back__'
-                }
-                elseif ($K.Key -eq 'Backspace') {
-                    if ($Buffer.Length -gt 0) {
-                        [void]$Buffer.Remove($Buffer.Length - 1, 1)
-                        [System.Console]::SetCursorPosition($InputStartCol, $InputRow)
-                        [System.Console]::Write($Buffer.ToString() + ' ')
-                        [System.Console]::SetCursorPosition($InputStartCol + $Buffer.Length, $InputRow)
-                    }
-                }
-                else {
-                    $Ch = $K.KeyChar
-                    if ($Ch -ge ' ') {
-                        [void]$Buffer.Append($Ch)
-                        [System.Console]::Write($Ch)
-                    }
-                }
-            }
+            return $Result
         }
 
         'number' {
-            $DefaultHint = ''
-            if ($null -ne $CurrentValue) { $DefaultHint = " [$CurrentValue]" }
-
-            Write-Host "  $Label$DefaultHint$OptionalHint`: " -NoNewline -ForegroundColor $AccentColor
-
-            $Buffer = [System.Text.StringBuilder]::new()
-            if ($null -ne $CurrentValue) { [void]$Buffer.Append($CurrentValue) }
-
-            $InputStartCol = [System.Console]::CursorLeft
-            $InputRow = [System.Console]::CursorTop
-
-            if ($Buffer.Length -gt 0) {
-                [System.Console]::Write($Buffer.ToString())
-            }
+            $DefaultVal = if ($null -ne $CurrentValue) { [string]$CurrentValue } else { $null }
+            $ErrorMsg = $null
 
             while ($true) {
-                $K = [System.Console]::ReadKey($true)
+                $StepComponent = New-WizardStepComponent -Label $Label `
+                    -StepNumber $StepNumber -TotalSteps $TotalSteps `
+                    -StepType 'number' -DefaultValue $DefaultVal -Required:$Required
+                if ($ErrorMsg) { $StepComponent.ErrorMessage = $ErrorMsg }
 
-                if ($K.Key -eq 'Enter') {
-                    Write-Host ''
-                    $Str = $Buffer.ToString()
-                    if ([string]::IsNullOrWhiteSpace($Str)) {
-                        if ($null -ne $CurrentValue) { return $CurrentValue }
-                        if (-not $Required) { return $null }
-                        Write-CLILine -Text "To pole jest wymagane." -Color $ErrorColor
-                        return $null
-                    }
-                    $NumVal = 0
-                    if ([int]::TryParse($Str, [ref]$NumVal)) {
-                        return $NumVal
-                    }
-                    Write-CLILine -Text "Nieprawidłowa liczba: '$Str'" -Color $ErrorColor
-                    return $null
+                $Result = Invoke-EngineLifecycle -Component $StepComponent -State $State
+                if ($Result -eq '__back__' -or $Result -eq '__quit__') { return '__back__' }
+
+                if ([string]::IsNullOrWhiteSpace($Result)) {
+                    if ($null -ne $CurrentValue) { return $CurrentValue }
+                    if (-not $Required) { return $null }
+                    continue
                 }
-                elseif ($K.Key -eq 'Escape') {
-                    Write-Host ''
-                    return '__back__'
+
+                $NumVal = 0
+                if ([int]::TryParse($Result, [ref]$NumVal)) {
+                    return $NumVal
                 }
-                elseif ($K.Key -eq 'Backspace') {
-                    if ($Buffer.Length -gt 0) {
-                        [void]$Buffer.Remove($Buffer.Length - 1, 1)
-                        [System.Console]::SetCursorPosition($InputStartCol, $InputRow)
-                        [System.Console]::Write($Buffer.ToString() + ' ')
-                        [System.Console]::SetCursorPosition($InputStartCol + $Buffer.Length, $InputRow)
-                    }
-                }
-                else {
-                    $Ch = $K.KeyChar
-                    if (($Ch -ge '0' -and $Ch -le '9') -or $Ch -eq '-') {
-                        [void]$Buffer.Append($Ch)
-                        [System.Console]::Write($Ch)
-                    }
-                }
+
+                # Invalid number — retry with error and previous input
+                $DefaultVal = $Result
+                $ErrorMsg = "Nieprawidłowa liczba: '$Result'"
             }
         }
 
         'decimal' {
-            $DefaultHint = ''
-            if ($null -ne $CurrentValue) { $DefaultHint = " [$CurrentValue]" }
-
-            Write-Host "  $Label$DefaultHint$OptionalHint`: " -NoNewline -ForegroundColor $AccentColor
-
-            $Buffer = [System.Text.StringBuilder]::new()
-            if ($null -ne $CurrentValue) { [void]$Buffer.Append($CurrentValue) }
-
-            $InputStartCol = [System.Console]::CursorLeft
-            $InputRow = [System.Console]::CursorTop
-
-            if ($Buffer.Length -gt 0) {
-                [System.Console]::Write($Buffer.ToString())
-            }
+            $DefaultVal = if ($null -ne $CurrentValue) { [string]$CurrentValue } else { $null }
+            $ErrorMsg = $null
 
             while ($true) {
-                $K = [System.Console]::ReadKey($true)
+                $StepComponent = New-WizardStepComponent -Label $Label `
+                    -StepNumber $StepNumber -TotalSteps $TotalSteps `
+                    -StepType 'decimal' -DefaultValue $DefaultVal -Required:$Required
+                if ($ErrorMsg) { $StepComponent.ErrorMessage = $ErrorMsg }
 
-                if ($K.Key -eq 'Enter') {
-                    Write-Host ''
-                    $Str = $Buffer.ToString()
-                    if ([string]::IsNullOrWhiteSpace($Str)) {
-                        if ($null -ne $CurrentValue) { return $CurrentValue }
-                        if (-not $Required) { return $null }
-                        Write-CLILine -Text "To pole jest wymagane." -Color $ErrorColor
-                        return $null
-                    }
-                    $DecVal = [decimal]0
-                    if ([decimal]::TryParse($Str, [System.Globalization.NumberStyles]::Any, [System.Globalization.CultureInfo]::InvariantCulture, [ref]$DecVal)) {
-                        return $DecVal
-                    }
-                    Write-CLILine -Text "Nieprawidłowa wartość: '$Str'" -Color $ErrorColor
-                    return $null
+                $Result = Invoke-EngineLifecycle -Component $StepComponent -State $State
+                if ($Result -eq '__back__' -or $Result -eq '__quit__') { return '__back__' }
+
+                if ([string]::IsNullOrWhiteSpace($Result)) {
+                    if ($null -ne $CurrentValue) { return $CurrentValue }
+                    if (-not $Required) { return $null }
+                    continue
                 }
-                elseif ($K.Key -eq 'Escape') {
-                    Write-Host ''
-                    return '__back__'
+
+                $DecVal = [decimal]0
+                if ([decimal]::TryParse($Result, [System.Globalization.NumberStyles]::Any,
+                        [System.Globalization.CultureInfo]::InvariantCulture, [ref]$DecVal)) {
+                    return $DecVal
                 }
-                elseif ($K.Key -eq 'Backspace') {
-                    if ($Buffer.Length -gt 0) {
-                        [void]$Buffer.Remove($Buffer.Length - 1, 1)
-                        [System.Console]::SetCursorPosition($InputStartCol, $InputRow)
-                        [System.Console]::Write($Buffer.ToString() + ' ')
-                        [System.Console]::SetCursorPosition($InputStartCol + $Buffer.Length, $InputRow)
-                    }
-                }
-                else {
-                    $Ch = $K.KeyChar
-                    if (($Ch -ge '0' -and $Ch -le '9') -or $Ch -eq '.' -or $Ch -eq ',' -or $Ch -eq '-') {
-                        [void]$Buffer.Append($Ch)
-                        [System.Console]::Write($Ch)
-                    }
-                }
+
+                $DefaultVal = $Result
+                $ErrorMsg = "Nieprawidłowa wartość: '$Result'"
             }
         }
 
         'date' {
-            $DefaultHint = ''
-            if ($CurrentValue) { $DefaultHint = " [$CurrentValue]" }
-
-            Write-Host "  $Label (RRRR-MM-DD)$DefaultHint$OptionalHint`: " -NoNewline -ForegroundColor $AccentColor
-
-            $Buffer = [System.Text.StringBuilder]::new()
-            if ($CurrentValue) { [void]$Buffer.Append($CurrentValue) }
-
-            $InputStartCol = [System.Console]::CursorLeft
-            $InputRow = [System.Console]::CursorTop
-
-            if ($Buffer.Length -gt 0) {
-                [System.Console]::Write($Buffer.ToString())
-            }
+            $DefaultVal = if ($CurrentValue) { [string]$CurrentValue } else { $null }
+            $ErrorMsg = $null
 
             while ($true) {
-                $K = [System.Console]::ReadKey($true)
+                $DateLabel = "$Label (RRRR-MM-DD)"
+                $StepComponent = New-WizardStepComponent -Label $DateLabel `
+                    -StepNumber $StepNumber -TotalSteps $TotalSteps `
+                    -StepType 'date' -DefaultValue $DefaultVal -Required:$Required
+                if ($ErrorMsg) { $StepComponent.ErrorMessage = $ErrorMsg }
 
-                if ($K.Key -eq 'Enter') {
-                    Write-Host ''
-                    $Str = $Buffer.ToString()
-                    if ([string]::IsNullOrWhiteSpace($Str)) {
-                        if ($CurrentValue) { return $CurrentValue }
-                        if (-not $Required) { return $null }
-                        Write-CLILine -Text "To pole jest wymagane." -Color $ErrorColor
-                        return $null
-                    }
-                    # Validate date format
-                    $DateVal = [datetime]::MinValue
-                    if ([datetime]::TryParseExact($Str, 'yyyy-MM-dd', [System.Globalization.CultureInfo]::InvariantCulture, [System.Globalization.DateTimeStyles]::None, [ref]$DateVal)) {
-                        return $DateVal
-                    }
-                    # Try partial formats
-                    if ([datetime]::TryParseExact($Str, 'yyyy-MM', [System.Globalization.CultureInfo]::InvariantCulture, [System.Globalization.DateTimeStyles]::None, [ref]$DateVal)) {
-                        return $DateVal
-                    }
-                    Write-CLILine -Text "Nieprawidłowy format daty: '$Str' (oczekiwany: RRRR-MM-DD lub RRRR-MM)" -Color $ErrorColor
-                    return $null
+                $Result = Invoke-EngineLifecycle -Component $StepComponent -State $State
+                if ($Result -eq '__back__' -or $Result -eq '__quit__') { return '__back__' }
+
+                if ([string]::IsNullOrWhiteSpace($Result)) {
+                    if ($CurrentValue) { return $CurrentValue }
+                    if (-not $Required) { return $null }
+                    continue
                 }
-                elseif ($K.Key -eq 'Escape') {
-                    Write-Host ''
-                    return '__back__'
+
+                $DateVal = [datetime]::MinValue
+                if ([datetime]::TryParseExact($Result, 'yyyy-MM-dd',
+                        [System.Globalization.CultureInfo]::InvariantCulture,
+                        [System.Globalization.DateTimeStyles]::None, [ref]$DateVal)) {
+                    return $DateVal
                 }
-                elseif ($K.Key -eq 'Backspace') {
-                    if ($Buffer.Length -gt 0) {
-                        [void]$Buffer.Remove($Buffer.Length - 1, 1)
-                        [System.Console]::SetCursorPosition($InputStartCol, $InputRow)
-                        [System.Console]::Write($Buffer.ToString() + ' ')
-                        [System.Console]::SetCursorPosition($InputStartCol + $Buffer.Length, $InputRow)
-                    }
+                if ([datetime]::TryParseExact($Result, 'yyyy-MM',
+                        [System.Globalization.CultureInfo]::InvariantCulture,
+                        [System.Globalization.DateTimeStyles]::None, [ref]$DateVal)) {
+                    return $DateVal
                 }
-                else {
-                    $Ch = $K.KeyChar
-                    if (($Ch -ge '0' -and $Ch -le '9') -or $Ch -eq '-') {
-                        [void]$Buffer.Append($Ch)
-                        [System.Console]::Write($Ch)
-                    }
-                }
+
+                $DefaultVal = $Result
+                $ErrorMsg = "Nieprawidłowy format daty: '$Result' (oczekiwany: RRRR-MM-DD lub RRRR-MM)"
             }
         }
 
         'selection' {
             $Options = if ($Step.Options) { $Step.Options } else { @('Tak', 'Nie') }
-            Write-CLILine -Text "$Label`:" -Color $AccentColor
 
-            $MenuItems = [System.Collections.Generic.List[PSCustomObject]]::new()
-            foreach ($Opt in $Options) {
-                [void]$MenuItems.Add([PSCustomObject]@{
-                    ID          = $Opt
-                    Label       = $Opt
-                    Description = ''
-                    RoleTag     = $null
-                    InfoText    = $null
-                    Disabled    = $false
-                })
-            }
+            $StepComponent = New-WizardStepComponent -Label $Label `
+                -StepNumber $StepNumber -TotalSteps $TotalSteps `
+                -StepType 'selection' -Options $Options
 
-            $Choice = Show-ArrowMenu -Items $MenuItems -ShowBack
-            if ($Choice -eq '__back__') { return '__back__' }
-            return $Choice
+            $Result = Invoke-EngineLifecycle -Component $StepComponent -State $State
+            if ($Result -eq '__back__' -or $Result -eq '__quit__') { return '__back__' }
+            return $Result
         }
 
         'yesno' {
-            Write-CLILine -Text "$Label`:" -Color $AccentColor
+            $StepComponent = New-WizardStepComponent -Label $Label `
+                -StepNumber $StepNumber -TotalSteps $TotalSteps `
+                -StepType 'yesno'
 
-            $YesNoItems = @(
-                [PSCustomObject]@{ ID = 'yes'; Label = 'Tak'; Description = ''; RoleTag = $null; InfoText = $null; Disabled = $false }
-                [PSCustomObject]@{ ID = 'no';  Label = 'Nie'; Description = ''; RoleTag = $null; InfoText = $null; Disabled = $false }
-            )
-
-            $Choice = Show-ArrowMenu -Items $YesNoItems -ShowBack
-            if ($Choice -eq '__back__') { return '__back__' }
-            return ($Choice -eq 'yes')
+            $Result = Invoke-EngineLifecycle -Component $StepComponent -State $State
+            if ($Result -eq '__back__' -or $Result -eq '__quit__') { return '__back__' }
+            return $Result
         }
 
         'multitext' {
+            # Kept as inline ReadKey loop — only used by 1 registry entry
+            # and the multi-line collection pattern doesn't fit WizardStepComponent
+            $AccentColor = Get-CLIColor -Role 'Accent'
+            $DisabledColor = Get-CLIColor -Role 'Disabled'
+            $ErrorColor = Get-CLIColor -Role 'Error'
+            $OptionalHint = if (-not $Required) { " (opcjonalne, Enter = pomiń)" } else { '' }
+
             Write-CLILine -Text "$Label (Enter po każdym wpisie, pusty Enter = zakończ)$OptionalHint`:" -Color $AccentColor
 
             $Items = [System.Collections.Generic.List[string]]::new()
@@ -361,19 +272,17 @@ function Invoke-WizardStep {
         }
 
         'fuzzy' {
-            $FuzzyResult = Show-FuzzySearch -Prompt $Label -Source $Step.Source -State $State
+            $FuzzyResult = Invoke-EngineFuzzySearch -Prompt $Label -Source $Step.Source -State $State
             if (-not $FuzzyResult) { return '__back__' }
             return $FuzzyResult.Name
         }
 
         'multi-entry' {
-            Write-CLILine -Text "$Label`:" -Color $AccentColor
             $Items = [System.Collections.Generic.List[string]]::new()
             $EntryNum = 1
 
             while ($true) {
-                Write-CLILine -Text "  Wpis $EntryNum`:" -Color $DisabledColor
-                $FuzzyResult = Show-FuzzySearch -Prompt "Wybierz" -Source $Step.EntrySource -State $State
+                $FuzzyResult = Invoke-EngineFuzzySearch -Prompt "$Label ($EntryNum)" -Source $Step.EntrySource -State $State
                 if (-not $FuzzyResult) {
                     if ($Items.Count -gt 0) { break }
                     return '__back__'
@@ -381,14 +290,11 @@ function Invoke-WizardStep {
                 [void]$Items.Add($FuzzyResult.Name)
                 $EntryNum++
 
-                # Ask "add another?"
-                Write-Host ''
-                $AddMore = Show-ArrowMenu -Items @(
-                    [PSCustomObject]@{ ID = 'yes'; Label = 'Dodaj kolejny'; Description = ''; RoleTag = $null; InfoText = $null; Disabled = $false }
-                    [PSCustomObject]@{ ID = 'no';  Label = 'Zakończ';       Description = ''; RoleTag = $null; InfoText = $null; Disabled = $false }
-                ) -ShowBack
-
-                if ($AddMore -ne 'yes') { break }
+                # Ask "add another?" via engine yesno
+                $AddMoreComponent = New-WizardStepComponent -Label 'Dodaj kolejny?' `
+                    -StepNumber 0 -TotalSteps 0 -StepType 'yesno'
+                $AddMore = Invoke-EngineLifecycle -Component $AddMoreComponent -State $State
+                if ($AddMore -ne $true) { break }
             }
 
             if ($Items.Count -eq 0) { return $null }
@@ -396,12 +302,10 @@ function Invoke-WizardStep {
         }
 
         'multi-entry-nested' {
-            Write-CLILine -Text "$Label`:" -Color $AccentColor
             $Items = [System.Collections.Generic.List[PSCustomObject]]::new()
             $EntryNum = 1
 
             while ($true) {
-                Write-CLILine -Text "  Wpis $EntryNum`:" -Color $DisabledColor
                 $EntryData = [ordered]@{}
                 $Cancelled = $false
 
@@ -436,13 +340,11 @@ function Invoke-WizardStep {
                 [void]$Items.Add([PSCustomObject]$EntryData)
                 $EntryNum++
 
-                Write-Host ''
-                $AddMore = Show-ArrowMenu -Items @(
-                    [PSCustomObject]@{ ID = 'yes'; Label = 'Dodaj kolejny'; Description = ''; RoleTag = $null; InfoText = $null; Disabled = $false }
-                    [PSCustomObject]@{ ID = 'no';  Label = 'Zakończ';       Description = ''; RoleTag = $null; InfoText = $null; Disabled = $false }
-                ) -ShowBack
-
-                if ($AddMore -ne 'yes') { break }
+                # Ask "add another?" via engine yesno
+                $AddMoreComponent = New-WizardStepComponent -Label 'Dodaj kolejny?' `
+                    -StepNumber 0 -TotalSteps 0 -StepType 'yesno'
+                $AddMore = Invoke-EngineLifecycle -Component $AddMoreComponent -State $State
+                if ($AddMore -ne $true) { break }
             }
 
             if ($Items.Count -eq 0) { return $null }
@@ -453,7 +355,8 @@ function Invoke-WizardStep {
             # Fallback to text
             $TextStep = $Step.PSObject.Copy()
             $TextStep.StepType = 'text'
-            return (Invoke-WizardStep -Step $TextStep -State $State -CurrentValue $CurrentValue)
+            return (Invoke-WizardStep -Step $TextStep -State $State -CurrentValue $CurrentValue `
+                -StepNumber $StepNumber -TotalSteps $TotalSteps)
         }
     }
 }

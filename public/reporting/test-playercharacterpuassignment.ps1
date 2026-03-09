@@ -58,8 +58,15 @@ function Test-PlayerCharacterPUAssignment {
         [datetime]$MaxDate,
 
         [Parameter(HelpMessage = "Directories to exclude from session file scanning")]
-        [string[]]$ExcludeDirectory
+        [string[]]$ExcludeDirectory,
+
+        [Parameter(HelpMessage = "Suppress warning output to stderr")]
+        [switch]$Quiet
     )
+
+    $PrevSuppress = $script:SuppressWarnings
+    if ($Quiet) { $script:SuppressWarnings = $true }
+    try {
 
     # Default: last 2 months (legacy parity)
     if (-not $Year -and -not $Month -and -not $PSBoundParameters.ContainsKey('MinDate')) {
@@ -243,4 +250,6 @@ function Test-PlayerCharacterPUAssignment {
         StaleHistoryEntries  = $StaleHistoryEntries.ToArray()
         AssignmentResults    = $Results
     }
+
+    } finally { $script:SuppressWarnings = $PrevSuppress }
 }

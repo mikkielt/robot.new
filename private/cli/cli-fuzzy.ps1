@@ -7,10 +7,13 @@
     This file contains the fuzzy search pipeline consumed by wizard steps
     (StepType = 'fuzzy') and workflow functions. Dot-sourced on demand.
 
-    Helpers:
+    Active helpers (NOT deprecated):
     - Get-FuzzySearchCandidates: builds candidate list from NavState for a given source
     - Filter-FuzzyCandidates:    prefix → contains → Resolve-Name filtering
-    - Show-FuzzySearch:          live typeahead with scrollable results
+
+    DEPRECATED helper:
+    - Show-FuzzySearch: Use Invoke-EngineFuzzySearch instead.
+      Retained for plugin compatibility. Will be removed in a future version.
 
     Design:
     - Three-stage filtering: prefix match (fastest) → contains match →
@@ -198,6 +201,8 @@ function Filter-FuzzyCandidates {
 }
 
 # ── Show-FuzzySearch ─────────────────────────────────────────────────────────
+# DEPRECATED: Use Invoke-EngineFuzzySearch instead.
+# Retained for plugin compatibility. Will be removed in a future version.
 
 function Show-FuzzySearch {
     param(

@@ -24,6 +24,10 @@
     - Overrides:        hashtable of parameter overrides for wizard auto-gen
     - WorkflowFunction: function name for Mode = 'Workflow'
     - Columns/Headers/Widths: table config for Mode = 'Query'
+    - ColumnPriority:   int[] for responsive column hiding (1=always, 2=medium, 3=hide first)
+    - FilterPrefixes:   hashtable mapping prefix names to column names (e.g. @{ 'typ' = 'Type' })
+    - HelpBrief:        short 1-line help shown in wizard steps and search results
+    - HelpFull:         string[] multi-line help content for /h overlay
     - PreChecks:        string array of pre-check descriptions
     - InfoText:         info text shown when item is selected
 #>
@@ -53,6 +57,20 @@ $script:MenuRegistry = @(
         Function = 'New-Session'
         Menu     = 'Sesje'
         Role     = 'N'
+        HelpBrief = 'Kreator sesji: data, narrator, lokacje, PU, zmiany.'
+        HelpFull = @(
+            'Kreator nowej sesji prowadzi krok po kroku:'
+            '  1. Data sesji (i opcjonalnie data końcowa)'
+            '  2. Narrator — wyszukiwanie przybliżone po graczach'
+            '  3. Lokacje — wielokrotne dodawanie z przybliżonym wyszukiwaniem'
+            '  4. PU — przypisanie punktów umiejętności postaciom'
+            '  5. Zmiany — modyfikacje encji (tagi @lokacja, @grupa itp.)'
+            '  6. Intel — wiadomości kierowane do graczy/grup/lokacji'
+            '  7. Logi — URL-e do logów sesji'
+            ''
+            'Na końcu podgląd zmian z potwierdzeniem.'
+            'Format nagłówka: ### RRRR-MM-DD, Tytuł, Narrator'
+        )
         Overrides = @{
             'Date'      = @{ Type = 'date' }
             'DateEnd'   = @{ Type = 'date' }
@@ -87,6 +105,13 @@ $script:MenuRegistry = @(
         Role     = 'N'
         Mode     = 'Workflow'
         WorkflowFunction = 'Invoke-EditSessionWorkflow'
+        HelpBrief = 'Edycja istniejącej sesji: data, narrator, lokacje.'
+        HelpFull = @(
+            'Pozwala zmienić dowolne dane istniejącej sesji:'
+            '  - Data, narrator, lokacje'
+            '  - Pominięte pola pozostają bez zmian'
+            '  - Podgląd diff przed zapisem'
+        )
         InfoText = @('Pozwala zmienić datę, narratora, lokacje i inne dane sesji.')
     }
 
@@ -98,6 +123,17 @@ $script:MenuRegistry = @(
         Role     = 'N'
         Mode     = 'Workflow'
         WorkflowFunction = 'Invoke-SessionValidation'
+        HelpBrief = 'Sprawdza nazwy postaci i encji w sesjach.'
+        HelpFull = @(
+            'Walidacja sesji sprawdza:'
+            '  - Czy daty są w poprawnym formacie'
+            '  - Czy nazwy postaci w sekcji PU istnieją w rejestrze'
+            '  - Czy nazwy elementów w sekcji Zmian są rozpoznawalne'
+            '  - Czy podane lokacje istnieją jako encje'
+            ''
+            'Możesz ograniczyć zakres dat (od/do).'
+            'Problemy wyświetlane są z sugestiami poprawnych nazw.'
+        )
         PreChecks = @('Czy daty są w poprawnym formacie', 'Czy nazwy postaci w sekcji PU są rozpoznawalne', 'Czy nazwy elementów w sekcji Zmian są rozpoznawalne', 'Czy podane lokacje istnieją')
         InfoText = @('Sprawdzi: czy daty są poprawne, czy nazwy postaci i elementów świata są rozpoznawalne.')
     }
@@ -112,6 +148,8 @@ $script:MenuRegistry = @(
         Columns  = @('Date', 'Title', 'NarratorName')
         Headers  = @('Data', 'Tytuł', 'Narrator')
         Widths   = @(12, 35, 15)
+        ColumnPriority = @(1, 1, 2)
+        FilterPrefixes = @{ 'narrator' = 'NarratorName' }
         ColumnResolvers = @{
             'NarratorName' = { param($R) if ($R.Narrator) { $R.Narrator.RawText } else { '' } }
         }
@@ -119,6 +157,13 @@ $script:MenuRegistry = @(
             'MinDate' = @{ Type = 'date'; Label = 'Od daty'; Required = $false }
             'MaxDate' = @{ Type = 'date'; Label = 'Do daty'; Required = $false }
         }
+        HelpBrief = 'Lista sesji z datami i narratorami.'
+        HelpFull = @(
+            'Przeglądaj wszystkie sesje w tabeli.'
+            'Filtrowanie: wpisz tekst aby szukać w tytule'
+            '  narrator:imię — filtruj po narratorze'
+            'Wybierz wiersz Enter aby zobaczyć szczegóły.'
+        )
         InfoText = @('Możesz filtrować po dacie. Wybierz wiersz, aby zobaczyć szczegóły.')
     }
 
@@ -132,6 +177,7 @@ $script:MenuRegistry = @(
         Columns  = @('CommitDate', 'AuthorName', 'FileCount')
         Headers  = @('Data', 'Autor', 'Pliki')
         Widths   = @(12, 20, 8)
+        ColumnPriority = @(1, 2, 3)
         ColumnResolvers = @{
             'FileCount' = { param($R) if ($R.Files) { [string]$R.Files.Count } else { '0' } }
         }
@@ -139,6 +185,12 @@ $script:MenuRegistry = @(
             'MinDate' = @{ Type = 'text'; Label = 'Od daty (RRRR-MM-DD)'; Required = $false }
             'MaxDate' = @{ Type = 'text'; Label = 'Do daty (RRRR-MM-DD)'; Required = $false }
         }
+        HelpBrief = 'Historia commitów git z datami i autorami.'
+        HelpFull = @(
+            'Pokazuje historię zmian (git commits) w repozytorium.'
+            'Kolumny: data commitu, autor, liczba zmienionych plików.'
+            'Wybierz wiersz Enter aby zobaczyć szczegóły commitu.'
+        )
         InfoText = @('Pokazuje historię zapisów w repozytorium z datami i autorami.')
     }
 
@@ -153,6 +205,15 @@ $script:MenuRegistry = @(
         Role     = 'K'
         Mode     = 'Workflow'
         WorkflowFunction = 'Invoke-NewPlayerWorkflow'
+        HelpBrief = 'Dodaje gracza z opcjonalnym tworzeniem pierwszej postaci.'
+        HelpFull = @(
+            'Kreator nowego gracza:'
+            '  1. Nazwa gracza'
+            '  2. Triggery powiadomień (opcjonalne)'
+            '  3. Opcja dodania pierwszej postaci od razu'
+            ''
+            'Po utworzeniu gracza możesz kontynuować z postacią.'
+        )
         Overrides = @{
             'Triggers' = @{ Type = 'multitext'; Label = 'Triggery (po jednym)' }
             'EntitiesFile' = @{ Hidden = $true }
@@ -169,6 +230,15 @@ $script:MenuRegistry = @(
         Role     = 'K'
         Mode     = 'Workflow'
         WorkflowFunction = 'Invoke-NewCharacterWorkflow'
+        HelpBrief = 'Tworzy postać z opcjonalną walutą startową.'
+        HelpFull = @(
+            'Kreator nowej postaci:'
+            '  1. Gracz (wyszukiwanie przybliżone)'
+            '  2. Nazwa postaci, przedmioty specjalne'
+            '  3. Opcja dodania walut startowych'
+            ''
+            'Automatycznie tworzy plik postaci i wpis w entities.md.'
+        )
         Overrides = @{
             'PlayerName' = @{ Type = 'fuzzy'; Source = 'players' }
             'SpecialItems' = @{ Type = 'multitext'; Label = 'Przedmioty specjalne (po jednym)' }
@@ -187,6 +257,13 @@ $script:MenuRegistry = @(
         Role     = 'K'
         Mode     = 'Workflow'
         WorkflowFunction = 'Invoke-EditCharacterWorkflow'
+        HelpBrief = 'Zmiana danych istniejącej postaci z podglądem diff.'
+        HelpFull = @(
+            'Edycja postaci:'
+            '  1. Wybierz gracza i postać'
+            '  2. Zmień dowolne pola (puste = bez zmian)'
+            '  3. Podgląd różnic przed zapisem'
+        )
         InfoText = @('Wybierz postać, a potem zmień jej dane.')
     }
 
@@ -197,6 +274,13 @@ $script:MenuRegistry = @(
         Function = 'Set-Player'
         Menu     = 'Gracze i Postacie'
         Role     = 'K'
+        HelpBrief = 'Zmiana triggerów, aliasów i danych gracza.'
+        HelpFull = @(
+            'Zmiana danych gracza:'
+            '  - Triggery powiadomień'
+            '  - Aliasy (alternatywne nazwy)'
+            '  - Inne właściwości'
+        )
         Overrides = @{
             'Name'     = @{ Type = 'fuzzy'; Source = 'players' }
             'Triggers' = @{ Type = 'multitext'; Label = 'Triggery (po jednym)' }
@@ -213,6 +297,12 @@ $script:MenuRegistry = @(
         Function = 'Remove-PlayerCharacter'
         Menu     = 'Gracze i Postacie'
         Role     = 'K'
+        HelpBrief = 'Dezaktywacja postaci (soft delete).'
+        HelpFull = @(
+            'Oznacza postać jako nieaktywną.'
+            'Dane nie są usuwane — postać jest zachowana w rejestrze.'
+            'Operacja jest odwracalna przez ponowną edycję.'
+        )
         Overrides = @{
             'PlayerName'    = @{ Type = 'fuzzy'; Source = 'players' }
             'CharacterName' = @{ Type = 'fuzzy'; Source = 'characters' }
@@ -231,6 +321,8 @@ $script:MenuRegistry = @(
         Columns  = @('Name', 'CharacterCount', 'ActiveCharacter')
         Headers  = @('Nazwa', 'Postacie', 'Aktywna postać')
         Widths   = @(20, 10, 25)
+        ColumnPriority = @(1, 2, 2)
+        FilterPrefixes = @{ 'postac' = 'ActiveCharacter'; 'character' = 'ActiveCharacter' }
         ColumnResolvers = @{
             'CharacterCount'  = { param($R) if ($R.Characters) { [string]$R.Characters.Count } else { '0' } }
             'ActiveCharacter' = { param($R)
@@ -241,6 +333,13 @@ $script:MenuRegistry = @(
             }
         }
         DetailFunction = 'Show-PlayerCard'
+        HelpBrief = 'Lista graczy z liczbą postaci.'
+        HelpFull = @(
+            'Tabela graczy kampanii.'
+            'Filtrowanie: wpisz tekst aby szukać po nazwie'
+            '  postac:imię — filtruj po aktywnej postaci'
+            'Wybierz wiersz Enter aby zobaczyć kartę gracza.'
+        )
         InfoText = @('Wybierz gracza z listy, aby zobaczyć jego postacie.')
     }
 
@@ -251,6 +350,13 @@ $script:MenuRegistry = @(
         Menu     = 'Gracze i Postacie'
         Mode     = 'Workflow'
         WorkflowFunction = 'Invoke-CharacterCardWorkflow'
+        HelpBrief = 'Wyświetla pełną kartę postaci z PU i aliasami.'
+        HelpFull = @(
+            'Karta postaci zawiera:'
+            '  - Status aktywności, typ gracza'
+            '  - Punkty Umiejętności (suma, zdobyte, startowe)'
+            '  - Aliasy i dodatkowe informacje'
+        )
         InfoText = @('Wyświetla wszystkie informacje o postaci w jednym widoku.')
     }
 
@@ -265,6 +371,16 @@ $script:MenuRegistry = @(
         Role     = 'K'
         Mode     = 'Workflow'
         WorkflowFunction = 'Invoke-NewEntityWorkflow'
+        HelpBrief = 'Kreator encji z wyborem typu i tagów.'
+        HelpFull = @(
+            'Kreator nowej encji:'
+            '  1. Typ: NPC, Grupa, Lokacja lub Przedmiot'
+            '  2. Nazwa encji'
+            '  3. Tagi: @lokacja, @grupa, @status, @alias itp.'
+            '  4. Podgląd i potwierdzenie'
+            ''
+            'Tagi @lokacja i @grupa używają wyszukiwania przybliżonego.'
+        )
         InfoText = @('Wybierz typ (NPC, Lokacja, Grupa, Przedmiot), podaj nazwę i dodaj właściwości.')
     }
 
@@ -277,6 +393,15 @@ $script:MenuRegistry = @(
         Role     = 'K'
         Mode     = 'Workflow'
         WorkflowFunction = 'Invoke-EditEntityWorkflow'
+        HelpBrief = 'Dodaj lub zmień tagi istniejącej encji.'
+        HelpFull = @(
+            'Edycja encji:'
+            '  1. Wyszukaj encję (przybliżone)'
+            '  2. Dodaj/zmień tagi w pętli'
+            '  3. Podgląd diff przed zapisem'
+            ''
+            'Istniejące tagi wyświetlane jako kontekst.'
+        )
         InfoText = @('Wybierz element, a potem zmień jego właściwości.')
     }
 
@@ -287,6 +412,12 @@ $script:MenuRegistry = @(
         Function = 'Remove-Entity'
         Menu     = 'Encje'
         Role     = 'K'
+        HelpBrief = 'Soft delete: ustawia @status: Usunięty.'
+        HelpFull = @(
+            'Oznacza element jako nieaktywny (@status: Usunięty).'
+            'Dane nie są fizycznie usuwane z entities.md.'
+            'Operacja jest odwracalna przez edycję encji.'
+        )
         Overrides = @{
             'Name' = @{ Type = 'fuzzy'; Source = 'entities' }
             'EntitiesFile' = @{ Hidden = $true }
@@ -304,7 +435,17 @@ $script:MenuRegistry = @(
         Columns  = @('Name', 'Type', 'Status')
         Headers  = @('Nazwa', 'Typ', 'Status')
         Widths   = @(30, 15, 12)
+        ColumnPriority = @(1, 1, 2)
+        FilterPrefixes = @{ 'typ' = 'Type'; 'type' = 'Type'; 'status' = 'Status' }
         DetailFunction = 'Show-EntityCard'
+        HelpBrief = 'Lista encji świata gry.'
+        HelpFull = @(
+            'Tabela wszystkich encji (NPC, lokacje, grupy, przedmioty).'
+            'Filtrowanie: wpisz tekst aby szukać po nazwie'
+            '  typ:NPC — filtruj po typie'
+            '  status:Aktywny — filtruj po statusie'
+            'Wybierz wiersz Enter aby zobaczyć kartę encji.'
+        )
         InfoText = @('Wybierz element z listy, aby zobaczyć jego kartę z pełnymi informacjami.')
     }
 
@@ -316,6 +457,12 @@ $script:MenuRegistry = @(
         Menu     = 'Encje'
         Mode     = 'Workflow'
         WorkflowFunction = 'Invoke-EntityHistoryWorkflow'
+        HelpBrief = 'Oś czasu zmian encji z kolejnych sesji.'
+        HelpFull = @(
+            'Pokazuje historię zmian wybranej encji:'
+            '  - Data, właściwość, nowa wartość, źródło'
+            '  - Dane z sekcji Zmian w sesjach'
+        )
         InfoText = @('Pokazuje, jak element zmieniał się w kolejnych sesjach.')
     }
 
@@ -326,6 +473,12 @@ $script:MenuRegistry = @(
         Menu     = 'Encje'
         Mode     = 'Workflow'
         WorkflowFunction = 'Invoke-EntitySearchWorkflow'
+        HelpBrief = 'Przybliżone wyszukiwanie encji z kartą szczegółów.'
+        HelpFull = @(
+            'Wyszukiwanie przybliżone (fuzzy) po nazwach encji.'
+            'Obsługuje odmianę (deklinację) i literówki.'
+            'Po wybraniu wyświetla pełną kartę encji.'
+        )
         InfoText = @('Wpisz początek nazwy — nie musisz znać dokładnej pisowni.')
     }
 
@@ -338,6 +491,13 @@ $script:MenuRegistry = @(
         Function = 'New-CurrencyEntity'
         Menu     = 'Waluta'
         Role     = 'K'
+        HelpBrief = 'Tworzy zapis walutowy z wybranym nominałem.'
+        HelpFull = @(
+            'Utwórz nowy zapis walutowy (sakiewkę):'
+            '  1. Nominał: Korony Elanckie, Talary Hirońskie, Kogi Skeltvorskie'
+            '  2. Właściciel (wyszukiwanie przybliżone)'
+            '  3. Ilość początkowa'
+        )
         Overrides = @{
             'Denomination' = @{ Type = 'selection'; Options = @('Korony Elanckie', 'Talary Hirońskie', 'Kogi Skeltvorskie') }
             'Owner'        = @{ Type = 'fuzzy'; Source = 'entities' }
@@ -353,6 +513,12 @@ $script:MenuRegistry = @(
         Function = 'Set-CurrencyEntity'
         Menu     = 'Waluta'
         Role     = 'K'
+        HelpBrief = 'Zmiana salda waluty (bezwzględna lub delta).'
+        HelpFull = @(
+            'Zmień ilość waluty:'
+            '  - Amount: ustaw nową wartość bezwzględną'
+            '  - AmountDelta: dodaj/odejmij od obecnego salda'
+        )
         Overrides = @{
             'Name'     = @{ Type = 'fuzzy'; Source = 'currency' }
             'EntitiesFile' = @{ Hidden = $true }
@@ -370,6 +536,16 @@ $script:MenuRegistry = @(
         Role     = 'K'
         Mode     = 'Workflow'
         WorkflowFunction = 'Invoke-CurrencyTransferWorkflow'
+        HelpBrief = 'Transfer waluty: źródło → kwota → cel.'
+        HelpFull = @(
+            'Kreator transferu walutowego:'
+            '  1. Waluta źródłowa (obciążenie)'
+            '  2. Kwota do przelania'
+            '  3. Waluta docelowa (zasilenie)'
+            '  4. Podgląd i potwierdzenie'
+            ''
+            'Obie strony muszą mieć ten sam nominał.'
+        )
         InfoText = @('Przenieś walutę z jednego właściciela do drugiego.')
     }
 
@@ -380,6 +556,12 @@ $script:MenuRegistry = @(
         Function = 'Set-CurrencyEntity'
         Menu     = 'Waluta'
         Role     = 'K'
+        HelpBrief = 'Zmiana lokalizacji przechowywania waluty.'
+        HelpFull = @(
+            'Przenieś walutę do innego miejsca:'
+            '  - Np. z sakiewki do skarbca'
+            '  - Tylko zmiana lokalizacji, saldo bez zmian'
+        )
         Overrides = @{
             'Name'     = @{ Type = 'fuzzy'; Source = 'currency' }
             'Location' = @{ Type = 'fuzzy'; Source = 'locations' }
@@ -398,6 +580,12 @@ $script:MenuRegistry = @(
         Function = 'Remove-CurrencyEntity'
         Menu     = 'Waluta'
         Role     = 'K'
+        HelpBrief = 'Trwałe usunięcie zapisu walutowego.'
+        HelpFull = @(
+            'Trwale usuwa zapis walutowy z entities.md.'
+            'UWAGA: ta operacja jest nieodwracalna.'
+            'Nie dotyczy walut z @Transfer w sesjach.'
+        )
         Overrides = @{
             'Name' = @{ Type = 'fuzzy'; Source = 'currency' }
             'EntitiesFile' = @{ Hidden = $true }
@@ -415,6 +603,16 @@ $script:MenuRegistry = @(
         Columns  = @('EntityName', 'Denomination', 'Balance', 'Owner')
         Headers  = @('Nazwa', 'Nominał', 'Saldo', 'Właściciel')
         Widths   = @(28, 18, 8, 20)
+        ColumnPriority = @(1, 2, 1, 3)
+        FilterPrefixes = @{ 'nominal' = 'Denomination'; 'denomination' = 'Denomination'; 'wlasciciel' = 'Owner'; 'owner' = 'Owner' }
+        HelpBrief = 'Lista walut z saldami i właścicielami.'
+        HelpFull = @(
+            'Tabela wszystkich zapisów walutowych.'
+            'Filtrowanie: wpisz tekst aby szukać po nazwie'
+            '  nominal:Korony — filtruj po nominale'
+            '  wlasciciel:imię — filtruj po właścicielu'
+            'Wybierz wiersz Enter aby zobaczyć szczegóły.'
+        )
         InfoText = @('Lista wszystkich walut z aktualnymi saldami.')
     }
 
@@ -428,6 +626,12 @@ $script:MenuRegistry = @(
         Columns  = @('Owner', 'Denomination', 'Balance')
         Headers  = @('Właściciel', 'Nominał', 'Saldo')
         Widths   = @(25, 20, 10)
+        ColumnPriority = @(1, 2, 1)
+        HelpBrief = 'Zestawienie walut pogrupowane wg właścicieli.'
+        HelpFull = @(
+            'Raport walutowy pogrupowany wg właścicieli.'
+            'Każdy wiersz = jeden nominał jednego właściciela.'
+        )
         InfoText = @('Zestawienie walut pogrupowane według właścicieli.')
     }
 
@@ -439,6 +643,13 @@ $script:MenuRegistry = @(
         Role     = 'K'
         Mode     = 'Workflow'
         WorkflowFunction = 'Invoke-CurrencyReconciliationDisplay'
+        HelpBrief = 'Weryfikacja spójności sald walutowych.'
+        HelpFull = @(
+            'Sprawdza spójność walut:'
+            '  - Czy salda zgadzają się z historią transakcji'
+            '  - Podaż walut wg nominałów'
+            '  - Ostrzeżenia o anomaliach'
+        )
         InfoText = @('Sprawdza, czy salda walut zgadzają się z historią transakcji.')
     }
 
@@ -453,6 +664,18 @@ $script:MenuRegistry = @(
         Role     = 'K'
         Mode     = 'Workflow'
         WorkflowFunction = 'Invoke-PUAssignmentWorkflow'
+        HelpBrief = 'Pełny kreator przydziału PU z podglądem i flagami.'
+        HelpFull = @(
+            'Przydział miesięczny PU:'
+            '  1. Rok i miesiąc'
+            '  2. Sprawdzenie integralności sesji'
+            '  3. Próbny przebieg (dry run)'
+            '  4. Flagi: aktualizacja postaci, Discord, log, uzgodnienie walut'
+            '  5. Potwierdzenie i wykonanie'
+            ''
+            'Fail-early: nierozwiązana nazwa postaci przerywa cały przydział.'
+            'Zalecenie: najpierw uruchom Diagnostykę PU.'
+        )
         PreChecks = @('Czy nazwy postaci są rozpoznawalne', 'Czy daty sesji są poprawne', 'Czy nie ma zduplikowanych wpisów', 'Czy nadmiarowe PU się zgadzają')
         InfoText = @('Najpierw podgląd (nic nie zostanie zapisane), potem zatwierdzenie.')
     }
@@ -465,6 +688,14 @@ $script:MenuRegistry = @(
         Role     = 'K'
         Mode     = 'Workflow'
         WorkflowFunction = 'Invoke-PrePUDiagnostics'
+        HelpBrief = 'Sprawdza gotowość do przydziału PU z sugestiami nazw.'
+        HelpFull = @(
+            'Diagnostyka przed przydziałem PU:'
+            '  - Nierozwiązane postacie z sugestiami poprawnych nazw'
+            '  - Ostrzeżenia o niespójnościach'
+            ''
+            'Uruchom przed każdym przydziałem PU.'
+        )
         PreChecks = @('Czy nazwy postaci są rozpoznawalne', 'Czy daty sesji są poprawne', 'Czy PU są poprawne i spójne', 'Raport ewentualnych problemów')
         InfoText = @('Sprawdzi: nazwy postaci, daty sesji, poprawność PU. Pokaże raport problemów.')
     }
@@ -479,6 +710,13 @@ $script:MenuRegistry = @(
         Columns  = @('ProcessedAt', 'SessionCount', 'Timezone')
         Headers  = @('Przetworzono', 'Sesje', 'Strefa')
         Widths   = @(25, 10, 15)
+        ColumnPriority = @(1, 2, 3)
+        HelpBrief = 'Lista dotychczasowych przydziałów PU.'
+        HelpFull = @(
+            'Dziennik wszystkich wykonanych przydziałów PU.'
+            'Kolumny: data przetworzenia, liczba sesji, strefa czasowa.'
+            'Dane z pliku .robot/res/pu-sessions.md.'
+        )
         InfoText = @('Lista dotychczasowych przydziałów z datami i liczbą sesji.')
     }
 
@@ -492,6 +730,12 @@ $script:MenuRegistry = @(
         Columns  = @('PlayerName', 'VotingEligible', 'PU')
         Headers  = @('Gracz', 'Uprawniony', 'PU')
         Widths   = @(20, 12, 10)
+        ColumnPriority = @(1, 1, 2)
+        HelpBrief = 'Lista graczy z uprawnieniami do głosowania.'
+        HelpFull = @(
+            'Kto spełnia warunki do głosowania.'
+            'Uprawnienie zależy od sumy PU aktywnych postaci gracza.'
+        )
         InfoText = @('Pokazuje, którzy gracze spełniają warunki do głosowania.')
     }
 
@@ -503,6 +747,15 @@ $script:MenuRegistry = @(
         Role     = 'K'
         Mode     = 'Workflow'
         WorkflowFunction = 'Invoke-PUDiagnosticsDisplay'
+        HelpBrief = 'Raport: nierozpoznane nazwy, duplikaty, niespójności PU.'
+        HelpFull = @(
+            'Szczegółowy raport poprawności PU:'
+            '  - Nierozwiązane nazwy postaci'
+            '  - Błędne wartości PU'
+            '  - Duplikaty wpisów PU'
+            '  - Sesje z błędną datą'
+            '  - Przestarzałe wpisy historii'
+        )
         InfoText = @('Szczegółowy raport: nierozpoznane nazwy, duplikaty, niespójności.')
     }
 
@@ -518,10 +771,20 @@ $script:MenuRegistry = @(
         Columns  = @('Date', 'EntityName', 'Property', 'Value')
         Headers  = @('Data', 'Encja', 'Właściwość', 'Wartość')
         Widths   = @(12, 20, 15, 25)
+        ColumnPriority = @(1, 1, 2, 3)
+        FilterPrefixes = @{ 'encja' = 'EntityName'; 'entity' = 'EntityName'; 'tag' = 'Property' }
         FilterOverrides = @{
             'MinDate' = @{ Type = 'date'; Label = 'Od daty'; Required = $false }
             'MaxDate' = @{ Type = 'date'; Label = 'Do daty'; Required = $false }
         }
+        HelpBrief = 'Log zmian encji z sesji (tagi @lokacja, @grupa itp.).'
+        HelpFull = @(
+            'Zmiany właściwości elementów świata gry z sesji.'
+            'Filtrowanie: wpisz tekst aby szukać'
+            '  encja:nazwa — filtruj po nazwie encji'
+            '  tag:lokacja — filtruj po właściwości'
+            'Zakres dat ustawiany na początku.'
+        )
         InfoText = @('Pokazuje zmiany właściwości elementów świata gry z kolejnych sesji.')
     }
 
@@ -535,6 +798,13 @@ $script:MenuRegistry = @(
         Columns  = @('NormalizedText', 'OccurrenceCount', 'Confidence')
         Headers  = @('Narrator', 'Liczba sesji', 'Pewność')
         Widths   = @(25, 15, 12)
+        ColumnPriority = @(1, 1, 3)
+        HelpBrief = 'Ile sesji poprowadził każdy narrator.'
+        HelpFull = @(
+            'Statystyki narratorów z normalizacją nazw.'
+            'Pewność: High/Medium/Low — jakość dopasowania nazwy.'
+            'Dane z plików narrator-mappings.txt + sesje.'
+        )
         InfoText = @('Ile sesji poprowadził każdy narrator.')
     }
 
@@ -548,6 +818,14 @@ $script:MenuRegistry = @(
         Columns  = @('Name', 'OccurrenceCount', 'EntityMatch')
         Headers  = @('Lokacja', 'Wystąpienia', 'Encja')
         Widths   = @(25, 12, 20)
+        ColumnPriority = @(1, 1, 3)
+        FilterPrefixes = @{ 'encja' = 'EntityMatch'; 'entity' = 'EntityMatch' }
+        HelpBrief = 'Częstość użycia lokacji w sesjach.'
+        HelpFull = @(
+            'Ile razy każda lokacja pojawiła się w sesjach.'
+            'Kolumna Encja pokazuje dopasowanie do zarejestrowanej encji.'
+            '  encja:nazwa — filtruj po encji'
+        )
         InfoText = @('Ile razy każda lokacja pojawiła się w sesjach.')
         DataTransform = { param($R) $R.Locations }
     }
@@ -559,6 +837,16 @@ $script:MenuRegistry = @(
         Menu             = 'Raporty i Narzędzia'
         Mode             = 'Workflow'
         WorkflowFunction = 'Invoke-LocationGraphWorkflow'
+        HelpBrief        = 'Graf połączeń między lokacjami.'
+        HelpFull         = @(
+            'Buduje unified graf lokacji z wielu źródeł:'
+            '  - Encje (@lokacja, drzwi, zawiera)'
+            '  - Trasy sesyjne (@Trasa w sesjach)'
+            '  - Opcjonalnie: ruch z logów sesji'
+            ''
+            'Węzły = lokacje, krawędzie = relacje.'
+            'Stopień (In/Out) pokazuje liczbę połączeń.'
+        )
         InfoText         = @('Buduje graf lokacji z encji, tras sesyjnych i logów.')
     }
 
@@ -569,6 +857,16 @@ $script:MenuRegistry = @(
         Menu             = 'Raporty i Narzędzia'
         Mode             = 'Workflow'
         WorkflowFunction = 'Invoke-SessionGraphWorkflow'
+        HelpBrief        = 'Indeks powiązań sesje ↔ encje (3 tiery).'
+        HelpFull         = @(
+            'Graf sesji — 4 tryby zapytań:'
+            '  Sesje encji — w których sesjach uczestniczyła encja'
+            '  Współuczestnicy — kto pojawiał się razem z encją'
+            '  Uczestnicy sesji — kto uczestniczył w danej sesji'
+            '  Podsumowanie — statystyki ogólne'
+            ''
+            'Tier 0 = zmiana w pliku, Tier 1 = metadane, Tier 2 = wzmianka w tekście.'
+        )
         InfoText         = @('Indeks powiązań między sesjami a encjami (3 poziomy pewności).')
     }
 
@@ -579,6 +877,15 @@ $script:MenuRegistry = @(
         Function         = 'Get-EntitySessionProfile'
         Menu             = 'Raporty i Narzędzia'
         Mode             = 'Wizard'
+        HelpBrief        = 'Podsumowanie uczestnictwa encji: sesje, PU, trend.'
+        HelpFull         = @(
+            'Pełny profil uczestnictwa wybranej encji:'
+            '  - Łączna liczba sesji i rozkład tierów'
+            '  - Data pierwszej/ostatniej sesji'
+            '  - Suma PU (jeśli dotyczy)'
+            '  - Top 5 współuczestników'
+            '  - Trend aktywności'
+        )
         Overrides        = @{
             'EntityName' = @{ Type = 'fuzzy'; Source = 'entities' }
         }
@@ -592,6 +899,14 @@ $script:MenuRegistry = @(
         Function         = 'Get-NarratorSessionProfile'
         Menu             = 'Raporty i Narzędzia'
         Mode             = 'Wizard'
+        HelpBrief        = 'Statystyki narratora: sesje, uczestnicy, rozkład typów.'
+        HelpFull         = @(
+            'Profil narratora:'
+            '  - Łączna liczba sesji'
+            '  - Liczba unikalnych uczestników'
+            '  - Rozkład typów encji'
+            '  - Średnia wielkość grupy'
+        )
         Overrides        = @{
             'NarratorName' = @{ Type = 'fuzzy'; Source = 'players' }
             'MinDate'      = @{ Type = 'date' }
@@ -607,6 +922,13 @@ $script:MenuRegistry = @(
         Menu             = 'Raporty i Narzędzia'
         Mode             = 'Workflow'
         WorkflowFunction = 'Invoke-CompareParticipationWorkflow'
+        HelpBrief        = 'Porównanie 2+ encji: wspólne sesje, pokrycie.'
+        HelpFull         = @(
+            'Porównanie uczestnictwa 2 lub więcej encji:'
+            '  - Wspólne sesje'
+            '  - Sesje unikalne dla każdej encji'
+            '  - Macierz pokrycia (% wspólnych sesji)'
+        )
         InfoText         = @('Porównuje uczestnictwo 2+ encji: wspólne sesje, unikalne, procent pokrycia.')
     }
 
@@ -617,6 +939,13 @@ $script:MenuRegistry = @(
         Menu             = 'Raporty i Narzędzia'
         Mode             = 'Workflow'
         WorkflowFunction = 'Invoke-SessionLeaderboardWorkflow'
+        HelpBrief        = 'Top N encji wg liczby sesji z podziałem na tier.'
+        HelpFull         = @(
+            'Ranking encji po liczbie sesji.'
+            '  - Opcjonalny filtr po typie encji'
+            '  - Konfigurowalna liczba pozycji (domyślnie 20)'
+            '  - Kolumny T0/T1/T2 = rozkład tierów'
+        )
         InfoText         = @('Ranking encji po liczbie sesji z podziałem na tier.')
     }
 
@@ -630,6 +959,14 @@ $script:MenuRegistry = @(
         Columns  = @('Date', 'TargetName', 'Directive', 'RecipientCount')
         Headers  = @('Data', 'Cel', 'Typ', 'Odbiorców')
         Widths   = @(12, 20, 12, 10)
+        ColumnPriority = @(1, 1, 3, 3)
+        FilterPrefixes = @{ 'cel' = 'TargetName'; 'target' = 'TargetName'; 'typ' = 'Directive'; 'type' = 'Directive' }
+        HelpBrief = 'Historia wysłanych powiadomień Discord.'
+        HelpFull = @(
+            'Dziennik wysłanych powiadomień.'
+            '  cel:nazwa — filtruj po celu powiadomienia'
+            '  typ:Intel — filtruj po typie'
+        )
         InfoText = @('Historia wysłanych powiadomień z datami i odbiorcami.')
     }
 
@@ -643,6 +980,12 @@ $script:MenuRegistry = @(
         Columns  = @('Date', 'Source', 'Destination', 'Amount', 'Denomination')
         Headers  = @('Data', 'Źródło', 'Cel', 'Kwota', 'Waluta')
         Widths   = @(12, 18, 18, 8, 15)
+        ColumnPriority = @(1, 1, 1, 2, 3)
+        HelpBrief = 'Pełna lista przelewów walutowych.'
+        HelpFull = @(
+            'Księga transakcji walutowych z sesji (@Transfer).'
+            'Kolumny: data, źródło, cel, kwota, waluta.'
+        )
         InfoText = @('Pełna lista przelewów walutowych z kwotami i stronami.')
     }
 
@@ -654,6 +997,13 @@ $script:MenuRegistry = @(
         Role     = 'N/K'
         Mode     = 'Workflow'
         WorkflowFunction = 'Invoke-IntelPreviewWorkflow'
+        HelpBrief = 'Podgląd routingu wiadomości Intel z sesji.'
+        HelpFull = @(
+            'Podgląd Intel:'
+            '  - Filtr po dacie (opcjonalny)'
+            '  - Tabela: data sesji, cel, wiadomość'
+            '  - Pokazuje jak wiadomości zostaną rozesłane'
+        )
         InfoText = @('Pokaże, kto otrzyma jakie wiadomości na podstawie wybranej sesji.')
     }
 
@@ -666,6 +1016,13 @@ $script:MenuRegistry = @(
         Role     = 'K'
         Mode     = 'Workflow'
         WorkflowFunction = 'Invoke-DiscordPUNotificationWorkflow'
+        HelpBrief = 'Ponowne wysłanie powiadomienia PU na Discord.'
+        HelpFull = @(
+            'Ponowne wysłanie powiadomienia PU:'
+            '  1. Wybierz gracza'
+            '  2. Podaj miesiąc (RRRR-MM)'
+            '  - Wymaga integracji z logiem PU'
+        )
         InfoText = @('Ponownie wysyła powiadomienie PU na Discord (np. po awarii).')
     }
 
@@ -678,6 +1035,14 @@ $script:MenuRegistry = @(
         Role     = 'K'
         Mode     = 'Workflow'
         WorkflowFunction = 'Invoke-DiscordAnnouncementWorkflow'
+        HelpBrief = 'Sformatowane ogłoszenie na kanale Discord.'
+        HelpFull = @(
+            'Kreator ogłoszenia Discord:'
+            '  1. Webhook URL'
+            '  2. Tytuł ogłoszenia'
+            '  3. Treść wiadomości'
+            '  4. Podgląd i potwierdzenie'
+        )
         InfoText = @('Opublikuj sformatowane ogłoszenie na kanale Discord.')
     }
 
@@ -688,6 +1053,11 @@ $script:MenuRegistry = @(
         Function = 'Send-DiscordMessage'
         Menu     = 'Raporty i Narzędzia'
         Role     = 'K'
+        HelpBrief = 'Wysłanie dowolnej wiadomości na Discord.'
+        HelpFull = @(
+            'Wysyła dowolną wiadomość na wybrany kanał Discord.'
+            'Wymaga podania webhook URL i treści wiadomości.'
+        )
         Overrides = @{}
         InfoText = @('Wyślij dowolną wiadomość na wybrany kanał Discord.')
     }
@@ -699,6 +1069,13 @@ $script:MenuRegistry = @(
         Menu     = 'Raporty i Narzędzia'
         Mode     = 'Workflow'
         WorkflowFunction = 'Invoke-NameSearchWorkflow'
+        HelpBrief = 'Przybliżone wyszukiwanie nazw w rejestrze encji.'
+        HelpFull = @(
+            'Wyszukiwanie przybliżone (fuzzy) po nazwie:'
+            '  - Obsługuje odmianę (deklinację polską)'
+            '  - Toleruje literówki (Levenshtein)'
+            '  - Wyświetla kartę znalezionej encji'
+        )
         InfoText = @('Wyszukaj dowolny element świata gry po nazwie — przybliżone dopasowanie.')
     }
 
@@ -712,6 +1089,16 @@ $script:MenuRegistry = @(
         Role     = 'K'
         Mode     = 'Workflow'
         WorkflowFunction = 'Invoke-FetchLogsWorkflow'
+        HelpBrief = 'Masowe pobieranie logów sesji z URL z throttlingiem.'
+        HelpFull = @(
+            'Pobieranie logów sesji z adresów URL:'
+            '  1. Opcjonalny zakres dat'
+            '  2. Potwierdzenie (CDN throttling 500ms)'
+            '  3. Raport: pobrano / z cache / błędy'
+            ''
+            'Wymaga połączenia z internetem.'
+            'Logi zapisywane w .robot/res/logs/.'
+        )
         PreChecks = @('Wymaga połączenia z internetem', 'Pobieranie odbywa się z przerwą między zapytaniami')
         InfoText = @('Pobiera zapisy rozmów z adresów URL podanych w sesjach. Wymaga internetu.')
     }
@@ -724,6 +1111,16 @@ $script:MenuRegistry = @(
         Role     = 'N'
         Mode     = 'Workflow'
         WorkflowFunction = 'Invoke-LogLocationReportWorkflow'
+        HelpBrief = 'Analiza lokacji z logów sesji vs zarejestrowane encje.'
+        HelpFull = @(
+            'Porównanie lokacji z logów sesji z encjami:'
+            '  - Rozpoznane vs nierozpoznane lokacje'
+            '  - Etap rozpoznania (exact, stem, fuzzy)'
+            '  - Czy lokacja jest w metadanych sesji'
+            '  - Podobne nazwy (near matches)'
+            ''
+            'Wymaga wcześniejszego pobrania logów.'
+        )
         InfoText = @('Porównuje lokacje z zapisów rozmów z lokacjami zarejestrowanymi w świecie gry.')
     }
 
@@ -738,6 +1135,12 @@ $script:MenuRegistry = @(
         Role     = 'K'
         Mode     = 'Workflow'
         WorkflowFunction = 'Invoke-MigrationQuickCheck'
+        HelpBrief = 'Szybki podgląd postępu migracji.'
+        HelpFull = @(
+            'Szybka diagnostyka migracji:'
+            '  - Które fazy zostały ukończone'
+            '  - Szacunkowy postęp'
+        )
         InfoText = @('Szybki podgląd: które fazy migracji zostały ukończone.')
     }
 
@@ -749,6 +1152,12 @@ $script:MenuRegistry = @(
         Role     = 'K'
         Mode     = 'Workflow'
         WorkflowFunction = 'Invoke-MigrationFullReport'
+        HelpBrief = 'Szczegółowy raport postępu migracji.'
+        HelpFull = @(
+            'Pełny raport migracji:'
+            '  - Wyniki każdej z 7 faz (0-6)'
+            '  - Szczegółowe statystyki i błędy'
+        )
         InfoText = @('Pełny raport z wynikami każdej fazy migracji.')
     }
 )

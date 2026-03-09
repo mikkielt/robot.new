@@ -30,8 +30,15 @@ function Test-CurrencyReconciliation {
         [object[]]$Sessions,
 
         [Parameter(HelpMessage = "Only check changes since this date")]
-        [datetime]$Since
+        [datetime]$Since,
+
+        [Parameter(HelpMessage = "Suppress warning output to stderr")]
+        [switch]$Quiet
     )
+
+    $PrevSuppress = $script:SuppressWarnings
+    if ($Quiet) { $script:SuppressWarnings = $true }
+    try {
 
     if (-not $PSBoundParameters.ContainsKey('Entities')) {
         $Entities = Get-EntityState
@@ -176,4 +183,6 @@ function Test-CurrencyReconciliation {
         EntityCount  = $CurrencyItems.Count
         CheckedAt    = $Now
     }
+
+    } finally { $script:SuppressWarnings = $PrevSuppress }
 }

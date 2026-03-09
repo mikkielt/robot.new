@@ -3,9 +3,14 @@
     Interactive menu components for the Robot CLI - arrow menus and result tables.
 
     .DESCRIPTION
-    Contains the two large interactive menu functions extracted from cli-primitives.ps1:
-    - Show-ArrowMenu:    arrow-key selectable list with role tags + InfoText
-    - Show-ResultTable:  paginated data display with cursor navigation
+    DEPRECATED: All functions in this file are deprecated. Use the TUI engine
+    (engine/) equivalents instead:
+    - Show-ArrowMenu  → New-MenuListComponent + Invoke-EngineLifecycle
+    - Show-ResultTable → New-TableComponent + Invoke-EngineLifecycle
+    - Show-HelpOverlay → engine overlay system
+
+    Retained for plugin/migration compatibility (migration-ui.ps1,
+    cli-wf-margoworld.ps1). Will be removed once all callers are ported.
 
     These functions depend on the primitives defined in cli-primitives.ps1
     (Get-CLIColor, Write-CLILine, Read-ArrowKey, Clear-MenuArea) and are
@@ -16,6 +21,7 @@
 # ── Show-HelpOverlay ─────────────────────────────────────────────────────────
 
 function Show-HelpOverlay {
+    # DEPRECATED: Retained for plugin/migration compatibility. Will be removed in a future version.
     param(
         [string]$Title,
         [string[]]$Content,
@@ -143,6 +149,8 @@ function Show-HelpOverlay {
 # ── Show-ArrowMenu ───────────────────────────────────────────────────────────
 
 function Show-ArrowMenu {
+    # DEPRECATED: Use New-MenuListComponent + Invoke-EngineLifecycle instead.
+    # Retained for plugin/migration compatibility. Will be removed in a future version.
     param(
         [Parameter(Mandatory)] [object[]]$Items,
         [string]$Title,
@@ -386,6 +394,8 @@ function Show-ArrowMenu {
 # ── Show-ResultTable ─────────────────────────────────────────────────────────
 
 function Show-ResultTable {
+    # DEPRECATED: Use New-TableComponent + Invoke-EngineLifecycle instead.
+    # Retained for plugin/migration compatibility. Will be removed in a future version.
     param(
         [Parameter(Mandatory)] [object[]]$Data,
         [Parameter(Mandatory)] [string[]]$Columns,

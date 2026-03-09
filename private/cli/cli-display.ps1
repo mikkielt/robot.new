@@ -1,17 +1,20 @@
 <#
     .SYNOPSIS
-    Shared display components for the Robot CLI - detail card rendering,
-    validity-range formatting, and NavState refresh.
+    Shared display components for the Robot CLI - detail card rendering
+    and validity-range formatting.
 
     .DESCRIPTION
-    This file contains display helpers consumed by the routing layer
-    (Show-DetailCard for query results) and the wizard system
-    (Refresh-NavState after writes). Dot-sourced on demand.
+    DEPRECATED: Show-DetailCard and Format-DetailValidityRange are deprecated.
+    Use Invoke-EngineDetailCard instead.
+
+    Retained for plugin compatibility (cli-wf-margoworld.ps1).
+    Will be removed once all callers are ported.
+
+    Note: Refresh-NavState was moved to cli-routing.ps1.
 
     Helpers:
     - Format-DetailValidityRange: formats temporal range as "YYYY-MM-DD – YYYY-MM-DD"
     - Show-DetailCard:            generic key-value card for any PSCustomObject
-    - Refresh-NavState:           reloads entities, players, and name index
 
     Design:
     - Show-DetailCard handles strings, numbers, arrays, nested objects, and nulls.
@@ -20,6 +23,7 @@
 #>
 
 # ── Format-DetailValidityRange ───────────────────────────────────────────────
+# DEPRECATED: Used only by Show-DetailCard. Will be removed together with it.
 
 function Format-DetailValidityRange {
     param($ValidFrom, $ValidTo)
@@ -32,6 +36,8 @@ function Format-DetailValidityRange {
 }
 
 # ── Show-DetailCard ──────────────────────────────────────────────────────────
+# DEPRECATED: Use Invoke-EngineDetailCard instead.
+# Retained for plugin compatibility. Will be removed in a future version.
 
 function Show-DetailCard {
     <#
@@ -318,14 +324,3 @@ function Show-DetailCard {
     }
 }
 
-# ── Refresh-NavState ─────────────────────────────────────────────────────────
-
-function Refresh-NavState {
-    param([Parameter(Mandatory)] [object]$State)
-
-    Write-Host "  Odświeżanie danych..." -ForegroundColor (Get-CLIColor -Role 'Disabled')
-    $State.Entities = Get-Entity -Quiet
-    $State.Players  = Get-Player
-    $State.NameIndex = Get-NameIndex -Players $State.Players -Entities $State.Entities
-    $State.ResolveCache = @{}
-}

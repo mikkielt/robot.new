@@ -106,12 +106,11 @@ function Invoke-PUAssignmentWorkflow {
             }
 
             Write-Host ''
-            Write-CLILine -Text 'Kontynuować mimo problemów?' -Color $WarningColor
-            $Continue = Show-ArrowMenu -Items @(
-                [PSCustomObject]@{ ID = 'yes'; Label = 'Tak, kontynuuj'; Description = ''; RoleTag = $null; InfoText = $null; Disabled = $false }
-                [PSCustomObject]@{ ID = 'no';  Label = 'Anuluj';         Description = ''; RoleTag = $null; InfoText = $null; Disabled = $false }
-            ) -ShowBack
-            if ($Continue -ne 'yes') { return }
+            $ContinueComponent = New-WizardStepComponent -Label 'Kontynuować mimo problemów?' `
+                -StepNumber 0 -TotalSteps 0 -StepType 'yesno'
+            $Continue = Invoke-EngineLifecycle -Component $ContinueComponent -State $State
+            if ($Continue -eq '__quit__') { return '__quit__' }
+            if ($Continue -ne $true) { return }
         } else {
             Write-CLILine -Text "$([char]0x2713) Integralność sesji: OK" -Color $SuccessColor
         }
@@ -142,13 +141,13 @@ function Invoke-PUAssignmentWorkflow {
     catch {
         Write-CLILine -Text "Błąd: $_" -Color $ErrorColor
         Write-CLILine -Text 'Naciśnij dowolny klawisz...' -Color $DisabledColor
-        [void](Read-ArrowKey)
+        [void][System.Console]::ReadKey($true)
         return
     }
 
     Write-Host ''
     Write-CLILine -Text 'Naciśnij dowolny klawisz, aby przejść do opcji...' -Color $DisabledColor
-    [void](Read-ArrowKey)
+    [void][System.Console]::ReadKey($true)
 
     # ── Step 5: Flags ──
     $Flags = [ordered]@{
@@ -181,13 +180,12 @@ function Invoke-PUAssignmentWorkflow {
         Write-Host ''
 
         $FlagLabel = $FlagLabels[$FlagKey]
-        Write-CLILine -Text "$FlagLabel`:" -Color $AccentColor
-        $FlagChoice = Show-ArrowMenu -Items @(
-            [PSCustomObject]@{ ID = 'yes'; Label = 'Tak'; Description = ''; RoleTag = $null; InfoText = $null; Disabled = $false }
-            [PSCustomObject]@{ ID = 'no';  Label = 'Nie'; Description = ''; RoleTag = $null; InfoText = $null; Disabled = $false }
-        ) -ShowBack
+        $FlagComponent = New-WizardStepComponent -Label $FlagLabel `
+            -StepNumber 0 -TotalSteps 0 -StepType 'yesno'
+        $FlagChoice = Invoke-EngineLifecycle -Component $FlagComponent -State $State
+        if ($FlagChoice -eq '__quit__') { return '__quit__' }
         if ($FlagChoice -eq '__back__') { return }
-        $Flags[$FlagKey] = ($FlagChoice -eq 'yes')
+        $Flags[$FlagKey] = $FlagChoice
     }
 
     # ── Step 6: Confirmation ──
@@ -203,13 +201,12 @@ function Invoke-PUAssignmentWorkflow {
     }
     Write-Host ''
 
-    Write-CLILine -Text 'Wykonać przydział PU?' -Color $AccentColor
-    $Confirm = Show-ArrowMenu -Items @(
-        [PSCustomObject]@{ ID = 'yes'; Label = 'Tak, wykonaj'; Description = ''; RoleTag = $null; InfoText = $null; Disabled = $false }
-        [PSCustomObject]@{ ID = 'no';  Label = 'Anuluj';       Description = ''; RoleTag = $null; InfoText = $null; Disabled = $false }
-    ) -ShowBack
+    $ConfirmComponent = New-WizardStepComponent -Label 'Wykonać przydział PU?' `
+        -StepNumber 0 -TotalSteps 0 -StepType 'yesno'
+    $Confirm = Invoke-EngineLifecycle -Component $ConfirmComponent -State $State
+    if ($Confirm -eq '__quit__') { return '__quit__' }
 
-    if ($Confirm -ne 'yes') {
+    if ($Confirm -ne $true) {
         Write-CLILine -Text 'Anulowano.' -Color $DisabledColor
         return
     }
@@ -235,7 +232,7 @@ function Invoke-PUAssignmentWorkflow {
 
     Write-Host ''
     Write-CLILine -Text 'Naciśnij dowolny klawisz...' -Color $DisabledColor
-    [void](Read-ArrowKey)
+    [void][System.Console]::ReadKey($true)
 }
 
 # ── Pre-PU Diagnostics ───────────────────────────────────────────────────────
@@ -303,7 +300,7 @@ function Invoke-PrePUDiagnostics {
 
     Write-Host ''
     Write-CLILine -Text 'Naciśnij dowolny klawisz...' -Color (Get-CLIColor -Role 'Disabled')
-    [void](Read-ArrowKey)
+    [void][System.Console]::ReadKey($true)
 }
 
 # ── PU Diagnostics Display ───────────────────────────────────────────────────
@@ -380,5 +377,5 @@ function Invoke-PUDiagnosticsDisplay {
 
     Write-Host ''
     Write-CLILine -Text 'Naciśnij dowolny klawisz...' -Color $DisabledColor
-    [void](Read-ArrowKey)
+    [void][System.Console]::ReadKey($true)
 }

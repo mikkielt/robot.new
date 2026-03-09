@@ -271,5 +271,5 @@ function Show-HelpScreen {
     Write-Host ''
     Write-Host '  Naciśnij dowolny klawisz aby wrócić...' -ForegroundColor $DisabledColor
 
-    [void](Read-ArrowKey)
+    [void][System.Console]::ReadKey($true)
 }

@@ -35,16 +35,11 @@ function Invoke-NewEntityWorkflow {
     Write-CLILine -Text 'Kreator nowej encji' -Color $AccentColor
     Write-Host "  $Sep" -ForegroundColor $DisabledColor
     Write-Host ''
-    Write-CLILine -Text 'Typ encji:' -Color $AccentColor
-
-    $TypeItems = @(
-        [PSCustomObject]@{ ID = 'NPC';       Label = 'NPC';       Description = 'Postać niezależna'; RoleTag = $null; InfoText = $null; Disabled = $false }
-        [PSCustomObject]@{ ID = 'Grupa';     Label = 'Grupa';     Description = 'Frakcja lub organizacja'; RoleTag = $null; InfoText = $null; Disabled = $false }
-        [PSCustomObject]@{ ID = 'Lokacja';   Label = 'Lokacja';   Description = 'Miejsce w świecie gry'; RoleTag = $null; InfoText = $null; Disabled = $false }
-        [PSCustomObject]@{ ID = 'Przedmiot'; Label = 'Przedmiot'; Description = 'Przedmiot lub artefakt'; RoleTag = $null; InfoText = $null; Disabled = $false }
-    )
-
-    $Type = Show-ArrowMenu -Items $TypeItems -ShowBack
+    $TypeComponent = New-WizardStepComponent -Label 'Typ encji' `
+        -StepNumber 0 -TotalSteps 0 -StepType 'selection' `
+        -Options @('NPC', 'Grupa', 'Lokacja', 'Przedmiot')
+    $Type = Invoke-EngineLifecycle -Component $TypeComponent -State $State
+    if ($Type -eq '__quit__') { return '__quit__' }
     if ($Type -eq '__back__') { return }
 
     # Step 2: Name
@@ -86,26 +81,15 @@ function Invoke-NewEntityWorkflow {
         }
         Write-Host ''
 
-        Write-CLILine -Text 'Dodaj tag:' -Color $AccentColor
+        $TagSelectOptions = @(($CommonTags | ForEach-Object { "@$_" })) + @('Inny tag (wpisz)', 'Zakończ dodawanie tagów')
+        $TagSelectComponent = New-WizardStepComponent -Label 'Dodaj tag' `
+            -StepNumber 0 -TotalSteps 0 -StepType 'selection' `
+            -Options $TagSelectOptions
+        $TagChoice = Invoke-EngineLifecycle -Component $TagSelectComponent -State $State
+        if ($TagChoice -eq '__back__' -or $TagChoice -eq '__quit__' -or $TagChoice -eq 'Zakończ dodawanie tagów') { break }
 
-        $TagOptions = [System.Collections.Generic.List[PSCustomObject]]::new()
-        foreach ($T in $CommonTags) {
-            [void]$TagOptions.Add([PSCustomObject]@{
-                ID = $T; Label = "@$T"; Description = ''; RoleTag = $null; InfoText = $null; Disabled = $false
-            })
-        }
-        [void]$TagOptions.Add([PSCustomObject]@{
-            ID = '__custom__'; Label = 'Inny tag (wpisz)'; Description = ''; RoleTag = $null; InfoText = $null; Disabled = $false
-        })
-        [void]$TagOptions.Add([PSCustomObject]@{
-            ID = '__done__'; Label = 'Zakończ dodawanie tagów'; Description = ''; RoleTag = $null; InfoText = $null; Disabled = $false
-        })
-
-        $TagChoice = Show-ArrowMenu -Items $TagOptions -ShowBack
-        if ($TagChoice -eq '__back__' -or $TagChoice -eq '__done__') { break }
-
-        $TagName = $TagChoice
-        if ($TagChoice -eq '__custom__') {
+        $TagName = if ($TagChoice -match '^@(.+)$') { $Matches[1] } else { $TagChoice }
+        if ($TagChoice -eq 'Inny tag (wpisz)') {
             $CustomTagStep = [PSCustomObject]@{
                 Name = 'Tag'; Label = 'Nazwa tagu'; StepType = 'text'; Required = $true
                 Source = $null; Options = $null; SubSteps = $null; EntrySource = $null
@@ -188,7 +172,7 @@ function Invoke-EditEntityWorkflow {
     Write-Host ''
 
     # Pick entity
-    $Entity = Show-FuzzySearch -Prompt 'Wybierz encję' -Source 'entities' -State $State
+    $Entity = Invoke-EngineFuzzySearch -Prompt 'Wybierz encję' -Source 'entities' -State $State
     if (-not $Entity) { return }
 
     $EntityObj = $Entity.Owner
@@ -226,26 +210,15 @@ function Invoke-EditEntityWorkflow {
         }
         Write-Host ''
 
-        Write-CLILine -Text 'Dodaj/zmień tag:' -Color $AccentColor
+        $TagSelectOptions = @(($CommonTags | ForEach-Object { "@$_" })) + @('Inny tag (wpisz)', 'Zakończ')
+        $TagSelectComponent = New-WizardStepComponent -Label 'Dodaj/zmień tag' `
+            -StepNumber 0 -TotalSteps 0 -StepType 'selection' `
+            -Options $TagSelectOptions
+        $TagChoice = Invoke-EngineLifecycle -Component $TagSelectComponent -State $State
+        if ($TagChoice -eq '__back__' -or $TagChoice -eq '__quit__' -or $TagChoice -eq 'Zakończ') { break }
 
-        $TagOptions = [System.Collections.Generic.List[PSCustomObject]]::new()
-        foreach ($T in $CommonTags) {
-            [void]$TagOptions.Add([PSCustomObject]@{
-                ID = $T; Label = "@$T"; Description = ''; RoleTag = $null; InfoText = $null; Disabled = $false
-            })
-        }
-        [void]$TagOptions.Add([PSCustomObject]@{
-            ID = '__custom__'; Label = 'Inny tag (wpisz)'; Description = ''; RoleTag = $null; InfoText = $null; Disabled = $false
-        })
-        [void]$TagOptions.Add([PSCustomObject]@{
-            ID = '__done__'; Label = 'Zakończ'; Description = ''; RoleTag = $null; InfoText = $null; Disabled = $false
-        })
-
-        $TagChoice = Show-ArrowMenu -Items $TagOptions -ShowBack
-        if ($TagChoice -eq '__back__' -or $TagChoice -eq '__done__') { break }
-
-        $TagName = $TagChoice
-        if ($TagChoice -eq '__custom__') {
+        $TagName = if ($TagChoice -match '^@(.+)$') { $Matches[1] } else { $TagChoice }
+        if ($TagChoice -eq 'Inny tag (wpisz)') {
             $CustomStep = [PSCustomObject]@{
                 Name = 'Tag'; Label = 'Nazwa tagu'; StepType = 'text'; Required = $true
                 Source = $null; Options = $null; SubSteps = $null; EntrySource = $null
@@ -303,7 +276,7 @@ function Invoke-EditEntityWorkflow {
     if ($Tags.Count -eq 0) {
         Write-CLILine -Text 'Brak zmian do zapisania.' -Color $DisabledColor
         Write-CLILine -Text 'Naciśnij dowolny klawisz...' -Color $DisabledColor
-        [void](Read-ArrowKey)
+        [void][System.Console]::ReadKey($true)
         return
     }
 
@@ -325,7 +298,7 @@ function Invoke-EntityHistoryWorkflow {
     Write-CLILine -Text 'Historia encji' -Color $AccentColor
     Write-Host ''
 
-    $Entity = Show-FuzzySearch -Prompt 'Wybierz encję' -Source 'entities' -State $State
+    $Entity = Invoke-EngineFuzzySearch -Prompt 'Wybierz encję' -Source 'entities' -State $State
     if (-not $Entity) { return }
 
     try {
@@ -333,20 +306,21 @@ function Invoke-EntityHistoryWorkflow {
         if (-not $History -or $History.Count -eq 0) {
             Write-CLILine -Text 'Brak historii dla tej encji.' -Color (Get-CLIColor -Role 'Disabled')
             Write-CLILine -Text 'Naciśnij dowolny klawisz...' -Color (Get-CLIColor -Role 'Disabled')
-            [void](Read-ArrowKey)
+            [void][System.Console]::ReadKey($true)
             return
         }
 
-        [void](Show-ResultTable -Data $History `
+        $TableComponent = New-ResultTableComponent -Data $History `
             -Columns @('Date', 'Property', 'Value', 'Source') `
             -Headers @('Data', 'Właściwość', 'Wartość', 'Źródło') `
             -Widths @(12, 15, 25, 20) `
-            -Title "Historia: $($Entity.Name)")
+            -Title "Historia: $($Entity.Name)"
+        [void](Invoke-EngineLifecycle -Component $TableComponent -State $State)
     }
     catch {
         Write-CLILine -Text "Błąd: $_" -Color (Get-CLIColor -Role 'Error')
         Write-CLILine -Text 'Naciśnij dowolny klawisz...' -Color (Get-CLIColor -Role 'Disabled')
-        [void](Read-ArrowKey)
+        [void][System.Console]::ReadKey($true)
     }
 }
 
@@ -360,7 +334,7 @@ function Invoke-EntitySearchWorkflow {
     Write-CLILine -Text 'Wyszukiwanie encji' -Color $AccentColor
     Write-Host ''
 
-    $Result = Show-FuzzySearch -Prompt 'Szukaj' -Source 'entities' -State $State
+    $Result = Invoke-EngineFuzzySearch -Prompt 'Szukaj' -Source 'entities' -State $State
     if (-not $Result) { return }
 
     # Display entity detail card

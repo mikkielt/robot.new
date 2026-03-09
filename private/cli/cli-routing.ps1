@@ -1,11 +1,11 @@
 <#
     .SYNOPSIS
     Menu routing layer for the Robot CLI - registry lookup, action dispatch,
-    query execution, and main/sub menu loops.
+    query execution, and engine-driven main/sub menu loops.
 
     .DESCRIPTION
-    This file connects the menu registry (cli-registry.ps1) with the UI engine
-    (cli-primitives.ps1) and wizard system (cli-wizard.ps1). Dot-sourced on demand.
+    This file connects the menu registry (cli-registry.ps1) with the TUI engine
+    (engine/) and wizard system (cli-wizard.ps1). Dot-sourced on demand.
 
     Helpers:
     - Get-MenuCategories:          returns ordered list of top-level menu names
@@ -14,8 +14,13 @@
     - Merge-PluginMenuItems:       merges plugin-declared menu items, categories, and help into CLI state
     - Invoke-MenuAction:           dispatches a menu item by ID (Wizard/Query/Workflow)
     - Invoke-QueryAction:          executes Query-mode: filter → run → table → detail
-    - Show-SubMenu:                items within a category
-    - Show-MainMenu:               top-level category loop
+    - Invoke-EngineRender:         standard engine render callback (TopBar + Content + Filter + StatusBar)
+    - Invoke-EngineCommand:        standard command handler for /h, /s, /r palette commands
+    - Invoke-EngineFuzzySearch:    engine-driven fuzzy picker using MenuListComponent
+    - Invoke-EngineDetailCard:     engine-driven detail card for a single data row
+    - Show-SubMenu:                engine-driven items within a category
+    - Show-MainMenu:               engine-driven top-level category loop
+    - Refresh-NavState:            reloads entities, players, and name index (moved from cli-display.ps1)
     - Get-MigrationMenuItems:      stub (overridden by cli-wizard-migration.ps1)
     - Invoke-MigrationPhaseAction: stub (overridden by cli-wizard-migration.ps1)
 #>
@@ -185,7 +190,7 @@ function Invoke-MenuAction {
     if (-not $Entry) {
         Write-CLILine -Text "Nieznana akcja: $ItemID" -Color (Get-CLIColor -Role 'Error')
         Write-CLILine -Text 'Naciśnij dowolny klawisz...' -Color (Get-CLIColor -Role 'Disabled')
-        [void](Read-ArrowKey)
+        [void][System.Console]::ReadKey($true)
         return
     }
 
@@ -201,14 +206,16 @@ function Invoke-MenuAction {
             if (-not $Entry.Function) {
                 Write-CLILine -Text 'Nie zaimplementowano.' -Color (Get-CLIColor -Role 'Disabled')
                 Write-CLILine -Text 'Naciśnij dowolny klawisz...' -Color (Get-CLIColor -Role 'Disabled')
-                [void](Read-ArrowKey)
+                [void][System.Console]::ReadKey($true)
                 return
             }
-            [void](Invoke-Wizard -RegistryEntry $Entry -State $State)
+            $WizResult = Invoke-Wizard -RegistryEntry $Entry -State $State
+            if ($WizResult -eq '__quit__') { return '__quit__' }
         }
 
         'Query' {
-            Invoke-QueryAction -Entry $Entry -State $State
+            $QueryResult = Invoke-QueryAction -Entry $Entry -State $State
+            if ($QueryResult -eq '__quit__') { return '__quit__' }
         }
 
         'Workflow' {
@@ -216,7 +223,7 @@ function Invoke-MenuAction {
             if (-not $WorkflowFn -or -not (Get-Command $WorkflowFn -ErrorAction SilentlyContinue)) {
                 Write-CLILine -Text 'Nie zaimplementowano.' -Color (Get-CLIColor -Role 'Disabled')
                 Write-CLILine -Text 'Naciśnij dowolny klawisz...' -Color (Get-CLIColor -Role 'Disabled')
-                [void](Read-ArrowKey)
+                [void][System.Console]::ReadKey($true)
                 return
             }
 
@@ -225,7 +232,8 @@ function Invoke-MenuAction {
                 Show-InfoBox -Checks $Entry.PreChecks
             }
 
-            & $WorkflowFn -State $State -Entry $Entry
+            $WfResult = & $WorkflowFn -State $State -Entry $Entry
+            if ($WfResult -eq '__quit__') { return '__quit__' }
         }
     }
 
@@ -244,7 +252,7 @@ function Invoke-QueryAction {
     if (-not $FunctionName -or -not (Get-Command $FunctionName -ErrorAction SilentlyContinue)) {
         Write-CLILine -Text "Funkcja '$FunctionName' nie jest dostępna." -Color (Get-CLIColor -Role 'Error')
         Write-CLILine -Text 'Naciśnij dowolny klawisz...' -Color (Get-CLIColor -Role 'Disabled')
-        [void](Read-ArrowKey)
+        [void][System.Console]::ReadKey($true)
         return
     }
 
@@ -293,7 +301,7 @@ function Invoke-QueryAction {
             Write-CLILine -Text 'Brak wyników.' -Color (Get-CLIColor -Role 'Disabled')
             Write-Host ''
             Write-CLILine -Text 'Naciśnij dowolny klawisz...' -Color (Get-CLIColor -Role 'Disabled')
-            [void](Read-ArrowKey)
+            [void][System.Console]::ReadKey($true)
             return
         }
 
@@ -308,7 +316,7 @@ function Invoke-QueryAction {
                 Write-CLILine -Text 'Brak wyników.' -Color (Get-CLIColor -Role 'Disabled')
                 Write-Host ''
                 Write-CLILine -Text 'Naciśnij dowolny klawisz...' -Color (Get-CLIColor -Role 'Disabled')
-                [void](Read-ArrowKey)
+                [void][System.Console]::ReadKey($true)
                 return
             }
         }
@@ -337,34 +345,313 @@ function Invoke-QueryAction {
             $QueryResult = $TransformedData.ToArray()
         }
 
-        # Loop: table → detail card → back to table
-        while ($true) {
-            $SelectedRow = Show-ResultTable -Data $QueryResult -Columns $Columns -Headers $Headers -Widths $Widths -Title $Entry.Label
+        # Engine-driven table → detail card loop
+        [void]$State.BreadcrumbStack.Push($Entry.Label)
+        $QuitRequested = $false
 
+        while ($true) {
+            $TableComponent = New-ResultTableComponent -Data $QueryResult `
+                -Columns $Columns -Headers $Headers -Widths $Widths `
+                -Title $Entry.Label `
+                -ColumnPriority $(if ($Entry.ColumnPriority) { $Entry.ColumnPriority } else { $null }) `
+                -FilterPrefixes $(if ($Entry.FilterPrefixes) { $Entry.FilterPrefixes } else { $null })
+
+            # Wire entry-level help for /h overlay
+            if ($Entry.HelpFull) {
+                $TableComponent.HelpContent = $Entry.HelpFull
+                $TableComponent.HelpTitle = $Entry.Label
+            }
+
+            $ScreenOK = Initialize-Screen -State $State
+            if (-not $ScreenOK) {
+                [void][System.Console]::ReadKey($true)
+                break
+            }
+
+            Initialize-Buffers
+            $RenderCB = { param($S, $C) Invoke-EngineRender -State $S -Component $C }
+            $CmdHandler = { param($CA, $S, $C, $RCB) Invoke-EngineCommand -CmdAction $CA -State $S -Component $C -RenderCallback $RCB }
+
+            & $RenderCB $State $TableComponent
+            Render-FullBuffer
+
+            try {
+                $SelectedRow = Start-InputLoop -State $State -Component $TableComponent `
+                    -RenderCallback $RenderCB -CommandHandler $CmdHandler
+            } finally {
+                Restore-Cursor
+            }
+
+            if ($SelectedRow -eq '__quit__') { $QuitRequested = $true; break }
+            if ($SelectedRow -eq '__back__') { break }
             if (-not $SelectedRow) { break }
 
-            # Find the index of the selected row in transformed data to map back to original
-            $RowIdx = [Array]::IndexOf($QueryResult, $SelectedRow)
+            # Map selected row back to original data for detail card
+            $RowIdx = -1
+            $TableData = $TableComponent.Data
+            for ($I = 0; $I -lt $TableData.Count; $I++) {
+                if ([object]::ReferenceEquals($TableData[$I], $SelectedRow)) {
+                    $RowIdx = $I; break
+                }
+            }
+            # If filter was active, search AllData for the absolute index
+            if ($RowIdx -lt 0) {
+                for ($I = 0; $I -lt $QueryResult.Count; $I++) {
+                    if ([object]::ReferenceEquals($QueryResult[$I], $SelectedRow)) {
+                        $RowIdx = $I; break
+                    }
+                }
+            }
             $OriginalRow = if ($RowIdx -ge 0 -and $RowIdx -lt $OriginalData.Count) { $OriginalData[$RowIdx] } else { $SelectedRow }
 
-            # Use custom detail function if defined, otherwise generic card
+            # Use custom detail function if defined, otherwise engine detail card
             if ($Entry.DetailFunction -and (Get-Command $Entry.DetailFunction -ErrorAction SilentlyContinue)) {
-                & $Entry.DetailFunction -Row $OriginalRow -State $State
+                [void]$State.BreadcrumbStack.Push('Szczegóły')
+                try {
+                    & $Entry.DetailFunction -Row $OriginalRow -State $State
+                } finally {
+                    [void]$State.BreadcrumbStack.Pop()
+                }
             }
             else {
-                Show-DetailCard -Row $OriginalRow -Title $Entry.Label
+                Invoke-EngineDetailCard -Data $OriginalRow -Title $Entry.Label -State $State
             }
         }
+
+        [void]$State.BreadcrumbStack.Pop()
+        if ($QuitRequested) { return '__quit__' }
     }
     catch {
         Write-CLILine -Text "Błąd: $_" -Color (Get-CLIColor -Role 'Error')
         Write-Host ''
         Write-CLILine -Text 'Naciśnij dowolny klawisz...' -Color (Get-CLIColor -Role 'Disabled')
-        [void](Read-ArrowKey)
+        [void][System.Console]::ReadKey($true)
     }
 }
 
-# ── Main Menu & SubMenu ─────────────────────────────────────────────────────
+# ── Engine Helpers ──────────────────────────────────────────────────────────
+
+# Standard render callback: fills all 4 regions of the engine layout
+function Invoke-EngineRender {
+    param(
+        [Parameter(Mandatory)] [object]$State,
+        [Parameter(Mandatory)] [object]$Component
+    )
+    Render-TopBar -State $State
+    & $Component.Render $State $Component
+    Render-FilterBar -State $State -Component $Component
+    Render-StatusBar -Component $Component
+}
+
+# Standard command handler for /h, /s, /r palette commands.
+# Shows help overlays and health dashboard as nested engine views.
+function Invoke-EngineCommand {
+    param(
+        [Parameter(Mandatory)] [object]$CmdAction,
+        [Parameter(Mandatory)] [object]$State,
+        [Parameter(Mandatory)] [object]$Component,
+        [scriptblock]$RenderCallback
+    )
+
+    # Shared overlay render callback (skips TopBar — overlays render on top of existing content)
+    $OverlayCB = {
+        param($S, $C)
+        & $C.Render $S $C
+        Render-FilterBar -State $S -Component $C
+        Render-StatusBar -Component $C
+    }
+
+    switch ($CmdAction.Type) {
+        'Help' {
+            $HelpBody = $Component.HelpContent
+            if ($HelpBody -and $HelpBody.Count -gt 0) {
+                $HelpTitle = if ($Component.HelpTitle) { $Component.HelpTitle } else { 'Pomoc' }
+                $Overlay = New-HelpOverlayComponent -Title $HelpTitle -Content $HelpBody
+                & $OverlayCB $State $Overlay
+                Render-BufferDiff
+                $OverlayResult = Start-InputLoop -State $State -Component $Overlay -RenderCallback $OverlayCB
+                if ($OverlayResult -eq '__quit__') { return '__quit__' }
+            }
+        }
+
+        'HelpSearch' {
+            # Search help topics across registry
+            $Results = Search-HelpTopics -Query $CmdAction.Value -Registry $script:MenuRegistry
+            if ($Results -and $Results.Count -gt 0) {
+                $Lines = [System.Collections.Generic.List[string]]::new()
+                foreach ($R in $Results) {
+                    [void]$Lines.Add("$([char]0x25B8) $($R.Label)")
+                    foreach ($CLine in $R.Context) {
+                        [void]$Lines.Add("  $CLine")
+                    }
+                    [void]$Lines.Add('')
+                }
+                $Overlay = New-HelpOverlayComponent -Title "Wyniki: $($CmdAction.Value)" -Content @($Lines)
+            } else {
+                $Overlay = New-HelpOverlayComponent -Title 'Szukaj' -Content @('Brak wynikow dla zapytania.')
+            }
+            & $OverlayCB $State $Overlay
+            Render-BufferDiff
+            $OverlayResult = Start-InputLoop -State $State -Component $Overlay -RenderCallback $OverlayCB
+            if ($OverlayResult -eq '__quit__') { return '__quit__' }
+        }
+
+        'HealthDashboard' {
+            $Dashboard = New-HealthDashboardComponent -State $State
+            $DashRenderCB = { param($S, $C) Invoke-EngineRender -State $S -Component $C }
+            & $DashRenderCB $State $Dashboard
+            Render-BufferDiff
+            $DashResult = Start-InputLoop -State $State -Component $Dashboard -RenderCallback $DashRenderCB
+            if ($DashResult -eq '__quit__') { return '__quit__' }
+        }
+
+        'Refresh' {
+            Refresh-NavState -State $State
+        }
+    }
+}
+
+# ── Engine Fuzzy Search ────────────────────────────────────────────────────
+
+# Engine-driven fuzzy picker that reuses MenuListComponent with FuzzyCallback.
+# Returns a candidate object (with Name, Type, DisplayText, Owner) or $null.
+function Invoke-EngineFuzzySearch {
+    param(
+        [Parameter(Mandatory)] [string]$Prompt,
+        [Parameter(Mandatory)] [string]$Source,
+        [Parameter(Mandatory)] [object]$State
+    )
+
+    $AllCandidates = Get-FuzzySearchCandidates -Source $Source -State $State
+    if ($AllCandidates.Count -eq 0) { return $null }
+
+    # Build a lookup from sequential ID to candidate
+    $CandidateMap = @{}
+
+    # Convert candidates to MenuListComponent items
+    $MenuItems = [System.Collections.Generic.List[PSCustomObject]]::new()
+    for ($I = 0; $I -lt $AllCandidates.Count; $I++) {
+        $C = $AllCandidates[$I]
+        $ItemID = [string]$I
+        $CandidateMap[$ItemID] = $C
+        [void]$MenuItems.Add([PSCustomObject]@{
+            ID          = $ItemID
+            Label       = $C.DisplayText
+            Description = $C.Type
+            RoleTag     = $null
+            InfoText    = $null
+            Disabled    = $false
+        })
+    }
+
+    # FuzzyCallback: runs Resolve-Name on remaining items for stage 3
+    $FuzzyCB = {
+        param([string]$Query, [object[]]$Remaining)
+
+        if ($Query.Length -lt 3) { return @() }
+        if (-not $State.NameIndex) { return @() }
+
+        $Resolved = Resolve-Name -Query $Query `
+            -Index $State.NameIndex.Index `
+            -StemIndex $State.NameIndex.StemIndex `
+            -BKTree $State.NameIndex.BKTree `
+            -Cache $State.ResolveCache
+
+        if (-not $Resolved) { return @() }
+
+        $ResolvedName = if ($Resolved.Name) { $Resolved.Name } else { [string]$Resolved }
+
+        $FuzzyMatches = [System.Collections.Generic.List[object]]::new()
+        foreach ($Item in $Remaining) {
+            if ($Item.Label.IndexOf($ResolvedName, [System.StringComparison]::OrdinalIgnoreCase) -ge 0) {
+                [void]$FuzzyMatches.Add($Item)
+            }
+        }
+        return @($FuzzyMatches)
+    }.GetNewClosure()
+
+    $Component = New-MenuListComponent -Items $MenuItems -ShowBack -FuzzyCallback $FuzzyCB `
+        -HelpContent @("Wpisz aby filtrować  |  Enter wybierz  |  Esc anuluj")
+
+    $ScreenOK = Initialize-Screen -State $State
+    if (-not $ScreenOK) {
+        [void][System.Console]::ReadKey($true)
+        return $null
+    }
+
+    Initialize-Buffers
+
+    # Custom render adds prompt in title area
+    $RenderCB = {
+        param($S, $C)
+        Render-TopBar -State $S
+        & $C.Render $S $C
+        Render-FilterBar -State $S -Component $C
+        Render-StatusBar -Component $C
+    }
+    $CmdHandler = { param($CA, $S, $C, $RCB) Invoke-EngineCommand -CmdAction $CA -State $S -Component $C -RenderCallback $RCB }
+
+    & $RenderCB $State $Component
+    Render-FullBuffer
+
+    try {
+        $SelectedID = Start-InputLoop -State $State -Component $Component `
+            -RenderCallback $RenderCB -CommandHandler $CmdHandler
+    } finally {
+        Restore-Cursor
+    }
+
+    if ($SelectedID -eq '__back__' -or $SelectedID -eq '__quit__' -or -not $SelectedID) {
+        return $null
+    }
+
+    # Map ID back to candidate
+    if ($CandidateMap.ContainsKey($SelectedID)) {
+        return $CandidateMap[$SelectedID]
+    }
+
+    return $null
+}
+
+# ── Engine Detail Card ─────────────────────────────────────────────────────
+
+# Displays a detail card for a single data row using the engine lifecycle.
+function Invoke-EngineDetailCard {
+    param(
+        [Parameter(Mandatory)] [object]$Data,
+        [string]$Title,
+        [Parameter(Mandatory)] [object]$State
+    )
+
+    $BreadcrumbLabel = if ($Title) { $Title } else { 'Szczegóły' }
+    [void]$State.BreadcrumbStack.Push($BreadcrumbLabel)
+
+    $Component = New-DetailCardComponent -Data $Data -Title $Title
+
+    $ScreenOK = Initialize-Screen -State $State
+    if (-not $ScreenOK) {
+        [void][System.Console]::ReadKey($true)
+        [void]$State.BreadcrumbStack.Pop()
+        return
+    }
+
+    Initialize-Buffers
+    $RenderCB = { param($S, $C) Invoke-EngineRender -State $S -Component $C }
+    $CmdHandler = { param($CA, $S, $C, $RCB) Invoke-EngineCommand -CmdAction $CA -State $S -Component $C -RenderCallback $RCB }
+
+    & $RenderCB $State $Component
+    Render-FullBuffer
+
+    try {
+        $null = Start-InputLoop -State $State -Component $Component `
+            -RenderCallback $RenderCB -CommandHandler $CmdHandler
+    } finally {
+        Restore-Cursor
+        [void]$State.BreadcrumbStack.Pop()
+    }
+}
+
+# ── Main Menu & SubMenu (engine-driven) ────────────────────────────────────
 
 function Show-SubMenu {
     param(
@@ -375,9 +662,6 @@ function Show-SubMenu {
     [void]$State.BreadcrumbStack.Push($Category)
 
     while ($true) {
-        [System.Console]::Clear()
-        Show-Breadcrumb -State $State
-
         $Items = Get-MenuItems -Category $Category
 
         # For Migracja, prepend dynamic phase entries
@@ -394,20 +678,52 @@ function Show-SubMenu {
         $HelpEntry = $script:HelpContent[$Category]
         $HelpBody = if ($HelpEntry) { $HelpEntry.Body } else { $null }
         $HelpTitle = if ($HelpEntry) { $HelpEntry.Title } else { $null }
-        $Selected = Show-ArrowMenu -Items $Items -Title $Category -ShowBack -HelpContent $HelpBody -HelpTitle $HelpTitle
+
+        $Component = New-MenuListComponent -Items $Items -ShowBack `
+            -HelpContent $HelpBody -HelpTitle $HelpTitle
+
+        $ScreenOK = Initialize-Screen -State $State
+        if (-not $ScreenOK) {
+            [void][System.Console]::ReadKey($true)
+            [void]$State.BreadcrumbStack.Pop()
+            return
+        }
+
+        Initialize-Buffers
+        $RenderCB = { param($S, $C) Invoke-EngineRender -State $S -Component $C }
+        $CmdHandler = { param($CA, $S, $C, $RCB) Invoke-EngineCommand -CmdAction $CA -State $S -Component $C -RenderCallback $RCB }
+
+        & $RenderCB $State $Component
+        Render-FullBuffer
+
+        try {
+            $Selected = Start-InputLoop -State $State -Component $Component `
+                -RenderCallback $RenderCB -CommandHandler $CmdHandler
+        } finally {
+            Restore-Cursor
+        }
 
         if ($Selected -eq '__back__') {
             [void]$State.BreadcrumbStack.Pop()
             return
         }
 
+        if ($Selected -eq '__quit__') {
+            [void]$State.BreadcrumbStack.Pop()
+            return '__quit__'
+        }
+
         # Handle migration phase items
-        if ($Selected.StartsWith('migration-phase-')) {
+        if ($Selected -is [string] -and $Selected.StartsWith('migration-phase-')) {
             Invoke-MigrationPhaseAction -PhaseID $Selected -State $State
             continue
         }
 
-        Invoke-MenuAction -ItemID $Selected -State $State
+        $ActionResult = Invoke-MenuAction -ItemID $Selected -State $State
+        if ($ActionResult -eq '__quit__') {
+            [void]$State.BreadcrumbStack.Pop()
+            return '__quit__'
+        }
     }
 }
 
@@ -415,10 +731,6 @@ function Show-MainMenu {
     param([Parameter(Mandatory)] [object]$State)
 
     while ($true) {
-        [System.Console]::Clear()
-        Show-Banner
-        Show-Breadcrumb -State $State
-
         # Build top-level category items
         $CategoryItems = [System.Collections.Generic.List[PSCustomObject]]::new()
         foreach ($Cat in $script:MenuOrder) {
@@ -433,20 +745,44 @@ function Show-MainMenu {
             })
         }
 
-        # Add refresh and quit
+        # Add refresh option
         [void]$CategoryItems.Add([PSCustomObject]@{
             ID          = '__refresh__'
-            Label       = 'Odśwież dane'
-            Description = 'Przeładuj encje, graczy i indeks nazw'
+            Label       = [string][char]0x21BB + ' Odswiez dane'
+            Description = 'Przeladuj encje, graczy i indeks nazw'
             RoleTag     = $null
             InfoText    = $null
             Disabled    = $false
         })
 
         $RootHelp = $script:HelpContent['root']
-        $Selected = Show-ArrowMenu -Items $CategoryItems -HelpContent $RootHelp.Body -HelpTitle $RootHelp.Title
+        $HelpBody = if ($RootHelp) { $RootHelp.Body } else { $null }
+        $HelpTitle = if ($RootHelp) { $RootHelp.Title } else { $null }
 
-        if ($Selected -eq '__back__') {
+        $Component = New-MenuListComponent -Items $CategoryItems `
+            -HelpContent $HelpBody -HelpTitle $HelpTitle
+
+        $ScreenOK = Initialize-Screen -State $State
+        if (-not $ScreenOK) {
+            [void][System.Console]::ReadKey($true)
+            return
+        }
+
+        Initialize-Buffers
+        $RenderCB = { param($S, $C) Invoke-EngineRender -State $S -Component $C }
+        $CmdHandler = { param($CA, $S, $C, $RCB) Invoke-EngineCommand -CmdAction $CA -State $S -Component $C -RenderCallback $RCB }
+
+        & $RenderCB $State $Component
+        Render-FullBuffer
+
+        try {
+            $Selected = Start-InputLoop -State $State -Component $Component `
+                -RenderCallback $RenderCB -CommandHandler $CmdHandler
+        } finally {
+            Restore-Cursor
+        }
+
+        if ($Selected -eq '__back__' -or $Selected -eq '__quit__') {
             Write-Host ''
             Write-CLILine -Text 'Do zobaczenia!' -Color (Get-CLIColor -Role 'Accent')
             Write-Host ''
@@ -458,8 +794,14 @@ function Show-MainMenu {
             continue
         }
 
-        # Navigate to submenu
-        Show-SubMenu -Category $Selected -State $State
+        # Navigate to submenu (bubble up __quit__ if returned)
+        $SubResult = Show-SubMenu -Category $Selected -State $State
+        if ($SubResult -eq '__quit__') {
+            Write-Host ''
+            Write-CLILine -Text 'Do zobaczenia!' -Color (Get-CLIColor -Role 'Accent')
+            Write-Host ''
+            return
+        }
     }
 }
 
@@ -471,9 +813,21 @@ function Get-MigrationMenuItems {
     return @()
 }
 
+# ── Refresh-NavState ─────────────────────────────────────────────────────────
+
+function Refresh-NavState {
+    param([Parameter(Mandatory)] [object]$State)
+
+    Write-Host "  Odświeżanie danych..." -ForegroundColor (Get-CLIColor -Role 'Disabled')
+    $State.Entities = Get-Entity -Quiet
+    $State.Players  = Get-Player
+    $State.NameIndex = Get-NameIndex -Players $State.Players -Entities $State.Entities
+    $State.ResolveCache = @{}
+}
+
 function Invoke-MigrationPhaseAction {
     param([string]$PhaseID, [object]$State)
     Write-CLILine -Text 'Migracja nie jest załadowana.' -Color (Get-CLIColor -Role 'Disabled')
     Write-CLILine -Text 'Naciśnij dowolny klawisz...' -Color (Get-CLIColor -Role 'Disabled')
-    [void](Read-ArrowKey)
+    [void][System.Console]::ReadKey($true)
 }

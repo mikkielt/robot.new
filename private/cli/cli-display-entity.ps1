@@ -165,5 +165,5 @@ function Show-EntityCard {
     Write-Host ''
     Write-Host "  $Sep" -ForegroundColor $DisabledColor
     Write-Host "  Esc wstecz" -ForegroundColor $DisabledColor
-    [void](Read-ArrowKey)
+    [void][System.Console]::ReadKey($true)
 }

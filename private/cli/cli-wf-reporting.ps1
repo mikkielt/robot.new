@@ -69,11 +69,12 @@ function Invoke-IntelPreviewWorkflow {
         if ($IntelEntries.Count -eq 0) {
             Write-CLILine -Text 'Brak wpisów Intel w wybranym zakresie.' -Color $DisabledColor
         } else {
-            [void](Show-ResultTable -Data $IntelEntries `
+            $TableComponent = New-ResultTableComponent -Data $IntelEntries `
                 -Columns @('SessionDate', 'Target', 'Message') `
                 -Headers @('Data', 'Cel', 'Wiadomość') `
                 -Widths @(12, 20, 40) `
-                -Title 'Intel - podgląd routingu')
+                -Title 'Intel - podgląd routingu'
+            [void](Invoke-EngineLifecycle -Component $TableComponent -State $State)
         }
     }
     catch {
@@ -82,7 +83,7 @@ function Invoke-IntelPreviewWorkflow {
 
     Write-Host ''
     Write-CLILine -Text 'Naciśnij dowolny klawisz...' -Color (Get-CLIColor -Role 'Disabled')
-    [void](Read-ArrowKey)
+    [void][System.Console]::ReadKey($true)
 }
 
 # ── Name Search Workflow ─────────────────────────────────────────────────────
@@ -95,7 +96,7 @@ function Invoke-NameSearchWorkflow {
     Write-CLILine -Text 'Wyszukiwanie nazwy' -Color $AccentColor
     Write-Host ''
 
-    $Result = Show-FuzzySearch -Prompt 'Szukaj' -Source 'entities' -State $State
+    $Result = Invoke-EngineFuzzySearch -Prompt 'Szukaj' -Source 'entities' -State $State
     if (-not $Result) { return }
 
     Show-EntityCard -Entity $Result.Owner -State $State
@@ -148,7 +149,7 @@ function Invoke-FetchLogsWorkflow {
             Write-CLILine -Text 'Brak sesji z logami w wybranym zakresie.' -Color $DisabledColor
             Write-Host ''
             Write-CLILine -Text 'Naciśnij dowolny klawisz...' -Color $DisabledColor
-            [void](Read-ArrowKey)
+            [void][System.Console]::ReadKey($true)
             return
         }
 
@@ -161,12 +162,11 @@ function Invoke-FetchLogsWorkflow {
         Write-CLILine -Text 'CDN może ograniczać liczbę żądań. Pobieranie odbywa się z opóźnieniem 500ms.' -Color $WarningColor
         Write-Host ''
 
-        $ConfirmItems = @(
-            [PSCustomObject]@{ ID = 'yes'; Label = 'Tak, pobierz'; Description = '' }
-            [PSCustomObject]@{ ID = 'no'; Label = 'Anuluj'; Description = '' }
-        )
-        $Confirm = Show-ArrowMenu -Items $ConfirmItems -ShowBack
-        if ($Confirm -ne 'yes') { return }
+        $ConfirmComponent = New-WizardStepComponent -Label 'Rozpocząć pobieranie?' `
+            -StepNumber 0 -TotalSteps 0 -StepType 'yesno'
+        $Confirm = Invoke-EngineLifecycle -Component $ConfirmComponent -State $State
+        if ($Confirm -eq '__quit__') { return '__quit__' }
+        if ($Confirm -ne $true) { return }
 
         Write-Host ''
         Write-Host '  Rozpoczynam pobieranie...' -ForegroundColor $DisabledColor
@@ -189,7 +189,7 @@ function Invoke-FetchLogsWorkflow {
 
     Write-Host ''
     Write-CLILine -Text 'Naciśnij dowolny klawisz...' -Color $DisabledColor
-    [void](Read-ArrowKey)
+    [void][System.Console]::ReadKey($true)
 }
 
 # ── Log Location Report Workflow ────────────────────────────────────────────
@@ -227,7 +227,7 @@ function Invoke-LogLocationReportWorkflow {
             Write-CLILine -Text 'Brak sparsowanych logów. Najpierw użyj "Pobierz logi sesji".' -Color $WarningColor
             Write-Host ''
             Write-CLILine -Text 'Naciśnij dowolny klawisz...' -Color $DisabledColor
-            [void](Read-ArrowKey)
+            [void][System.Console]::ReadKey($true)
             return
         }
 
@@ -276,13 +276,14 @@ function Invoke-LogLocationReportWorkflow {
             Write-Host ''
 
             while ($true) {
-                $Selected = Show-ResultTable -Data $TableData `
+                $TableComponent = New-ResultTableComponent -Data $TableData `
                     -Columns @('Session', 'Location', 'Resolved', 'Stage', 'InMeta') `
                     -Headers @('Sesja', 'Lokacja', 'Rozpoznano', 'Etap', 'W meta') `
                     -Widths @(20, 20, 20, 10, 6) `
                     -Title 'Lokacje z logów'
+                $Selected = Invoke-EngineLifecycle -Component $TableComponent -State $State
 
-                if (-not $Selected) { break }
+                if (-not $Selected -or $Selected -eq '__back__' -or $Selected -eq '__quit__') { break }
 
                 # Show detail card with near-matches if any
                 if ($Selected.NearMatches -and $Selected.NearMatches.Count -gt 0) {
@@ -291,7 +292,7 @@ function Invoke-LogLocationReportWorkflow {
                     $NearText = [string]::Join(', ', $NearParts)
                     $Selected | Add-Member -NotePropertyName 'Podobne' -NotePropertyValue $NearText -Force
                 }
-                Show-DetailCard -Row $Selected -Title 'Szczegóły lokacji'
+                Invoke-EngineDetailCard -Data $Selected -Title 'Szczegóły lokacji' -State $State
             }
         }
     }
@@ -301,7 +302,7 @@ function Invoke-LogLocationReportWorkflow {
 
     Write-Host ''
     Write-CLILine -Text 'Naciśnij dowolny klawisz...' -Color $DisabledColor
-    [void](Read-ArrowKey)
+    [void][System.Console]::ReadKey($true)
 }
 
 # ── Migration Diagnostics ────────────────────────────────────────────────────
@@ -317,14 +318,14 @@ function Invoke-MigrationQuickCheck {
             Invoke-QuickDiagnostics
             Write-Host ''
             Write-CLILine -Text 'Naciśnij dowolny klawisz...' -Color (Get-CLIColor -Role 'Disabled')
-            [void](Read-ArrowKey)
+            [void][System.Console]::ReadKey($true)
             return
         }
     }
 
     Write-CLILine -Text 'Diagnostyka migracji nie jest dostępna.' -Color (Get-CLIColor -Role 'Disabled')
     Write-CLILine -Text 'Naciśnij dowolny klawisz...' -Color (Get-CLIColor -Role 'Disabled')
-    [void](Read-ArrowKey)
+    [void][System.Console]::ReadKey($true)
 }
 
 function Invoke-MigrationFullReport {
@@ -337,14 +338,14 @@ function Invoke-MigrationFullReport {
             Invoke-FullReport
             Write-Host ''
             Write-CLILine -Text 'Naciśnij dowolny klawisz...' -Color (Get-CLIColor -Role 'Disabled')
-            [void](Read-ArrowKey)
+            [void][System.Console]::ReadKey($true)
             return
         }
     }
 
     Write-CLILine -Text 'Raport migracji nie jest dostępny.' -Color (Get-CLIColor -Role 'Disabled')
     Write-CLILine -Text 'Naciśnij dowolny klawisz...' -Color (Get-CLIColor -Role 'Disabled')
-    [void](Read-ArrowKey)
+    [void][System.Console]::ReadKey($true)
 }
 
 # ── Location Graph Workflow ──────────────────────────────────────────────────
@@ -392,7 +393,7 @@ function Invoke-LocationGraphWorkflow {
             Write-CLILine -Text 'Brak danych do wyświetlenia.' -Color $WarningColor
             Write-Host ''
             Write-CLILine -Text 'Naciśnij dowolny klawisz...' -Color $DisabledColor
-            [void](Read-ArrowKey)
+            [void][System.Console]::ReadKey($true)
             return
         }
 
@@ -418,14 +419,15 @@ function Invoke-LocationGraphWorkflow {
             }
         }
 
-        $SelectedRow = Show-ResultTable -Data @($TableData) `
+        $TableComponent = New-ResultTableComponent -Data @($TableData) `
             -Columns @('Name', 'Degree', 'Coords', 'Entity') `
             -Headers @('Lokacja', 'In/Out', 'Koordynaty', 'Encja') `
             -Widths @(25, 8, 12, 20) `
             -Title 'Graf lokacji - węzły'
+        $SelectedRow = Invoke-EngineLifecycle -Component $TableComponent -State $State
 
-        if ($SelectedRow) {
-            Show-DetailCard -Row $SelectedRow -Title 'Szczegóły węzła'
+        if ($SelectedRow -and $SelectedRow -ne '__back__' -and $SelectedRow -ne '__quit__') {
+            Invoke-EngineDetailCard -Data $SelectedRow -Title 'Szczegóły węzła' -State $State
         }
     }
     catch {
@@ -434,7 +436,7 @@ function Invoke-LocationGraphWorkflow {
     }
 
     Write-CLILine -Text 'Naciśnij dowolny klawisz...' -Color $DisabledColor
-    [void](Read-ArrowKey)
+    [void][System.Console]::ReadKey($true)
 }
 
 function Invoke-CompareParticipationWorkflow {
@@ -467,7 +469,7 @@ function Invoke-CompareParticipationWorkflow {
         Write-CLILine -Text 'Wymagane minimum 2 encje.' -Color $WarningColor
         Write-Host ''
         Write-CLILine -Text 'Naciśnij dowolny klawisz...' -Color $DisabledColor
-        [void](Read-ArrowKey)
+        [void][System.Console]::ReadKey($true)
         return
     }
 
@@ -504,7 +506,7 @@ function Invoke-CompareParticipationWorkflow {
 
     Write-Host ''
     Write-CLILine -Text 'Naciśnij dowolny klawisz...' -Color $DisabledColor
-    [void](Read-ArrowKey)
+    [void][System.Console]::ReadKey($true)
 }
 
 function Invoke-SessionLeaderboardWorkflow {
@@ -559,13 +561,14 @@ function Invoke-SessionLeaderboardWorkflow {
                     T2     = $_.Tier2
                 }
             }
-            $SelectedRow = Show-ResultTable -Data @($TableData) `
+            $TableComponent = New-ResultTableComponent -Data @($TableData) `
                 -Columns @('Poz', 'Nazwa', 'Typ', 'Sesji', 'T0', 'T1', 'T2') `
                 -Headers @('#', 'Nazwa', 'Typ', 'Sesji', 'T0', 'T1', 'T2') `
                 -Widths @(4, 25, 10, 6, 4, 4, 4) `
                 -Title 'Ranking uczestnictwa'
-            if ($SelectedRow) {
-                Show-DetailCard -Row $SelectedRow -Title 'Szczegóły'
+            $SelectedRow = Invoke-EngineLifecycle -Component $TableComponent -State $State
+            if ($SelectedRow -and $SelectedRow -ne '__back__' -and $SelectedRow -ne '__quit__') {
+                Invoke-EngineDetailCard -Data $SelectedRow -Title 'Szczegóły' -State $State
             }
         }
     }
@@ -575,7 +578,7 @@ function Invoke-SessionLeaderboardWorkflow {
 
     Write-Host ''
     Write-CLILine -Text 'Naciśnij dowolny klawisz...' -Color $DisabledColor
-    [void](Read-ArrowKey)
+    [void][System.Console]::ReadKey($true)
 }
 
 function Invoke-SessionGraphWorkflow {
@@ -686,13 +689,14 @@ function Invoke-SessionGraphWorkflow {
                     Waga   = if ($null -ne $_.EntityWeight) { $_.EntityWeight } else { '-' }
                 }
             }
-            $SelectedRow = Show-ResultTable -Data @($TableData) `
+            $TableComponent = New-ResultTableComponent -Data @($TableData) `
                 -Columns @('Data', 'Sesja', 'Format', 'Tier', 'Waga') `
                 -Headers @('Data', 'Sesja', 'Format', 'Tier', 'Waga') `
                 -Widths @(12, 35, 6, 5, 6) `
                 -Title "Sesje: $EntityName"
-            if ($SelectedRow) {
-                Show-DetailCard -Row $SelectedRow -Title 'Szczegóły sesji'
+            $SelectedRow = Invoke-EngineLifecycle -Component $TableComponent -State $State
+            if ($SelectedRow -and $SelectedRow -ne '__back__' -and $SelectedRow -ne '__quit__') {
+                Invoke-EngineDetailCard -Data $SelectedRow -Title 'Szczegóły sesji' -State $State
             }
         }
         elseif ($Mode -eq 'CoParticipants') {
@@ -703,13 +707,14 @@ function Invoke-SessionGraphWorkflow {
                     WspólneSesje   = $_.SharedSessions
                 }
             }
-            $SelectedRow = Show-ResultTable -Data @($TableData) `
+            $TableComponent = New-ResultTableComponent -Data @($TableData) `
                 -Columns @('Nazwa', 'Typ', 'WspólneSesje') `
                 -Headers @('Nazwa', 'Typ', 'Wspólne sesje') `
                 -Widths @(25, 12, 14) `
                 -Title "Współuczestnicy: $EntityName"
-            if ($SelectedRow) {
-                Show-DetailCard -Row $SelectedRow -Title 'Szczegóły'
+            $SelectedRow = Invoke-EngineLifecycle -Component $TableComponent -State $State
+            if ($SelectedRow -and $SelectedRow -ne '__back__' -and $SelectedRow -ne '__quit__') {
+                Invoke-EngineDetailCard -Data $SelectedRow -Title 'Szczegóły' -State $State
             }
         }
         elseif ($Mode -eq 'EntityTimeline') {
@@ -722,13 +727,14 @@ function Invoke-SessionGraphWorkflow {
                     Waga   = if ($null -ne $_.Weight) { $_.Weight } else { '-' }
                 }
             }
-            $SelectedRow = Show-ResultTable -Data @($TableData) `
+            $TableComponent = New-ResultTableComponent -Data @($TableData) `
                 -Columns @('Nazwa', 'Typ', 'Tier', 'Źródło', 'Waga') `
                 -Headers @('Nazwa', 'Typ', 'Tier', 'Źródło', 'Waga') `
                 -Widths @(25, 12, 5, 10, 6) `
                 -Title "Uczestnicy sesji"
-            if ($SelectedRow) {
-                Show-DetailCard -Row $SelectedRow -Title 'Szczegóły'
+            $SelectedRow = Invoke-EngineLifecycle -Component $TableComponent -State $State
+            if ($SelectedRow -and $SelectedRow -ne '__back__' -and $SelectedRow -ne '__quit__') {
+                Invoke-EngineDetailCard -Data $SelectedRow -Title 'Szczegóły' -State $State
             }
         }
     }
@@ -738,5 +744,5 @@ function Invoke-SessionGraphWorkflow {
     }
 
     Write-CLILine -Text 'Naciśnij dowolny klawisz...' -Color $DisabledColor
-    [void](Read-ArrowKey)
+    [void][System.Console]::ReadKey($true)
 }
