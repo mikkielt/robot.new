@@ -31,7 +31,9 @@ The session participation graph records which entities (characters, NPCs, locati
 
 ### Narrator
 
-- Does not interact with the participation graph directly
+- Queries entity session profiles to understand character history
+- Views narrator session statistics to review own sessions
+- Compares participation of multiple entities to analyze relationships
 - Session file placements and metadata (PU, @Zmiany, @Transfer) are automatically analyzed
 
 ## Inputs Required
@@ -81,6 +83,33 @@ Shows all entities that participated in a specific session, with their detection
 ### Summary Statistics
 
 Shows aggregate statistics: total sessions indexed, total participations, breakdown by detection level, and distribution across format generations.
+
+### Entity Session Profile
+
+A single-call comprehensive profile for an entity: total sessions, date range, tier breakdown, total PU weight, top 5 co-participants, and monthly activity trend. Ideal for quickly understanding a character's full session history.
+
+### Narrator Session Profile
+
+Statistics for a narrator: how many sessions they narrated, date range, unique participants, participant type distribution, and average party size. Answers "what is my track record as narrator?"
+
+### Participation Comparison
+
+Compares 2+ entities: finds sessions they share, sessions exclusive to each, and pairwise overlap percentages. Answers "how much do these characters' stories intertwine?"
+
+### Participation Leaderboard
+
+Entities ranked by session count with tier breakdown. Filters by entity type and date range. Answers "who are the most active characters/locations/NPCs?"
+
+## Verifying Index Integrity
+
+The integrity check (`Test-SessionGraphIntegrity`) validates the index against current repository state:
+
+- **Stale name version**: entity names changed since last build (Tier 2 matches may be wrong)
+- **Orphaned sessions**: indexed sessions no longer in the repository
+- **Missing sessions**: repository sessions not yet indexed
+- **Empty sessions**: indexed sessions with zero participants
+
+Run this check before trusting graph results, especially after entity changes or session edits.
 
 ## Keeping the Index Current
 

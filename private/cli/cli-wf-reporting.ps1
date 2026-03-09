@@ -437,6 +437,147 @@ function Invoke-LocationGraphWorkflow {
     [void](Read-ArrowKey)
 }
 
+function Invoke-CompareParticipationWorkflow {
+    param([object]$State, [hashtable]$Entry)
+
+    $AccentColor   = Get-CLIColor -Role 'Accent'
+    $DisabledColor = Get-CLIColor -Role 'Disabled'
+    $WarningColor  = Get-CLIColor -Role 'Warning'
+
+    Write-CLILine -Text 'Porównanie uczestnictwa' -Color $AccentColor
+    Write-Host ''
+
+    # Collect entity names (at least 2)
+    $EntityNames = [System.Collections.Generic.List[string]]::new()
+    while ($true) {
+        $Label = if ($EntityNames.Count -lt 2) { "Encja $($EntityNames.Count + 1) (wymagana)" } else { "Encja $($EntityNames.Count + 1) (Enter = koniec)" }
+        $NameStep = [PSCustomObject]@{
+            Name = 'EntityName'; Label = $Label; StepType = 'text'
+            Required = ($EntityNames.Count -lt 2)
+            Source = $null; Options = $null; SubSteps = $null; EntrySource = $null
+            Condition = $null; Transform = $null; Default = $null
+        }
+        $Name = Invoke-WizardStep -Step $NameStep -State $State
+        if ($Name -eq '__back__') { return }
+        if (-not $Name -or $Name.Trim().Length -eq 0) { break }
+        [void]$EntityNames.Add($Name.Trim())
+    }
+
+    if ($EntityNames.Count -lt 2) {
+        Write-CLILine -Text 'Wymagane minimum 2 encje.' -Color $WarningColor
+        Write-Host ''
+        Write-CLILine -Text 'Naciśnij dowolny klawisz...' -Color $DisabledColor
+        [void](Read-ArrowKey)
+        return
+    }
+
+    Write-Host '  Porównywanie...' -ForegroundColor $DisabledColor
+
+    try {
+        $Result = Compare-SessionParticipation -EntityNames @($EntityNames) -Quiet
+
+        Write-Host ''
+        Write-CLILine -Text "  Wspólne sesje: $($Result.CommonSessions.Count)" -Color $AccentColor
+
+        foreach ($Name in $EntityNames) {
+            $ExCount = $Result.ExclusiveSessions[$Name].Count
+            Write-CLILine -Text "  Unikalne dla $Name`: $ExCount" -Color $AccentColor
+        }
+
+        Write-Host ''
+        Write-CLILine -Text '  Macierz pokrycia:' -Color $AccentColor
+        foreach ($Row in $Result.OverlapMatrix) {
+            Write-CLILine -Text "    $($Row.EntityA) ↔ $($Row.EntityB): $($Row.SharedCount) wspólnych ($($Row.OverlapPct)%)" -Color $DisabledColor
+        }
+
+        if ($Result.CommonSessions.Count -gt 0) {
+            Write-Host ''
+            Write-CLILine -Text '  Wspólne sesje:' -Color $AccentColor
+            foreach ($H in $Result.CommonSessions) {
+                Write-CLILine -Text "    $H" -Color $DisabledColor
+            }
+        }
+    }
+    catch {
+        Write-CLILine -Text "Błąd: $_" -Color (Get-CLIColor -Role 'Error')
+    }
+
+    Write-Host ''
+    Write-CLILine -Text 'Naciśnij dowolny klawisz...' -Color $DisabledColor
+    [void](Read-ArrowKey)
+}
+
+function Invoke-SessionLeaderboardWorkflow {
+    param([object]$State, [hashtable]$Entry)
+
+    $AccentColor   = Get-CLIColor -Role 'Accent'
+    $DisabledColor = Get-CLIColor -Role 'Disabled'
+    $WarningColor  = Get-CLIColor -Role 'Warning'
+
+    Write-CLILine -Text 'Ranking uczestnictwa' -Color $AccentColor
+    Write-Host ''
+
+    # Optional entity type filter
+    $TypeStep = [PSCustomObject]@{
+        Name = 'EntityType'; Label = 'Typ encji (opcjonalny)'; StepType = 'choice'; Required = $false
+        Source = $null; Options = @('Wszystkie', 'Postać', 'NPC', 'Lokacja', 'Grupa')
+        SubSteps = $null; EntrySource = $null; Condition = $null; Transform = $null; Default = 'Wszystkie'
+    }
+    $TypeChoice = Invoke-WizardStep -Step $TypeStep -State $State
+    if ($TypeChoice -eq '__back__') { return }
+
+    $TopStep = [PSCustomObject]@{
+        Name = 'Top'; Label = 'Ile pozycji? (domyślnie 20)'; StepType = 'text'; Required = $false
+        Source = $null; Options = $null; SubSteps = $null; EntrySource = $null
+        Condition = $null; Transform = $null; Default = '20'
+    }
+    $TopValue = Invoke-WizardStep -Step $TopStep -State $State
+    if ($TopValue -eq '__back__') { return }
+    $TopN = if ($TopValue -and $TopValue -match '^\d+$') { [int]$TopValue } else { 20 }
+
+    Write-Host '  Budowanie rankingu...' -ForegroundColor $DisabledColor
+
+    try {
+        $Params = @{ Top = $TopN; Quiet = $true }
+        if ($TypeChoice -and $TypeChoice -ne 'Wszystkie') {
+            $Params['EntityType'] = $TypeChoice
+        }
+
+        $Result = Get-SessionGraphLeaderboard @Params
+
+        if (-not $Result -or $Result.Count -eq 0) {
+            Write-CLILine -Text 'Brak danych.' -Color $WarningColor
+        } else {
+            $TableData = $Result | ForEach-Object {
+                [PSCustomObject]@{
+                    Poz    = $_.Rank
+                    Nazwa  = $_.Name
+                    Typ    = if ($_.Type) { $_.Type } else { '-' }
+                    Sesji  = $_.SessionCount
+                    T0     = $_.Tier0
+                    T1     = $_.Tier1
+                    T2     = $_.Tier2
+                }
+            }
+            $SelectedRow = Show-ResultTable -Data @($TableData) `
+                -Columns @('Poz', 'Nazwa', 'Typ', 'Sesji', 'T0', 'T1', 'T2') `
+                -Headers @('#', 'Nazwa', 'Typ', 'Sesji', 'T0', 'T1', 'T2') `
+                -Widths @(4, 25, 10, 6, 4, 4, 4) `
+                -Title 'Ranking uczestnictwa'
+            if ($SelectedRow) {
+                Show-DetailCard -Row $SelectedRow -Title 'Szczegóły'
+            }
+        }
+    }
+    catch {
+        Write-CLILine -Text "Błąd: $_" -Color (Get-CLIColor -Role 'Error')
+    }
+
+    Write-Host ''
+    Write-CLILine -Text 'Naciśnij dowolny klawisz...' -Color $DisabledColor
+    [void](Read-ArrowKey)
+}
+
 function Invoke-SessionGraphWorkflow {
     param([object]$State, [hashtable]$Entry)
 

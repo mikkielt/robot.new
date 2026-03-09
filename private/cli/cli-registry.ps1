@@ -573,6 +573,54 @@ $script:MenuRegistry = @(
     }
 
     @{
+        ID               = 'entity-session-profile'
+        Label            = 'Profil encji w sesjach'
+        Description      = 'Pełny profil uczestnictwa encji'
+        Function         = 'Get-EntitySessionProfile'
+        Menu             = 'Raporty i Narzędzia'
+        Mode             = 'Wizard'
+        Overrides        = @{
+            'EntityName' = @{ Type = 'fuzzy'; Source = 'entities' }
+        }
+        InfoText         = @('Podsumowanie sesji, daty, tier, PU, top współuczestnicy, trend aktywności.')
+    }
+
+    @{
+        ID               = 'narrator-session-profile'
+        Label            = 'Profil narratora w sesjach'
+        Description      = 'Statystyki sesji narratora'
+        Function         = 'Get-NarratorSessionProfile'
+        Menu             = 'Raporty i Narzędzia'
+        Mode             = 'Wizard'
+        Overrides        = @{
+            'NarratorName' = @{ Type = 'fuzzy'; Source = 'players' }
+            'MinDate'      = @{ Type = 'date' }
+            'MaxDate'      = @{ Type = 'date' }
+        }
+        InfoText         = @('Ile sesji, ilu uczestników, rozkład typów, średnia wielkość grupy.')
+    }
+
+    @{
+        ID               = 'compare-participation'
+        Label            = 'Porównanie uczestnictwa'
+        Description      = 'Wspólne i unikalne sesje encji'
+        Menu             = 'Raporty i Narzędzia'
+        Mode             = 'Workflow'
+        WorkflowFunction = 'Invoke-CompareParticipationWorkflow'
+        InfoText         = @('Porównuje uczestnictwo 2+ encji: wspólne sesje, unikalne, procent pokrycia.')
+    }
+
+    @{
+        ID               = 'session-leaderboard'
+        Label            = 'Ranking uczestnictwa'
+        Description      = 'Encje wg liczby sesji'
+        Menu             = 'Raporty i Narzędzia'
+        Mode             = 'Workflow'
+        WorkflowFunction = 'Invoke-SessionLeaderboardWorkflow'
+        InfoText         = @('Ranking encji po liczbie sesji z podziałem na tier.')
+    }
+
+    @{
         ID       = 'notification-log'
         Label    = 'Powiadomienia'
         Description = 'Dziennik wysłanych powiadomień'

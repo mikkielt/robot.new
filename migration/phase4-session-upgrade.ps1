@@ -184,10 +184,28 @@ function Invoke-MigrationPhase4 {
     if ($NonGen4Count -eq 0) {
         Write-StepOK 'Wszystkie aktywne sesje już w formacie Gen4'
         Update-PhaseChecklist -State $State -Phase 4 -Item 'UpgradeDone' -Value $true
+        # Hashes still valid (no format change occurred)
+        Update-PhaseChecklist -State $State -Phase 4 -Item 'HashesRefreshed' -Value $true
+
+        # Build session graph if not already built
+        $GraphDone = $State.Phases.ContainsKey('4') -and $State.Phases['4'].ContainsKey('Checklist') -and $State.Phases['4'].Checklist.ContainsKey('SessionGraphBuilt') -and $State.Phases['4'].Checklist['SessionGraphBuilt']
+        if (-not $GraphDone -and -not $WhatIf) {
+            Write-Step -Number 4 -Text 'Budowanie grafu sesji...'
+            try {
+                $GraphResult = Set-SessionGraph -Full -Confirm:$false
+                Write-StepOK "Graf sesji: $($GraphResult.SessionsProcessed) sesji, $($GraphResult.ParticipantsFound) uczestników"
+                Update-PhaseChecklist -State $State -Phase 4 -Item 'SessionGraphBuilt' -Value $true
+            }
+            catch {
+                Write-StepWarning "Budowanie grafu sesji nie powiodło się: $_"
+            }
+        }
+
         $DedupAlsoResolved = $State.Phases.ContainsKey('4') -and $State.Phases['4'].ContainsKey('Checklist') -and $State.Phases['4'].Checklist.ContainsKey('FormatDedupResolved') -and $State.Phases['4'].Checklist['FormatDedupResolved']
-        if ($DedupAlsoResolved) {
+        $GraphBuilt = $State.Phases.ContainsKey('4') -and $State.Phases['4'].ContainsKey('Checklist') -and $State.Phases['4'].Checklist.ContainsKey('SessionGraphBuilt') -and $State.Phases['4'].Checklist['SessionGraphBuilt']
+        if ($DedupAlsoResolved -and $GraphBuilt) {
             Set-PhaseCompleted -State $State -Phase 4
-            Write-PhaseSummary -Phase 4 -Status 'Completed' -Lines @('[OK] Wszystkie aktywne sesje w Gen4', '[OK] Konflikty formatu rozwiązane')
+            Write-PhaseSummary -Phase 4 -Status 'Completed' -Lines @('[OK] Wszystkie aktywne sesje w Gen4', '[OK] Konflikty formatu rozwiązane', '[OK] Graf sesji zbudowany')
         } else {
             Set-PhaseInProgress -State $State -Phase 4
         }
@@ -491,11 +509,35 @@ function Invoke-MigrationPhase4 {
         }
     }
 
+    # Step 9: Refresh session hashes (format change invalidates Phase 1 baseline)
+    Write-Step -Number 9 -Text 'Odświeżenie hashy sesji po upgrade formatu...'
+    try {
+        Set-SessionHash -Full -Confirm:$false
+        Write-StepOK 'Hashe sesji odświeżone'
+        Update-PhaseChecklist -State $State -Phase 4 -Item 'HashesRefreshed' -Value $true
+    }
+    catch {
+        Write-StepError "Odświeżenie hashy nie powiodło się: $_"
+    }
+
+    # Step 10: Build session graph index
+    Write-Step -Number 10 -Text 'Budowanie grafu sesji...'
+    try {
+        $GraphResult = Set-SessionGraph -Full -Confirm:$false
+        Write-StepOK "Graf sesji: $($GraphResult.SessionsProcessed) sesji, $($GraphResult.ParticipantsFound) uczestników"
+        Update-PhaseChecklist -State $State -Phase 4 -Item 'SessionGraphBuilt' -Value $true
+    }
+    catch {
+        Write-StepError "Budowanie grafu sesji nie powiodło się: $_"
+    }
+
     # Phase summary and state persistence
     $DedupAlsoResolved = $State.Phases.ContainsKey('4') -and $State.Phases['4'].ContainsKey('Checklist') -and $State.Phases['4'].Checklist.ContainsKey('FormatDedupResolved') -and $State.Phases['4'].Checklist['FormatDedupResolved']
-    if ($StillNonGen4 -eq 0 -and $DedupAlsoResolved) {
+    $HashesDone = $State.Phases.ContainsKey('4') -and $State.Phases['4'].ContainsKey('Checklist') -and $State.Phases['4'].Checklist.ContainsKey('HashesRefreshed') -and $State.Phases['4'].Checklist['HashesRefreshed']
+    $GraphDone = $State.Phases.ContainsKey('4') -and $State.Phases['4'].ContainsKey('Checklist') -and $State.Phases['4'].Checklist.ContainsKey('SessionGraphBuilt') -and $State.Phases['4'].Checklist['SessionGraphBuilt']
+    if ($StillNonGen4 -eq 0 -and $DedupAlsoResolved -and $HashesDone -and $GraphDone) {
         Set-PhaseCompleted -State $State -Phase 4
-        Write-PhaseSummary -Phase 4 -Status 'Completed' -Lines @("[OK] $UpgradeCount sesji zaktualizowanych do Gen4", '[OK] Konflikty formatu rozwiązane')
+        Write-PhaseSummary -Phase 4 -Status 'Completed' -Lines @("[OK] $UpgradeCount sesji zaktualizowanych do Gen4", '[OK] Konflikty formatu rozwiązane', '[OK] Hashe sesji odświeżone', '[OK] Graf sesji zbudowany')
     } else {
         Set-PhaseInProgress -State $State -Phase 4
     }

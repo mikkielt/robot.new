@@ -110,13 +110,30 @@ function Invoke-MigrationPhase6 {
         Update-PhaseChecklist -State $State -Phase 6 -Item 'Readiness_CurrencyOK' -Value $false
     }
 
-    # Dashboard section 5: Cutover readiness criteria
+    # Dashboard section 5: Session graph integrity
+    Write-SectionHeader 'Integralność grafu sesji'
+    $GraphInteg = Test-SessionGraphIntegrity -ExcludeDirectory $script:MigrationExcludeDirs -Quiet
+    if ($GraphInteg.IndexMissing) {
+        Write-StepWarning 'Graf sesji nie został zbudowany — uruchom fazę 4'
+        Update-PhaseChecklist -State $State -Phase 6 -Item 'Readiness_SessionGraphOK' -Value $false
+    } elseif ($GraphInteg.OK) {
+        Write-StepOK 'Test-SessionGraphIntegrity: OK'
+        Update-PhaseChecklist -State $State -Phase 6 -Item 'Readiness_SessionGraphOK' -Value $true
+    } else {
+        $GraphIssueCount = $GraphInteg.OrphanedSessions.Count + $GraphInteg.MissingSessions.Count +
+                           $GraphInteg.EmptySessions.Count + $GraphInteg.StaleNameVersion.Count
+        Write-StepWarning "Test-SessionGraphIntegrity: $GraphIssueCount problemów"
+        Update-PhaseChecklist -State $State -Phase 6 -Item 'Readiness_SessionGraphOK' -Value $false
+    }
+
+    # Dashboard section 6: Cutover readiness criteria
     Write-SectionHeader 'Kryteria przełączenia'
     $Criteria = @{
         'Min. 1 pełny cykl PU bez rozbieżności'  = $State.Phases['6'].Checklist.ContainsKey('PUCycleValidated') -and $State.Phases['6'].Checklist['PUCycleValidated']
         'Wszyscy aktywni narratorzy stosują Gen4'  = $NonGen4Count -eq 0
         'Test-PUAssignment: OK = True'             = $Diag.OK
         'Test-CurrencyReconciliation: brak błędów' = $Recon.WarningCount -eq 0
+        'Test-SessionGraphIntegrity: OK'            = -not $GraphInteg.IndexMissing -and $GraphInteg.OK
     }
     Write-ChecklistReport -Checklist $Criteria -Title 'KRYTERIA PRZEŁĄCZENIA'
 

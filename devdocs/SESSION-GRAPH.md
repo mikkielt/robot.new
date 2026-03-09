@@ -12,6 +12,11 @@ This document covers the session participation graph subsystem: three-tier entit
 |---|---|---|
 | `Set-SessionGraph` | `public/workflow/set-sessiongraph.ps1` | Build/update persistent participation index |
 | `Get-SessionGraph` | `public/reporting/get-sessiongraph.ps1` | Query API with 4 output modes |
+| `Test-SessionGraphIntegrity` | `public/reporting/test-sessiongraphintegrity.ps1` | Validate index against repo state |
+| `Get-EntitySessionProfile` | `public/reporting/get-entitysessionprofile.ps1` | Comprehensive entity participation profile |
+| `Get-NarratorSessionProfile` | `public/reporting/get-narratorsessionprofile.ps1` | Narrator session statistics |
+| `Compare-SessionParticipation` | `public/reporting/compare-sessionparticipation.ps1` | Multi-entity participation comparison |
+| `Get-SessionGraphLeaderboard` | `public/reporting/get-sessiongraphleaderboard.ps1` | Entities ranked by session count |
 | `Get-FilePathInvolvement` | `private/session-graphhelpers.ps1` | Classify file path → entity category/type |
 | `ConvertTo-ParticipantRecord` | `private/session-graphhelpers.ps1` | Merge three-tier involvement for a session |
 | `Read-SessionGraphIndex` | `private/session-graphhelpers.ps1` | Load index from `_index.json` |
