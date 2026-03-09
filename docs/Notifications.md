@@ -152,6 +152,8 @@ If an Intel target name cannot be resolved to a known entity:
 - The message is skipped for that target
 - Other Intel entries in the same session are processed normally
 
+Intel uses stricter name matching than PU processing. Small typos that PU matching would tolerate via fuzzy correction will cause Intel to skip the target entirely. Narrators should ensure that Intel target names match a registered name or alias exactly, or at least closely enough for declension matching to work.
+
 ## Expected Outcomes
 
 1. **Intel reaches the right people** - group and location fan-out ensures all relevant entities are notified

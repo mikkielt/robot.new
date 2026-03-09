@@ -71,15 +71,12 @@ public/get-entity.ps1                ->  tests/get-entity.Tests.ps1
 private/charfile-helpers.ps1         ->  tests/charfile-helpers.Tests.ps1
 ```
 
-`Robot.Tests.ps1` validates module-level behavior (loading, exports).
-
 ### 4.2 Directory Structure
 
 ```
 tests/
 ├── .pesterconfig.psd1                              # Pester configuration
 ├── TestHelpers.ps1                                 # Shared utilities
-├── Robot.Tests.ps1                                 # Module-level tests
 │
 │   # Infrastructure & config
 ├── admin-config.Tests.ps1
@@ -87,6 +84,7 @@ tests/
 ├── get-reporoot.Tests.ps1
 ├── get-markdown.Tests.ps1
 ├── parse-markdownfile.Tests.ps1
+├── operation-context.Tests.ps1
 │
 │   # Entity data access
 ├── get-entity.Tests.ps1
@@ -156,6 +154,31 @@ tests/
 ├── cli-primitives.Tests.ps1
 ├── cli-registry.Tests.ps1
 ├── cli-wizard.Tests.ps1
+├── cli-engine.Tests.ps1
+├── cli-buffer.Tests.ps1
+├── cli-components.Tests.ps1
+├── cli-input.Tests.ps1
+│
+│   # Session graph
+├── get-sessiongraph.Tests.ps1
+├── set-sessiongraph.Tests.ps1
+├── test-sessiongraphintegrity.Tests.ps1
+├── get-entitysessionprofile.Tests.ps1
+├── get-narratorsessionprofile.Tests.ps1
+├── compare-sessionparticipation.Tests.ps1
+├── get-sessiongraphleaderboard.Tests.ps1
+│
+│   # Location graph
+├── koordynaty-parsing.Tests.ps1
+├── get-namedlocationreport.Tests.ps1
+├── get-locationgraph.Tests.ps1
+├── get-locationgraph-integration.Tests.ps1
+├── seasonal-and-location.Tests.ps1
+├── mapa-entity.Tests.ps1
+│
+│   # Infrastructure extras
+├── get-entity-mapa.Tests.ps1
+├── migration-phase5-location-import.Tests.ps1
 │
 │   # Plugins & migration
 ├── plugin-system.Tests.ps1
@@ -237,6 +260,10 @@ tests/
     ├── charfile-rich.md                            # Rich content character
     ├── charfile-set-pc.md                          # Set-PlayerCharacter test data
     ├── charfile-unicode.md                         # Unicode in character data
+    │
+    │   # Location graph
+    ├── entities-koordynaty.md                      # Coordinate parsing test data
+    ├── sessions-route-edges.md                     # Route edge extraction test data
     │
     │   # Other
     ├── minimal-entity.md                           # Minimal entity for writes
@@ -325,6 +352,34 @@ BeforeAll {
 ```powershell
 $Result = & "$script:ModuleRoot/private/parse-markdownfile.ps1" $FixturePath
 ```
+
+### Pattern E - Engine Components
+
+For testing CLI engine files in `private/cli/engine/`. Engine files depend on each other in a specific order and must be dot-sourced with their dependencies:
+
+```powershell
+BeforeAll {
+    . "$PSScriptRoot/TestHelpers.ps1"
+
+    # Dot-source dependencies in order
+    . "$script:ModuleRoot/private/cli/cli-primitives.ps1"
+    . "$script:ModuleRoot/private/cli/engine/cli-engine.ps1"
+    . "$script:ModuleRoot/private/cli/engine/cli-buffer.ps1"
+    # ... additional engine files as needed by the component under test
+
+    # Set up known screen dimensions (engine uses these module-scoped vars)
+    $script:ScreenWidth  = 80
+    $script:ScreenHeight = 24
+    Build-Regions
+}
+```
+
+Engine tests validate data structures and logic (region calculation, buffer operations, segment comparison, component state management) without actual terminal rendering. Key considerations:
+
+- Engine files use `$script:` variables for screen state (`ScreenWidth`, `ScreenHeight`, `Regions`)
+- Components are hashtables with `Render` and `HandleKey` scriptblocks
+- Tests exercise component factories (`New-MenuListComponent`, `New-ResultTableComponent`, etc.) and their state transitions
+- No mocking of `Get-RepoRoot` is needed (engine tests are pure UI logic)
 
 ---
 
@@ -445,7 +500,7 @@ Separate fixture files per format generation ensure all four formats are tested 
 ## 11. Adding Tests for New Functions
 
 1. **Create test file**: `tests/<function-name>.Tests.ps1`
-2. **Choose loading pattern**: A (exported), B (internal helpers), C (standalone helper), or D (parser)
+2. **Choose loading pattern**: A (exported), B (internal helpers), C (standalone helper), D (parser), or E (engine component)
 3. **Create fixtures** (if needed): Add to `tests/fixtures/` with minimal but complete data
 4. **Follow skeleton**: `BeforeAll` -> `Describe` -> `Context` -> `It` -> `AfterAll`
 5. **Mock `Get-RepoRoot`**: Point to fixtures (read) or temp dir (write)
@@ -454,7 +509,18 @@ Separate fixture files per format generation ensure all four formats are tested 
 
 ---
 
-## 12. Related Documents
+## 12. Statistics
+
+| Metric | Count |
+|--------|-------|
+| Test files | ~80 |
+| Test cases (`It` blocks) | ~1,660 |
+| Fixture files | ~60 |
+| Loading patterns | 5 (A: exported, B: internal+dot-source, C: standalone helper, D: parser, E: engine component) |
+
+---
+
+## 13. Related Documents
 
 - [SYNTAX.md](SYNTAX.md) - Code style conventions (applies to test code too)
 - [MIGRATION.md](MIGRATION.md) - §15 Testing section lists test coverage per area

@@ -46,6 +46,9 @@ CmdletBinding: SupportsShouldProcess, ConfirmImpact = High
 | `UpdatePlayerCharacters` | switch | Write updated PU values to `entities.md` via `Set-PlayerCharacter` |
 | `SendToDiscord` | switch | Send PU notification messages to Discord via player webhooks |
 | `AppendToLog` | switch | Append processed session headers to `pu-sessions.md` history |
+| `ReconcileCurrency` | switch | Run currency reconciliation checks after PU calculation |
+| `ExcludeDirectory` | string[] | Directories to exclude from session file scanning |
+| `Quiet` | switch | Suppress warning output to stderr |
 
 ### 2.2 `Test-PlayerCharacterPUAssignment`
 
@@ -57,7 +60,7 @@ Dot-sources: private/admin-state.ps1, private/admin-config.ps1
 CmdletBinding: default
 ```
 
-**Parameters:** `Year`, `Month`, `MinDate`, `MaxDate` (same semantics as §2.1, but no side-effect switches).
+**Parameters:** `Year`, `Month`, `MinDate`, `MaxDate` (same semantics as §2.1, but no side-effect switches), plus `ExcludeDirectory` (string[]) and `Quiet` (switch).
 
 ### 2.3 `Get-NewPlayerCharacterPUCount`
 
@@ -86,7 +89,7 @@ The 2-month lookback is intentional: sessions are sometimes documented late, and
 
 **Implementation note**: The default computation uses `[datetime]::Now.AddMonths(-2)` for MinDate and `[datetime]::new($Now.Year, $Now.Month, 1).AddDays(-1)` for MaxDate. Both bounds can be individually overridden when only one of `MinDate`/`MaxDate` is passed.
 
-**Diagnostic default range**: `Test-PlayerCharacterPUAssignment` uses a slightly different default - MinDate is 1st of the previous month (not two months ago) and MaxDate is tomorrow (`Now.AddDays(1)`). This extends the window forward to catch today's sessions.
+**Diagnostic default range**: `Test-PlayerCharacterPUAssignment` uses a slightly different default when no Year/Month or explicit dates are provided - MinDate is 1st of the previous month (not two months ago) and MaxDate is tomorrow (`Now.AddDays(1)`). This extends the window forward to catch today's sessions.
 
 ### 3.2 Git Optimization
 
@@ -131,7 +134,7 @@ Session headers already recorded in the state file (`pu-sessions.md`) are exclud
 1. Trim leading/trailing whitespace.
 2. Collapse multiple spaces to single space (via precompiled `\s{2,}` regex).
 3. Strip leading `### ` prefix for comparison.
-4. Both the stripped and unstripped forms are checked (the code tests `$ProcessedHeaders.Contains($CompareHeader) -and -not $ProcessedHeaders.Contains($NormalizedHeader)`).
+4. Both the stripped and unstripped forms are checked against the processed set. A session is considered new only if neither form matches: `-not $ProcessedHeaders.Contains($CompareHeader) -and -not $ProcessedHeaders.Contains($NormalizedHeader)`.
 
 **State file format** (`private/admin-state.ps1`):
 - Entry lines match the pattern `^\s+-\s+###\s+(.+)$` (precompiled regex `$script:HistoryEntryPattern`).
@@ -287,7 +290,7 @@ Numeric values use `F2` format with `InvariantCulture` (period decimal separator
 
 Multiple characters for the same player are separated by `\n\n` (blank line).
 
-**Message construction**: Uses `StringBuilder` with initial capacity 256 for each character's message, then joins with `\n\n`.
+**Message construction**: Uses `Get-AdminTemplate` with template files (`pu-notification-base.txt.template`, `pu-notification-overflow.txt.template`, `pu-notification-remaining.txt.template`) for each character's message. Multiple characters for the same player are joined with `\n\n`.
 
 **Bot username**: `Bothen` (hardcoded in the pipeline; note: `Get-AdminConfig` resolves a `BotUsername` from config but it is not used by PU assignment).
 
@@ -313,6 +316,10 @@ Headers are sorted chronologically using `[StringComparer]::Ordinal` (string-lex
 **File creation**: If `pu-sessions.md` doesn't exist, it is created with the preamble: `"W tym pliku znajduje się lista sesji przetworzonych przez system.\n\n## Historia\n\n"`.
 
 **File location**: `$Config.ResDir` -> `<RepoRoot>/.robot/res/pu-sessions.md`.
+
+### 6.4 ReconcileCurrency
+
+Runs `Test-CurrencyReconciliation` on the sessions used in the pipeline. Results are logged to stderr and attached to the assignment results via `Add-Member -NotePropertyName 'CurrencyReconciliation'`.
 
 ---
 

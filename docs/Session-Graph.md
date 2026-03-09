@@ -102,7 +102,7 @@ Entities ranked by session count with tier breakdown. Filters by entity type and
 
 ## Verifying Index Integrity
 
-The integrity check (`Test-SessionGraphIntegrity`) validates the index against current repository state:
+The integrity check validates the index against the current repository state, looking for:
 
 - **Stale name version**: entity names changed since last build (Tier 2 matches may be wrong)
 - **Orphaned sessions**: indexed sessions no longer in the repository
@@ -120,6 +120,8 @@ The index needs to be rebuilt when:
 - New entities are added to the entity store (the system detects name set changes and triggers a full rebuild automatically)
 
 Incremental updates only reprocess sessions affected by recent changes, making routine updates fast. If the system detects that the set of known entity names has changed, it automatically performs a full rebuild to ensure text mentions are re-evaluated against the updated name list.
+
+Additionally, when a session is edited through the system, an eager refresh automatically updates the file-placement and structured-metadata tiers (high confidence and structured data) for the affected session in the graph index. This keeps the index up-to-date for day-to-day edits without requiring a full rebuild. The text-mention tier is not refreshed eagerly -- a full rebuild is needed to update those matches.
 
 ## Expected Outcomes
 

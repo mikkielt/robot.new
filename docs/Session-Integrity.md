@@ -160,11 +160,11 @@ Session headers with dates set after today. Sessions should only record events t
 
 | Situation | What happens | Recovery |
 |---|---|---|
-| **First run with no hash store** | All files reported as "Missing Hash Files" | Run `Set-SessionHash -Full` to create the initial baseline |
-| **Legitimate session edit after hashing** | Modified session flagged | Verify the edit was authorized, then re-run `Set-SessionHash -File <path>` |
-| **New session file added** | Missing hash file reported | Run `Set-SessionHash -File <path>` for the new file |
+| **First run with no hash store** | All files reported as "Missing Hash Files" | Run a full hash build to create the initial baseline |
+| **Legitimate session edit after hashing** | Modified session flagged | Verify the edit was authorized, then re-hash the affected file |
+| **New session file added** | Missing hash file reported | Hash the new file to add it to the store |
 | **Git changelog unavailable** | Incremental mode falls back to full scan | No action needed — automatic fallback |
-| **Corrupt hash sidecar file** | Treated as empty — all headers flagged as new | Re-run `Set-SessionHash -File <path>` to regenerate |
+| **Corrupt hash sidecar file** | Treated as empty — all headers flagged as new | Re-hash the affected file to regenerate |
 | **PU-affected finding** | Session with PU data was modified | Investigate immediately — compare current vs. expected PU values before proceeding |
 | **Duplicate PU markers** | Session has 2+ PU blocks | Investigate for tampering — remove the duplicate section and re-hash |
 | **Future-dated session** | Session date is after today | Verify with the narrator — correct the date if it was a mistake |

@@ -180,7 +180,7 @@ After player and character management operations:
 ## Audit Trail / Evidence of Completion
 
 - **Entity store changes**: All player and character updates are committed to the repository, providing full Git history
-- **Character files**: Individual files in `Postaci/Gracze/` track character-level changes
+- **Character files**: Each character's individual file tracks character-level changes (condition, items, reputation)
 - **Discord notifications**: Players receive confirmation of PU updates
 
 ## Related Documents

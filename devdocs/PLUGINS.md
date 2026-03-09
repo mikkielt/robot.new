@@ -6,7 +6,7 @@
 
 ## 1. Scope
 
-This document covers the plugin system for extending Robot module functionality without modifying core code: `private/plugin-loader.ps1` (discovery, manifest validation, dependency resolution, function loading), `private/plugin-hooks.ps1` (hook registry, invocation, handler contract), and the plugin loading phase in `robot.psm1`.
+This document covers the plugin system for extending Robot module functionality without modifying core code: `private/plugin-loader.ps1` (discovery, manifest validation, dependency resolution, function loading), `private/plugin-hooks.ps1` (hook registry, invocation, handler contract), the plugin loading phase in `robot.psm1`, and the exported management functions `Get-PluginConfig` and `Get-LoadedPlugins` (defined inline in `robot.psm1`).
 
 **Not covered**: Individual plugin implementations. Core entity write operations - see [ENTITY-WRITES.md](ENTITY-WRITES.md). Configuration resolution for the core module - see [CONFIG-STATE.md](CONFIG-STATE.md).
 

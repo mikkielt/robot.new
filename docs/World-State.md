@@ -236,9 +236,9 @@ The entity's `Name` stays as the Margonem game name. The Nerthus name is added t
 
 ### Map Entities (Mapa) vs Location Entities (Lokacja)
 
-**Mapa** entities represent individual game maps — each floor, interior, or instance from the Margonem map registry. Every Mapa entity carries a unique `@margonemid`, a map type (`@typ: zewnętrzna` or `wewnętrzna`), a CDN image URL (`@url`), and tile dimensions (`@wymiary`). Mapa entities are stored in a dedicated overflow file (`maps-100-ent.md`) due to their volume (~2,704 entries).
+**Mapa** entities represent individual game maps — each floor, interior, or instance from the Margonem map registry. Every Mapa entity carries a unique game map ID, a map type (outdoor or indoor), a CDN image URL, and tile dimensions. Mapa entities are stored in a dedicated overflow file due to their volume (~2,704 entries).
 
-**Lokacja** entities represent conceptual places in the game world — deduplicated location names derived from the Mapa hierarchy. A single Lokacja (e.g., "Gwiżdżąca Grota") may correspond to many Mapa entities (one per floor or variant). Lokacja entities live in `entities.md`.
+**Lokacja** entities represent conceptual places in the game world — deduplicated location names derived from the Mapa hierarchy. A single Lokacja (e.g., "Gwiżdżąca Grota") may correspond to many Mapa entities (one per floor or variant). Lokacja entities live in the main entity store.
 
 Both Mapa and Lokacja entities participate in the location hierarchy via `@lokacja` — they can have a parent location, door connections, and Nerthus names. When two maps share the same name (e.g., multiple "Apartament" in different buildings), each can be given a unique slug to distinguish them.
 
@@ -320,7 +320,7 @@ The system combines data from three sources to build the complete picture:
 
 | Source | What it provides | Temporal behavior |
 |---|---|---|
-| **Entity store** (entities.md) | Registered entities with their base properties | Properties can be time-scoped |
+| **Entity store** | Registered entities with their base properties | Properties can be time-scoped |
 | **Session changes** (`@Zmiany`) | Updates from gameplay sessions | Automatically dated to the session date |
 | **Character files** (for player characters) | Character sheet, condition, items, reputation | Undated baseline (always active) |
 

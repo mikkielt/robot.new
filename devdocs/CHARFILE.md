@@ -35,7 +35,7 @@ Character files use bold-header sections (`**Header:**`) as their organizing pri
     - Detail about Location3
 - Negatywna: Brak.
 
-**Dodatkowe notatki:**
+**Dodatkowe informacje:**
 - Note1
 - Note2
 
@@ -54,7 +54,7 @@ Locates a `**Header:**` section in the file lines.
 
 **Detection**: Regex pattern matching `**Header:**` bold-header format and `###` level-3 headers.
 
-**Returns**: `{ StartIdx, EndIdx }` - the content range between this header and the next (or EOF). Trailing blank lines are trimmed.
+**Returns**: `{ HeaderIdx, InlineContent, ContentStart, ContentEnd }` - the content range between this header and the next (or EOF). `InlineContent` captures text on the same line as the header (e.g. `**Karta Postaci:** <url>`). Trailing blank lines are trimmed from the `ContentStart..ContentEnd` range.
 
 ### 3.2 `Read-CharacterFile`
 
@@ -64,12 +64,12 @@ Parses an entire character file into a structured object.
 
 | Section header | Property | Type |
 |---|---|---|
-| `Karta postaci` | `CharacterSheet` | string (URL) |
+| `Karta Postaci` | `CharacterSheet` | string (URL) |
 | `Tematy zastrzeżone` / `Tematy zastrzezone` | `RestrictedTopics` | string |
 | `Stan` | `Condition` | string |
 | `Przedmioty specjalne` | `SpecialItems` | string[] |
 | `Reputacja` | `Reputation` | `{ Positive, Neutral, Negative }` |
-| `Dodatkowe notatki` | `AdditionalNotes` | string[] |
+| `Dodatkowe informacje` | `AdditionalNotes` | string[] |
 | `Opisane sesje` | `DescribedSessions` | object[] (read-only) |
 
 **Special handling**:
@@ -103,7 +103,24 @@ Replaces the content of a single bold-header section in-place.
 
 Uses `List[string]` mutation (same pattern as entity write helpers).
 
-### 3.5 `Format-ReputationSection` *(in `private/charfile-reputation.ps1`)*
+### 3.5 `Write-CharacterFile`
+
+Writes a character file to disk with plugin hook integration. Mirrors the `Write-EntityFile` pattern from `entity-writehelpers.ps1`.
+
+| Parameter | Type | Description |
+|---|---|---|
+| `Path` | string | **Mandatory**. Absolute path to the character file. |
+| `Content` | string | **Mandatory**. Complete file content to write. |
+
+**Behavior**:
+1. Invokes `Invoke-PluginHook -Operation 'Write-CharacterFile' -Phase 'BeforeWrite'` (if plugin system loaded)
+2. Writes content via `[System.IO.File]::WriteAllText()` with `UTF8Encoding(false)` (no BOM)
+3. Calls `Add-OperationFile` to register the file path (if operation context available)
+4. Invokes `Invoke-PluginHook -Operation 'Write-CharacterFile' -Phase 'AfterWrite'`
+
+**Operation context integration**: Checks `$script:HasOpCtx` (set at file load time by probing for `Add-OperationFile` command availability). When available, the written file path is tracked in the operation accumulators.
+
+### 3.6 `Format-ReputationSection` *(in `private/charfile-reputation.ps1`)*
 
 Renders the three-tier reputation structure as Markdown lines.
 
@@ -123,7 +140,7 @@ Located in `.robot.new/templates/`:
 |---|---|
 | `player-character-file.md.template` | New character file skeleton |
 | `player-entry.md.template` | Entity entry template (parsed by `ConvertFrom-EntityTemplate`) |
-| `entities-skeleton.md.template` | Initial `entities.md` structure (6 section headers) |
+| `entities-skeleton.md.template` | Initial `entities.md` structure (7 section headers) |
 | `currency-entity.md.template` | New currency entity bullet structure |
 | `pu-notification-base.txt.template` | PU Discord notification - always present |
 | `pu-notification-overflow.txt.template` | PU notification - overflow supplement consumed |
@@ -186,9 +203,10 @@ Character file path is auto-resolved from `Get-PlayerCharacter` or overridden wi
 
 | Variable | Source File | Purpose |
 |---|---|---|
-| `$CharSectionPattern` | `charfile-helpers.ps1` | Matches `**Header:**` bold-header format |
-| `$ReputationTierPattern` | `charfile-reputation.ps1` | Matches reputation tier labels (Pozytywna/Neutralna/Negatywna) |
+| `$CharSectionPattern` | `charfile-helpers.ps1` | Matches `**Header:**` bold-header format with optional inline content |
+| `$SessionHeaderPattern_CF` | `charfile-helpers.ps1` | Matches `### YYYY-MM-DD, Title, Narrator` session headers in character files |
 | `$LocationDetailPattern` | `charfile-helpers.ps1` | Extracts `Location (detail)` or `Location: detail` |
+| `$ReputationTierPattern` | `charfile-reputation.ps1` | Matches reputation tier labels (Pozytywna/Neutralna/Negatywna) with `IgnoreCase` |
 
 ---
 
@@ -219,4 +237,4 @@ Character file path is auto-resolved from `Get-PlayerCharacter` or overridden wi
 
 - [ENTITY-WRITES.md](ENTITY-WRITES.md) - Entity-level write operations (Target 1)
 - [ENTITIES.md](ENTITIES.md) - Three-layer state merge (character file is Layer 1)
-- [CONFIG-STATE.md](CONFIG-STATE.md) - Template loading via `Get-AdminTemplate`
+- [CONFIG-STATE.md](CONFIG-STATE.md) - Template loading via `Get-AdminTemplate`, operation context for `Write-CharacterFile`

@@ -104,7 +104,7 @@ The coordinator secures the current state before any changes, then generates the
 2. **Create safety tag** (`pre-migration`) - provides a rollback point to the exact pre-migration state
 3. **Verify PU state file** - the processing history file (`pu-sessions.md`) is preserved and continues to be used
 4. **Verify submodule** - `.robot.new` must be registered as a git submodule
-5. **Verify module** - confirm all commands are available (~32 exported)
+5. **Verify module** - confirm all commands are available
 6. **Create data manifest** - `.robot/robot-data.psd1` ensures all commands write to the correct `entities.md` location
 7. **Generate entity store** - reads all current player and character data from the existing player database and writes it into `entities.md`. The system creates one new file containing all players, their characters, and associated metadata (PU values, aliases, group memberships). The original player database remains untouched. Additional entity sections (NPC, Group, Location, Item) are added for future use.
 
@@ -181,7 +181,7 @@ Non-location exclusions are stored in `.robot/res/location-exclusions.txt` and p
 
 The currency system is an entirely new capability. This phase sets up the initial state (`phase5-currency.ps1`):
 
-1. **Coordinator treasury** - a group entity (`Skarbiec Koordynatorow`) with initial reserves in three denominations:
+1. **Coordinator treasury** - a group entity (`Skarbiec Koordynatorów`) with initial reserves in three denominations:
    - **Korona** (gold) - 1 Korona = 100 Talarow
    - **Talar** (silver) - 1 Talar = 100 Kogow
    - **Kog** (copper) - base unit

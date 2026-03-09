@@ -23,7 +23,7 @@ This document covers the session integrity subsystem: SHA256 content hashing for
 
 `Set-SessionHash` is a write command (`SupportsShouldProcess`). `Test-SessionIntegrity` is read-only.
 
-**Not covered**: PU assignment logic (`Invoke-PlayerCharacterPUAssignment`) — see [PU.md](PU.md). Session parsing (`Get-Session`) — see [SESSIONS.md](SESSIONS.md).
+**Not covered**: PU assignment logic (`Invoke-PlayerCharacterPUAssignment`) -- see [PU.md](PU.md). Session parsing (`Get-Session`) -- see [SESSIONS.md](SESSIONS.md).
 
 ---
 
@@ -32,13 +32,13 @@ This document covers the session integrity subsystem: SHA256 content hashing for
 ```
 private/session-hashhelpers.ps1       Hashing primitives (non-Verb-Noun, dot-sourced)
 ├── Get-ContentHash                   SHA256(whitespace-strip(content))
-├── Get-FileHeaderHashes              Markdown result → Dict[header, hash]
-├── Read-SessionHashFile              JSON sidecar → Dict[header, hash]
-├── Write-SessionHashFile             Dict[header, hash] → JSON sidecar
-├── Read-SessionHashMeta              _meta.json → hashtable
-├── Write-SessionHashMeta             hashtable → _meta.json
-├── Get-HashableFiles                 RepoRoot → List[filePath] (exclusion-filtered)
-└── Get-RelativeHashPath              Absolute path → repo-relative forward-slash path
+├── Get-FileHeaderHashes              Markdown result -> Dict[header, hash]
+├── Read-SessionHashFile              JSON sidecar -> Dict[header, hash]
+├── Write-SessionHashFile             Dict[header, hash] -> JSON sidecar
+├── Read-SessionHashMeta              _meta.json -> hashtable
+├── Write-SessionHashMeta             hashtable -> _meta.json
+├── Get-HashableFiles                 RepoRoot -> List[filePath] (exclusion-filtered)
+└── Get-RelativeHashPath              Absolute path -> repo-relative forward-slash path
 
 public/workflow/set-sessionhash.ps1   Hash writer (exported, SupportsShouldProcess)
 └── dot-sources: session-hashhelpers.ps1, admin-config.ps1
@@ -71,7 +71,7 @@ Each `.json` sidecar contains an object where keys are full header lines (e.g., 
 3. Encode the result as UTF-8 (no BOM)
 4. Compute SHA256 and return as lowercase 64-character hex string
 
-This normalization ensures formatting-only changes (extra blank lines, trailing spaces, CRLF↔LF conversion) do not cause false positives, while genuine content changes are always detected.
+This normalization ensures formatting-only changes (extra blank lines, trailing spaces, CRLF<->LF conversion) do not cause false positives, while genuine content changes are always detected.
 
 ---
 
@@ -93,7 +93,7 @@ This normalization ensures formatting-only changes (extra blank lines, trailing 
 
 ### 3.3 Output
 
-Returns a `[string]` — 64-character lowercase hex SHA256 hash.
+Returns a `[string]` -- 64-character lowercase hex SHA256 hash.
 
 ---
 
@@ -117,7 +117,7 @@ Returns a `[string]` — 64-character lowercase hex SHA256 hash.
 
 ### 4.3 Output
 
-Returns `Dictionary[string, string]` — keys are full header lines, values are SHA256 hashes. Empty dictionary if no headers found.
+Returns `Dictionary[string, string]` -- keys are full header lines, values are SHA256 hashes. Empty dictionary if no headers found.
 
 ---
 
@@ -194,7 +194,7 @@ Timestamps use `yyyy-MM-dd HH:mm:ss` format (not ISO 8601) to prevent `ConvertFr
 
 ### 7.3 Algorithm
 
-1. Resolve symlinks via `[System.IO.Path]::GetFullPath` (handles macOS `/var` → `/private/var`)
+1. Resolve symlinks via `[System.IO.Path]::GetFullPath` (handles macOS `/var` -> `/private/var`)
 2. Enumerate all `*.md` files recursively via `[System.IO.Directory]::GetFiles`
 3. For each file, compute relative path from repo root
 4. Split into directory components; skip if any component starts with `.` or equals `Nerthus` (case-insensitive)
@@ -203,7 +203,7 @@ Timestamps use `yyyy-MM-dd HH:mm:ss` format (not ISO 8601) to prevent `ConvertFr
 
 ### 7.4 Output
 
-Returns `List[string]` — absolute paths to hashable `.md` files.
+Returns `List[string]` -- absolute paths to hashable `.md` files.
 
 ---
 
@@ -234,18 +234,19 @@ Returns `List[string]` — absolute paths to hashable `.md` files.
 | `File` | string[] | No | Limit to specific file path(s) |
 | `Since` | string | No | Only process files changed since this date |
 | `ExcludeDirectory` | string[] | No | Directories to exclude from scanning |
+| `Quiet` | switch | No | Suppress warning output to stderr |
 
 ### 9.2 File Selection Logic
 
 ```
 $File specified?
-  └─ Yes → use explicit file list
-  └─ No → $Full?
-       └─ Yes → Get-HashableFiles (all eligible .md files)
-       └─ No  → Incremental mode:
-            ├─ $Since or _meta.json LastIncrementalUpdate → Get-GitChangeLog
-            ├─ Filter to hashable files
-            └─ Fallback to full scan if no timestamp or git fails
+  +-- Yes -> use explicit file list (resolve relative to RepoRoot if needed)
+  +-- No -> $Full?
+       +-- Yes -> Get-HashableFiles (all eligible .md files)
+       +-- No  -> Incremental mode:
+            +-- $Since or _meta.json LastIncrementalUpdate -> Get-GitChangeLog
+            +-- Filter to hashable files (intersection with Get-HashableFiles)
+            +-- Fallback to full scan if no timestamp or git fails
 ```
 
 ### 9.3 Algorithm
@@ -255,7 +256,7 @@ $File specified?
 3. Determine files to process (see File Selection Logic above)
 4. Batch-parse all files via `Get-Markdown -File @($FilesToProcess)`
 5. For each parsed result:
-   a. Compute relative path → JSON sidecar path
+   a. Compute relative path -> JSON sidecar path
    b. Compute current hashes via `Get-FileHeaderHashes`
    c. Load existing hashes via `Read-SessionHashFile`
    d. Count new vs updated hashes
@@ -283,6 +284,7 @@ $File specified?
 | `File` | string[] | No | Limit validation to specific file path(s) |
 | `Since` | string | No | Check only files changed since this date |
 | `ExcludeDirectory` | string[] | No | Directories to exclude from scanning |
+| `Quiet` | switch | No | Suppress warning output to stderr |
 
 File selection logic is identical to `Set-SessionHash` (section 9.2).
 
@@ -296,7 +298,7 @@ File selection logic is identical to `Set-SessionHash` (section 9.2).
 | 4 | Missing Hash Files | Medium | `.md` file has no corresponding `.json` sidecar |
 | 5 | Malformed Headers | Medium | Level-3 header fails date parsing |
 | 6 | PU-Affected Sessions | Critical | Modified session contains `@PU:` data |
-| 7 | Duplicate PU Markers | Critical | Session has 2+ `@PU:` section markers |
+| 7 | Duplicate PU Markers | Critical | Modified session has 2+ `@PU:` section markers |
 | 8 | Format Anomalies | Low | Date-like line without `###` header prefix |
 | 9 | Future-Dated Sessions | Medium | Session header date is after today |
 
@@ -306,13 +308,13 @@ File selection logic is identical to `Set-SessionHash` (section 9.2).
 2. Resolve config and determine files to check (same file selection logic)
 3. Batch-parse all files via `Get-Markdown`
 4. For each file:
-   a. Compute relative path → JSON sidecar path
+   a. Compute relative path -> JSON sidecar path
    b. **If no hash file exists** (Check 4): record as missing, then still scan for malformed headers (Check 5), future dates (Check 9), and format anomalies (Check 8)
    c. **If hash file exists**:
       - Compute current hashes via `Get-FileHeaderHashes`
       - Load stored hashes via `Read-SessionHashFile`
-      - Compare: hash mismatch → Check 1; if modified section contains `@PU:` → Check 6; if 2+ PU markers → Check 7
-      - Headers only in stored → Check 2; headers only in current → Check 3
+      - Compare: hash mismatch -> Check 1; if modified section contains `@PU:` -> Check 6; if 2+ PU markers -> Check 7
+      - Headers only in stored -> Check 2; headers only in current -> Check 3
       - Scan level-3 headers for date validity (Check 5) and future dates (Check 9)
       - Raw line scan for format anomalies (Check 8)
 
@@ -384,7 +386,7 @@ This avoids re-loading when the module has already sourced the helpers.
 | Corrupt `_meta.json` | `Read-SessionHashMeta` warns to stderr, returns defaults |
 | File outside repo root | `Get-RelativeHashPath` returns full path with forward slashes |
 | Empty `.md` file (no headers) | `Get-FileHeaderHashes` returns empty dictionary; no hashes stored |
-| macOS symlink `/var` → `/private/var` | `GetFullPath` resolves before prefix comparison |
+| macOS symlink `/var` -> `/private/var` | `GetFullPath` resolves before prefix comparison |
 | Git changelog unavailable | Falls back to full scan with warning |
 | No previous incremental timestamp | Falls back to full scan |
 | `Set-SessionHash -WhatIf` | Computes hashes but does not write files or metadata |
@@ -417,7 +419,7 @@ Located in `tests/fixtures/sessions-integrity/`:
 | File | Purpose |
 |---|---|
 | `base.md` | Baseline: 3 valid sessions (2 with PU, 1 without) |
-| `modified.md` | First session altered (content + PU value changed: Xeron 0,3 → 0,8) |
+| `modified.md` | First session altered (content + PU value changed: Xeron 0,3 -> 0,8) |
 | `malformed.md` | Headers with `invalid-date` and impossible month `2024-13-01` |
 | `duplicate-pu.md` | Single session with two `@PU:` blocks |
 | `format-anomaly.md` | Date-like line missing `###` prefix |
@@ -429,8 +431,9 @@ Loading pattern: **A** (exported functions) + **B** (dot-source internal helpers
 
 ## 14. Related Documents
 
-- [SESSIONS.md](SESSIONS.md) — session parsing pipeline and format generations
-- [PU.md](PU.md) — PU assignment algorithm (uses same `@PU:` pattern)
-- [CONFIG-STATE.md](CONFIG-STATE.md) — `Get-AdminConfig` and `ResDir` resolution
-- [GIT.md](GIT.md) — `Get-GitChangeLog` used for incremental mode
-- [PARSER.md](PARSER.md) — `Get-Markdown` output structure consumed by `Get-FileHeaderHashes`
+- [SESSIONS.md](SESSIONS.md) -- session parsing pipeline and format generations
+- [PU.md](PU.md) -- PU assignment algorithm (uses same `@PU:` pattern)
+- [CONFIG-STATE.md](CONFIG-STATE.md) -- `Get-AdminConfig` and `ResDir` resolution
+- [GIT.md](GIT.md) -- `Get-GitChangeLog` used for incremental mode
+- [PARSER.md](PARSER.md) -- `Get-Markdown` output structure consumed by `Get-FileHeaderHashes`
+- [SESSION-GRAPH.md](SESSION-GRAPH.md) -- session participation graph (reuses `Get-ContentHash`)

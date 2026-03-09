@@ -80,6 +80,7 @@ but not parsed for metadata.
         - @lokacja: Bracada
     - Sandro
         - @lokacja: Bracada
+- @Transfer: 100 koron, Crag Hack -> Gem
 - @Intel:
     - Grupa/Nekromanci: Wiadomość do wszystkich członków Nekromantów
     - Solmyr: Prywatna wiadomość
@@ -90,11 +91,12 @@ but not parsed for metadata.
 | Field | Required | Description |
 |---|---|---|
 | `@Narrator` | Optional | Canonical narrator name override (replaces header-based narrator resolution) |
-| `@Data` | Optional | Date override in `YYYY-MM-DD` format (replaces date parsed from header) |
+| `@Data` | Optional | Date override in `YYYY-MM-DD` format (replaces date parsed from header; rescues sessions with malformed header dates) |
 | `@Lokacje` | Recommended | Where the session took place (one location per line) |
 | `@Logi` | Recommended | Link(s) to the session transcript |
 | `@PU` | Required for PU processing | Character name and PU value (e.g., `Crag Hack: 0.3`) |
 | `@Zmiany` | As needed | World-state changes (entity name + `@tag: value` pairs) |
+| `@Transfer` | As needed | Currency transfers between entities (see [World-State.md](World-State.md)) |
 | `@Intel` | As needed | Targeted messages to specific recipients |
 
 ### PU Entry Format
@@ -143,6 +145,21 @@ Targeting options:
 - `Grupa/Name` - all entities in the named group
 - `Lokacja/Name` - all entities in the named location and sub-locations
 - `Name` - direct targeting (comma-separated for multiple recipients)
+
+### Transfer Format
+
+Transfers record currency movements between entities during a session:
+
+```markdown
+- @Transfer: 100 koron, Crag Hack -> Gem
+- @Transfer: 50 talarów, Kupiec Orrin -> Kyrre
+```
+
+The format is: `@Transfer: {amount} {denomination}, {source} -> {destination}`
+
+You can use colloquial denomination names ("koron", "talarów", "kogi") - the system recognizes them automatically. Multiple transfers per session are allowed.
+
+For more details on currency tracking, see [World-State.md](World-State.md).
 
 ## Older Format Generations
 
@@ -201,7 +218,13 @@ Opis sesji...
         - @lokacja: Steadwick
 ```
 
-Key differences: Gen4 uses `@Lokacje` (not `Lokalizacje`), `@Logi` (not `Logi`), `@PU` (not `PU`), and `@Zmiany` (not `Zmiany`). Entity-level tags inside `@Zmiany` always used the `@` prefix in both formats.
+Key differences: Gen4 uses `@Lokacje` (not `Lokalizacje`), `@Logi` (not `Logi`), `@PU` (not `PU`), and `@Zmiany` (not `Zmiany`). Gen4 also introduces `@Transfer`, `@Intel`, `@Narrator`, and `@Data` metadata blocks. Entity-level tags inside `@Zmiany` always used the `@` prefix in both formats.
+
+## Editing Existing Sessions
+
+Coordinators can modify the metadata of an existing session (locations, PU, logs, changes, Intel, and body text) without manually editing the Markdown file. The system locates the session by its header, replaces the specified metadata blocks, and preserves any non-metadata content (such as Objaśnienia or Efekty blocks).
+
+When editing a session written in an older format (Gen2 or Gen3), the coordinator must request a format upgrade at the same time. The system converts all metadata to the current Gen4 `@`-prefixed syntax automatically, while preserving the session's body text and non-metadata blocks.
 
 ## Sessions Across Multiple Files
 
@@ -234,7 +257,10 @@ A properly recorded session:
 ## Related Documents
 
 - [PU.md](PU.md) - Monthly PU assignment process
+- [World-State.md](World-State.md) - Entity management and currency transfers
 - [Session-Logs.md](Session-Logs.md) - Session log fetching and location analysis
+- [Session-Graph.md](Session-Graph.md) - Session participation tracking
+- [Session-Integrity.md](Session-Integrity.md) - Session content verification
 - [Location-Graph.md](Location-Graph.md) - Location analysis from session routes
-- [Glossary](Glossary.md) - Term definitions
 - [Players.md](Players.md) - Player and character management
+- [Glossary](Glossary.md) - Term definitions

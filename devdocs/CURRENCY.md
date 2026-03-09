@@ -21,7 +21,8 @@ private/currency-helpers.ps1         Denomination constants, conversion, identif
     ├── ConvertFrom-CurrencyBaseUnit Kogi -> denomination breakdown
     ├── Resolve-CurrencyDenomination Stem/colloquial -> canonical denomination
     ├── Test-IsCurrencyEntity        Check if entity is currency
-    └── Find-CurrencyEntity          Find currency entity by denomination + owner
+    ├── Find-CurrencyEntity          Find currency entity by denomination + owner
+    └── Get-CurrencyEntitiesFiltered Identify, filter by status, and enrich currency entities
 
 public/currency/                     Currency entity CRUD
     ├── New-CurrencyEntity           Create currency entity (denomination-validated, auto-named)
@@ -102,16 +103,27 @@ ConvertTo-CurrencyBaseUnit -Amount 50 -Denomination 'talarów'          # 5000
 ConvertTo-CurrencyBaseUnit -Amount 250 -Denomination 'kogi'            # 250
 ```
 
-Accepts canonical names, short names, and stem-matched colloquial names.
+| Parameter | Type | Description |
+|---|---|---|
+| `Amount` | int | **Mandatory**. The quantity in the source denomination. |
+| `Denomination` | string | **Mandatory**. Denomination name (canonical, short, or stem). Resolved via `Resolve-CurrencyDenomination`. |
+
+Throws on unknown denomination.
 
 ### 5.2 `ConvertFrom-CurrencyBaseUnit`
 
-Converts Kogi amount to highest-denomination breakdown:
+Converts Kogi amount to highest-denomination breakdown. Handles negative amounts (preserves sign across all components).
 
 ```powershell
 ConvertFrom-CurrencyBaseUnit -Amount 35250
 # @{ Korony = 3; Talary = 52; Kogi = 50 }
 ```
+
+| Parameter | Type | Description |
+|---|---|---|
+| `Amount` | int | **Mandatory**. The quantity in Kogi (base units). May be negative. |
+
+Returns: `@{ Korony = [int]; Talary = [int]; Kogi = [int] }`
 
 ### 5.3 `Resolve-CurrencyDenomination`
 
@@ -121,7 +133,34 @@ Resolves any denomination reference to its canonical definition. Uses three-tier
 2. Exact match on short name
 3. Stem prefix match (`kor` -> Korony, `tal` -> Talary, `kog` -> Kogi)
 
-Returns the denomination object or `$null`.
+| Parameter | Type | Description |
+|---|---|---|
+| `Name` | string | **Mandatory**. Denomination reference to resolve. Trimmed and lowercased before matching. |
+
+Returns the denomination object (`Name`, `Short`, `Tier`, `Multiplier`, `Stems`) or `$null`.
+
+### 5.4 `Get-CurrencyEntitiesFiltered`
+
+Identifies currency entities from a collection, filters by status, and returns enriched objects with resolved denomination and parsed quantity. Used internally by `Get-CurrencyReport` and `Test-CurrencyReconciliation` to avoid duplicate identification/enrichment logic.
+
+| Parameter | Type | Description |
+|---|---|---|
+| `Entities` | object[] | **Mandatory** (allows empty). Entity collection from `Get-Entity` or `Get-EntityState`. |
+| `IncludeInactive` | switch | Include entities with `Nieaktywny` status. |
+| `IncludeDeleted` | switch | Include entities with `Usunięty` status. |
+
+**Return object** (per entity):
+
+| Property | Type | Description |
+|---|---|---|
+| `Entity` | object | The original entity object (full entity with all properties) |
+| `Denomination` | object | Resolved denomination definition (`Name`, `Short`, `Tier`, `Multiplier`) |
+| `Owner` | string | Entity's `Owner` property |
+| `Location` | string | Entity's `Location` property |
+| `Quantity` | int | Parsed integer quantity (defaults to `0` if missing or unparseable) |
+| `Status` | string | Entity status (`Aktywny` default) |
+
+**Filtering pipeline**: Entity must pass `Test-IsCurrencyEntity` -> status filter -> denomination resolution.
 
 ---
 

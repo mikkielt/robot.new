@@ -97,6 +97,7 @@ Tools that index and verify session data over the life of the campaign.
 | English term | Polish counterpart | Meaning in plain language |
 |---|---|---|
 | Location Graph | Graf lokacji | A combined picture of how locations connect through hierarchy, doors, session metadata, and logs. |
+| Map Suffix Stripping | Obcinanie sufiksów map | Automatic removal of floor numbers, room labels, and direction markers from game-map names so they can match a registered location entity. |
 | Session Graph | Graf uczestnictwa sesji | An index of which entities took part in which sessions and how strong that participation was. |
 | Session Hash / Fingerprint | Hash / odcisk sesji | The stored content signature used to detect unexpected edits to a session. |
 

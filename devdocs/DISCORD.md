@@ -97,14 +97,16 @@ Multiple characters for the same player are separated by `\n\n` (blank line).
 
 ### 3.3 Message Assembly
 
-Uses `StringBuilder` with initial capacity 256 per character message, then joins with `\n\n`:
+Uses `Get-AdminTemplate` with template files for each character's message:
+
+- `pu-notification-base.txt.template` — base message with `{CharacterName}`, `{PlayerName}`, `{GrantedPU}`, `{NewPUSum}` placeholders
+- `pu-notification-overflow.txt.template` — appended when `UsedExceeded > 0`, with `{UsedExceeded}` placeholder
+- `pu-notification-remaining.txt.template` — appended when `RemainingPUExceeded > 0`, with `{RemainingPUExceeded}` placeholder
+
+Multiple characters for the same player are joined with `\n\n`:
 
 ```powershell
-$SB = [System.Text.StringBuilder]::new(256)
-[void]$SB.Append("Postać `"$CharName`" ...")
-# ... build message
-$Messages.Add($SB.ToString())
-$FinalMessage = $Messages -join "`n`n"
+$FullMessage = ($Items | ForEach-Object { $_.Message }) -join "`n`n"
 ```
 
 ### 3.4 Bot Username

@@ -38,17 +38,71 @@ Pass 3:  Get-PlayerCharacter -IncludeState ──> Three-layer character state
 
 ## 3. `Get-Entity` - Registry Parsing
 
-### 3.1 Helper Functions
+### 3.1 Helper Functions (`private/temporal-helpers.ps1`)
+
+All temporal helpers live in `private/temporal-helpers.ps1`, which is dot-sourced by consuming files (`get-entity.ps1`, `get-entitystate.ps1`, `get-session.ps1`, etc.) rather than auto-loaded by the module loader.
 
 | Function | Purpose |
 |---|---|
-| `ConvertFrom-ValidityString` | Splits `"Value (2025-02:)"` into `{ Text, ValidFrom, ValidTo }` |
+| `ConvertFrom-ValidityString` | Splits `"Value (2025-02:)"` into `{ Text, ValidFrom, ValidTo, Season }` |
 | `Resolve-PartialDate` | Expands `YYYY` -> full year, `YYYY-MM` -> month bounds (uses `DaysInMonth`) |
-| `Test-TemporalActivity` | Checks if item falls within `-ActiveOn` date window; `$null` bounds always pass |
+| `Resolve-SeasonForDate` | Returns Polish season name (`wiosna`/`lato`/`jesień`/`zima`) for a given date |
+| `Test-TemporalActivity` | Checks if item falls within `-ActiveOn` date window; `$null` bounds always pass. Also checks seasonal constraint. |
 | `Get-NestedBulletText` | Collects child bullet text passing temporal filter; uses `RuntimeHelpers.GetHashCode()` for parent lookup |
 | `Get-LastActiveValue` | Returns last active entry from a history list |
 | `Get-AllActiveValues` | Returns all active entries as `string[]` |
-| `Resolve-EntityCN` | Builds hierarchical canonical names for locations via `@lokacja` chain |
+| `Resolve-EntityCN` | Builds hierarchical canonical names for locations via `@lokacja` chain (in `public/get-entity.ps1`) |
+
+**Module-level regex patterns** (defined at `$script:` scope in `temporal-helpers.ps1`):
+
+| Variable | Purpose |
+|---|---|
+| `$ValidityPattern` | Captures text and optional parenthetical content from validity strings |
+| `$DateRangePattern` | Matches `start:end` patterns within parenthetical content |
+| `$SessionDatePattern` | Matches `YYYY-MM-DD` with optional `/DD` range suffix in session headers |
+| `$SeasonKeywords` | `HashSet[string]` of valid Polish season keywords (`wiosna`, `lato`, `jesień`, `zima`) |
+
+### 3.1a `Resolve-PartialDate`
+
+Accepts partial date strings and expands them to `[datetime]` values. The `-IsEnd` flag controls which boundary is resolved.
+
+| Parameter | Type | Description |
+|---|---|---|
+| `DateStr` | string | Partial or full date: `YYYY`, `YYYY-MM`, or `YYYY-MM-DD` |
+| `IsEnd` | bool | When `$true`, resolves to last day of period; when `$false`, resolves to first day |
+
+**Expansion rules**:
+- `YYYY` + `IsEnd=$false` -> `YYYY-01-01`; `IsEnd=$true` -> `YYYY-12-31`
+- `YYYY-MM` + `IsEnd=$false` -> `YYYY-MM-01`; `IsEnd=$true` -> `YYYY-MM-{DaysInMonth}`
+- `YYYY-MM-DD` -> used as-is
+- Empty/whitespace -> `$null`
+- Unparseable -> `$null` (caught via `ParseExact` try/catch)
+
+### 3.1b `Resolve-SeasonForDate`
+
+Maps a `[datetime]` to a Polish season name. Supports custom season mappings via `$script:CachedSeasonMapping` (loaded from `local.config.psd1`); falls back to default meteorological seasons.
+
+| Parameter | Type | Description |
+|---|---|---|
+| `Date` | datetime | **Mandatory**. The date to resolve. |
+
+**Default mapping** (meteorological seasons):
+- Months 3-5: `wiosna` (spring)
+- Months 6-8: `lato` (summer)
+- Months 9-11: `jesień` (autumn)
+- Months 12, 1-2: `zima` (winter)
+
+### 3.1c `Get-NestedBulletText`
+
+Collects text from child bullets of a parent list item, filtered through `Test-TemporalActivity`.
+
+| Parameter | Type | Description |
+|---|---|---|
+| `ParentBullet` | object | The parent list item object |
+| `ChildrenOf` | hashtable | Identity-based lookup built via `RuntimeHelpers.GetHashCode()` |
+| `ActiveOn` | datetime? | Temporal filter; `$null` passes all children |
+
+Returns a single newline-joined string of all temporally-active child texts, or `$null` when no children match.
 
 ### 3.2 Multi-File Merge
 
@@ -187,7 +241,7 @@ For each resolved entity change:
 - Append to appropriate history list (`LocationHistory`, `GroupHistory`, `StatusHistory`, `Overrides[tag]`, etc.)
 - Track entity in `ModifiedEntities` HashSet
 
-### 4.5 History Resorting
+### 4.6 History Resorting
 
 After all sessions processed, for each modified entity:
 1. Sort all history lists by `ValidFrom` (custom comparer: `$null` sorts first -> always-active entries stable at start)

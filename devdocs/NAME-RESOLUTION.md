@@ -87,7 +87,7 @@ Each index entry:
 | Field | Type | Description |
 |---|---|---|
 | `Owner` | object | Resolved entity (if not ambiguous) |
-| `OwnerType` | string | `"Player"`, `"NPC"`, `"Grupa"`, `"Lokacja"`, `"Mapa"`, `"Gracz"`, `"Postać"` |
+| `OwnerType` | string | `"Player"`, `"NPC"`, `"Grupa"`, `"Lokacja"`, `"Mapa"`, `"Gracz"`, `"Postać"`, `"Przedmiot"` (set from entity `.Type` or `"Player"` for player objects) |
 | `Owners` | object[] | All owners (if ambiguous) |
 | `Source` | string | Original full name the token came from |
 | `Priority` | int | 1 (full name) or 2 (word token) |

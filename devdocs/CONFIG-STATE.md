@@ -6,7 +6,7 @@
 
 ## 1. Scope
 
-This document covers `private/admin-config.ps1` (configuration resolution, path management, template rendering) and `private/admin-state.ps1` (append-only history file management for PU processing).
+This document covers `private/admin-config.ps1` (configuration resolution, path management, template rendering), `private/admin-state.ps1` (append-only history file management for PU processing), `private/operation-context.ps1` (accumulator-based operation tracking for write commands), and `public/set-datadirectory.ps1` (data directory override for testing and non-standard layouts).
 
 ---
 
@@ -20,6 +20,7 @@ This document covers `private/admin-config.ps1` (configuration resolution, path 
 | `Resolve-ConfigValue` | Priority-chain resolver for a single config key |
 | `Get-AdminTemplate` | Loads and renders template files with placeholder substitution |
 | `Find-DataManifest` | Checks for `.robot/robot-data.psd1` at a fixed path within the repo root |
+| `Set-DataDirectory` | Overrides or resets the lore repository root (in `public/set-datadirectory.ps1`) |
 
 ### 2.2 Priority Chain (`Resolve-ConfigValue`)
 
@@ -170,13 +171,113 @@ This is separate from the module directory (`.robot.new/`) and lives in `.robot/
 
 ---
 
-## 4. Warning Suppression (`robot.psm1`)
+## 4. Operation Context (`private/operation-context.ps1`)
 
-### 4.1 Overview
+### 4.1 Purpose
+
+Accumulator-based operation tracking for write commands. Provides a structured way to collect changes, warnings, and touched files during a write operation, then drain them into a single `Robot.OperationResult` object at completion.
+
+Dot-sourced by `private/entity-writehelpers.ps1` (non-fatal if missing) and checked by `private/charfile-helpers.ps1`. Not auto-loaded by `robot.psm1`.
+
+### 4.2 Accumulators
+
+| Variable | Type | Purpose |
+|---|---|---|
+| `$script:OpChanges` | `List[PSCustomObject]` | Property change records `{ Property, OldValue, NewValue }` |
+| `$script:OpWarnings` | `List[PSCustomObject]` | Warning records `{ Message, Severity, ActionHint }` |
+| `$script:OpFiles` | `HashSet[string]` | Touched file paths (case-insensitive deduplication) |
+
+### 4.3 Functions
+
+| Function | Purpose |
+|---|---|
+| `Clear-OperationContext` | Resets all three accumulators. No-op if accumulators are `$null`. |
+| `Add-OperationChange` | Pushes a property change record. Called by `Set-EntityTag` on each tag upsert. |
+| `Add-OperationWarning` | Pushes a warning record with severity (`Info`, `Warning`, `Error`) and optional `ActionHint`. |
+| `Add-OperationFile` | Registers a touched file path (deduplicated via `HashSet`). Called by `Write-EntityFile` and `Write-CharacterFile`. |
+| `New-OperationResult` | Drains all accumulators into a `Robot.OperationResult` object and resets them via `Clear-OperationContext`. |
+
+### 4.4 `Add-OperationChange`
+
+| Parameter | Type | Description |
+|---|---|---|
+| `Property` | string | **Mandatory**. The property or tag that changed (e.g. `@status`). |
+| `OldValue` | any | Previous value (`$null` for new tags). |
+| `NewValue` | any | New value being set. |
+
+### 4.5 `Add-OperationWarning`
+
+| Parameter | Type | Description |
+|---|---|---|
+| `Message` | string | **Mandatory**. Warning message text. |
+| `Severity` | string | Severity level, defaults to `'Info'`. |
+| `ActionHint` | string | Optional suggested remediation action. |
+
+### 4.6 `New-OperationResult`
+
+| Parameter | Type | Description |
+|---|---|---|
+| `Success` | bool | **Mandatory**. Whether the operation succeeded. |
+| `Action` | string | **Mandatory**. The action performed (e.g. `'Set'`, `'New'`, `'Remove'`). |
+| `TargetType` | string | **Mandatory**. Entity type targeted (e.g. `'Postać'`, `'NPC'`). |
+| `TargetName` | string | **Mandatory**. Entity name targeted. |
+| `UndoHint` | string | Optional undo guidance text. |
+
+**Return object** (`Robot.OperationResult`):
+
+| Property | Type | Description |
+|---|---|---|
+| `Success` | bool | Operation outcome |
+| `Action` | string | Action performed |
+| `TargetType` | string | Entity type |
+| `TargetName` | string | Entity name |
+| `FilePath` | string or string[] or `$null` | Touched file(s): scalar when 1, array when multiple, `$null` when none |
+| `Changes` | object[] | Drained change records |
+| `Warnings` | object[] | Drained warning records |
+| `UndoHint` | string | Undo guidance |
+| `Timestamp` | datetime | Time of result creation |
+
+**Note**: Has `SuppressMessageAttribute` for `PSUseShouldProcessForStateChangingFunctions` — drains in-memory accumulators, not system state.
+
+### 4.7 Integration Points
+
+Write helpers push records as side effects:
+- `Set-EntityTag` -> `Add-OperationChange` (tag name, old value, new value)
+- `Write-EntityFile` -> `Add-OperationFile` (file path)
+- `Write-CharacterFile` -> `Add-OperationFile` (file path)
+
+Availability is checked via `$script:HasOpCtx` flag, set at dot-source time by probing for `Add-OperationChange` (in entity-writehelpers.ps1) or `Add-OperationFile` (in charfile-helpers.ps1).
+
+---
+
+## 5. `Set-DataDirectory` (`public/set-datadirectory.ps1`)
+
+### 5.1 Purpose
+
+Overrides or resets the data directory used as the lore repository root. Useful for testing and non-standard layouts where the lore repository is not the git ancestor of the module.
+
+### 5.2 Parameters
+
+| Parameter | Type | ParameterSet | Description |
+|---|---|---|---|
+| `Path` | string | `Path` | **Mandatory**. Absolute path to the directory to use as the data root. Must exist. |
+| `Reset` | switch | `Reset` | **Mandatory**. Clears the override and reverts to git-based detection. |
+
+### 5.3 Behavior
+
+- **Path mode**: Validates directory existence, stores `[System.IO.Path]::GetFullPath($Path)` in `$script:DataDirectoryOverride`. Subsequent `Get-RepoRoot` calls return this path instead of performing git traversal.
+- **Reset mode**: Sets `$script:DataDirectoryOverride` to `$null`.
+- **Both modes**: Clears `$script:CachedManifest` and `$script:CachedManifestDir` so that `Find-DataManifest` re-scans from the new root on next use.
+
+---
+
+## 6. Warning Suppression (`robot.psm1`)
+
+### 6.1 Overview
 
 Module-scoped warning suppression prevents `[System.Console]::Error.WriteLine` output from corrupting interactive CLI menus. All warning/info emission routes through centralized helpers that check a boolean flag before writing.
 
-### 4.2 Components
+### 6.2 Components
 
 | Component | Location | Purpose |
 |---|---|---|
@@ -186,7 +287,7 @@ Module-scoped warning suppression prevents `[System.Console]::Error.WriteLine` o
 
 Both helpers are module-internal (not exported). Available to all dot-sourced functions via module scope.
 
-### 4.3 `-Quiet` Parameter Pattern
+### 6.3 `-Quiet` Parameter Pattern
 
 Public functions that emit warnings expose a `[switch]$Quiet` parameter. When set, the function saves the current flag, sets it to `$true`, and restores in `finally`:
 
@@ -203,7 +304,7 @@ finally {
 
 Nested calls inherit the suppressed state automatically — inner functions do not need `-Quiet` threading.
 
-### 4.4 CLI Integration
+### 6.4 CLI Integration
 
 The CLI suppresses warnings at two levels:
 
@@ -212,7 +313,7 @@ The CLI suppresses warnings at two levels:
 
 CLI-internal warnings (plugin validation in `Merge-PluginMenuItems`, plugin load errors) are **not** suppressed — they fire before the menu loop starts and are unaffected by overlay rendering.
 
-### 4.5 Scope of Conversion
+### 6.5 Scope of Conversion
 
 | Category | Converted | Reason |
 |---|---|---|
@@ -224,7 +325,7 @@ CLI-internal warnings (plugin validation in `Merge-PluginMenuItems`, plugin load
 
 ---
 
-## 5. Environment Variables
+## 7. Environment Variables
 
 | Variable | Purpose |
 |---|---|
@@ -233,7 +334,7 @@ CLI-internal warnings (plugin validation in `Merge-PluginMenuItems`, plugin load
 
 ---
 
-## 6. Local Config File
+## 8. Local Config File
 
 Path: `.robot.new/local.config.psd1` (git-ignored)
 
@@ -250,7 +351,7 @@ Loaded via `Import-PowerShellDataFile` with error handling. Missing file is not 
 
 ---
 
-## 7. Edge Cases
+## 9. Edge Cases
 
 | Scenario | Behavior |
 |---|---|
@@ -262,23 +363,32 @@ Loaded via `Import-PowerShellDataFile` with error handling. Missing file is not 
 | Missing `.robot/res/` directory | Created automatically by `Add-AdminHistoryEntry` |
 | Duplicate session headers in history | Deduplicated by `HashSet` on read |
 | Whitespace variations in headers | Normalized (collapsed to single space) before comparison |
+| `operation-context.ps1` not loaded | `$script:HasOpCtx` is `$false`; write helpers skip accumulator calls |
+| `$script:OpChanges` is `$null` | `Add-OperationChange` is no-op (guard at function entry) |
+| Multiple files in operation | `New-OperationResult` returns `FilePath` as array |
+| Single file in operation | `New-OperationResult` returns `FilePath` as scalar string |
+| No files in operation | `New-OperationResult` returns `FilePath` as `$null` |
+| `Set-DataDirectory` with non-existent path | Throws `"Directory not found: '$Path'"` |
+| `Set-DataDirectory -Reset` | Clears override and manifest cache; `Get-RepoRoot` reverts to git traversal |
 
 ---
 
-## 8. Testing
+## 10. Testing
 
 | Test file | Coverage |
 |---|---|
 | `tests/admin-config.Tests.ps1` | Priority chain, path resolution, template loading, manifest discovery, caching |
 | `tests/admin-state.Tests.ps1` | History reading, normalization, appending, file creation |
 | `tests/get-reporoot.Tests.ps1` | `Get-ParentRepoRoot` (submodule boundary traversal) |
+| `tests/operation-context.Tests.ps1` | Accumulator lifecycle, change/warning/file tracking, `New-OperationResult` drain |
 
 Fixtures: `local.config.psd1`, `pu-sessions.md`, template files in `tests/fixtures/templates/`.
 
 ---
 
-## 9. Related Documents
+## 11. Related Documents
 
 - [PU.md](PU.md) - PU pipeline uses history entries for deduplication
-- [ENTITY-WRITES.md](ENTITY-WRITES.md) - Write commands consume `Get-AdminConfig`
+- [ENTITY-WRITES.md](ENTITY-WRITES.md) - Write commands consume `Get-AdminConfig` and operation context
+- [CHARFILE.md](CHARFILE.md) - Character file writing uses operation context (`Write-CharacterFile`)
 - [DISCORD.md](DISCORD.md) - Webhook config resolution

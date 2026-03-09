@@ -363,21 +363,21 @@ The automated migration is orchestrated by `migration/migrate.ps1` (`Invoke-Phas
 
 ### 9.2 Migration Files
 
-| File | Purpose |
-|---|---|
-| `migrate.ps1` | Entry point and phase dispatcher (`Invoke-PhaseByNumber`) |
-| `migration-state.ps1` | State read/write (`Get-MigrationState`, `Save-MigrationState`) |
-| `migration-shared.ps1` | Shared diagnostics (`Invoke-QuickDiagnostics`, `Show-DiagnosticResults`) |
-| `migration-ui.ps1` | UI helpers (`Write-PhaseHeader`, `Write-Step`, `Write-StepOK`, etc.) |
-| `migration-location-helpers.ps1` | Self-contained location name helpers (`Get-MapBaseNameDeterministic`, `Get-MapBaseNameCandidates`); dot-sourced by Phase 3 |
-| `narrator-normalization.ps1` | Narrator mapping I/O (`Import-NarratorMappings`, `Export-NarratorMappings`) |
-| `phase0-setup.ps1` | Phase 0: Przygotowanie i bootstrap |
-| `phase1-session-hashes.ps1` | Phase 1: Baseline integralności sesji |
-| `phase2-validation.ps1` | Phase 2: Walidacja i naprawa danych |
-| `phase3-location-import.ps1` | Phase 3: Import lokalizacji z mapy |
-| `phase4-session-upgrade.ps1` | Phase 4: Upgrade formatu sesji |
-| `phase5-currency.ps1` | Phase 5: Enrollment walut |
-| `phase6-cutover.ps1` | Phase 6: Przełączenie (cutover) |
+| File | Purpose | Functions |
+|---|---|---|
+| `migrate.ps1` | Entry point and phase dispatcher | `Invoke-PhaseByNumber` |
+| `migration-state.ps1` | State persistence | `Resolve-MigrationStatePath`, `New-DefaultMigrationState`, `ConvertTo-HashtableDeep`, `Get-MigrationState`, `Save-MigrationState`, `Get-PhaseStatus`, `Set-PhaseCompleted`, `Set-PhaseInProgress`, `Update-PhaseChecklist`, `Add-DiagnosticSnapshot` |
+| `migration-shared.ps1` | Shared diagnostics and menu shortcuts | `Test-PhasePredecessor`, `Show-DiagnosticResults`, `Invoke-QuickDiagnostics`, `Invoke-FullReport` |
+| `migration-ui.ps1` | Polish-language UI helpers (19 functions) | `Resolve-MigrationColor`, `Get-PhaseName`, `Write-PhaseHeader`, `Write-Step`, `Write-StepOK`, `Write-StepWarning`, `Write-StepError`, `Write-SectionHeader`, `Write-ChecklistReport`, `Write-ActionRequired`, `Write-CommandHint`, `Write-PhaseSummary`, `Write-TableRow`, `Request-UserChoice`, `Request-YesNo`, `Request-Confirmation`, `Request-StringInput`, `Request-NumericInput`, `Show-ProgressSummary` |
+| `migration-location-helpers.ps1` | Self-contained location name helpers; dot-sourced by Phase 3 | `Get-MapBaseNameDeterministic`, `Get-MapBaseNameCandidates` |
+| `narrator-normalization.ps1` | Narrator mapping I/O | `Get-NarratorMappingsPath`, `Import-NarratorMappings`, `Export-NarratorMappings` |
+| `phase0-setup.ps1` | Phase 0: Przygotowanie i bootstrap | `Invoke-MigrationPhase0` |
+| `phase1-session-hashes.ps1` | Phase 1: Baseline integralności sesji | `Invoke-MigrationPhase1` |
+| `phase2-validation.ps1` | Phase 2: Walidacja i naprawa danych | `Invoke-MigrationPhase2`, `Show-BRAKCharacters` |
+| `phase3-location-import.ps1` | Phase 3: Import lokalizacji z mapy | `Invoke-MigrationPhase3` |
+| `phase4-session-upgrade.ps1` | Phase 4: Upgrade formatu sesji | `Invoke-MigrationPhase4` |
+| `phase5-currency.ps1` | Phase 5: Enrollment walut | `Invoke-MigrationPhase5`, `Invoke-CurrencyCSVImport`, `Invoke-CurrencyInteractiveEntry`, `Invoke-NarratorBudgetEntry` |
+| `phase6-cutover.ps1` | Phase 6: Przełączenie (cutover) | `Invoke-MigrationPhase6` |
 
 ### 9.3 Phase 1: Session Hash Baseline
 

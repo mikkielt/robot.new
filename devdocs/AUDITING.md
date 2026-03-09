@@ -28,12 +28,26 @@ All functions are read-only. None modify entity files, session files, or state f
 public/reporting/
 ├── get-entityhistory.ps1       Entity timeline (reads entity history arrays)
 ├── get-changelog.ps1           Session Zmiany extraction
+│   └── dot-sources: private/reporting-helpers.ps1
 ├── get-transactionledger.ps1   Session Transfer extraction
-│   └── dot-sources: private/currency-helpers.ps1
+│   └── dot-sources: private/currency-helpers.ps1, private/reporting-helpers.ps1
 ├── get-puassignmentlog.ps1     State file parsing
 │   └── dot-sources: private/admin-state.ps1
 └── get-notificationlog.ps1     Session Intel extraction
+    └── dot-sources: private/reporting-helpers.ps1
+
+private/
+└── reporting-helpers.ps1       Shared session-fetch and directive-iteration helpers
 ```
+
+### 2.1 Shared Helpers (`private/reporting-helpers.ps1`)
+
+| Function | Purpose |
+|---|---|
+| `Get-SessionsForReport` | Fetch sessions on demand, passing through `MinDate`/`MaxDate` to `Get-Session`. Returns `$Sessions` as-is if already provided, otherwise auto-fetches with optional `$ExtraFetchArgs`. |
+| `Get-SessionDirectiveEntries` | Iterate sessions with date filtering and extract named directive items (e.g., `Transfers`, `Changes`, `Intel`). Returns a `List[object]` of `@{ Session = @{ Date; Title; Narrator }; Directive = <item> }` hashtables. Supports optional `$TargetName`/`$TargetProperty` single-property filtering. |
+
+These helpers centralize the session-fetch + date-filter + sub-collection-extract boilerplate shared by `Get-ChangeLog`, `Get-NotificationLog`, and `Get-TransactionLedger`.
 
 All functions follow the module's established patterns:
 - Pre-fetched data parameters (`$Entities`, `$Sessions`) with auto-fetch if omitted

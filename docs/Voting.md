@@ -52,6 +52,7 @@ The report lists all players who received PU during the lookback period, showing
 - **Player name** — the registered player name
 - **Total PU** — sum of all PU granted to all their characters
 - **Eligible** — whether they meet the minimum threshold
+- **Margonem ID** — the player's game account identifier (for cross-referencing)
 
 Eligible players are listed first, followed by ineligible players. Both groups are sorted alphabetically.
 

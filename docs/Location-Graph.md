@@ -63,6 +63,10 @@ Session logs are the **primary source of truth** for physical location connectiv
 
 This source is optional and must be explicitly requested, since it requires fetched and parsed log data. When available, it provides the most granular and accurate connectivity information.
 
+#### Map Suffix Stripping
+
+Game-map names often contain floor numbers, room suffixes, direction labels, or difficulty markers (e.g., "Piekielna Grota p.3 - sala 2" or "Klasztor Różanitów - wieża płn.-wsch. p.1"). When the system resolves a log location header against the entity registry and finds no direct match, it progressively strips these trailing suffixes and retries. This means a log header like "Piekielna Grota p.3" can still resolve to the registered entity "Piekielna Grota" without requiring a separate alias.
+
 ## Map Coordinates
 
 Exterior locations (those visible on the game world map) can have map tile coordinates recorded. These indicate the location's position on the Margonem world map in tile units (32×32 pixels).
@@ -138,8 +142,8 @@ After processing, the tool displays:
 1. **Comprehensive location map** — all known location connections from entity data, session metadata, and logs are merged into a single view
 2. **Teleport detection** — transitions between structurally non-adjacent locations are automatically classified as teleports and excluded from physical connectivity analysis
 3. **Data quality insight** — unresolved location names, missing entities, and stale connections are surfaced for coordinator review
-3. **Temporal awareness** — coordinate changes are tracked historically, and connections are checked for currency
-4. **Flexible scope** — date ranges and optional movement edges allow focused or broad analysis
+4. **Temporal awareness** — coordinate changes are tracked historically, and connections are checked for currency
+5. **Flexible scope** — date ranges and optional movement edges allow focused or broad analysis
 
 ## Exceptions and Recovery Actions
 

@@ -19,6 +19,9 @@ private/entity-findhelpers.ps1 (find primitives: Find-EntitySection, Find-Entity
      ▲
      │ (dot-sourced by)
 private/entity-writehelpers.ps1 (write primitives: Set-EntityTag, New-EntityBullet, Resolve-EntityTarget, Read/Write-EntityFile, Invoke-EnsureEntityFile, ConvertFrom-EntityTemplate)
+     │
+     ├── dot-sources private/operation-context.ps1 (change/warning/file accumulators)
+     │
      ▲         ▲         ▲         ▲         ▲         ▲         ▲         ▲
      │         │         │         │         │         │         │         │
 Set-Player  Set-Player  New-Player  New-Player  Remove-Player  New-    Set-    Remove-
@@ -33,7 +36,7 @@ generic entity primitives + private/currency-helpers.ps1 for denomination logic.
 Bootstrap migration (ConvertTo-EntitiesFromPlayers) lives in private/entity-migrationhelpers.ps1.
 ```
 
-All mutating commands dot-source `private/entity-writehelpers.ps1` (which in turn dot-sources `private/entity-findhelpers.ps1`) and operate on `List[string]` line arrays with in-place index manipulation.
+All mutating commands dot-source `private/entity-writehelpers.ps1` (which in turn dot-sources `private/entity-findhelpers.ps1` and `private/operation-context.ps1`) and operate on `List[string]` line arrays with in-place index manipulation.
 
 ---
 
@@ -144,9 +147,24 @@ High-level orchestrator that ensures the entity exists, creating intermediate st
 ### 3.9 Module-Level Regex Patterns
 
 Three precompiled regex patterns (`RegexOptions.Compiled`) defined in `private/entity-findhelpers.ps1`:
-- Section header pattern (`## `)
-- Entity bullet pattern (`* `)
-- Tag pattern (`- @tag:`)
+- `$SectionHeaderPattern` — matches `## ` section headers
+- `$EntityBulletPattern` — matches `* ` entity bullets
+- `$TagPattern` — matches `- @tag:` or `* @tag:` child tag lines
+
+Two type-mapping hashtables:
+- `$EntityTypeMap` — section header text -> canonical type (e.g. `"grupy"` -> `"Grupa"`, `"postaci (gracze)"` -> `"Postać"`)
+- `$TypeToHeader` — canonical type -> preferred section header text (e.g. `"Grupa"` -> `"Grupa"`)
+
+### 3.10 Operation Context Integration (`private/operation-context.ps1`)
+
+`entity-writehelpers.ps1` dot-sources `private/operation-context.ps1` (non-fatal if missing) and sets a `$script:HasOpCtx` flag. When the operation context is available, write primitives push side-effect records into shared accumulators:
+
+- `Set-EntityTag` calls `Add-OperationChange` to record property changes (old value, new value)
+- `Write-EntityFile` calls `Add-OperationFile` to register touched file paths
+
+Calling commands drain the accumulators via `New-OperationResult` at completion, producing a `Robot.OperationResult` typed object.
+
+See [CONFIG-STATE.md](CONFIG-STATE.md) §4 for the full operation context specification.
 
 ---
 
@@ -397,6 +415,7 @@ One-time function that generates a complete `entities.md` from `Get-Player` outp
 | `tests/set-currencyentity.Tests.ps1` | Absolute/delta quantity, owner/location, mutual exclusion |
 | `tests/get-currencyentity.Tests.ps1` | Filtering, denomination resolution, balance, inactive exclusion |
 | `tests/remove-currencyentity.Tests.ps1` | Soft-delete, non-zero balance warning |
+| `tests/operation-context.Tests.ps1` | Accumulator lifecycle, change/warning/file tracking, `New-OperationResult` drain |
 
 ---
 

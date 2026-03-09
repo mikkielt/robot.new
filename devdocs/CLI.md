@@ -17,32 +17,32 @@ This document covers the interactive CLI subsystem: `public/cli/invoke-robotcli.
 ```
 Invoke-RobotCLI (public/cli/invoke-robotcli.ps1)
     │
-    ├── Layer 0: engine/*.ps1             (9 files - TUI engine core)
-    │   ├── cli-engine.ps1                Screen/region management, tier styles
-    │   ├── cli-buffer.ps1                Virtual buffer, diff-based rendering
-    │   ├── cli-input.ps1                 Input loop, key routing, filter/command modes
-    │   ├── cli-chrome.ps1                TopBar, FilterBar, StatusBar rendering
-    │   ├── cli-menulist.ps1              MenuListComponent (arrow-nav + filter + fuzzy)
-    │   ├── cli-table.ps1                 ResultTableComponent (pagination + responsive columns)
-    │   ├── cli-detail.ps1                DetailCardComponent (scrollable key-value card)
-    │   ├── cli-overlays.ps1              HelpOverlayComponent, HealthDashboardComponent
-    │   └── cli-wizard-step.ps1           WizardStepComponent (text/selection/yesno input)
-    │
     ├── Layer 1: cli-primitives.ps1       (leaf - no CLI deps)
     │   │   Colors, Write-CLILine, Read-ArrowKey [DEPRECATED]
-    │   └── cli-menus.ps1                 (dot-sourced by cli-primitives.ps1)
-    │           Show-ArrowMenu [DEPRECATED], Show-ResultTable [DEPRECATED]
+    │   ├── cli-menus.ps1                 (chain-loaded by cli-primitives.ps1)
+    │   │       Show-ArrowMenu [DEPRECATED], Show-ResultTable [DEPRECATED],
+    │   │       Show-HelpOverlay [DEPRECATED]
+    │   └── engine/*.ps1                  (chain-loaded by cli-primitives.ps1, 9 files)
+    │       ├── cli-engine.ps1            Screen/region management, tier styles
+    │       ├── cli-buffer.ps1            Virtual buffer, diff-based rendering
+    │       ├── cli-input.ps1             Input loop, key routing, filter/command modes
+    │       ├── cli-chrome.ps1            TopBar, FilterBar, StatusBar rendering
+    │       ├── cli-menulist.ps1          MenuListComponent (arrow-nav + filter + fuzzy)
+    │       ├── cli-table.ps1             ResultTableComponent (pagination + responsive columns)
+    │       ├── cli-detail.ps1            DetailCardComponent (scrollable key-value card)
+    │       ├── cli-overlays.ps1          HelpOverlayComponent, HealthDashboardComponent
+    │       └── cli-wizard-step.ps1       WizardStepComponent (text/selection/yesno input)
     │
     ├── Layer 2: cli-fuzzy.ps1            (depends on L1)
     │       Get-FuzzySearchCandidates, Filter-FuzzyCandidates, Show-FuzzySearch [DEPRECATED]
     │
     ├── Layer 2: cli-display.ps1          (depends on L1)
-    │       Show-DetailCard [DEPRECATED], Format-DetailValidityRange [DEPRECATED], Refresh-NavState
+    │       Show-DetailCard [DEPRECATED], Format-DetailValidityRange [DEPRECATED]
     │
     ├── Layer 2: cli-help.ps1             (depends on L1)
     │       $script:HelpContent, Show-HelpScreen [DEPRECATED]
     │
-    ├── Layer 3: cli-wizard.ps1           (depends on L0 + L1 + L2)
+    ├── Layer 3: cli-wizard.ps1           (depends on L1 + L2)
     │   │   $script:CommonParams, Resolve-StepType, Invoke-Wizard
     │   ├── cli-wizard-steps.ps1          (dot-sourced by cli-wizard.ps1)
     │   │       Invoke-EngineLifecycle, Invoke-WizardStep
@@ -54,7 +54,7 @@ Invoke-RobotCLI (public/cli/invoke-robotcli.ps1)
     │
     ├── Layer 5: cli-routing.ps1          (depends on all above)
     │       Get-MenuCategories, Get-MenuItems, Get-RegistryEntry,
-    │       Merge-PluginMenuItems,
+    │       Merge-PluginMenuItems, Refresh-NavState,
     │       Invoke-EngineRender, Invoke-EngineCommand,
     │       Invoke-EngineFuzzySearch, Invoke-EngineDetailCard,
     │       Invoke-MenuAction, Invoke-QueryAction, Show-SubMenu, Show-MainMenu
@@ -62,7 +62,7 @@ Invoke-RobotCLI (public/cli/invoke-robotcli.ps1)
     ├── Layer 5.5: Plugin menu merge      (merges plugin items/categories/help)
     │       Merge-PluginMenuItems called after routing is loaded
     │
-    ├── Layer 6: Workflows (depend on L0–L3)
+    ├── Layer 6: Workflows (depend on L1–L3)
     │   ├── cli-wf-session.ps1            Session edit + validation
     │   ├── cli-wf-player.ps1             Player/character create, edit, cards
     │   ├── cli-wf-entity.ps1             Entity create, edit, history, search
@@ -80,7 +80,7 @@ Invoke-RobotCLI (public/cli/invoke-robotcli.ps1)
             Get-MigrationMenuItems, Invoke-MigrationPhaseAction
 ```
 
-All files are dot-sourced on demand when `Invoke-RobotCLI` is called (not at module import). They share `$script:` scope so variables and functions defined in earlier layers are accessible in later layers. Engine files (Layer 0) are dot-sourced first, before any other CLI files.
+All files are dot-sourced on demand when `Invoke-RobotCLI` is called (not at module import). They share `$script:` scope so variables and functions defined in earlier layers are accessible in later layers. Engine files are chain-loaded from within `cli-primitives.ps1` (Layer 1) in dependency order; this means the engine is available to all subsequent layers without a separate loading step in the entry point.
 
 ---
 
@@ -104,16 +104,16 @@ All files are dot-sourced on demand when `Invoke-RobotCLI` is called (not at mod
 
 | File | Lines | Layer | Contents |
 |---|---|---|---|
-| `cli-primitives.ps1` | ~420 | 1 | Color scheme, theme detection, banner, breadcrumb; dot-sources `cli-menus.ps1` |
-| `cli-menus.ps1` | — | 1 | `Show-ArrowMenu`, `Show-ResultTable` [DEPRECATED] (dot-sourced by `cli-primitives.ps1`) |
+| `cli-primitives.ps1` | ~420 | 1 | Color scheme, theme detection, banner, breadcrumb; chain-loads `cli-menus.ps1` and all 9 `engine/*.ps1` files |
+| `cli-menus.ps1` | — | 1 | `Show-ArrowMenu`, `Show-ResultTable`, `Show-HelpOverlay` [DEPRECATED] (chain-loaded by `cli-primitives.ps1`) |
 | `cli-fuzzy.ps1` | ~340 | 2 | Fuzzy search candidate generation, filtering; `Show-FuzzySearch` [DEPRECATED] |
-| `cli-display.ps1` | ~210 | 2 | `Show-DetailCard` [DEPRECATED], `Format-DetailValidityRange` [DEPRECATED], `Refresh-NavState` |
+| `cli-display.ps1` | ~210 | 2 | `Show-DetailCard` [DEPRECATED], `Format-DetailValidityRange` [DEPRECATED] |
 | `cli-help.ps1` | ~120 | 2 | Help content dictionary (`$script:HelpContent`), `Show-HelpScreen` [DEPRECATED] |
 | `cli-wizard.ps1` | ~650 | 3 | `$script:CommonParams`, step type resolution, `Invoke-Wizard`; dot-sources `cli-wizard-steps.ps1` and `cli-wizard-preview.ps1` |
 | `cli-wizard-steps.ps1` | — | 3 | `Invoke-EngineLifecycle`, `Invoke-WizardStep` (dot-sourced by `cli-wizard.ps1`) |
 | `cli-wizard-preview.ps1` | — | 3 | `Show-Preview` (dot-sourced by `cli-wizard.ps1`) |
 | `cli-registry.ps1` | ~600 | 4 | Menu order array, menu registry (51 entries, pure data) |
-| `cli-routing.ps1` | ~480 | 5 | Menu helpers, plugin menu merge, engine helper functions, action dispatch, query execution, main/sub menu loops |
+| `cli-routing.ps1` | ~480 | 5 | Menu helpers, plugin menu merge, engine helper functions, action dispatch, query execution, main/sub menu loops, `Refresh-NavState` |
 | `cli-wf-session.ps1` | ~150 | 6 | `Invoke-EditSessionWorkflow`, `Invoke-SessionValidation` |
 | `cli-wf-player.ps1` | ~400 | 6 | `Invoke-NewPlayerWorkflow`, `Invoke-NewCharacterWorkflow`, `Invoke-EditCharacterWorkflow`, `Invoke-CharacterCardWorkflow`, `Show-CharacterCard`, `Show-PlayerCard` |
 | `cli-wf-entity.ps1` | ~480 | 6 | `Invoke-NewEntityWorkflow`, `Invoke-EditEntityWorkflow`, `Invoke-EntityHistoryWorkflow`, `Invoke-EntitySearchWorkflow`; dot-sources `cli-display-entity.ps1` |
@@ -126,7 +126,7 @@ All files are dot-sourced on demand when `Invoke-RobotCLI` is called (not at mod
 
 ### 3.3 Entry Point
 
-`public/cli/invoke-robotcli.ps1` exports `Invoke-RobotCLI`. It dot-sources engine files first (Layer 0), then all 18 CLI files in layer order (including the sub-files dot-sourced transitively by `cli-primitives.ps1`, `cli-wizard.ps1`, and `cli-wf-entity.ps1`), calls `Merge-PluginMenuItems` to integrate plugin-declared menu items/categories/help into CLI state (Layer 5.5), dot-sources plugin `cli/*.ps1` workflow files (Layer 6.5), validates terminal compatibility, detects theme, pre-loads entity/player/name index data, runs background health checks, and enters the main menu loop.
+`public/cli/invoke-robotcli.ps1` exports `Invoke-RobotCLI`. It dot-sources CLI files in layer order: `cli-primitives.ps1` (Layer 1, which chain-loads `cli-menus.ps1` and all 9 engine files), then `cli-fuzzy.ps1`, `cli-display.ps1`, `cli-help.ps1` (Layer 2), `cli-wizard.ps1` (Layer 3, which chain-loads `cli-wizard-steps.ps1` and `cli-wizard-preview.ps1`), `cli-registry.ps1` (Layer 4), `cli-routing.ps1` (Layer 5). It then calls `Merge-PluginMenuItems` (Layer 5.5), dot-sources the 7 workflow files (Layer 6) and plugin `cli/*.ps1` files (Layer 6.5), and finally `cli-wizard-migration.ps1` (Layer 7). After loading, it validates terminal compatibility (`[Console]::KeyAvailable`), detects theme, pre-loads entity/player/name index data, runs health checks into `HealthCache`, and enters the main menu loop via `Show-MainMenu`.
 
 ### 3.4 Tests
 
@@ -214,7 +214,7 @@ Components are hashtables with standardized keys:
 | `TextInputMode` | `bool` | Routes printable chars as TextInput instead of filter |
 | `HelpContent` | `string[]` | Content for `/h` help overlay |
 
-`HandleKey` returns `@{ Type = 'Continue' }` for no-op, or `@{ Type = 'Return'; Value = $result }` to exit the input loop with a value.
+`HandleKey` returns `$null` for no-op (continue processing), or `@{ Type = 'Return'; Value = $result }` to exit the input loop with a value.
 
 ### 4.6 6 Component Types
 
@@ -233,9 +233,9 @@ Components are hashtables with standardized keys:
 
 | Mode | Activation | Printable chars | Escape | Enter |
 |---|---|---|---|---|
-| Normal | Default (filter empty) | Enter filter (if Filterable) | `__back__` | Select |
+| Normal | Default (filter empty) | Enter filter (if Filterable); `q`/`Q` = Back; `/` = enter Command mode | `__back__` | Select |
 | Filter | Typing in a filterable component | Append to filter buffer | Clear filter | Select match |
-| Command | `/` pressed | Append to command buffer | Exit command mode | Execute command |
+| Command | `/` pressed | Append to command buffer; single-letter `s/r/b/q` execute immediately | Exit command mode | Execute command |
 | TextInput | Component has `TextInputMode = $true` | `TextInput` action to component | `__back__` | Select |
 
 ### 4.8 Slash Command Palette
@@ -274,19 +274,19 @@ Example: typing `typ:NPC` in an entity list filters only the Type column for "NP
 
 `Get-TierStyle -Tier <1-5>` returns `@{ Color; Bold; Dim }` for visual hierarchy:
 
-| Tier | Style | Usage |
-|---|---|---|
-| 1 | Bold Accent | Titles, active selections |
-| 2 | Accent (no bold) | Subtitles, category names |
-| 3 | Default color | Normal content |
-| 4 | Dim | Secondary info, descriptions |
-| 5 | Dim + muted color | Disabled items, hints |
+| Tier | Color | Bold | Dim | Usage |
+|---|---|---|---|---|
+| 1 (Active Focus) | Accent | Yes | No | Titles, active selections, pointers |
+| 2 (Actionable) | Info | No | No | Subtitles, category names |
+| 3 (Contextual) | Disabled | No | No | Hints, labels |
+| 4 (Structural) | Disabled | No | Yes | Separators, borders |
+| 5 (Chrome) | Disabled | No | No | Persistent bars |
 
 ---
 
 ## 5. Legacy UI Primitives (`cli-primitives.ps1` + `cli-menus.ps1`)
 
-> **Deprecation notice**: `Show-ArrowMenu`, `Show-ResultTable`, `Show-DetailCard`, `Show-FuzzySearch`, `Show-HelpScreen`, `Read-ArrowKey`, `Clear-MenuArea`, `Show-Banner`, `Show-Breadcrumb`, `Show-InfoBox` are deprecated. Core CLI paths use engine components (§4). These functions are retained for plugin compatibility (`margoworld`, `nerthusaddon`) and `migration-ui.ps1`. They will be removed in a future version once all external callers are ported.
+> **Deprecation notice**: `Show-ArrowMenu`, `Show-ResultTable`, `Show-HelpOverlay`, `Show-DetailCard`, `Show-FuzzySearch`, `Show-HelpScreen`, `Read-ArrowKey`, `Clear-MenuArea`, `Show-Banner`, `Show-Breadcrumb`, `Show-InfoBox` are deprecated. Core CLI paths use engine components (§4). These functions are retained for plugin compatibility (`margoworld`, `nerthusaddon`) and `migration-ui.ps1`. They will be removed in a future version once all external callers are ported.
 >
 > `Write-CLILine` and `Get-CLIColor` remain active — they are used between engine lifecycle calls for status messages.
 
@@ -513,7 +513,7 @@ For Query entries, also add `ColumnPriority` and `FilterPrefixes`:
 | `Query` | `Invoke-QueryAction -Entry $Entry -State $State` |
 | `Workflow` | `& $Entry.WorkflowFunction -State $State -Entry $Entry` |
 
-All three branches propagate `__quit__` if the handler returns it.
+All three branches propagate `__quit__` if the handler returns it. `Invoke-MenuAction` sets `$script:SuppressWarnings = $true` for the duration of dispatch to prevent stderr output from corrupting the TUI screen buffer, restoring it in a `finally` block.
 
 ### 9.3 Query Pipeline
 
@@ -589,13 +589,44 @@ Run all CLI tests:
 Invoke-Pester tests/cli-primitives.Tests.ps1, tests/cli-wizard.Tests.ps1, tests/cli-fuzzy.Tests.ps1, tests/cli-registry.Tests.ps1, tests/cli-help.Tests.ps1, tests/cli-engine.Tests.ps1, tests/cli-buffer.Tests.ps1, tests/cli-input.Tests.ps1, tests/cli-components.Tests.ps1
 ```
 
+| Test File | Tests | Coverage |
+|---|---|---|
+| `cli-engine.Tests.ps1` | 27 | `Initialize-Screen`, `Build-Regions`, `Get-TierStyle`, `Test-MinimumSize`, ANSI helpers |
+| `cli-buffer.Tests.ps1` | 30 | `New-ScreenBuffer`, `Set-BufferLine`, `Compare-BufferLine`, `New-Segment`, `New-PaddedLine`, `Render-BufferDiff` |
+| `cli-input.Tests.ps1` | 53 | `New-InputAction`, `Route-KeyPress` (all 4 modes), `Split-FilterQuery`, `Reset-Filter`, `Invoke-SlashCommand` |
+| `cli-components.Tests.ps1` | 118 | `New-MenuListComponent`, `New-ResultTableComponent`, `New-DetailCardComponent`, `New-WizardStepComponent`, `New-HelpOverlayComponent`, `Invoke-MenuFilter`, `Invoke-TableFilter`, `Resolve-VisibleColumns`, `Format-DetailValue`, `Search-HelpTopics` |
+| `cli-registry.Tests.ps1` | 40 | `Menu Registry` integrity, `Get-MenuCategories`, `Get-MenuItems`, `Get-RegistryEntry`, `Merge-PluginMenuItems`, `Migration Phase Registry` |
+| `cli-primitives.Tests.ps1` | 16 | `Get-CLIColor`, `Resolve-CLITheme`, banner art |
+| `cli-fuzzy.Tests.ps1` | 16 | `Filter-FuzzyCandidates`, `Get-FuzzySearchCandidates` |
+| `cli-wizard.Tests.ps1` | 13 | `CommonParams HashSet`, `Resolve-StepType` |
+| `cli-help.Tests.ps1` | 6 | Help content completeness, key matching |
+| **Total** | **319** | |
+
 Tests cover pure logic functions only. Interactive UI functions (`Start-InputLoop`, component `Render` scriptblocks, etc.) are not tested as they require a live terminal with `[Console]::ReadKey`. Engine component constructors, filter logic, segment construction, input routing, and column resolution are fully covered.
 
 Migration phase tests are conditionally skipped when migration files are not available in the test environment.
 
 ---
 
-## 13. Related Documents
+## 13. Edge Cases
+
+| Scenario | Behavior |
+|---|---|
+| Terminal below 60x15 | `Initialize-Screen` returns `$false`; shows Polish-language size warning and waits for keypress |
+| Terminal resized during input loop | `Test-TerminalResized` detects change; `Resize-Screen` rebuilds regions; `Initialize-Buffers` creates fresh buffers; `Render-FullBuffer` forces complete redraw |
+| Paste sequence detected | `Test-PasteSequence` checks for <20ms between keystrokes; Enter keys during paste are ignored to prevent accidental selection |
+| PS 5.1 Bold rendering | Bold segments with default/Info/White color are promoted to Accent color; Dim is suppressed entirely |
+| `__quit__` in wizard context | Treated as `__back__` (returns to previous step or cancels wizard) to prevent accidental exit |
+| `__quit__` in menu context | Bubbles up through `Show-SubMenu` and `Show-MainMenu` to exit CLI entirely |
+| Slash command error | Caught silently; logged via `Add-OperationWarning` if available; never corrupts TUI output |
+| Zero filter results | Components show "(brak wynikow)" in Content region; FilterBar shows match count in Warning color |
+| Responsive column overflow | `Resolve-VisibleColumns` removes priority 3 columns first, then priority 2; priority 1 columns are always shown |
+| Stage 3 fuzzy triggers during typing | `Invoke-FuzzyDebounce` waits 300ms of keystroke silence before triggering; aborts if any key becomes available |
+| ISE or non-interactive terminal | `[Console]::KeyAvailable` check throws; `Invoke-RobotCLI` rethrows with Polish-language message |
+
+---
+
+## 14. Related Documents
 
 - [PLUGINS.md](PLUGINS.md) - Plugin system (same hook/registry pattern)
 - [ENTITY-WRITES.md](ENTITY-WRITES.md) - Entity write operations wrapped by CLI wizards
