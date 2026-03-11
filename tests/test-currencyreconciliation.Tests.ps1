@@ -211,6 +211,148 @@ Describe 'Test-CurrencyReconciliation - edge cases' {
         $OrphanWarnings | Should -Not -BeNullOrEmpty
     }
 
+    It 'enhanced orphan check includes OwnerCategory for Postać-owned currency' {
+        $TestEntities = @(
+            [PSCustomObject]@{
+                Name            = 'Korony Maga'
+                Type            = 'Przedmiot'
+                Owner           = 'Stary Mag'
+                Status          = 'Aktywny'
+                Quantity        = '200'
+                QuantityHistory = [System.Collections.Generic.List[object]]::new()
+                GenericNames    = [System.Collections.Generic.List[string]]@('Korony Elanckie')
+                Names           = [System.Collections.Generic.List[string]]@('Korony Maga')
+            },
+            [PSCustomObject]@{
+                Name            = 'Stary Mag'
+                Type            = 'Postać'
+                Owner           = $null
+                Status          = 'Nieaktywny'
+                Quantity        = $null
+                QuantityHistory = [System.Collections.Generic.List[object]]::new()
+                GenericNames    = [System.Collections.Generic.List[string]]::new()
+                Names           = [System.Collections.Generic.List[string]]@('Stary Mag')
+            }
+        )
+
+        $Result = Test-CurrencyReconciliation -Entities $TestEntities -Sessions @()
+        $OrphanWarnings = $Result.Warnings | Where-Object { $_.Check -eq 'OrphanedCurrency' }
+        $OrphanWarnings | Should -Not -BeNullOrEmpty
+        $OrphanWarnings[0].OwnerCategory | Should -Be 'Physical'
+        $OrphanWarnings[0].Detail | Should -Match 'physical items need return'
+    }
+
+    It 'reports PhysicalSupply and VirtualSupply in result' {
+        $TestEntities = @(
+            [PSCustomObject]@{
+                Name            = 'Korony Bohatera'
+                Type            = 'Przedmiot'
+                Owner           = 'Rycerz'
+                Status          = 'Aktywny'
+                Quantity        = '100'
+                QuantityHistory = [System.Collections.Generic.List[object]]::new()
+                GenericNames    = [System.Collections.Generic.List[string]]@('Korony Elanckie')
+                Names           = [System.Collections.Generic.List[string]]@('Korony Bohatera')
+            },
+            [PSCustomObject]@{
+                Name            = 'Rycerz'
+                Type            = 'Postać'
+                Owner           = $null
+                Status          = 'Aktywny'
+                Quantity        = $null
+                QuantityHistory = [System.Collections.Generic.List[object]]::new()
+                GenericNames    = [System.Collections.Generic.List[string]]::new()
+                Names           = [System.Collections.Generic.List[string]]@('Rycerz')
+            },
+            [PSCustomObject]@{
+                Name            = 'Korony NPC'
+                Type            = 'Przedmiot'
+                Owner           = 'Kupiec'
+                Status          = 'Aktywny'
+                Quantity        = '50'
+                QuantityHistory = [System.Collections.Generic.List[object]]::new()
+                GenericNames    = [System.Collections.Generic.List[string]]@('Korony Elanckie')
+                Names           = [System.Collections.Generic.List[string]]@('Korony NPC')
+            },
+            [PSCustomObject]@{
+                Name            = 'Kupiec'
+                Type            = 'NPC'
+                Owner           = $null
+                Status          = 'Aktywny'
+                Quantity        = $null
+                QuantityHistory = [System.Collections.Generic.List[object]]::new()
+                GenericNames    = [System.Collections.Generic.List[string]]::new()
+                Names           = [System.Collections.Generic.List[string]]@('Kupiec')
+            }
+        )
+
+        $Result = Test-CurrencyReconciliation -Entities $TestEntities -Sessions @()
+        $Result.PhysicalSupply | Should -Not -BeNullOrEmpty
+        $Result.VirtualSupply | Should -Not -BeNullOrEmpty
+        $Result.PhysicalSupply['Korony Elanckie'] | Should -Be 100
+        $Result.VirtualSupply['Korony Elanckie'] | Should -Be 50
+    }
+
+    It 'emits PhysicalSupplyTracking info for Postać-owned currency' {
+        $TestEntities = @(
+            [PSCustomObject]@{
+                Name            = 'Korony Bohatera'
+                Type            = 'Przedmiot'
+                Owner           = 'Rycerz'
+                Status          = 'Aktywny'
+                Quantity        = '75'
+                QuantityHistory = [System.Collections.Generic.List[object]]::new()
+                GenericNames    = [System.Collections.Generic.List[string]]@('Korony Elanckie')
+                Names           = [System.Collections.Generic.List[string]]@('Korony Bohatera')
+            },
+            [PSCustomObject]@{
+                Name            = 'Rycerz'
+                Type            = 'Postać'
+                Owner           = $null
+                Status          = 'Aktywny'
+                Quantity        = $null
+                QuantityHistory = [System.Collections.Generic.List[object]]::new()
+                GenericNames    = [System.Collections.Generic.List[string]]::new()
+                Names           = [System.Collections.Generic.List[string]]@('Rycerz')
+            }
+        )
+
+        $Result = Test-CurrencyReconciliation -Entities $TestEntities -Sessions @()
+        $PhysInfo = $Result.Warnings | Where-Object { $_.Check -eq 'PhysicalSupplyTracking' }
+        $PhysInfo | Should -Not -BeNullOrEmpty
+        $PhysInfo[0].Severity | Should -Be 'Info'
+    }
+
+    It 'emits VirtualSupplyTracking info for NPC-owned currency' {
+        $TestEntities = @(
+            [PSCustomObject]@{
+                Name            = 'Korony NPC'
+                Type            = 'Przedmiot'
+                Owner           = 'Kupiec'
+                Status          = 'Aktywny'
+                Quantity        = '200'
+                QuantityHistory = [System.Collections.Generic.List[object]]::new()
+                GenericNames    = [System.Collections.Generic.List[string]]@('Korony Elanckie')
+                Names           = [System.Collections.Generic.List[string]]@('Korony NPC')
+            },
+            [PSCustomObject]@{
+                Name            = 'Kupiec'
+                Type            = 'NPC'
+                Owner           = $null
+                Status          = 'Aktywny'
+                Quantity        = $null
+                QuantityHistory = [System.Collections.Generic.List[object]]::new()
+                GenericNames    = [System.Collections.Generic.List[string]]::new()
+                Names           = [System.Collections.Generic.List[string]]@('Kupiec')
+            }
+        )
+
+        $Result = Test-CurrencyReconciliation -Entities $TestEntities -Sessions @()
+        $VirtInfo = $Result.Warnings | Where-Object { $_.Check -eq 'VirtualSupplyTracking' }
+        $VirtInfo | Should -Not -BeNullOrEmpty
+        $VirtInfo[0].Severity | Should -Be 'Info'
+    }
+
     It 'does not flag currency owned by Aktywny NPC as orphaned' {
         $TestEntities = @(
             [PSCustomObject]@{

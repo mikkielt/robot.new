@@ -653,6 +653,61 @@ $script:MenuRegistry = @(
         InfoText = @('Sprawdza, czy salda walut zgadzają się z historią transakcji.')
     }
 
+    @{
+        ID       = 'economic-snapshot'
+        Label    = 'Obraz gospodarki'
+        Description = 'Analiza podaży i dystrybucji walut'
+        Menu     = 'Waluta'
+        Role     = 'K'
+        Mode     = 'Workflow'
+        WorkflowFunction = 'Invoke-EconomicSnapshotWorkflow'
+        HelpBrief = 'Podaż fizyczna/wirtualna, Gini, top holders.'
+        HelpFull = @(
+            'Obraz gospodarki:'
+            '  - Podaż wg nominałów (fizyczna vs wirtualna)'
+            '  - Współczynnik Gini (nierówność majątkowa)'
+            '  - Ranking najbogatszych właścicieli'
+            '  - Wolumen transakcji'
+        )
+        InfoText = @('Punkt-w-czasie analiza ekonomiczna świata gry.')
+    }
+
+    @{
+        ID       = 'economic-timeline'
+        Label    = 'Oś czasu gospodarki'
+        Description = 'Trendy gospodarcze w czasie'
+        Menu     = 'Waluta'
+        Role     = 'K'
+        Mode     = 'Workflow'
+        WorkflowFunction = 'Invoke-EconomicTimelineWorkflow'
+        HelpBrief = 'Miesięczne trendy podaży i transakcji.'
+        HelpFull = @(
+            'Oś czasu gospodarki:'
+            '  - Miesięczna podaż (fizyczna/wirtualna)'
+            '  - Liczba transferów w miesiącu'
+            '  - Zakres dat: od-do'
+        )
+        InfoText = @('Analiza trendów gospodarczych w wybranym zakresie dat.')
+    }
+
+    @{
+        ID       = 'materialization-report'
+        Label    = 'Raport materializacji'
+        Description = 'Fizyczna vs wirtualna waluta'
+        Menu     = 'Waluta'
+        Role     = 'K'
+        Mode     = 'Workflow'
+        WorkflowFunction = 'Invoke-MaterializationReportWorkflow'
+        HelpBrief = 'Podział walut: fizyczne (Postać) vs wirtualne (NPC/Grupa).'
+        HelpFull = @(
+            'Raport materializacji walut:'
+            '  - Podział wg nominałów'
+            '  - Majątek fizyczny wg graczy'
+            '  - Osierocona waluta (nieaktywne Postacie z aktywną walutą)'
+        )
+        InfoText = @('Analiza fizycznej vs wirtualnej waluty z detekcją osieroconych pozycji.')
+    }
+
     # ─── PU ───────────────────────────────────────────────────────────────────
 
     @{

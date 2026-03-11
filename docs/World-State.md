@@ -336,6 +336,39 @@ Entities can be "at" a location in three ways:
 
 When asking "where was X on date Y?", the system checks session visits first, then falls back to the permanent location.
 
+## Economic Queries
+
+Beyond tracking currency holdings and transfers, the system provides tools for analyzing the broader economic picture.
+
+### Economic Snapshot
+
+A point-in-time overview of the entire economy:
+
+- **Supply breakdown**: Total currency in circulation, split by denomination and by physical vs virtual
+- **Physical vs virtual**: Physical currency is owned by player characters (actual Margonem items). Virtual currency is held by NPCs, groups, or treasuries (RP bookkeeping only)
+- **Wealth distribution**: Who holds the most currency, and how unequally wealth is distributed (Gini coefficient — 0 means everyone has equal wealth, 1 means one entity holds everything)
+- **Transaction volume**: How many @Transfer directives have been recorded
+
+Snapshots can be scoped to a specific denomination, owner, or point in time.
+
+### Economic Timeline
+
+Monthly trend data over a date range. For each month, the system computes:
+
+- Total supply in circulation (in Kogi base units)
+- Physical vs virtual supply split
+- Number of @Transfer transactions in that month
+
+This reveals trends like supply growth, shifts between physical and virtual holdings, or periods of high transaction activity.
+
+### Materialization Report
+
+Analyzes the relationship between physical and virtual currency:
+
+- **Per-denomination breakdown**: What percentage of each denomination is physically held vs virtual bookkeeping
+- **Per-player breakdown**: How much physical currency each player holds across all their characters
+- **Orphaned physical currency**: Currency assigned to inactive or removed player characters — these represent physical Margonem items that may need to be returned to coordinators
+
 ## Expected Outcomes
 
 The world-state tracking system ensures:

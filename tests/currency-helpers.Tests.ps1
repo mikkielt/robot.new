@@ -128,6 +128,80 @@ Describe 'Test-IsCurrencyEntity' {
     }
 }
 
+Describe 'Resolve-CurrencyOwnerType' {
+    BeforeAll {
+        $script:Lookup = [System.Collections.Generic.Dictionary[string, object]]::new([System.StringComparer]::OrdinalIgnoreCase)
+        $script:Lookup['Bohater'] = [PSCustomObject]@{ Name = 'Bohater'; Type = 'Postać' }
+        $script:Lookup['Kupiec'] = [PSCustomObject]@{ Name = 'Kupiec'; Type = 'NPC' }
+        $script:Lookup['Gildia'] = [PSCustomObject]@{ Name = 'Gildia'; Type = 'Grupa' }
+        $script:Lookup['Solmyr'] = [PSCustomObject]@{ Name = 'Solmyr'; Type = 'Gracz' }
+        $script:Lookup['Miecz'] = [PSCustomObject]@{ Name = 'Miecz'; Type = 'Przedmiot' }
+        $script:Lookup['Wieża'] = [PSCustomObject]@{ Name = 'Wieża'; Type = 'Lokacja' }
+    }
+
+    It 'classifies Postać owner as Physical' {
+        Resolve-CurrencyOwnerType -OwnerName 'Bohater' -EntityLookup $script:Lookup | Should -Be 'Physical'
+    }
+
+    It 'classifies NPC owner as Virtual' {
+        Resolve-CurrencyOwnerType -OwnerName 'Kupiec' -EntityLookup $script:Lookup | Should -Be 'Virtual'
+    }
+
+    It 'classifies Grupa owner as Virtual' {
+        Resolve-CurrencyOwnerType -OwnerName 'Gildia' -EntityLookup $script:Lookup | Should -Be 'Virtual'
+    }
+
+    It 'classifies Gracz owner as Virtual' {
+        Resolve-CurrencyOwnerType -OwnerName 'Solmyr' -EntityLookup $script:Lookup | Should -Be 'Virtual'
+    }
+
+    It 'returns Unknown for non-standard entity type' {
+        Resolve-CurrencyOwnerType -OwnerName 'Miecz' -EntityLookup $script:Lookup | Should -Be 'Unknown'
+    }
+
+    It 'returns Unknown when owner not found in lookup' {
+        Resolve-CurrencyOwnerType -OwnerName 'Nieznany' -EntityLookup $script:Lookup | Should -Be 'Unknown'
+    }
+}
+
+Describe 'Get-CurrencyEntitiesFiltered with EntityLookup' {
+    BeforeAll {
+        $script:Lookup = [System.Collections.Generic.Dictionary[string, object]]::new([System.StringComparer]::OrdinalIgnoreCase)
+        $script:Lookup['Bohater'] = [PSCustomObject]@{ Name = 'Bohater'; Type = 'Postać' }
+        $script:Lookup['Kupiec'] = [PSCustomObject]@{ Name = 'Kupiec'; Type = 'NPC' }
+    }
+
+    It 'enriches output with OwnerCategory when EntityLookup provided' {
+        $Entities = @(
+            [PSCustomObject]@{
+                Name         = 'Korony Bohatera'
+                Type         = 'Przedmiot'
+                Owner        = 'Bohater'
+                Status       = 'Aktywny'
+                Quantity     = '100'
+                GenericNames = [System.Collections.Generic.List[string]]@('Korony Elanckie')
+            }
+        )
+        $Result = Get-CurrencyEntitiesFiltered -Entities $Entities -EntityLookup $script:Lookup
+        $Result[0].OwnerCategory | Should -Be 'Physical'
+    }
+
+    It 'returns null OwnerCategory when EntityLookup not provided' {
+        $Entities = @(
+            [PSCustomObject]@{
+                Name         = 'Korony Bohatera'
+                Type         = 'Przedmiot'
+                Owner        = 'Bohater'
+                Status       = 'Aktywny'
+                Quantity     = '100'
+                GenericNames = [System.Collections.Generic.List[string]]@('Korony Elanckie')
+            }
+        )
+        $Result = Get-CurrencyEntitiesFiltered -Entities $Entities
+        $Result[0].OwnerCategory | Should -BeNullOrEmpty
+    }
+}
+
 Describe 'Find-CurrencyEntity' {
     BeforeAll {
         $script:TestEntities = @(

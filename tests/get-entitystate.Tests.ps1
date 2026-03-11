@@ -275,6 +275,40 @@ Describe 'Get-EntityState - multi-Transfer' {
     }
 }
 
+Describe 'Get-EntityState - @Transfer fuzzy name resolution' {
+    BeforeAll {
+        $script:FuzzyEntities = Get-Entity -Path $script:FixturesRoot
+        $script:FuzzySessions = Get-Session -File (Join-Path $script:FixturesRoot 'sessions-transfer-fuzzy.md')
+        $script:FuzzyEnriched = Get-EntityState -Entities $script:FuzzyEntities -Sessions $script:FuzzySessions
+    }
+
+    It 'resolves declension-inflected source name in @Transfer' {
+        # "Xeron Demonlorda" should resolve to "Xeron Demonlord"
+        $Source = $script:FuzzyEnriched | Where-Object { $_.Name -eq 'Korony Xeron Demonlorda' }
+        $Source | Should -Not -BeNullOrEmpty
+        # Base: 50, transfer -5 = 45
+        $Source.Quantity | Should -Be '45'
+    }
+
+    It 'resolves declension-inflected destination name in @Transfer' {
+        # "Kupiec Orrina" should resolve to "Kupiec Orrin"
+        $Dest = $script:FuzzyEnriched | Where-Object { $_.Name -eq 'Korony Kupca Orrina' }
+        $Dest | Should -Not -BeNullOrEmpty
+        # Base: 30, transfer +5 = 35
+        $Dest.Quantity | Should -Be '35'
+    }
+
+    It 'exact-match transfers still work (regression guard)' {
+        $Entities = Get-Entity -Path $script:FixturesRoot
+        $Sessions = Get-Session -File (Join-Path $script:FixturesRoot 'sessions-zmiany.md')
+        $Enriched = Get-EntityState -Entities $Entities -Sessions $Sessions
+
+        # Exact names: Xeron Demonlord -> Kupiec Orrin
+        $Source = $Enriched | Where-Object { $_.Name -eq 'Korony Xeron Demonlorda' }
+        $Source.Quantity | Should -Be '65'
+    }
+}
+
 Describe 'Get-EntityState - @plik Zmiany override' {
     BeforeAll {
         $script:PlikEntities = Get-Entity -Path $script:FixturesRoot

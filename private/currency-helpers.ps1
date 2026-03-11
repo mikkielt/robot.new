@@ -13,6 +13,7 @@
     - Resolve-CurrencyDenomination:    resolve colloquial/stem denomination name to canonical
     - Test-IsCurrencyEntity:           check if an entity is a currency entity
     - Find-CurrencyEntity:             find a currency entity by denomination and owner
+    - Resolve-CurrencyOwnerType:       classify owner as Physical/Virtual/Unknown by entity type
     - Get-CurrencyEntitiesFiltered:    identify, filter by status, and enrich currency entities
 #>
 
@@ -189,11 +190,42 @@ function Find-CurrencyEntity {
     return $null
 }
 
+function Resolve-CurrencyOwnerType {
+    <#
+        .SYNOPSIS
+        Classifies a currency owner as Physical, Virtual, or Unknown based on the
+        owner entity's type. Postać = Physical (actual Margonem items), NPC/Grupa/Gracz = Virtual.
+    #>
+    param(
+        [Parameter(Mandatory)]
+        [string]$OwnerName,
+
+        [Parameter(Mandatory)]
+        [System.Collections.Generic.Dictionary[string, object]]$EntityLookup
+    )
+
+    if (-not $EntityLookup.ContainsKey($OwnerName)) {
+        return 'Unknown'
+    }
+
+    $OwnerEntity = $EntityLookup[$OwnerName]
+    $OwnerType = if ($OwnerEntity.Type) { $OwnerEntity.Type } else { $null }
+
+    switch ($OwnerType) {
+        'Postać'  { return 'Physical' }
+        'NPC'     { return 'Virtual' }
+        'Grupa'   { return 'Virtual' }
+        'Gracz'   { return 'Virtual' }
+        default   { return 'Unknown' }
+    }
+}
+
 function Get-CurrencyEntitiesFiltered {
     <#
         .SYNOPSIS
         Identifies currency entities from a collection and returns enriched objects
         with resolved denomination, parsed quantity, and extracted properties.
+        When EntityLookup is provided, output includes OwnerCategory classification.
     #>
     param(
         [Parameter(Mandatory)]
@@ -202,7 +234,9 @@ function Get-CurrencyEntitiesFiltered {
 
         [switch]$IncludeInactive,
 
-        [switch]$IncludeDeleted
+        [switch]$IncludeDeleted,
+
+        [System.Collections.Generic.Dictionary[string, object]]$EntityLookup
     )
 
     $Result = [System.Collections.Generic.List[object]]::new()
@@ -225,13 +259,19 @@ function Get-CurrencyEntitiesFiltered {
         [int]$QtyInt = 0
         [void][int]::TryParse($QtyStr, [ref]$QtyInt)
 
+        $OwnerCategory = $null
+        if ($EntityLookup -and $Entity.Owner) {
+            $OwnerCategory = Resolve-CurrencyOwnerType -OwnerName $Entity.Owner -EntityLookup $EntityLookup
+        }
+
         $Result.Add([PSCustomObject]@{
-            Entity       = $Entity
-            Denomination = $EntityDenom
-            Owner        = $Entity.Owner
-            Location     = $Entity.Location
-            Quantity     = $QtyInt
-            Status       = $Status
+            Entity        = $Entity
+            Denomination  = $EntityDenom
+            Owner         = $Entity.Owner
+            Location      = $Entity.Location
+            Quantity      = $QtyInt
+            Status        = $Status
+            OwnerCategory = $OwnerCategory
         })
     }
 

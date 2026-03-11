@@ -34,7 +34,19 @@ public/reporting/get-currencyreport.ps1 Reporting command
     └── Get-CurrencyReport              Filtered currency holdings report
 
 public/reporting/test-currencyreconciliation.ps1    Validation checks
-    └── Test-CurrencyReconciliation                 5-check reconciliation report
+    └── Test-CurrencyReconciliation                 7-check reconciliation report
+
+public/reporting/get-economicsnapshot.ps1          Economic snapshot
+    └── Get-EconomicSnapshot                       Point-in-time supply/distribution/Gini
+
+public/reporting/get-economictimeline.ps1          Economic timeline
+    └── Get-EconomicTimeline                       Monthly supply and transaction trends
+
+public/reporting/get-materializationreport.ps1     Materialization report
+    └── Get-MaterializationReport                  Physical vs virtual currency analysis
+
+private/economy-helpers.ps1                        Shared economic helpers
+    └── New-EconomicSnapshotData                 Supply breakdown, Gini, top holders
 
 public/session/get-session.ps1                          @Transfer parsing (session-level directive)
 public/get-entitystate.ps1                              @Transfer expansion (symmetric quantity deltas)
@@ -148,6 +160,7 @@ Identifies currency entities from a collection, filters by status, and returns e
 | `Entities` | object[] | **Mandatory** (allows empty). Entity collection from `Get-Entity` or `Get-EntityState`. |
 | `IncludeInactive` | switch | Include entities with `Nieaktywny` status. |
 | `IncludeDeleted` | switch | Include entities with `Usunięty` status. |
+| `EntityLookup` | Dictionary[string,object] | Optional. Case-insensitive entity name → entity object lookup. When provided, enriched output includes `OwnerCategory` classification. |
 
 **Return object** (per entity):
 
@@ -159,6 +172,7 @@ Identifies currency entities from a collection, filters by status, and returns e
 | `Location` | string | Entity's `Location` property |
 | `Quantity` | int | Parsed integer quantity (defaults to `0` if missing or unparseable) |
 | `Status` | string | Entity status (`Aktywny` default) |
+| `OwnerCategory` | string | Owner type: `Physical` (Postać), `Virtual` (NPC/Grupa/Gracz), `Unknown`. Only set when `-EntityLookup` is provided; `$null` otherwise. |
 
 **Filtering pipeline**: Entity must pass `Test-IsCurrencyEntity` -> status filter -> denomination resolution.
 
@@ -265,9 +279,11 @@ Validation command that flags currency discrepancies. Designed for standalone us
 |---|---|---|
 | `NegativeBalance` | Error | Currency entity with `Quantity < 0` |
 | `StaleBalance` | Warning | Owned currency with no changes in >3 months |
-| `OrphanedCurrency` | Warning | Currency where `@należy_do` points to `Nieaktywny`/`Usunięty` entity |
+| `OrphanedCurrency` | Warning | Currency where `@należy_do` points to `Nieaktywny`/`Usunięty` entity. Includes `OwnerCategory` — Physical-owned orphans note "physical items need return to coordinators" |
 | `AsymmetricTransaction` | Warning | Per-session per-denomination `@ilość` deltas that don't sum to zero |
 | (Supply tracking) | Info | Total supply per denomination across all active entities |
+| `PhysicalSupplyTracking` | Info | Per-denomination supply owned by Postać entities (physical currency in play) |
+| `VirtualSupplyTracking` | Info | Per-denomination supply owned by NPC/Grupa/Gracz entities (virtual bookkeeping currency) |
 
 ### 8.4 Output Schema
 
@@ -276,6 +292,8 @@ Validation command that flags currency discrepancies. Designed for standalone us
 | `Warnings` | object[] | Array of `{ Check, Severity, Entity, Detail }` |
 | `WarningCount` | int | Total number of warnings |
 | `Supply` | hashtable | `{ DenominationName = TotalQuantity }` |
+| `PhysicalSupply` | hashtable | `{ DenominationName = TotalQuantity }` for Postać-owned currency |
+| `VirtualSupply` | hashtable | `{ DenominationName = TotalQuantity }` for NPC/Grupa/Gracz-owned currency |
 | `EntityCount` | int | Number of currency entities found |
 | `CheckedAt` | datetime | Timestamp of the check |
 
@@ -392,21 +410,79 @@ Set-CurrencyEntity -Name "Korony Narrator Dracon" -AmountDelta +500 -ValidFrom "
 
 | Test file | Coverage |
 |---|---|
-| `tests/currency-helpers.Tests.ps1` | Conversion utilities, denomination resolution, entity identification, entity lookup |
+| `tests/currency-helpers.Tests.ps1` | Conversion utilities, denomination resolution, entity identification, entity lookup, owner type classification |
 | `tests/get-currencyreport.Tests.ps1` | Report filtering, base unit conversion, history inclusion |
-| `tests/test-currencyreconciliation.Tests.ps1` | Negative balance, orphaned currency, supply tracking, @Transfer symmetry |
-| `tests/get-entitystate.Tests.ps1` | @Transfer expansion (symmetric deltas), @Transfer session parsing |
+| `tests/test-currencyreconciliation.Tests.ps1` | Negative balance, orphaned currency, supply tracking, @Transfer symmetry, physical/virtual supply |
+| `tests/get-entitystate.Tests.ps1` | @Transfer expansion (symmetric deltas), @Transfer session parsing, @Transfer fuzzy name resolution |
 | `tests/currency-entity.Tests.ps1` | Currency entity creation, @ilość tag handling |
 | `tests/new-currencyentity.Tests.ps1` | Denomination validation, auto-naming, duplicate detection, template rendering |
 | `tests/set-currencyentity.Tests.ps1` | Absolute/delta quantity, owner/location update, mutual exclusion |
 | `tests/get-currencyentity.Tests.ps1` | Filtering, denomination resolution, balance, inactive exclusion |
 | `tests/remove-currencyentity.Tests.ps1` | Soft-delete, non-zero balance warning |
+| `tests/get-economicsnapshot.Tests.ps1` | Supply breakdown, Gini coefficient, top holders, denomination filter, transfers |
+| `tests/get-economictimeline.Tests.ps1` | Monthly data points, transfer counting, single month range, empty data |
+| `tests/get-materializationreport.Tests.ps1` | Denomination breakdown, player mapping, orphaned physical currency |
 
 ---
 
-## 13. Related Documents
+## 13. @Transfer Fuzzy Name Resolution
+
+### 13.1 Problem
+
+Transfer source and destination names undergo the same fuzzy name resolution pipeline as Zmiany entity names. This was added because narrators may use inflected or approximate names in `@Transfer` directives (e.g., "Xeron Demonlorda" instead of "Xeron Demonlord").
+
+### 13.2 Resolution Pipeline
+
+For each Transfer source and destination:
+
+1. **Exact match**: Check `$EntityByName` lookup (built from entity `Names` arrays)
+2. **Fuzzy resolve**: Fall back to `Resolve-Name` with declension stripping + stem alternation + Levenshtein BK-tree
+3. **Player mapping**: If `Resolve-Name` returns a Player entity, map through `$EntityByName` + `$Resolved.Names` to find the canonical entity name
+
+The resolved name is then used for `Find-CurrencyEntity -OwnerName`.
+
+---
+
+## 14. Physical vs Virtual Currency
+
+### 14.1 Concept
+
+Currency entities are classified as **physical** or **virtual** based on their owner's entity type — no additional storage tags are needed.
+
+| Owner entity type | Currency classification | Meaning |
+|---|---|---|
+| **Postać** | Physical | Actual Margonem items in player character equipment |
+| **NPC** | Virtual | RP bookkeeping — narrative-only currency |
+| **Grupa** | Virtual | Treasury reserves, guild holdings |
+| **Gracz** | Virtual | Player-level (not character-level) currency |
+| *(not found)* | Unknown | Owner not in entity lookup |
+
+### 14.2 `Resolve-CurrencyOwnerType`
+
+Utility function in `private/currency-helpers.ps1`. Accepts an owner name and an entity lookup dictionary, returns `'Physical'`, `'Virtual'`, or `'Unknown'`.
+
+### 14.3 Design Rationale
+
+Physical currency represents items that actually exist in Margonem player equipment. Virtual currency is pure RP bookkeeping — narrators can allocate virtual currency to NPCs and groups without needing corresponding game items. Players cannot have more virtual money than physical; virtual-only currency is reserved for narrators backing NPCs.
+
+---
+
+## 15. Economic Reporting
+
+Three reporting functions provide economic analysis. All share the `New-EconomicSnapshotData` helper (`private/economy-helpers.ps1`). Full documentation: [ECONOMY.md](ECONOMY.md).
+
+| Function | Purpose |
+|---|---|
+| `Get-EconomicSnapshot` | Point-in-time supply breakdown, wealth distribution, Gini coefficient |
+| `Get-EconomicTimeline` | Monthly supply and transaction trends over a date range |
+| `Get-MaterializationReport` | Physical vs virtual currency analysis with orphan detection |
+
+---
+
+## 16. Related Documents
 
 - [ENTITIES.md](ENTITIES.md) - Entity system (tags, temporal scoping, multi-file merge)
 - [ENTITY-WRITES.md](ENTITY-WRITES.md) - Write operations on entity files
 - [SESSIONS.md](SESSIONS.md) - Session parsing (Zmiany, @Transfer)
 - [PU.md](PU.md) - PU assignment workflow
+- [ECONOMY.md](ECONOMY.md) - Economic analysis subsystem (snapshot, timeline, materialization)

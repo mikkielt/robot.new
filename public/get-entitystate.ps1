@@ -317,16 +317,52 @@ function Get-EntityState {
                     continue
                 }
 
+                # Resolve source name through the same fuzzy pipeline as Zmiany
+                $ResolvedSourceName = $Transfer.Source
+                if (-not $EntityByName.ContainsKey($ResolvedSourceName)) {
+                    $Resolved = Resolve-Name -Query $ResolvedSourceName -Index $NameIndexResult.Index -StemIndex $NameIndexResult.StemIndex -BKTree $NameIndexResult.BKTree -Cache $Cache
+                    if ($Resolved) {
+                        if ($EntityByName.ContainsKey($Resolved.Name)) {
+                            $ResolvedSourceName = $EntityByName[$Resolved.Name].Name
+                        } else {
+                            foreach ($N in $Resolved.Names) {
+                                if ($EntityByName.ContainsKey($N)) {
+                                    $ResolvedSourceName = $EntityByName[$N].Name
+                                    break
+                                }
+                            }
+                        }
+                    }
+                }
+
+                # Resolve destination name through the same fuzzy pipeline as Zmiany
+                $ResolvedDestName = $Transfer.Destination
+                if (-not $EntityByName.ContainsKey($ResolvedDestName)) {
+                    $Resolved = Resolve-Name -Query $ResolvedDestName -Index $NameIndexResult.Index -StemIndex $NameIndexResult.StemIndex -BKTree $NameIndexResult.BKTree -Cache $Cache
+                    if ($Resolved) {
+                        if ($EntityByName.ContainsKey($Resolved.Name)) {
+                            $ResolvedDestName = $EntityByName[$Resolved.Name].Name
+                        } else {
+                            foreach ($N in $Resolved.Names) {
+                                if ($EntityByName.ContainsKey($N)) {
+                                    $ResolvedDestName = $EntityByName[$N].Name
+                                    break
+                                }
+                            }
+                        }
+                    }
+                }
+
                 # Find source currency entity
-                $SourceEntity = Find-CurrencyEntity -Entities $Entities -Denomination $Transfer.Denomination -OwnerName $Transfer.Source
+                $SourceEntity = Find-CurrencyEntity -Entities $Entities -Denomination $Transfer.Denomination -OwnerName $ResolvedSourceName
                 if (-not $SourceEntity) {
-                    Write-RobotWarning "[WARN Get-EntityState] No currency entity for '$($Transfer.Source)' ($($ResolvedDenom.Name)) in @Transfer in session '$($Session.Header)' - assuming 0 balance"
+                    Write-RobotWarning "[WARN Get-EntityState] No currency entity for '$($ResolvedSourceName)' ($($ResolvedDenom.Name)) in @Transfer in session '$($Session.Header)' - assuming 0 balance"
                 }
 
                 # Find destination currency entity
-                $DestEntity = Find-CurrencyEntity -Entities $Entities -Denomination $Transfer.Denomination -OwnerName $Transfer.Destination
+                $DestEntity = Find-CurrencyEntity -Entities $Entities -Denomination $Transfer.Denomination -OwnerName $ResolvedDestName
                 if (-not $DestEntity) {
-                    Write-RobotWarning "[WARN Get-EntityState] No currency entity for '$($Transfer.Destination)' ($($ResolvedDenom.Name)) in @Transfer in session '$($Session.Header)' - assuming 0 balance"
+                    Write-RobotWarning "[WARN Get-EntityState] No currency entity for '$($ResolvedDestName)' ($($ResolvedDenom.Name)) in @Transfer in session '$($Session.Header)' - assuming 0 balance"
                 }
 
                 # Apply -N to source

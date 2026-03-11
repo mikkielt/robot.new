@@ -3,12 +3,14 @@
     Currency reconciliation checks - flags discrepancies in currency tracking.
 
     .DESCRIPTION
-    Runs five validation checks against currency entities:
+    Runs seven validation checks against currency entities:
     1. Negative balance detection
     2. Stale balance warning (no changes in >3 months for owned currencies)
     3. Orphaned currency (owner entity is Nieaktywny/Usunięty)
     4. Symmetric transaction check (per-session denomination deltas sum to zero)
     5. Total supply tracking per denomination
+    6. Physical supply tracking per denomination (Postać-owned)
+    7. Virtual supply tracking per denomination (NPC/Grupa/Gracz-owned)
 
     Designed to run as part of the monthly PU assignment workflow or standalone.
     Dot-sources currency-helpers.ps1 for denomination constants and identification.
@@ -50,8 +52,18 @@ function Test-CurrencyReconciliation {
     $Warnings = [System.Collections.Generic.List[object]]::new()
     $Now = [datetime]::Now
 
+    # Build entity lookup for owner type classification
+    $EntityLookup = [System.Collections.Generic.Dictionary[string, object]]::new([System.StringComparer]::OrdinalIgnoreCase)
+    foreach ($Entity in $Entities) {
+        foreach ($Name in $Entity.Names) {
+            if (-not $EntityLookup.ContainsKey($Name)) {
+                $EntityLookup[$Name] = $Entity
+            }
+        }
+    }
+
     # Collect all currency entities with enriched data (include all statuses for per-check filtering)
-    $CurrencyItems = Get-CurrencyEntitiesFiltered -Entities $Entities -IncludeInactive -IncludeDeleted
+    $CurrencyItems = Get-CurrencyEntitiesFiltered -Entities $Entities -IncludeInactive -IncludeDeleted -EntityLookup $EntityLookup
 
     # Build entity status lookup for orphan check
     $EntityStatusByName = [System.Collections.Generic.Dictionary[string, string]]::new([System.StringComparer]::OrdinalIgnoreCase)
@@ -96,7 +108,7 @@ function Test-CurrencyReconciliation {
         }
     }
 
-    # Check 3: Orphaned currency
+    # Check 3: Orphaned currency (enhanced with owner category detail)
     foreach ($Item in $CurrencyItems) {
         if ($Item.Status -ne 'Aktywny') { continue }
         if (-not $Item.Owner) { continue }
@@ -104,11 +116,17 @@ function Test-CurrencyReconciliation {
         if ($EntityStatusByName.ContainsKey($Item.Owner)) {
             $OwnerStatus = $EntityStatusByName[$Item.Owner]
             if ($OwnerStatus -eq 'Usunięty' -or $OwnerStatus -eq 'Nieaktywny') {
+                $OwnerCat = if ($Item.OwnerCategory) { $Item.OwnerCategory } else { 'Unknown' }
+                $Detail = "Owner '$($Item.Owner)' has status '$OwnerStatus'"
+                if ($OwnerCat -eq 'Physical') {
+                    $Detail += ' — physical items need return to coordinators'
+                }
                 $Warnings.Add([PSCustomObject]@{
-                    Check      = 'OrphanedCurrency'
-                    Severity   = 'Warning'
-                    Entity     = $Item.Entity.Name
-                    Detail     = "Owner '$($Item.Owner)' has status '$OwnerStatus'"
+                    Check         = 'OrphanedCurrency'
+                    Severity      = 'Warning'
+                    Entity        = $Item.Entity.Name
+                    Detail        = $Detail
+                    OwnerCategory = $OwnerCat
                 })
             }
         }
@@ -176,12 +194,54 @@ function Test-CurrencyReconciliation {
         $Supply[$Item.Denomination.Name] += $Item.Quantity
     }
 
+    # Check 6: Physical supply tracking per denomination (Info)
+    $PhysicalSupply = [System.Collections.Generic.Dictionary[string, int]]::new([System.StringComparer]::OrdinalIgnoreCase)
+    foreach ($Item in $CurrencyItems) {
+        if ($Item.Status -eq 'Usunięty') { continue }
+        if ($Item.OwnerCategory -ne 'Physical') { continue }
+
+        if (-not $PhysicalSupply.ContainsKey($Item.Denomination.Name)) {
+            $PhysicalSupply[$Item.Denomination.Name] = 0
+        }
+        $PhysicalSupply[$Item.Denomination.Name] += $Item.Quantity
+    }
+    foreach ($Entry in $PhysicalSupply.GetEnumerator()) {
+        $Warnings.Add([PSCustomObject]@{
+            Check      = 'PhysicalSupplyTracking'
+            Severity   = 'Info'
+            Entity     = $Entry.Key
+            Detail     = "Physical supply: $($Entry.Value)"
+        })
+    }
+
+    # Check 7: Virtual supply tracking per denomination (Info)
+    $VirtualSupply = [System.Collections.Generic.Dictionary[string, int]]::new([System.StringComparer]::OrdinalIgnoreCase)
+    foreach ($Item in $CurrencyItems) {
+        if ($Item.Status -eq 'Usunięty') { continue }
+        if ($Item.OwnerCategory -ne 'Virtual') { continue }
+
+        if (-not $VirtualSupply.ContainsKey($Item.Denomination.Name)) {
+            $VirtualSupply[$Item.Denomination.Name] = 0
+        }
+        $VirtualSupply[$Item.Denomination.Name] += $Item.Quantity
+    }
+    foreach ($Entry in $VirtualSupply.GetEnumerator()) {
+        $Warnings.Add([PSCustomObject]@{
+            Check      = 'VirtualSupplyTracking'
+            Severity   = 'Info'
+            Entity     = $Entry.Key
+            Detail     = "Virtual supply: $($Entry.Value)"
+        })
+    }
+
     return [PSCustomObject]@{
-        Warnings     = @($Warnings)
-        WarningCount = $Warnings.Count
-        Supply       = $Supply
-        EntityCount  = $CurrencyItems.Count
-        CheckedAt    = $Now
+        Warnings       = @($Warnings)
+        WarningCount   = $Warnings.Count
+        Supply         = $Supply
+        PhysicalSupply = $PhysicalSupply
+        VirtualSupply  = $VirtualSupply
+        EntityCount    = $CurrencyItems.Count
+        CheckedAt      = $Now
     }
 
     } finally { $script:SuppressWarnings = $PrevSuppress }
