@@ -303,9 +303,9 @@ function Invoke-MigrationPhase2 {
     }
 
     # Record diagnostic snapshot and calculate totals
+    # FailedSessionsWithPU excluded — informational, repair deferred to Phase 5
     $TotalIssues = $Diag.UnresolvedCharacters.Count + $Diag.MalformedPU.Count +
-                   $Diag.DuplicateEntries.Count + $Diag.FailedSessionsWithPU.Count +
-                   $UnresolvedNarratorCount
+                   $Diag.DuplicateEntries.Count + $UnresolvedNarratorCount
     Add-DiagnosticSnapshot -State $State -OK $Diag.OK -IssueCount $TotalIssues
 
     # Show diagnostic trend across iterations
@@ -344,7 +344,7 @@ function Invoke-MigrationPhase2 {
         }
     } else {
         $IssueCount = $Diag.UnresolvedCharacters.Count + $Diag.MalformedPU.Count +
-                      $Diag.DuplicateEntries.Count + $Diag.FailedSessionsWithPU.Count
+                      $Diag.DuplicateEntries.Count
         $SummaryLines += "[!!] Diagnostyka PU: $IssueCount problemów"
         Write-PhaseSummary -Phase 2 -Status 'InProgress' -Lines $SummaryLines
 

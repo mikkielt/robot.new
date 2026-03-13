@@ -112,7 +112,7 @@ This notation is not widely used. When present, the function splits each locatio
 ```
 
 **Breaking change**: callers that previously iterated the return value directly must now access `.Locations`. Updated callers:
-- `migration/phase4-session-upgrade.ps1` — uses `$LocationReportResult.Locations`
+- `migration/phase5-session-upgrade.ps1` — uses `$LocationReportResult.Locations`
 - CLI registry `location-report` entry — `DataTransform = { param($R) $R.Locations }` for backward-compatible table display
 
 ### 4.3 Route Edge Schema

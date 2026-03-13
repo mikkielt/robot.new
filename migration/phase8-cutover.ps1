@@ -1,6 +1,6 @@
 <#
     .SYNOPSIS
-    Phase 6: Cutover (readiness check, freeze legacy, first standalone PU run).
+    Phase 8: Cutover (readiness check, freeze legacy, first standalone PU run).
 
     .DESCRIPTION
     First runs readiness checks (PU diagnostics, PU simulation, session format,
@@ -14,23 +14,23 @@
 #>
 
 # ============================================================================
-# PHASE 6 - Cutover (readiness check, freeze legacy, first standalone PU run)
+# PHASE 8 - Cutover (readiness check, freeze legacy, first standalone PU run)
 # ============================================================================
 
-function Invoke-MigrationPhase6 {
+function Invoke-MigrationPhase8 {
     param(
         [Parameter(Mandatory)] [hashtable]$State,
         [switch]$WhatIf
     )
 
-    # Predecessor guard: Phase 5 must be completed
-    if (-not (Test-PhasePredecessor -State $State -Phase 6)) {
-        Write-StepWarning 'Faza 5 nie jest ukończona.'
+    # Predecessor guard: Phase 7 must be completed
+    if (-not (Test-PhasePredecessor -State $State -Phase 8)) {
+        Write-StepWarning 'Faza 7 nie jest ukończona.'
         if (-not (Request-YesNo -Prompt 'Kontynuować mimo to?' -Default $false)) { return }
     }
 
-    $PhaseStatus = Get-PhaseStatus -State $State -Phase 6
-    Write-PhaseHeader -Phase 6 -Status $PhaseStatus
+    $PhaseStatus = Get-PhaseStatus -State $State -Phase 8
+    Write-PhaseHeader -Phase 8 -Status $PhaseStatus
 
     # ========================================================================
     # READINESS GATE
@@ -38,12 +38,12 @@ function Invoke-MigrationPhase6 {
 
     # Initialize parallel period start timestamp on first run
     if ($PhaseStatus -eq 'NotStarted') {
-        Set-PhaseInProgress -State $State -Phase 6
-        $State.Phases['6'].ParallelStartedAt = [datetime]::UtcNow.ToString('o')
+        Set-PhaseInProgress -State $State -Phase 8
+        $State.Phases['8'].ParallelStartedAt = [datetime]::UtcNow.ToString('o')
     }
 
     # Display parallel period duration
-    $StartStr = $State.Phases['6'].ParallelStartedAt
+    $StartStr = $State.Phases['8'].ParallelStartedAt
     if ($StartStr) {
         $Start = [datetime]::Parse($StartStr)
         $Days = ([datetime]::UtcNow - $Start).Days
@@ -60,7 +60,7 @@ function Invoke-MigrationPhase6 {
                       $Diag.DuplicateEntries.Count + $Diag.FailedSessionsWithPU.Count
         Write-StepWarning "Test-PlayerCharacterPUAssignment: $IssueCount problemów"
     }
-    Update-PhaseChecklist -State $State -Phase 6 -Item 'Readiness_DiagnosticsOK' -Value $Diag.OK
+    Update-PhaseChecklist -State $State -Phase 8 -Item 'Readiness_DiagnosticsOK' -Value $Diag.OK
 
     # Dashboard section 2: PU simulation (dry-run for current month)
     Write-SectionHeader 'Symulacja PU (bieżący miesiąc)'
@@ -93,10 +93,10 @@ function Invoke-MigrationPhase6 {
     $NonGen4Count = ($NonGen4Recent | Measure-Object).Count
     if ($NonGen4Count -eq 0) {
         Write-StepOK 'Wszystkie ostatnie sesje w formacie Gen4'
-        Update-PhaseChecklist -State $State -Phase 6 -Item 'Readiness_AllGen4' -Value $true
+        Update-PhaseChecklist -State $State -Phase 8 -Item 'Readiness_AllGen4' -Value $true
     } else {
         Write-StepWarning "$NonGen4Count ostatnich sesji nie w formacie Gen4"
-        Update-PhaseChecklist -State $State -Phase 6 -Item 'Readiness_AllGen4' -Value $false
+        Update-PhaseChecklist -State $State -Phase 8 -Item 'Readiness_AllGen4' -Value $false
     }
 
     # Dashboard section 4: Currency reconciliation
@@ -104,32 +104,32 @@ function Invoke-MigrationPhase6 {
     $Recon = Test-CurrencyReconciliation
     if ($Recon.WarningCount -eq 0) {
         Write-StepOK 'Brak ostrzeżeń'
-        Update-PhaseChecklist -State $State -Phase 6 -Item 'Readiness_CurrencyOK' -Value $true
+        Update-PhaseChecklist -State $State -Phase 8 -Item 'Readiness_CurrencyOK' -Value $true
     } else {
         Write-StepWarning "$($Recon.WarningCount) ostrzeżeń"
-        Update-PhaseChecklist -State $State -Phase 6 -Item 'Readiness_CurrencyOK' -Value $false
+        Update-PhaseChecklist -State $State -Phase 8 -Item 'Readiness_CurrencyOK' -Value $false
     }
 
     # Dashboard section 5: Session graph integrity
     Write-SectionHeader 'Integralność grafu sesji'
     $GraphInteg = Test-SessionGraphIntegrity -ExcludeDirectory $script:MigrationExcludeDirs -Quiet
     if ($GraphInteg.IndexMissing) {
-        Write-StepWarning 'Graf sesji nie został zbudowany — uruchom fazę 4'
-        Update-PhaseChecklist -State $State -Phase 6 -Item 'Readiness_SessionGraphOK' -Value $false
+        Write-StepWarning 'Graf sesji nie został zbudowany — uruchom fazę 5'
+        Update-PhaseChecklist -State $State -Phase 8 -Item 'Readiness_SessionGraphOK' -Value $false
     } elseif ($GraphInteg.OK) {
         Write-StepOK 'Test-SessionGraphIntegrity: OK'
-        Update-PhaseChecklist -State $State -Phase 6 -Item 'Readiness_SessionGraphOK' -Value $true
+        Update-PhaseChecklist -State $State -Phase 8 -Item 'Readiness_SessionGraphOK' -Value $true
     } else {
         $GraphIssueCount = $GraphInteg.OrphanedSessions.Count + $GraphInteg.MissingSessions.Count +
                            $GraphInteg.EmptySessions.Count + $GraphInteg.StaleNameVersion.Count
         Write-StepWarning "Test-SessionGraphIntegrity: $GraphIssueCount problemów"
-        Update-PhaseChecklist -State $State -Phase 6 -Item 'Readiness_SessionGraphOK' -Value $false
+        Update-PhaseChecklist -State $State -Phase 8 -Item 'Readiness_SessionGraphOK' -Value $false
     }
 
     # Dashboard section 6: Cutover readiness criteria
     Write-SectionHeader 'Kryteria przełączenia'
     $Criteria = @{
-        'Min. 1 pełny cykl PU bez rozbieżności'  = $State.Phases['6'].Checklist.ContainsKey('PUCycleValidated') -and $State.Phases['6'].Checklist['PUCycleValidated']
+        'Min. 1 pełny cykl PU bez rozbieżności'  = $State.Phases['8'].Checklist.ContainsKey('PUCycleValidated') -and $State.Phases['8'].Checklist['PUCycleValidated']
         'Wszyscy aktywni narratorzy stosują Gen4'  = $NonGen4Count -eq 0
         'Test-PUAssignment: OK = True'             = $Diag.OK
         'Test-CurrencyReconciliation: brak błędów' = $Recon.WarningCount -eq 0
@@ -138,7 +138,7 @@ function Invoke-MigrationPhase6 {
     Write-ChecklistReport -Checklist $Criteria -Title 'KRYTERIA PRZEŁĄCZENIA'
 
     # Ask coordinator to confirm PU cycle validation (one-time gate)
-    if ($Diag.OK -and -not ($State.Phases['6'].Checklist.ContainsKey('PUCycleValidated') -and $State.Phases['6'].Checklist['PUCycleValidated'])) {
+    if ($Diag.OK -and -not ($State.Phases['8'].Checklist.ContainsKey('PUCycleValidated') -and $State.Phases['8'].Checklist['PUCycleValidated'])) {
         if (Request-YesNo -Prompt 'Czy porównano wyniki PU z starym systemem i są zgodne?' -Default $false -HelpText @(
             'Potwierdzenie, że wyniki przydziału PU z nowego systemu',
             '(.robot.new) zgadzają się z wynikami starego systemu.',
@@ -150,15 +150,15 @@ function Invoke-MigrationPhase6 {
             'Tak = potwierdzam zgodność wyników PU',
             'Nie = jeszcze nie porównano lub są rozbieżności'
         )) {
-            Update-PhaseChecklist -State $State -Phase 6 -Item 'PUCycleValidated' -Value $true
+            Update-PhaseChecklist -State $State -Phase 8 -Item 'PUCycleValidated' -Value $true
         }
     }
 
     # Append dashboard run timestamp to history
-    if (-not $State.Phases['6'].ContainsKey('DashboardRuns')) {
-        $State.Phases['6'].DashboardRuns = @()
+    if (-not $State.Phases['8'].ContainsKey('DashboardRuns')) {
+        $State.Phases['8'].DashboardRuns = @()
     }
-    $State.Phases['6'].DashboardRuns = @($State.Phases['6'].DashboardRuns) + @([datetime]::UtcNow.ToString('o'))
+    $State.Phases['8'].DashboardRuns = @($State.Phases['8'].DashboardRuns) + @([datetime]::UtcNow.ToString('o'))
 
     # Evaluate all criteria — if any fail, save state and return (don't proceed to cutover)
     $FailedCriteria = $Criteria.Values | Where-Object { $_ -eq $false }
@@ -183,7 +183,7 @@ function Invoke-MigrationPhase6 {
     $Diag = Test-PlayerCharacterPUAssignment -ExcludeDirectory $script:MigrationExcludeDirs
     if ($Diag.OK) {
         Write-StepOK 'Diagnostyka: OK'
-        Update-PhaseChecklist -State $State -Phase 6 -Item 'FinalDiagnostics' -Value $true
+        Update-PhaseChecklist -State $State -Phase 8 -Item 'FinalDiagnostics' -Value $true
     } else {
         Write-StepError 'Diagnostyka: PROBLEMY - napraw je przed przełączeniem'
         Show-DiagnosticResults -Diagnostics $Diag
@@ -202,7 +202,7 @@ function Invoke-MigrationPhase6 {
 
         if ($GraczeContent.Contains('zamrożony (read-only)')) {
             Write-StepOK 'Gracze.md już zamrożony'
-            Update-PhaseChecklist -State $State -Phase 6 -Item 'GraczeFrozen' -Value $true
+            Update-PhaseChecklist -State $State -Phase 8 -Item 'GraczeFrozen' -Value $true
         } else {
             if ($WhatIf) {
                 Write-StepWarning '[SUCHY PRZEBIEG] Dodałbym komentarz zamrożenia do Gracze.md'
@@ -223,7 +223,7 @@ function Invoke-MigrationPhase6 {
                 & git -C $RepoRoot commit -m 'Zamrożenie Gracze.md - migracja zakończona' 2>&1
                 if ($LASTEXITCODE -eq 0) {
                     Write-StepOK 'Gracze.md zamrożony i zacommitowany'
-                    Update-PhaseChecklist -State $State -Phase 6 -Item 'GraczeFrozen' -Value $true
+                    Update-PhaseChecklist -State $State -Phase 8 -Item 'GraczeFrozen' -Value $true
                 }
             }
         }
@@ -235,7 +235,7 @@ function Invoke-MigrationPhase6 {
     Write-Step -Number 7 -Text 'Oznaczenie starego systemu jako deprecated...'
     Write-Host '  Dodaj notatkę deprecation do .robot/README.md (jeśli istnieje)' -ForegroundColor DarkGray
     Write-Host '  lub poinformuj zespół, że .robot/robot.ps1 nie jest już używany.' -ForegroundColor DarkGray
-    Update-PhaseChecklist -State $State -Phase 6 -Item 'OldSystemDeprecated' -Value $true
+    Update-PhaseChecklist -State $State -Phase 8 -Item 'OldSystemDeprecated' -Value $true
 
     # Step 8: Execute first standalone PU assignment
     Write-Step -Number 8 -Text 'Pierwszy samodzielny przydział PU...'
@@ -284,7 +284,7 @@ function Invoke-MigrationPhase6 {
                     -AppendToLog `
                     -Confirm:$false
                 Write-StepOK 'Przydział PU wykonany, powiadomienia wysłane'
-                Update-PhaseChecklist -State $State -Phase 6 -Item 'FirstPURun' -Value $true
+                Update-PhaseChecklist -State $State -Phase 8 -Item 'FirstPURun' -Value $true
             }
             catch {
                 Write-StepError "Przydział PU nie powiódł się: $($_.Exception.Message)"
@@ -307,7 +307,7 @@ function Invoke-MigrationPhase6 {
             }
         }
     }
-    Update-PhaseChecklist -State $State -Phase 6 -Item 'PostMigrationTag' -Value $true
+    Update-PhaseChecklist -State $State -Phase 8 -Item 'PostMigrationTag' -Value $true
 
     # Step 10: Show Discord announcement template
     Write-Step -Number 10 -Text 'Szablon ogłoszenia...'
@@ -320,17 +320,17 @@ function Invoke-MigrationPhase6 {
     Write-Host '  Stary system (.robot/robot.ps1) nie jest już używany.' -ForegroundColor Cyan
     Write-Host '  W razie pytań - kontakt z koordynatorem.' -ForegroundColor Cyan
     Write-Host '  ────────────────────────────────────────────' -ForegroundColor DarkGray
-    Update-PhaseChecklist -State $State -Phase 6 -Item 'Announcement' -Value $true
+    Update-PhaseChecklist -State $State -Phase 8 -Item 'Announcement' -Value $true
 
     # Step 11: Display final verification checklist
     Write-Step -Number 11 -Text 'Weryfikacja końcowa...'
     $FinalChecklist = @{
         'entities.md wygenerowany i zacommitowany'           = (Get-PhaseStatus -State $State -Phase 0) -eq 'Completed'
         'Test-PUAssignment: OK = True'                       = $Diag.OK
-        'Aktywne sesje w Gen4'                               = (Get-PhaseStatus -State $State -Phase 4) -eq 'Completed'
-        'Waluty zarejestrowane'                               = (Get-PhaseStatus -State $State -Phase 5) -eq 'Completed'
-        'Min. 1 cykl PU bez rozbieżności'                    = $State.Phases['6'].Checklist.ContainsKey('PUCycleValidated') -and $State.Phases['6'].Checklist['PUCycleValidated']
-        'Gracze.md zamrożony'                                = $State.Phases['6'].Checklist.ContainsKey('GraczeFrozen') -and $State.Phases['6'].Checklist['GraczeFrozen']
+        'Aktywne sesje w Gen4'                               = (Get-PhaseStatus -State $State -Phase 5) -eq 'Completed'
+        'Waluty zarejestrowane'                               = (Get-PhaseStatus -State $State -Phase 7) -eq 'Completed'
+        'Min. 1 cykl PU bez rozbieżności'                    = $State.Phases['8'].Checklist.ContainsKey('PUCycleValidated') -and $State.Phases['8'].Checklist['PUCycleValidated']
+        'Gracze.md zamrożony'                                = $State.Phases['8'].Checklist.ContainsKey('GraczeFrozen') -and $State.Phases['8'].Checklist['GraczeFrozen']
         'Stary system deprecated'                            = $true
         'Tag post-migration istnieje'                        = $true
         'Zespół poinformowany'                               = $true
@@ -338,8 +338,8 @@ function Invoke-MigrationPhase6 {
     Write-ChecklistReport -Checklist $FinalChecklist -Title 'WERYFIKACJA KOŃCOWA'
 
     # Phase summary and state persistence
-    Set-PhaseCompleted -State $State -Phase 6
-    Write-PhaseSummary -Phase 6 -Status 'Completed' -Lines @(
+    Set-PhaseCompleted -State $State -Phase 8
+    Write-PhaseSummary -Phase 8 -Status 'Completed' -Lines @(
         '[OK] Migracja zakończona!',
         '[OK] System .robot.new jest aktywny',
         '[OK] Gracze.md zamrożony jako archiwum'

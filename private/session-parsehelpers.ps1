@@ -195,13 +195,17 @@ function Get-SessionListMetadata {
             }
         }
 
-        # Logi: URLs (or @Logi: in Gen4)
+        # Logi: URLs or local paths (or @Logi: in Gen4)
         if ($MatchText.StartsWith('logi') -and $MatchText.Length -gt 4 -and ($MatchText[4] -eq ':' -or $MatchText[4] -eq ' ')) {
             foreach ($LogItem in $SectionLists) {
                 if ($LogItem.ParentListItem -ne $ListItem) { continue }
-                $UrlMatch = $UrlRegex.Match($LogItem.Text)
+                $LogItemText = $LogItem.Text.Trim()
+                $UrlMatch = $UrlRegex.Match($LogItemText)
                 if ($UrlMatch.Success) {
                     $Logs.Add($UrlMatch.Groups[1].Value)
+                } elseif ($LogItemText.StartsWith('res/logs/')) {
+                    # Local file path (URL localized during migration)
+                    $Logs.Add($LogItemText)
                 }
             }
             # Also check inline

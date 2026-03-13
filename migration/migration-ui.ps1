@@ -198,7 +198,7 @@ function Write-PhaseHeader {
 # Renders step-in-progress line
 function Write-Step {
     param(
-        [Parameter(Mandatory)] [int]$Number,
+        [Parameter(Mandatory)] [string]$Number,
         [Parameter(Mandatory)] [string]$Text
     )
     $script:LogStepContext = "Krok $Number"

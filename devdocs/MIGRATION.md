@@ -216,7 +216,7 @@ Each line maps a raw narrator string (left side) to one or more canonical narrat
 
 **Phase 2 workflow**: The coordinator runs `Get-NarratorReport` to identify raw narrator names that do not resolve to known players. Unresolved names are added to `narrator-mappings.txt` with their canonical equivalents. The process is iterative: run report, add mappings, re-run until all names resolve.
 
-**Phase 4 workflow**: During session format upgrade, resolved narrator mappings can be persisted as `- @Narrator:` blocks in Gen4 metadata. When present, the `@Narrator` block overrides header-based narrator resolution while preserving the original `RawText`.
+**Phase 5 workflow**: During session format upgrade, resolved narrator mappings can be persisted as `- @Narrator:` blocks in Gen4 metadata. When present, the `@Narrator` block overrides header-based narrator resolution while preserving the original `RawText`.
 
 ### 3.8 Date Override (`@Data`)
 
@@ -347,7 +347,7 @@ Low-level webhook sender. POSTs JSON payload (`content`, optional `username`) to
 
 ## 9. Migration Phase Pipeline
 
-The automated migration is orchestrated by `migration/migrate.ps1` (`Invoke-PhaseByNumber`). Seven phases run sequentially, with state checkpointing in `.robot/res/migration-state.json`. Each phase is idempotent.
+The automated migration is orchestrated by `migration/migrate.ps1` (`Invoke-PhaseByNumber`). Nine phases run sequentially, with state checkpointing in `.robot/res/migration-state.json`. Each phase is idempotent.
 
 ### 9.1 Phase Overview
 
@@ -357,9 +357,11 @@ The automated migration is orchestrated by `migration/migrate.ps1` (`Invoke-Phas
 | 1 | `Invoke-MigrationPhase1` | `phase1-session-hashes.ps1` | Baseline integralności sesji — generate baseline SHA256 hashes for all session headers (`Set-SessionHash -Full`) |
 | 2 | `Invoke-MigrationPhase2` | `phase2-validation.ps1` | Walidacja i naprawa danych — validate entity parity between legacy and new stores, run PU diagnostics and narrator normalization |
 | 3 | `Invoke-MigrationPhase3` | `phase3-location-import.ps1` | Import lokalizacji z mapy — bulk-import Mapa entities from maps.json to overflow file, derive Lokacja from hierarchy, apply overrides |
-| 4 | `Invoke-MigrationPhase4` | `phase4-session-upgrade.ps1` | Upgrade formatu sesji — upgrade session formats from Gen1/2/3 to Gen4 |
-| 5 | `Invoke-MigrationPhase5` | `phase5-currency.ps1` | Enrollment walut — currency entity creation and reconciliation |
-| 6 | `Invoke-MigrationPhase6` | `phase6-cutover.ps1` | Przełączenie (cutover) — final diagnostics, freeze `Gracze.md`, first standalone PU run |
+| 4 | `Invoke-MigrationPhase4` | `phase4-log-download.ps1` | Pobieranie logów sesji — bulk download of session logs from remote URLs to local `res/logs/` cache |
+| 5 | `Invoke-MigrationPhase5` | `phase5-session-upgrade.ps1` | Upgrade formatu sesji — upgrade session formats from Gen1/2/3 to Gen4, including URL localization (replaces `https://` log URLs with `res/logs/` local paths via `Resolve-LogUrlToLocalPath`) |
+| 6 | `Invoke-MigrationPhase6` | `phase6-door-inference.ps1` | Wnioskowanie drzwi z logów — infer `@Drzwi` (physical access connections) between locations by analyzing downloaded session logs |
+| 7 | `Invoke-MigrationPhase7` | `phase7-currency.ps1` | Enrollment walut — currency entity creation and reconciliation |
+| 8 | `Invoke-MigrationPhase8` | `phase8-cutover.ps1` | Przełączenie (cutover) — final diagnostics, freeze `Gracze.md`, first standalone PU run |
 
 ### 9.2 Migration Files
 
@@ -369,15 +371,17 @@ The automated migration is orchestrated by `migration/migrate.ps1` (`Invoke-Phas
 | `migration-state.ps1` | State persistence | `Resolve-MigrationStatePath`, `New-DefaultMigrationState`, `ConvertTo-HashtableDeep`, `Get-MigrationState`, `Save-MigrationState`, `Get-PhaseStatus`, `Set-PhaseCompleted`, `Set-PhaseInProgress`, `Update-PhaseChecklist`, `Add-DiagnosticSnapshot` |
 | `migration-shared.ps1` | Shared diagnostics and menu shortcuts | `Test-PhasePredecessor`, `Show-DiagnosticResults`, `Invoke-QuickDiagnostics`, `Invoke-FullReport` |
 | `migration-ui.ps1` | Polish-language UI helpers (22 functions) | `Initialize-MigrationLog`, `Write-MigrationLog`, `Flush-MigrationLog`, `Resolve-MigrationColor`, `Get-PhaseName`, `Write-PhaseHeader`, `Write-Step`, `Write-StepOK`, `Write-StepWarning`, `Write-StepError`, `Write-SectionHeader`, `Write-ChecklistReport`, `Write-ActionRequired`, `Write-CommandHint`, `Write-PhaseSummary`, `Write-TableRow`, `Request-UserChoice`, `Request-YesNo`, `Request-Confirmation`, `Request-StringInput`, `Request-NumericInput`, `Show-ProgressSummary` |
-| `migration-location-helpers.ps1` | Self-contained location name helpers; dot-sourced by Phase 3 | `Get-MapBaseNameDeterministic`, `Get-MapBaseNameCandidates` |
+| `migration-location-helpers.ps1` | Self-contained location name helpers; dot-sourced by Phase 3 | `Get-MapBaseNameIntermediates`, `Get-MapBaseNameDeterministic`, `Get-MapBaseNameCandidates` |
 | `narrator-normalization.ps1` | Narrator mapping I/O | `Get-NarratorMappingsPath`, `Import-NarratorMappings`, `Export-NarratorMappings` |
 | `phase0-setup.ps1` | Phase 0: Przygotowanie i bootstrap | `Invoke-MigrationPhase0` |
 | `phase1-session-hashes.ps1` | Phase 1: Baseline integralności sesji | `Invoke-MigrationPhase1` |
 | `phase2-validation.ps1` | Phase 2: Walidacja i naprawa danych | `Invoke-MigrationPhase2`, `Show-BRAKCharacters` |
 | `phase3-location-import.ps1` | Phase 3: Import lokalizacji z mapy | `Invoke-MigrationPhase3` |
-| `phase4-session-upgrade.ps1` | Phase 4: Upgrade formatu sesji | `Invoke-MigrationPhase4`, `Export-SessionReviewFile`, `Import-SessionReviewFile` |
-| `phase5-currency.ps1` | Phase 5: Enrollment walut | `Invoke-MigrationPhase5`, `Invoke-CurrencyCSVImport`, `Invoke-CurrencyInteractiveEntry`, `Invoke-NarratorBudgetEntry` |
-| `phase6-cutover.ps1` | Phase 6: Przełączenie (cutover) | `Invoke-MigrationPhase6` |
+| `phase4-log-download.ps1` | Phase 4: Pobieranie logów sesji | `Invoke-MigrationPhase4` |
+| `phase5-session-upgrade.ps1` | Phase 5: Upgrade formatu sesji | `Invoke-MigrationPhase5`, `Export-SessionReviewFile`, `Import-SessionReviewFile` |
+| `phase6-door-inference.ps1` | Phase 6: Wnioskowanie drzwi z logów | `Invoke-MigrationPhase6` |
+| `phase7-currency.ps1` | Phase 7: Enrollment walut | `Invoke-MigrationPhase7`, `Invoke-CurrencyCSVImport`, `Invoke-CurrencyInteractiveEntry`, `Invoke-NarratorBudgetEntry` |
+| `phase8-cutover.ps1` | Phase 8: Przełączenie (cutover) | `Invoke-MigrationPhase8` |
 
 ### 9.3 Phase 1: Session Hash Baseline
 
@@ -416,7 +420,39 @@ Imports game-map data from `.robot/res/maps.json` as two entity types: **Mapa** 
 
 The top-level `lastUpdated` field is informational (ISO 8601 timestamp of last scrape). The `maps` array contains one entry per game location (~2,704 entries in production).
 
-**Hierarchy inference**: For each map entry, applies `Get-MapBaseNameDeterministic` (9-pattern iterative stripping: difficulty, floor, room, sala, named sala, direction, piętro, piwnica, named subarea). If the stripped base name exists in the map name set, it becomes the parent. Falls back to `Get-MapBaseNameCandidates` (progressive word removal) when deterministic stripping overshoots.
+**Location name helpers** (`migration/migration-location-helpers.ps1`): Three functions for inferring parent-child hierarchy from Margonem game-map names. Regex patterns are imported from the canonical source in `private/location-helpers.ps1`.
+
+`Get-MapBaseNameIntermediates`:
+
+| Parameter | Type | Description |
+|---|---|---|
+| `Name` | `string` (Mandatory) | Raw game-map location name |
+
+Applies 9 precompiled regex patterns (difficulty, floor, room, sala, named sala, direction, piętro, piwnica, named subarea) iteratively until stable. Captures the result after each individual pattern application that changes the value. Returns `[string[]]` of unique intermediate base names ordered from most-specific (least stripped) to most-generic (most stripped). Returns empty array if no stripping occurred. This enables callers to check intermediate forms against a name set and pick the closest (most-specific) parent rather than only the maximally-stripped result.
+
+`Get-MapBaseNameDeterministic`:
+
+| Parameter | Type | Description |
+|---|---|---|
+| `Name` | `string` (Mandatory) | Raw game-map location name |
+
+Delegates to `Get-MapBaseNameIntermediates` and returns the last (most-stripped) element, or the original name if no stripping occurred. Equivalent to `$Intermediates[$Intermediates.Count - 1]`.
+
+`Get-MapBaseNameCandidates`:
+
+| Parameter | Type | Description |
+|---|---|---|
+| `Name` | `string` (Mandatory) | Raw game-map location name |
+
+Pre-strips difficulty parenthetical, then progressively removes trailing words (split by whitespace). Returns `[string[]]` of candidate base names from longest to shortest. Trailing separators (space, dash, en-dash, em-dash) are cleaned. Returns empty array for single-word names. Used as fallback when deterministic stripping overshoots.
+
+**Hierarchy inference**: 3-tier parent lookup for each map entry:
+
+1. **Intermediate check** — compute `Get-MapBaseNameIntermediates`. Walk intermediates from most-specific (least stripped) to most-stripped; the first intermediate that exists in the map name set becomes the parent. Example: `"X - wieża p.1"` prefers parent `"X - wieża"` over `"X"` when both exist in the name set.
+2. **Progressive word removal** — if no intermediate matched, call `Get-MapBaseNameCandidates` and check each candidate against the name set. First match wins.
+3. **Virtual parent** — if no existing map matches any candidate, the most-stripped deterministic base name (last element of intermediates) is used as the parent. This parent does not exist as a Mapa entry and will be created as a **Lokacja** entity during the derivation step (Step 5). The phase reports virtual parent count separately.
+
+Maps with no stripping (empty intermediates) are classified as root locations (no parent).
 
 **Mapa bulk import** (Step 4): All maps.json entries are written as Mapa entities to the overflow file `maps-100-ent.md` (numeric key 100 gives medium primacy). Each Mapa entity gets these tags:
 
@@ -431,7 +467,7 @@ The top-level `lastUpdated` field is informational (ISO 8601 timestamp of last s
 
 Entities are sorted alphabetically within the `## Mapa` section. The overflow file is created fresh if missing, or appended to if it already exists.
 
-**Lokacja derivation** (Step 5): A second pass extracts unique location names from the hierarchy — all root maps (no parent) and all parent values — and creates Lokacja entities in `entities.md`. Each Lokacja gets `@lokacja` pointing to its own parent if the location name itself appeared as a child in the hierarchy. This produces far fewer entities than the full map count (~unique base names).
+**Lokacja derivation** (Step 5): A second pass extracts unique location names from the hierarchy — all root maps (no parent) and all parent values (including virtual parents from tier 3) — and creates Lokacja entities in `entities.md`. Each Lokacja gets `@lokacja` pointing to its own parent if the location name itself appeared as a child in the hierarchy. Virtual parents that do not exist as Mapa entries are included in this set, ensuring every `@lokacja` reference resolves to a concrete entity. This produces far fewer entities than the full map count (~unique base names).
 
 **Override file** (Steps 6-7): Exports `.robot/res/location-overrides.txt` (TSV). Section 1 maps Margonem names to Nerthus names (`@nazwa_nerthus`) — applied to **Mapa** entities in the overflow file. Section 2 defines virtual locations — created as **Lokacja** entities in `entities.md`. Re-running the phase applies overrides via `Set-EntityTag` / `New-EntityBullet`.
 
@@ -439,9 +475,17 @@ Entities are sorted alphabetically within the `## Mapa` section. The overflow fi
 
 **Checklist**: `MapsJsonLoaded`, `HierarchyInferred`, `MapaBulkImportDone` (or legacy `BulkImportDone`), `LokacjaDerivationDone`, `OverridesExported`, `OverridesImported`, `Committed`. Phase completes when `MapaBulkImportDone` AND `LokacjaDerivationDone` AND `OverridesImported` are all true.
 
-### 9.5 Phase 4: Session Review File
+**Tests**: `tests/migration-phase5-location-import.Tests.ps1` (40 tests). Covers `Get-MapBaseNameDeterministic`, `Get-MapBaseNameIntermediates`, `Get-MapBaseNameCandidates`, and 3-tier hierarchy inference integration with fixture data from `tests/fixtures/maps-test.json`.
 
-After format upgrade, narrator verification, and location review, Phase 4 generates a review artifact at `.robot/res/all-sessions-to-review.md` via `Export-SessionReviewFile`. The file contains all sessions sorted by header (chronological), with source file paths in `<!-- Źródło: relative/path -->` HTML comments.
+### 9.5 Phase 4: Bulk Log Download
+
+Downloads all session log files from remote URLs (discovered via `Get-Session` log metadata) to the local `res/logs/` cache directory using `Invoke-LogBatchFetch`. This ensures that all log content is available locally before Phase 5 upgrades session metadata and Phase 6 analyzes logs for `@Drzwi` inference. Idempotent — already-cached files are skipped.
+
+### 9.6 Phase 5: Session Review File
+
+After format upgrade, narrator verification, and location review, Phase 5 generates a review artifact at `.robot/res/all-sessions-to-review.md` via `Export-SessionReviewFile`. The file contains all sessions sorted by header (chronological), with source file paths in `<!-- Źródło: relative/path -->` HTML comments.
+
+**URL localization**: During session format upgrade, `Resolve-LogUrlToLocalPath` replaces remote `https://` log URLs with their corresponding `res/logs/` local paths when the cached file exists. This makes sessions self-contained with local log references.
 
 **Export** (`Export-SessionReviewFile`): Calls `Get-Session -ExcludeDirectory $script:MigrationExcludeDirs -IncludeContent -Quiet`, sorts by `Header`, splits `Content` on `[char]10` with `.TrimEnd([char]13)`, builds relative paths from `FilePaths` via `$P.Substring($RepoRoot.Length + 1)`. Writes via `[System.IO.File]::WriteAllLines()` with UTF-8 no BOM.
 
@@ -451,11 +495,15 @@ After format upgrade, narrator verification, and location review, Phase 4 genera
 
 **Checklist**: `SessionReviewFileGenerated`. Not included in the phase completion gate — the review workflow is optional and asynchronous.
 
-### 9.6 Phase 6: Cutover
+### 9.7 Phase 6: @Drzwi Door Inference
+
+Analyzes downloaded session logs (from Phase 4) to infer `@Drzwi` (physical access / door connections) between location entities. Parses log content for movement events between named locations and creates bidirectional `@drzwi` tags on the corresponding Lokacja entities. Results are written to the entity registry. Idempotent — existing `@drzwi` tags are preserved, only new connections are added.
+
+### 9.8 Phase 8: Cutover
 
 Runs final PU diagnostics (must pass to proceed), freezes `Gracze.md` with a read-only comment header, marks the legacy system as deprecated, executes the first standalone PU assignment, creates a post-migration git tag, and displays an announcement template.
 
-### 9.7 Migration Logging System
+### 9.9 Migration Logging System
 
 Implemented in `migration/migration-ui.ps1`. Three functions provide a structured text log written to `.robot/res/migration-log.txt`:
 
@@ -589,8 +637,8 @@ Unresolved names in `Get-EntityState` / narrator resolution should be cleaned up
 | `templates/*.md.template` | Character file and player entry templates |
 | `local.config.psd1` | Local config (git-ignored) |
 | `.robot/res/migration-log.txt` | Structured diagnostic log (overwritten each run) |
-| `.robot/res/all-sessions-to-review.md` | Session review artifact (Phase 4) |
-| `.robot/res/review-additions/*.md` | New sessions from review import (Phase 4) |
+| `.robot/res/all-sessions-to-review.md` | Session review artifact (Phase 5) |
+| `.robot/res/review-additions/*.md` | New sessions from review import (Phase 5) |
 
 ---
 
@@ -599,5 +647,5 @@ Unresolved names in `Get-EntityState` / narrator resolution should be cleaned up
 - [ENTITIES.md](ENTITIES.md) - Entity data model migrated from `Gracze.md`
 - [SESSIONS.md](SESSIONS.md) - Session format generations (Gen1–Gen4)
 - [SESSION-INTEGRITY.md](SESSION-INTEGRITY.md) - Session hash baseline (Phase 1)
-- [CURRENCY.md](CURRENCY.md) - Currency entities created during Phase 5
+- [CURRENCY.md](CURRENCY.md) - Currency entities created during Phase 7
 - [PU.md](PU.md) - PU history migration

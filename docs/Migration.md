@@ -155,11 +155,15 @@ The coordinator imports all game-map locations into the entity store (`phase3-lo
 
 After editing, the coordinator re-runs the phase to apply the overrides. The phase completes when the Mapa import, Lokacja derivation, and override steps are all done.
 
-> This phase must run before the session format upgrade (Phase 4) because the location review step in Phase 4 expects Location entities to already exist.
+> This phase must run before the session format upgrade (Phase 5) because the location review step in Phase 5 expects Location entities to already exist.
 
-### Phase 4 - Upgrade formatu sesji
+### Phase 4 - Pobieranie logów sesji
 
-The coordinator upgrades active session files from Gen1/Gen2/Gen3 to the current Gen4 format (`phase4-session-upgrade.ps1`). The upgrade changes **only metadata structure** - narrative text and special blocks (clarifications, effects, rewards) are preserved.
+The system downloads all session log files from external URLs (primarily Pastebin) to the local `res/logs/` cache (`phase4-log-download.ps1`). This ensures the lore repository has a complete archive before any URLs expire. The fetch uses existing `Invoke-SessionLogFetch` infrastructure with CDN-safe throttling and retry logic. Failed URLs are recorded for manual review.
+
+### Phase 5 - Upgrade formatu sesji
+
+The coordinator upgrades active session files from Gen1/Gen2/Gen3 to the current Gen4 format (`phase5-session-upgrade.ps1`). The upgrade changes **only metadata structure** - narrative text and special blocks (clarifications, effects, rewards) are preserved. Additionally, log URLs that have locally cached files (from Phase 4) are replaced with relative paths (`res/logs/filename`), making the repository self-contained.
 
 | Before | After |
 |---|---|
@@ -185,11 +189,15 @@ Non-location exclusions are stored in `.robot/res/location-exclusions.txt` and p
 - **Delete** session blocks to remove them from source files
 - **Add** new session blocks (these are placed in `.robot/res/review-additions/` for manual integration)
 
-On subsequent runs of Phase 4, the coordinator can choose to **apply** edits from the review file back to source files, **regenerate** the review file, or **refresh hashes** after manual source edits. The review workflow is optional — Phase 4 can complete without it.
+On subsequent runs of Phase 5, the coordinator can choose to **apply** edits from the review file back to source files, **regenerate** the review file, or **refresh hashes** after manual source edits. The review workflow is optional — Phase 5 can complete without it.
 
-### Phase 5 - Enrollment walut
+### Phase 6 - Wnioskowanie drzwi z logów
 
-The currency system is an entirely new capability. This phase sets up the initial state (`phase5-currency.ps1`):
+The system analyzes location transitions from session logs to infer physical connections (`@drzwi` tags) between locations (`phase6-door-inference.ps1`). It builds a location graph, classifies Movement vs Teleport edges based on structural distance, and generates a review file with confidence-weighted candidates. The coordinator reviews the candidates (accepting, rejecting, or marking for review), and accepted pairs receive bidirectional `@drzwi` tags with temporal annotations.
+
+### Phase 7 - Enrollment walut
+
+The currency system is an entirely new capability. This phase sets up the initial state (`phase7-currency.ps1`):
 
 1. **Coordinator treasury** - a group entity (`Skarbiec Koordynatorów`) with initial reserves in three denominations:
    - **Korona** (gold) - 1 Korona = 100 Talarow
@@ -204,9 +212,9 @@ The currency system is an entirely new capability. This phase sets up the initia
 
 Currency transfers during gameplay are registered by narrators in sessions via `@Transfer` directives.
 
-### Phase 6 - Przełączenie (cutover)
+### Phase 8 - Przełączenie (cutover)
 
-This phase combines the parallel period and the official cutover into a single phase (`phase6-cutover.ps1`).
+This phase combines the parallel period and the official cutover into a single phase (`phase8-cutover.ps1`).
 
 **Parallel period:** For 2-4 weeks, both the old and new systems run simultaneously. The coordinator runs PU assignment through both and compares results. During this period:
 
@@ -339,7 +347,7 @@ The migration is designed to be reversible at every stage:
 | **Player has no webhook address** | PU is still calculated and applied, but the Discord notification for that player is skipped with a warning | Add the webhook address to the player's record and re-send manually if needed |
 | **Stale history entries** | The diagnostic tool flags session headers in the processing log that no longer match any session in the repository | Review flagged entries; they may indicate renamed or deleted session files |
 | **Character soft-deleted but still referenced** | Removed characters are excluded from standard views but still exist in the data | Use the include-deleted option to view them; they can be reactivated by updating their status |
-| **Unresolved location name** | Phase 4 blocks the commit until the coordinator resolves or excludes the name | Create a Location entity or mark as non-location |
+| **Unresolved location name** | Phase 5 blocks the commit until the coordinator resolves or excludes the name | Create a Location entity or mark as non-location |
 | **Session upgrade fails on a file** | The file is skipped; remaining files continue processing | Check the error message, fix the session header, and re-run |
 
 ## Audit Trail / Evidence of Completion

@@ -338,36 +338,65 @@ When asking "where was X on date Y?", the system checks session visits first, th
 
 ## Economic Queries
 
-Beyond tracking currency holdings and transfers, the system provides tools for analyzing the broader economic picture.
+Beyond tracking currency holdings and transfers, the system provides tools for analyzing the broader economic picture. These tools help the Coordinator answer strategic questions about the game economy — how much currency is in play, whether the supply is growing or shrinking, and whether physical game items match the bookkeeping records.
 
 ### Economic Snapshot
 
-A point-in-time overview of the entire economy:
+> **Question it answers**: "What does the economy look like right now?"
+
+The snapshot gives the Coordinator a complete picture of the economy at a specific point in time:
 
 - **Supply breakdown**: Total currency in circulation, split by denomination and by physical vs virtual
 - **Physical vs virtual**: Physical currency is owned by player characters (actual Margonem items). Virtual currency is held by NPCs, groups, or treasuries (RP bookkeeping only)
 - **Wealth distribution**: Who holds the most currency, and how unequally wealth is distributed (Gini coefficient — 0 means everyone has equal wealth, 1 means one entity holds everything)
+- **Top holders**: The entities with the largest balances, ranked by total wealth
 - **Transaction volume**: How many @Transfer directives have been recorded
+
+**When to use it**: Before distributing new budgets to narrators, before creating new currency holdings, or whenever the Coordinator needs to understand the current state before making economic decisions. Run a snapshot at the start of each month alongside reconciliation.
+
+**What to look for**:
+
+- A high Gini coefficient may indicate that wealth is concentrating in too few hands — consider whether narrators should spread rewards more broadly
+- A large gap between physical and virtual supply suggests that much of the recorded currency does not correspond to actual game items — this is normal for NPC and treasury holdings, but unexpected for player characters
+- If the top holders list is dominated by treasury or narrator accounts, currency may not be reaching players effectively
 
 Snapshots can be scoped to a specific denomination, owner, or point in time.
 
 ### Economic Timeline
 
-Monthly trend data over a date range. For each month, the system computes:
+> **Question it answers**: "How has the economy changed over time?"
+
+The timeline shows monthly trend data over a date range. For each month, the system computes:
 
 - Total supply in circulation (in Kogi base units)
 - Physical vs virtual supply split
 - Number of @Transfer transactions in that month
 
-This reveals trends like supply growth, shifts between physical and virtual holdings, or periods of high transaction activity.
+**When to use it**: During quarterly reviews, when planning long-term economic policy, or when investigating a suspected anomaly (such as a sudden supply jump). The timeline complements the snapshot — the snapshot shows "where we are," and the timeline shows "how we got here."
+
+**What to look for**:
+
+- Steady supply growth is expected if the treasury regularly distributes budgets — but sudden spikes may indicate a recording error or an unusually large distribution
+- A month with zero transactions may mean sessions happened but currency changes were recorded as manual Zmiany instead of @Transfer — this is not wrong, but it means the transaction count understates actual economic activity
+- A shift from virtual-heavy to physical-heavy supply means more currency is reaching player characters, which is generally the intended direction
 
 ### Materialization Report
 
-Analyzes the relationship between physical and virtual currency:
+> **Question it answers**: "Does the physical currency in the game match what the books say?"
+
+The materialization report analyzes the relationship between physical and virtual currency:
 
 - **Per-denomination breakdown**: What percentage of each denomination is physically held vs virtual bookkeeping
 - **Per-player breakdown**: How much physical currency each player holds across all their characters
-- **Orphaned physical currency**: Currency assigned to inactive or removed player characters — these represent physical Margonem items that may need to be returned to coordinators
+- **Orphaned physical currency**: Currency assigned to inactive or removed player characters — these represent physical Margonem items that may need to be returned to the Coordinator
+
+**When to use it**: When onboarding or offboarding players, during periodic audits, or when a player reports a discrepancy between their in-game currency and the system records. This report is especially important after a player leaves the game — their character's physical currency items still exist in Margonem and need to be accounted for.
+
+**What to look for**:
+
+- Orphaned physical currency is the most actionable finding — each entry represents real game items that a departing player's character still holds. The Coordinator should arrange to recover these items or mark them as inactive
+- If a player's reported physical holdings do not match what Margonem shows, the discrepancy may indicate unrecorded transfers or items lost outside of session scope
+- A denomination where physical holdings far exceed virtual holdings suggests that most of that currency type is in active play, which is healthy
 
 ## Expected Outcomes
 

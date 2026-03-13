@@ -6,7 +6,7 @@
 
 ## 1. Scope
 
-This document covers the interactive CLI subsystem: `public/cli/invoke-robotcli.ps1` (entry point), the 18 private modules in `private/cli/` (UI primitives, fuzzy search, context-sensitive help, wizard auto-generation, menu registry, routing, display, workflows, migration integration), the 9 engine files in `private/cli/engine/` (screen management, virtual buffer, input loop, chrome rendering, 6 component types), and the 9 test files in `tests/cli-*.Tests.ps1`.
+This document covers the interactive CLI subsystem: `public/cli/invoke-robotcli.ps1` (entry point), the 19 private modules in `private/cli/` (UI primitives, fuzzy search, context-sensitive help, wizard auto-generation, menu registry, routing, display, workflows, economy workflows, migration integration), the 9 engine files in `private/cli/engine/` (screen management, virtual buffer, input loop, chrome rendering, 6 component types), and the 9 test files in `tests/cli-*.Tests.ps1`.
 
 **Not covered**: Individual public functions that wizards wrap (e.g., `New-Player`, `Set-Entity`). Migration phase implementations - see migration subsystem docs. Plugin system - see [PLUGINS.md](PLUGINS.md).
 
@@ -50,7 +50,7 @@ Invoke-RobotCLI (public/cli/invoke-robotcli.ps1)
     │           Show-Preview
     │
     ├── Layer 4: cli-registry.ps1         (pure data)
-    │       $script:MenuOrder, $script:MenuRegistry (51 entries)
+    │       $script:MenuOrder, $script:MenuRegistry (54 entries)
     │
     ├── Layer 5: cli-routing.ps1          (depends on all above)
     │       Get-MenuCategories, Get-MenuItems, Get-RegistryEntry,
@@ -69,6 +69,7 @@ Invoke-RobotCLI (public/cli/invoke-robotcli.ps1)
     │   │   └── cli-display-entity.ps1    (dot-sourced by cli-wf-entity.ps1)
     │   │           Format-ValidityRange, Show-EntityCard
     │   ├── cli-wf-currency.ps1           Currency transfer + reconciliation display
+    │   ├── cli-wf-economy.ps1            Economic snapshot, timeline, materialization
     │   ├── cli-wf-pu.ps1                 PU assignment + diagnostics
     │   ├── cli-wf-discord.ps1            Discord PU notification + announcement
     │   └── cli-wf-reporting.ps1          Intel preview, name search, migration reports
@@ -100,7 +101,7 @@ All files are dot-sourced on demand when `Invoke-RobotCLI` is called (not at mod
 | `cli-overlays.ps1` | `New-HelpOverlayComponent`, `New-HealthDashboardComponent`, `Render-HealthSection`, `Search-HelpTopics`, `Get-AutoStepHelp` |
 | `cli-wizard-step.ps1` | `New-WizardStepComponent` |
 
-### 3.2 `private/cli/` (18 files — routing, workflows, legacy)
+### 3.2 `private/cli/` (19 files — routing, workflows, legacy)
 
 | File | Lines | Layer | Contents |
 |---|---|---|---|
@@ -112,13 +113,14 @@ All files are dot-sourced on demand when `Invoke-RobotCLI` is called (not at mod
 | `cli-wizard.ps1` | ~650 | 3 | `$script:CommonParams`, step type resolution, `Invoke-Wizard`; dot-sources `cli-wizard-steps.ps1` and `cli-wizard-preview.ps1` |
 | `cli-wizard-steps.ps1` | — | 3 | `Invoke-EngineLifecycle`, `Invoke-WizardStep` (dot-sourced by `cli-wizard.ps1`) |
 | `cli-wizard-preview.ps1` | — | 3 | `Show-Preview` (dot-sourced by `cli-wizard.ps1`) |
-| `cli-registry.ps1` | ~600 | 4 | Menu order array, menu registry (51 entries, pure data) |
+| `cli-registry.ps1` | ~600 | 4 | Menu order array, menu registry (54 entries, pure data) |
 | `cli-routing.ps1` | ~480 | 5 | Menu helpers, plugin menu merge, engine helper functions, action dispatch, query execution, main/sub menu loops, `Refresh-NavState` |
 | `cli-wf-session.ps1` | ~150 | 6 | `Invoke-EditSessionWorkflow`, `Invoke-SessionValidation` |
 | `cli-wf-player.ps1` | ~400 | 6 | `Invoke-NewPlayerWorkflow`, `Invoke-NewCharacterWorkflow`, `Invoke-EditCharacterWorkflow`, `Invoke-CharacterCardWorkflow`, `Show-CharacterCard`, `Show-PlayerCard` |
 | `cli-wf-entity.ps1` | ~480 | 6 | `Invoke-NewEntityWorkflow`, `Invoke-EditEntityWorkflow`, `Invoke-EntityHistoryWorkflow`, `Invoke-EntitySearchWorkflow`; dot-sources `cli-display-entity.ps1` |
 | `cli-display-entity.ps1` | — | 6 | `Format-ValidityRange`, `Show-EntityCard` (dot-sourced by `cli-wf-entity.ps1`). `Show-EntityCard` surfaces `@info` as a first-class field (after Quantity, before Groups) and excludes it from the generic Tagi loop to avoid duplication. |
 | `cli-wf-currency.ps1` | ~155 | 6 | `Invoke-CurrencyTransferWorkflow`, `Invoke-CurrencyReconciliationDisplay` |
+| `cli-wf-economy.ps1` | ~240 | 6 | `Invoke-EconomicSnapshotWorkflow`, `Invoke-EconomicTimelineWorkflow`, `Invoke-MaterializationReportWorkflow` |
 | `cli-wf-pu.ps1` | ~340 | 6 | `Invoke-PUAssignmentWorkflow`, `Invoke-PrePUDiagnostics`, `Invoke-PUDiagnosticsDisplay` |
 | `cli-wf-discord.ps1` | ~130 | 6 | `Invoke-DiscordPUNotificationWorkflow`, `Invoke-DiscordAnnouncementWorkflow` |
 | `cli-wf-reporting.ps1` | ~120 | 6 | `Invoke-IntelPreviewWorkflow`, `Invoke-NameSearchWorkflow`, `Invoke-MigrationQuickCheck`, `Invoke-MigrationFullReport` |
@@ -126,7 +128,7 @@ All files are dot-sourced on demand when `Invoke-RobotCLI` is called (not at mod
 
 ### 3.3 Entry Point
 
-`public/cli/invoke-robotcli.ps1` exports `Invoke-RobotCLI`. It dot-sources CLI files in layer order: `cli-primitives.ps1` (Layer 1, which chain-loads `cli-menus.ps1` and all 9 engine files), then `cli-fuzzy.ps1`, `cli-display.ps1`, `cli-help.ps1` (Layer 2), `cli-wizard.ps1` (Layer 3, which chain-loads `cli-wizard-steps.ps1` and `cli-wizard-preview.ps1`), `cli-registry.ps1` (Layer 4), `cli-routing.ps1` (Layer 5). It then calls `Merge-PluginMenuItems` (Layer 5.5), dot-sources the 7 workflow files (Layer 6) and plugin `cli/*.ps1` files (Layer 6.5), and finally `cli-wizard-migration.ps1` (Layer 7). After loading, it validates terminal compatibility (`[Console]::KeyAvailable`), detects theme, pre-loads entity/player/name index data, runs health checks into `HealthCache`, and enters the main menu loop via `Show-MainMenu`.
+`public/cli/invoke-robotcli.ps1` exports `Invoke-RobotCLI`. It dot-sources CLI files in layer order: `cli-primitives.ps1` (Layer 1, which chain-loads `cli-menus.ps1` and all 9 engine files), then `cli-fuzzy.ps1`, `cli-display.ps1`, `cli-help.ps1` (Layer 2), `cli-wizard.ps1` (Layer 3, which chain-loads `cli-wizard-steps.ps1` and `cli-wizard-preview.ps1`), `cli-registry.ps1` (Layer 4), `cli-routing.ps1` (Layer 5). It then calls `Merge-PluginMenuItems` (Layer 5.5), dot-sources the 8 workflow files (Layer 6) and plugin `cli/*.ps1` files (Layer 6.5), and finally `cli-wizard-migration.ps1` (Layer 7). After loading, it validates terminal compatibility (`[Console]::KeyAvailable`), detects theme, pre-loads entity/player/name index data, runs health checks into `HealthCache`, and enters the main menu loop via `Show-MainMenu`.
 
 ### 3.4 Tests
 
@@ -547,6 +549,20 @@ Common patterns:
 - **Fuzzy-pick → action**: `Invoke-EngineFuzzySearch` → process result → `Invoke-EngineDetailCard`
 
 Workflows use `Refresh-NavState -State $State` to reload entities/players/name index after write operations. All workflows propagate `__quit__` from engine calls.
+
+### 10.1 Economy Workflows (`cli-wf-economy.ps1`)
+
+Three read-only analysis workflows in the `Waluta` category. All require Coordinator (`K`) role. Source: `private/cli/cli-wf-economy.ps1`.
+
+| Function | Menu ID | Label | Description |
+|---|---|---|---|
+| `Invoke-EconomicSnapshotWorkflow` | `economic-snapshot` | Obraz gospodarki | Point-in-time economic snapshot: denomination filter (optional), supply breakdown (physical vs virtual per denomination), Gini coefficient, transaction volume, top holders table via `New-ResultTableComponent` |
+| `Invoke-EconomicTimelineWorkflow` | `economic-timeline` | Oś czasu gospodarki | Monthly economic trends: date range selection (two `date` wizard steps), monthly table (total/physical/virtual supply + transfer count) via `New-ResultTableComponent` |
+| `Invoke-MaterializationReportWorkflow` | `materialization-report` | Raport materializacji | Physical vs virtual currency analysis: summary stats, denomination breakdown, player-level physical wealth table, orphaned physical currency table (inactive characters with active currency) |
+
+**Common structure**: All three workflows follow the pattern: optional wizard step(s) for filtering/range → call the corresponding `Get-*` function (`Get-EconomicSnapshot`, `Get-EconomicTimeline`, `Get-MaterializationReport`) with `-Quiet` → render summary via `Write-CLILine` → render detail tables via `Invoke-EngineLifecycle` with `New-ResultTableComponent` → wait for keypress. Error handling wraps the entire computation-and-display block in `try/catch` with `Write-CLILine` error output.
+
+**Dependencies**: `cli-primitives.ps1` (Layer 1) for `Write-CLILine`/`Get-CLIColor`, `cli-wizard.ps1` (Layer 3) for `Invoke-WizardStep`, `cli-wizard-steps.ps1` for `Invoke-EngineLifecycle`, and the public economy functions (`Get-EconomicSnapshot`, `Get-EconomicTimeline`, `Get-MaterializationReport`, `ConvertFrom-CurrencyBaseUnit`).
 
 ---
 

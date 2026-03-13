@@ -1,6 +1,6 @@
 <#
     .SYNOPSIS
-    Phase 0-6 implementation functions for the migration script - data-driven
+    Phase 0-8 implementation functions for the migration script - data-driven
     phase registry with dynamic dot-sourcing.
 
     .DESCRIPTION
@@ -16,9 +16,11 @@
     - Phase 1: Session integrity hashes (phase1-session-hashes.ps1)
     - Phase 2: Data validation & repair (phase2-validation.ps1)
     - Phase 3: Import lokalizacji z mapy (phase3-location-import.ps1)
-    - Phase 4: Session format upgrade to Gen4 (phase4-session-upgrade.ps1)
-    - Phase 5: Currency enrollment (phase5-currency.ps1)
-    - Phase 6: Cutover (phase6-cutover.ps1)
+    - Phase 4: Bulk log download (phase4-log-download.ps1)
+    - Phase 5: Session format upgrade to Gen4 (phase5-session-upgrade.ps1)
+    - Phase 6: Door inference from logs (phase6-door-inference.ps1)
+    - Phase 7: Currency enrollment (phase7-currency.ps1)
+    - Phase 8: Cutover (phase8-cutover.ps1)
 
     Shared helpers: migration-shared.ps1
 
@@ -37,9 +39,11 @@ $script:PhaseRegistry = @(
     @{ ID = 1; Name = 'Baseline integralności sesji';      Script = 'phase1-session-hashes.ps1';    Function = 'Invoke-MigrationPhase1'; EstimatedMinutes = 15 }
     @{ ID = 2; Name = 'Walidacja i naprawa danych';        Script = 'phase2-validation.ps1';        Function = 'Invoke-MigrationPhase2'; EstimatedMinutes = 30 }
     @{ ID = 3; Name = 'Import lokalizacji z mapy';         Script = 'phase3-location-import.ps1';   Function = 'Invoke-MigrationPhase3'; EstimatedMinutes = 20 }
-    @{ ID = 4; Name = 'Upgrade formatu sesji';             Script = 'phase4-session-upgrade.ps1';   Function = 'Invoke-MigrationPhase4'; EstimatedMinutes = 30 }
-    @{ ID = 5; Name = 'Enrollment walut';                  Script = 'phase5-currency.ps1';          Function = 'Invoke-MigrationPhase5'; EstimatedMinutes = 60 }
-    @{ ID = 6; Name = 'Przełączenie (cutover)';            Script = 'phase6-cutover.ps1';           Function = 'Invoke-MigrationPhase6'; EstimatedMinutes = 30 }
+    @{ ID = 4; Name = 'Pobieranie logów sesji';            Script = 'phase4-log-download.ps1';      Function = 'Invoke-MigrationPhase4'; EstimatedMinutes = 30 }
+    @{ ID = 5; Name = 'Upgrade formatu sesji';             Script = 'phase5-session-upgrade.ps1';   Function = 'Invoke-MigrationPhase5'; EstimatedMinutes = 30 }
+    @{ ID = 6; Name = 'Wnioskowanie drzwi z logów';        Script = 'phase6-door-inference.ps1';   Function = 'Invoke-MigrationPhase6'; EstimatedMinutes = 15 }
+    @{ ID = 7; Name = 'Enrollment walut';                  Script = 'phase7-currency.ps1';          Function = 'Invoke-MigrationPhase7'; EstimatedMinutes = 60 }
+    @{ ID = 8; Name = 'Przełączenie (cutover)';            Script = 'phase8-cutover.ps1';           Function = 'Invoke-MigrationPhase8'; EstimatedMinutes = 30 }
 )
 
 # ── Shared helpers ──────────────────────────────────────────────────────────

@@ -60,6 +60,9 @@ function Test-PlayerCharacterPUAssignment {
         [Parameter(HelpMessage = "Directories to exclude from session file scanning")]
         [string[]]$ExcludeDirectory,
 
+        [Parameter(HelpMessage = "Pre-fetched full session list for stale history detection (avoids redundant Get-Session call)")]
+        [object[]]$AllSessions,
+
         [Parameter(HelpMessage = "Suppress warning output to stderr")]
         [switch]$Quiet
     )
@@ -212,9 +215,14 @@ function Test-PlayerCharacterPUAssignment {
     if ($HistoryHeaders.Count -gt 0) {
         # Build a set of all known session headers across the full repo
         # (not date-filtered - stale detection needs the complete picture)
-        $GetAllParams = @{}
-        if ($ExcludeDirectory) { $GetAllParams['ExcludeDirectory'] = $ExcludeDirectory }
-        $AllRepoSessions = Get-Session @GetAllParams
+        if ($PSBoundParameters.ContainsKey('AllSessions') -and $AllSessions) {
+            $AllRepoSessions = $AllSessions
+        }
+        else {
+            $GetAllParams = @{}
+            if ($ExcludeDirectory) { $GetAllParams['ExcludeDirectory'] = $ExcludeDirectory }
+            $AllRepoSessions = Get-Session @GetAllParams
+        }
         $KnownHeaders = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
         foreach ($S in $AllRepoSessions) {
             $H = $S.Header.Trim()
@@ -235,11 +243,11 @@ function Test-PlayerCharacterPUAssignment {
         }
     }
 
+    # FailedSessionsWithPU and StaleHistoryEntries are informational —
+    # session content fixes belong in Phase 4 (format upgrade + mass review)
     $AllOK = $UnresolvedCharacters.Count -eq 0 -and
              $MalformedPU.Count -eq 0 -and
-             $DuplicateEntries.Count -eq 0 -and
-             $FailedSessionsWithPU.Count -eq 0 -and
-             $StaleHistoryEntries.Count -eq 0
+             $DuplicateEntries.Count -eq 0
 
     return [PSCustomObject]@{
         OK                   = $AllOK

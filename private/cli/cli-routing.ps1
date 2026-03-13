@@ -825,8 +825,37 @@ function Refresh-NavState {
     $State.ResolveCache = @{}
 }
 
+function Refresh-HealthChecks {
+    param([Parameter(Mandatory)] [object]$State)
+
+    $HC = $State.HealthCache
+    $HC.CheckedAt = Get-Date
+    $HC.Errors = @()
+    $HC.Skipped = $false
+
+    # Suppress non-terminating errors during health checks — internal calls
+    # would otherwise corrupt the CLI display.
+    $PrevEAP = $ErrorActionPreference
+    $ErrorActionPreference = 'SilentlyContinue'
+
+    $SharedSessions    = Get-Session -Quiet -Entities $State.Entities -Players $State.Players
+    $SharedEntityState = Get-EntityState -Quiet
+
+    try { $HC.PU        = Test-PlayerCharacterPUAssignment -Quiet -AllSessions $SharedSessions }
+    catch { $HC.Errors += "PU: $($_.Exception.Message)" }
+    try { $HC.Currency  = Test-CurrencyReconciliation -Quiet -Entities $SharedEntityState -Sessions $SharedSessions }
+    catch { $HC.Errors += "Waluta: $($_.Exception.Message)" }
+    try { $HC.Integrity = Test-SessionIntegrity -Quiet -Since (Get-Date).AddMonths(-2) }
+    catch { $HC.Errors += "Sesje: $($_.Exception.Message)" }
+    try { $HC.Graph     = Test-SessionGraphIntegrity -Quiet -Sessions $SharedSessions -NameIndex $State.NameIndex }
+    catch { $HC.Errors += "Graf: $($_.Exception.Message)" }
+
+    $ErrorActionPreference = $PrevEAP
+}
+
 function Invoke-MigrationPhaseAction {
     param([string]$PhaseID, [object]$State)
+    [System.Console]::Clear()
     Write-CLILine -Text 'Migracja nie jest załadowana.' -Color (Get-CLIColor -Role 'Disabled')
     Write-CLILine -Text 'Naciśnij dowolny klawisz...' -Color (Get-CLIColor -Role 'Disabled')
     [void][System.Console]::ReadKey($true)

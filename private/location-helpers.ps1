@@ -56,7 +56,7 @@ $script:LocPiwnicaPattern = [regex]::new(
     [System.Text.RegularExpressions.RegexOptions]::Compiled -bor
     [System.Text.RegularExpressions.RegexOptions]::IgnoreCase)
 $script:LocNamedSubareaPattern = [regex]::new(
-    '\s+-\s+[a-ząćęłńóśżź].+$',
+    '\s+-\s+\S.+$',
     [System.Text.RegularExpressions.RegexOptions]::Compiled)
 
 # Backward-compatible alias for existing callers

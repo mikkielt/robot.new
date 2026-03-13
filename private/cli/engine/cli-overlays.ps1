@@ -215,6 +215,18 @@ function New-HealthDashboardComponent {
             )
             $Row += 2
 
+            # Show skip notice when health checks were bypassed via -NoHealthCheck
+            if ($HC.Skipped) {
+                Set-BufferLine -Buffer $script:BackBuffer -Row $Row -Segments @(
+                    (New-Segment -Text '    Sprawdzanie pominiete (-NoHealthCheck)' -Color $DisabledColor)
+                )
+                $Row++
+                Set-BufferLine -Buffer $script:BackBuffer -Row $Row -Segments @(
+                    (New-Segment -Text '    Nacisnij Enter aby uruchomic sprawdzanie' -Color $DisabledColor)
+                )
+                return
+            }
+
             # Check timestamp
             if ($HC.CheckedAt) {
                 $CheckAge = ([datetime]::Now - $HC.CheckedAt).TotalMinutes
@@ -272,6 +284,12 @@ function New-HealthDashboardComponent {
                     }
                     elseif ($Action.Value -eq 'Down') {
                         $ComponentRef.ScrollOffset++
+                    }
+                }
+                'Select' {
+                    # Enter triggers health checks when they were skipped
+                    if ($State.HealthCache.Skipped -or -not $State.HealthCache.CheckedAt) {
+                        Refresh-HealthChecks -State $State
                     }
                 }
             }

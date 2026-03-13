@@ -101,7 +101,7 @@ function Show-DiagnosticResults {
         Write-MigrationLog -Level 'WARN' -Phase $script:LogPhaseContext -Summary "Duplikaty PU: $($Diag.DuplicateEntries.Count)" -Details $LogDetails.ToArray()
     }
 
-    # Category: sessions with malformed dates
+    # Category: sessions with malformed dates (informational — repair deferred to Phase 5)
     if ($Diag.FailedSessionsWithPU -and $Diag.FailedSessionsWithPU.Count -gt 0) {
         Write-SectionHeader "SESJE Z BŁĘDNĄ DATĄ ($($Diag.FailedSessionsWithPU.Count))"
         $LogDetails = [System.Collections.Generic.List[string]]::new()
@@ -130,26 +130,25 @@ function Show-DiagnosticResults {
             }
 
             if ($DateSuggestion) {
-                Write-Host "      Wykryto: data '$RawDate' zawiera literowke" -ForegroundColor (Resolve-MigrationColor -Role 'Warning')
-                Write-Host "      Poprawka A: zmien naglowek na '### $DateSuggestion, ...'" -ForegroundColor (Resolve-MigrationColor -Role 'Disabled')
-                Write-Host "      Poprawka B: dodaj '@Data: $DateSuggestion' w bloku metadanych sesji" -ForegroundColor (Resolve-MigrationColor -Role 'Disabled')
+                Write-Host "      Wykryto: data '$RawDate' zawiera literowke" -ForegroundColor (Resolve-MigrationColor -Role 'Disabled')
+                Write-Host "      Poprawka: '@Data: $DateSuggestion' (zostanie zastosowana w Fazie 4)" -ForegroundColor (Resolve-MigrationColor -Role 'Disabled')
                 $LogDetails.Add("'$($Item.Header)'")
                 if ($Item.FilePath) { $LogDetails.Add("    Plik: $($Item.FilePath)") }
                 $LogDetails.Add("    Wykryto: data '$RawDate' zawiera literowke")
-                $LogDetails.Add("    Naprawa A: Zmien naglowek na '### $DateSuggestion, ...'")
-                $LogDetails.Add("    Naprawa B: Dodaj '@Data: $DateSuggestion' w bloku metadanych sesji (Gen4)")
+                $LogDetails.Add("    Naprawa: '@Data: $DateSuggestion' w Fazie 4 (upgrade formatu / przeglad sesji)")
             } else {
                 Write-Host '      Poprawka: zmień datę na format YYYY-MM-DD' -ForegroundColor (Resolve-MigrationColor -Role 'Disabled')
-                Write-Host '      Robot nie rozpoznal wzorca blednej daty.' -ForegroundColor (Resolve-MigrationColor -Role 'Error')
+                Write-Host '      Robot nie rozpoznal wzorca blednej daty.' -ForegroundColor (Resolve-MigrationColor -Role 'Warning')
                 Write-Host "      Format wymagany: '### YYYY-MM-DD, Tytul, Narrator'" -ForegroundColor (Resolve-MigrationColor -Role 'Disabled')
                 $LogDetails.Add("'$($Item.Header)'")
                 if ($Item.FilePath) { $LogDetails.Add("    Plik: $($Item.FilePath)") }
                 $LogDetails.Add("    BLAD: Robot nie rozpoznal wzorca blednej daty")
                 $LogDetails.Add("    Format wymagany: '### YYYY-MM-DD, Tytul, Narrator'")
-                $LogDetails.Add("    Naprawa: Popraw date recznie na format YYYY-MM-DD")
+                $LogDetails.Add("    Naprawa: Popraw date recznie w Fazie 4 (przeglad sesji)")
             }
         }
-        Write-MigrationLog -Level 'WARN' -Phase $script:LogPhaseContext -Summary "Sesje z bledna data: $($Diag.FailedSessionsWithPU.Count)" -Details $LogDetails.ToArray()
+        Write-Host '    Status: informacyjny — naprawa w Fazie 4 (upgrade formatu / przegląd sesji)' -ForegroundColor (Resolve-MigrationColor -Role 'Disabled')
+        Write-MigrationLog -Level 'INFO' -Phase $script:LogPhaseContext -Summary "Sesje z bledna data: $($Diag.FailedSessionsWithPU.Count) (informacyjnie, naprawa w Fazie 4)" -Details $LogDetails.ToArray()
     }
 
     # Category: stale history entries (informational only, non-blocking)
@@ -209,7 +208,7 @@ function Invoke-QuickDiagnostics {
         Write-StepOK 'OGÓLNY STATUS: OK'
     } else {
         $Total = $Diag.UnresolvedCharacters.Count + $Diag.MalformedPU.Count +
-                 $Diag.DuplicateEntries.Count + $Diag.FailedSessionsWithPU.Count
+                 $Diag.DuplicateEntries.Count
         Write-StepWarning "OGÓLNY STATUS: $Total problemów do rozwiązania"
     }
 }

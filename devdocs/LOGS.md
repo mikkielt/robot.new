@@ -13,6 +13,7 @@ This document covers the session log subsystem: `Get-SessionLog` (fetch, parse, 
 | `Get-SessionLog` | `public/session/get-sessionlog.ps1` | Core pipeline: fetch, parse, cross-reference |
 | `Invoke-SessionLogFetch` | `public/workflow/invoke-sessionlogfetch.ps1` | Mass fetch with error handling |
 | `Get-NamedLogLocationReport` | `public/reporting/get-namedloglocationreport.ps1` | Location resolution analysis |
+| `Resolve-LogUrlToLocalPath` | `private/session-decomposehelpers.ps1` | URL-to-local-path resolution for cached log files |
 | `Normalize-LogUrl` | `private/log-fetchhelpers.ps1` | Pastebin URL normalization, http->https |
 | `ConvertTo-LogFileName` | `private/log-fetchhelpers.ps1` | URL to filesystem-safe filename |
 | `Get-LogHttpClient` | `private/log-fetchhelpers.ps1` | Lazily-initialized shared HttpClient |
@@ -32,7 +33,7 @@ This document covers the session log subsystem: `Get-SessionLog` (fetch, parse, 
 ## 2. Architecture Overview
 
 ```
-Get-Session --> session objects with .Logs URLs
+Get-Session --> session objects with .Logs (URLs or local paths)
                     |
                     v
               Get-SessionLog
@@ -179,6 +180,23 @@ Deduplicates URLs via `HashSet[string]` (OrdinalIgnoreCase) after normalization.
 
 Returns a hashtable mapping normalized URLs to their text content. URLs that fail are mapped to `$null`.
 
+### 4.6 `Resolve-LogUrlToLocalPath`
+
+File: `private/session-decomposehelpers.ps1`
+
+| Parameter | Type | Mandatory | Description |
+|---|---|---|---|
+| `Url` | string | Yes | URL or path to resolve |
+| `LogDirectory` | string | Yes | Directory containing cached log files (typically `res/logs/` resolved via `Get-AdminConfig`) |
+
+Replaces a log URL with a local `res/logs/` path if the corresponding cached file exists on disk. Used during migration Phase 5 (`-UpgradeFormat`) and by `ConvertTo-Gen4FromRawBlock` / `ConvertFrom-PlainTextLog` to localize log references in session metadata.
+
+Resolution logic:
+1. If `$LogDirectory` is empty or `$null`, returns the original `$Url` unchanged.
+2. If `$Url` does not start with `http` (already a local path), returns it unchanged.
+3. Normalizes the URL via `Normalize-LogUrl`, converts to a cache filename via `ConvertTo-LogFileName`, and checks if the file exists at `$LogDirectory/$FileName`.
+4. If the file exists, returns `res/logs/$FileName`. Otherwise returns the original `$Url`.
+
 ---
 
 ## 5. Content Parser (`private/parse-logcontent.ps1`)
@@ -255,12 +273,14 @@ All parsers return:
 
 | Parameter | Type | Mandatory | Description |
 |---|---|---|---|
-| `Session` | PSObject[] | No | Session objects (pipeline input). Must have `.Logs` URL array |
+| `Session` | PSObject[] | No | Session objects (pipeline input). Must have `.Logs` array |
 | `Index` | hashtable | No | Name index from `Get-NameIndex` (enables resolution) |
 | `Cache` | hashtable | No | Shared resolution cache for `Resolve-Name` |
 | `LogDirectory` | string | No | Override for `res/logs/` path |
 | `DelayMs` | int | No | Throttle between HTTP requests (default 500ms) |
 | `SkipFetch` | switch | No | Read only from disk, no HTTP requests |
+
+When `.Logs` contains local file paths (non-HTTP entries such as `res/logs/filename`), they are read directly from disk via `[System.IO.File]::ReadAllText()` without HTTP requests. Mixed URLs and local paths in the same session are fully supported — URLs go through `Invoke-LogBatchFetch` while local paths are resolved against `Get-RepoRoot`'s `.robot/` directory and merged into the fetched content dictionary before parsing.
 
 ### 6.2 Pipeline Architecture
 
@@ -475,6 +495,7 @@ Date range -> `Get-Session | Get-SessionLog -SkipFetch` -> `Get-NamedLogLocation
 | File | Layer | Purpose |
 |---|---|---|
 | `private/log-fetchhelpers.ps1` | Private | URL normalization, disk cache, HTTP fetch (5 functions) |
+| `private/session-decomposehelpers.ps1` | Private | `Resolve-LogUrlToLocalPath` — URL-to-local-path resolution for log localization |
 | `private/parse-logcontent.ps1` | Private | Format detection, ChatLog/Prose parsers (4 functions) |
 | `public/session/get-sessionlog.ps1` | Public | Core pipeline: fetch, parse, cross-reference |
 | `public/workflow/invoke-sessionlogfetch.ps1` | Public | Mass fetch with error handling |

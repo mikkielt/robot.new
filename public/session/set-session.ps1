@@ -27,6 +27,7 @@
 # Dot-source shared helpers
 . "$script:ModuleRoot/private/temporal-helpers.ps1"
 . "$script:ModuleRoot/private/format-sessionblock.ps1"
+. "$script:ModuleRoot/private/log-fetchhelpers.ps1"
 . "$script:ModuleRoot/private/session-decomposehelpers.ps1"
 
 function Set-Session {
@@ -146,6 +147,15 @@ function Set-Session {
 
         $UTF8NoBOM = [System.Text.UTF8Encoding]::new($false)
 
+        # Resolve log directory for URL localization during format upgrade
+        $LogDir = $null
+        if ($UpgradeFormat) {
+            try {
+                $Config = Get-AdminConfig
+                $LogDir = [System.IO.Path]::Combine($Config.ResDir, 'logs')
+            } catch { }
+        }
+
         # Metadata config: canonical key, Gen4 tag name, possible original keys in Split output
         $MetaConfig = @(
             @{ Key = 'narrator';  Gen4Tag = 'Narrator'; OrigKeys = @('narrator');                      Effective = $EffNarrator }
@@ -255,10 +265,10 @@ function Set-Session {
                                     $BlockText = ConvertFrom-ItalicLocation -Line $Split.MetaBlocks[$OrigKey][0] -NL $NL
                                 }
                                 elseif ($OrigKey -eq 'logs-plain') {
-                                    $BlockText = ConvertFrom-PlainTextLog -Lines $Split.MetaBlocks[$OrigKey] -NL $NL
+                                    $BlockText = ConvertFrom-PlainTextLog -Lines $Split.MetaBlocks[$OrigKey] -NL $NL -LogDirectory $LogDir
                                 }
                                 else {
-                                    $BlockText = ConvertTo-Gen4FromRawBlock -Tag $MC.Key -Lines $Split.MetaBlocks[$OrigKey] -NL $NL
+                                    $BlockText = ConvertTo-Gen4FromRawBlock -Tag $MC.Key -Lines $Split.MetaBlocks[$OrigKey] -NL $NL -LogDirectory $LogDir
                                 }
                                 break
                             }

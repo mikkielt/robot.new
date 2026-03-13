@@ -1,6 +1,6 @@
 <#
     .SYNOPSIS
-    Phase 5: Currency enrollment.
+    Phase 7: Currency enrollment.
 
     .DESCRIPTION
     Creates coordinator treasury, inventories active characters without
@@ -11,22 +11,22 @@
 #>
 
 # ============================================================================
-# PHASE 5 - Currency enrollment
+# PHASE 7 - Currency enrollment
 # ============================================================================
 
-function Invoke-MigrationPhase5 {
+function Invoke-MigrationPhase7 {
     param(
         [Parameter(Mandatory)] [hashtable]$State,
         [switch]$WhatIf
     )
 
-    if (-not (Test-PhasePredecessor -State $State -Phase 5)) {
-        Write-StepWarning 'Faza 4 nie jest ukończona.'
+    if (-not (Test-PhasePredecessor -State $State -Phase 7)) {
+        Write-StepWarning 'Faza 6 nie jest ukończona.'
         if (-not (Request-YesNo -Prompt 'Kontynuować mimo to?' -Default $false)) { return }
     }
 
-    $PhaseStatus = Get-PhaseStatus -State $State -Phase 5
-    Write-PhaseHeader -Phase 5 -Status $PhaseStatus
+    $PhaseStatus = Get-PhaseStatus -State $State -Phase 7
+    Write-PhaseHeader -Phase 7 -Status $PhaseStatus
 
     $RepoRoot = Get-RepoRoot
 
@@ -37,7 +37,7 @@ function Invoke-MigrationPhase5 {
 
     if ($Treasury) {
         Write-StepOK 'Skarbiec Koordynatorów istnieje'
-        Update-PhaseChecklist -State $State -Phase 5 -Item 'TreasuryCreated' -Value $true
+        Update-PhaseChecklist -State $State -Phase 7 -Item 'TreasuryCreated' -Value $true
 
         # Display current treasury balances
         $TreasuryCurrency = Get-CurrencyReport -Owner 'Skarbiec Koordynatorów'
@@ -86,7 +86,7 @@ function Invoke-MigrationPhase5 {
                     Write-StepOK "Kogi: $Kogi"
                 }
 
-                Update-PhaseChecklist -State $State -Phase 5 -Item 'TreasuryCreated' -Value $true
+                Update-PhaseChecklist -State $State -Phase 7 -Item 'TreasuryCreated' -Value $true
             }
             catch {
                 Write-StepError "Nie udało się utworzyć skarbca: $($_.Exception.Message)"
@@ -133,7 +133,7 @@ function Invoke-MigrationPhase5 {
     if ($CharsWithout.Count -gt 0) {
         Write-StepWarning "Postaci bez waluty: $($CharsWithout.Count)"
     }
-    Update-PhaseChecklist -State $State -Phase 5 -Item 'InventoryDone' -Value $true
+    Update-PhaseChecklist -State $State -Phase 7 -Item 'InventoryDone' -Value $true
 
     # Step 3: Register currency for characters without it
     if ($CharsWithout.Count -gt 0 -and -not $WhatIf) {
@@ -163,12 +163,12 @@ function Invoke-MigrationPhase5 {
                 'Można pominąć (Enter) nominał, który nie dotyczy postaci.',
                 '',
                 'Tak = wprowadź dane interaktywnie postać po postaci',
-                'Nie = pomiń, uruchom Fazę 5 ponownie po zebraniu danych'
+                'Nie = pomiń, uruchom Fazę 7 ponownie po zebraniu danych'
             )
             if ($DoInteractive) {
                 Invoke-CurrencyInteractiveEntry -CharactersWithout $CharsWithout
             } else {
-                Write-Host '  Pominięto rejestrację walut. Uruchom Fazę 5 ponownie po zebraniu danych.' -ForegroundColor DarkGray
+                Write-Host '  Pominięto rejestrację walut. Uruchom Fazę 7 ponownie po zebraniu danych.' -ForegroundColor DarkGray
             }
         }
     }
@@ -191,7 +191,7 @@ function Invoke-MigrationPhase5 {
         } else {
             Write-Host '  Pominięto budżety narratorów.' -ForegroundColor DarkGray
         }
-        Update-PhaseChecklist -State $State -Phase 5 -Item 'NarratorBudgets' -Value $true
+        Update-PhaseChecklist -State $State -Phase 7 -Item 'NarratorBudgets' -Value $true
     }
 
     # Step 5: Verify currency entities and run reconciliation
@@ -209,7 +209,7 @@ function Invoke-MigrationPhase5 {
             Write-Host "    [$($Warning.Severity)] $($Warning.Check): $($Warning.Detail)" -ForegroundColor DarkGray
         }
     }
-    Update-PhaseChecklist -State $State -Phase 5 -Item 'ReconciliationRun' -Value $true
+    Update-PhaseChecklist -State $State -Phase 7 -Item 'ReconciliationRun' -Value $true
 
     # Step 6: Prompt to commit currency changes
     if (-not $WhatIf) {
@@ -229,7 +229,7 @@ function Invoke-MigrationPhase5 {
                 & git -C $RepoRoot commit -m 'Enrollment walut - stan początkowy' 2>&1
                 if ($LASTEXITCODE -eq 0) {
                     Write-StepOK 'Zacommitowano'
-                    Update-PhaseChecklist -State $State -Phase 5 -Item 'Committed' -Value $true
+                    Update-PhaseChecklist -State $State -Phase 7 -Item 'Committed' -Value $true
                 }
             }
         } else {
@@ -240,11 +240,11 @@ function Invoke-MigrationPhase5 {
     # Phase summary and state persistence
     $AllRegistered = $CharsWithout.Count -eq 0
     if ($AllRegistered -and $Recon.WarningCount -eq 0) {
-        Set-PhaseCompleted -State $State -Phase 5
-        Write-PhaseSummary -Phase 5 -Status 'Completed' -Lines @("[OK] $FinalCount encji walutowych, rekoncyliacja czysta")
+        Set-PhaseCompleted -State $State -Phase 7
+        Write-PhaseSummary -Phase 7 -Status 'Completed' -Lines @("[OK] $FinalCount encji walutowych, rekoncyliacja czysta")
     } else {
-        Set-PhaseInProgress -State $State -Phase 5
-        Write-PhaseSummary -Phase 5 -Status 'InProgress' -Lines @(
+        Set-PhaseInProgress -State $State -Phase 7
+        Write-PhaseSummary -Phase 7 -Status 'InProgress' -Lines @(
             "[!!] $($CharsWithout.Count) postaci bez waluty",
             "[!!] $($Recon.WarningCount) ostrzeżeń rekoncyliacji"
         )

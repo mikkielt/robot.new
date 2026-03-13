@@ -158,7 +158,7 @@ This enables unified parsing for both `- PU:` and `- @PU:`.
 Extracted fields:
 - **Narrator**: Canonical narrator name(s) under `narrator` tag, used as override (see §4.8)
 - **PU**: `Character: Value` pairs (comma -> period decimal normalization)
-- **Logs**: Child URLs under `logi` tag; also checks inline URL on root line
+- **Logs**: Child URLs or local file paths under `logi` tag; entries starting with `res/logs/` are accepted alongside `https://...` URLs. Also checks inline URL on root line
 - **Changes (Zmiany)**: Entity names at 4-space indent, `@tag: value` at 8-space indent
 - **Intel**: `RawTarget: Message` pairs under `intel` tag
 - **Transfers**: `@Transfer: {amount} {denomination}, {source} -> {destination}` inline on root line
@@ -446,7 +446,7 @@ Returns a string - does **not** write to disk.
 | `public/session/set-session.ps1` | `Set-Session` |
 | `public/session/new-session.ps1` | `New-Session` |
 | `private/session-parsehelpers.ps1` | `Get-SessionTitle`, `Get-SessionLocations`, `Get-SessionListMetadata`, `Get-SessionPlainTextLogs` |
-| `private/session-decomposehelpers.ps1` | `Find-SessionInFile`, `Split-SessionSection`, `ConvertTo-Gen4FromRawBlock`, `ConvertFrom-ItalicLocation`, `ConvertFrom-PlainTextLog`, `Get-FormatFromSplit` |
+| `private/session-decomposehelpers.ps1` | `Find-SessionInFile`, `Split-SessionSection`, `ConvertTo-Gen4FromRawBlock`, `ConvertFrom-ItalicLocation`, `ConvertFrom-PlainTextLog`, `Resolve-LogUrlToLocalPath`, `Get-FormatFromSplit` |
 | `private/session-intelhelpers.ps1` | `Resolve-EntityWebhook`, `Test-LocationMatch`, `Resolve-IntelTargets`, `Get-SessionMentions` |
 | `private/format-sessionblock.ps1` | `ConvertTo-Gen4MetadataBlock`, `ConvertTo-SessionMetadata` |
 
@@ -490,6 +490,7 @@ Returns `$null` if items are empty/null - caller must check before including in 
 | Batch format upgrade (`-UpgradeFormat`) | Skips eager session graph refresh (caller rebuilds full graph afterward, avoiding O(n²) per-session updates) |
 | Transfer with invalid amount | Skipped (amount must be positive integer) |
 | Transfer missing source/destination | Skipped |
+| Local log paths in `.Logs` | Sessions modified by migration Phase 5 may contain `res/logs/filename` entries instead of `https://...` URLs. Both formats are handled by `Get-SessionLog` and `Invoke-SessionLogFetch` |
 
 ### Session Object (`Get-Session`)
 
@@ -503,7 +504,7 @@ Returns `$null` if items are empty/null - caller must check before including in 
 | `Title` | string | Session title (header minus date and narrator) |
 | `Narrator` | object | Narrator info (see Narrator Subproperties below) |
 | `Locations` | string[] | Session locations |
-| `Logs` | string[] | Session log URLs |
+| `Logs` | string[] | Session log entries: URLs (`https://...`) or local file paths (`res/logs/...`) after migration Phase 5 URL localization |
 | `PU` | object[] | PU awards (Character + Value) |
 | `Format` | string | Detected format generation: Gen1, Gen2, Gen3, Gen4 |
 | `IsMerged` | bool | Whether this session was deduplicated |

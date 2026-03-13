@@ -1,6 +1,6 @@
 <#
     .SYNOPSIS
-    Phase 4: Session format upgrade to Gen4.
+    Phase 5: Session format upgrade to Gen4.
 
     .DESCRIPTION
     Identifies non-Gen4 sessions in active files (2024+), upgrades them
@@ -11,23 +11,30 @@
                   narrator-normalization.ps1, robot module imported.
 #>
 
+# Dot-source log fetch helpers (provides Normalize-LogUrl, ConvertTo-LogFileName
+# for URL localization of @Logi: blocks)
+. ([System.IO.Path]::Combine($PSScriptRoot, '..', 'private', 'log-fetchhelpers.ps1'))
+
+# Dot-source admin config (provides Get-AdminConfig for ResDir path)
+. ([System.IO.Path]::Combine($PSScriptRoot, '..', 'private', 'admin-config.ps1'))
+
 # ============================================================================
-# PHASE 4 - Session format upgrade to Gen4
+# PHASE 5 - Session format upgrade to Gen4
 # ============================================================================
 
-function Invoke-MigrationPhase4 {
+function Invoke-MigrationPhase5 {
     param(
         [Parameter(Mandatory)] [hashtable]$State,
         [switch]$WhatIf
     )
 
-    if (-not (Test-PhasePredecessor -State $State -Phase 4)) {
-        Write-StepWarning 'Faza 3 nie jest ukończona.'
+    if (-not (Test-PhasePredecessor -State $State -Phase 5)) {
+        Write-StepWarning 'Faza 4 nie jest ukończona.'
         if (-not (Request-YesNo -Prompt 'Kontynuować mimo to?' -Default $false)) { return }
     }
 
-    $PhaseStatus = Get-PhaseStatus -State $State -Phase 4
-    Write-PhaseHeader -Phase 4 -Status $PhaseStatus
+    $PhaseStatus = Get-PhaseStatus -State $State -Phase 5
+    Write-PhaseHeader -Phase 5 -Status $PhaseStatus
 
     $RepoRoot = Get-RepoRoot
 
@@ -38,17 +45,17 @@ function Invoke-MigrationPhase4 {
     foreach ($Group in $FormatGroups) {
         Write-Host "    $($Group.Name): $($Group.Count) sesji" -ForegroundColor DarkGray
     }
-    Update-PhaseChecklist -State $State -Phase 4 -Item 'FormatDistribution' -Value $true
+    Update-PhaseChecklist -State $State -Phase 5 -Item 'FormatDistribution' -Value $true
 
     # Step 2: Resolve format dedup conflicts across duplicate sessions
-    $FormatDedupDone = $State.Phases.ContainsKey('4') -and $State.Phases['4'].ContainsKey('Checklist') -and $State.Phases['4'].Checklist.ContainsKey('FormatDedupResolved') -and $State.Phases['4'].Checklist['FormatDedupResolved']
+    $FormatDedupDone = $State.Phases.ContainsKey('4') -and $State.Phases['5'].ContainsKey('Checklist') -and $State.Phases['5'].Checklist.ContainsKey('FormatDedupResolved') -and $State.Phases['5'].Checklist['FormatDedupResolved']
     if (-not $FormatDedupDone) {
         Write-Step -Number 2 -Text 'Konflikty formatu w zdeduplikowanych sesjach...'
         $MergedSessions = @($AllSessions | Where-Object { $_.IsMerged })
 
         if ($MergedSessions.Count -eq 0) {
             Write-StepOK 'Brak zdeduplikowanych sesji'
-            Update-PhaseChecklist -State $State -Phase 4 -Item 'FormatDedupResolved' -Value $true
+            Update-PhaseChecklist -State $State -Phase 5 -Item 'FormatDedupResolved' -Value $true
         } else {
             # Collect unique file paths from all merged sessions
             $DedupFiles = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
@@ -87,7 +94,7 @@ function Invoke-MigrationPhase4 {
 
             if ($FormatConflicts.Count -eq 0) {
                 Write-StepOK "Brak konfliktów formatu w $($MergedSessions.Count) zdeduplikowanych sesjach"
-                Update-PhaseChecklist -State $State -Phase 4 -Item 'FormatDedupResolved' -Value $true
+                Update-PhaseChecklist -State $State -Phase 5 -Item 'FormatDedupResolved' -Value $true
             } else {
                 Write-StepWarning "$($FormatConflicts.Count) sesji z konfliktami formatu:"
                 foreach ($FC in $FormatConflicts) {
@@ -157,7 +164,7 @@ function Invoke-MigrationPhase4 {
 
                         if ($DedupFailed -eq 0) {
                             Write-StepOK $ResultMsg
-                            Update-PhaseChecklist -State $State -Phase 4 -Item 'FormatDedupResolved' -Value $true
+                            Update-PhaseChecklist -State $State -Phase 5 -Item 'FormatDedupResolved' -Value $true
                         } else {
                             Write-StepWarning $ResultMsg
                         }
@@ -183,40 +190,91 @@ function Invoke-MigrationPhase4 {
 
     if ($NonGen4Count -eq 0) {
         Write-StepOK 'Wszystkie aktywne sesje już w formacie Gen4'
-        Update-PhaseChecklist -State $State -Phase 4 -Item 'UpgradeDone' -Value $true
-        # Hashes still valid (no format change occurred)
-        Update-PhaseChecklist -State $State -Phase 4 -Item 'HashesRefreshed' -Value $true
+        Update-PhaseChecklist -State $State -Phase 5 -Item 'UpgradeDone' -Value $true
+
+        # URL localization for already-Gen4 sessions
+        $UrlsLocalizedDone = $Checklist.ContainsKey('UrlsLocalized') -and $Checklist['UrlsLocalized']
+        if (-not $UrlsLocalizedDone -and -not $WhatIf) {
+            Write-Step -Number 4 -Text 'Lokalizacja URL w sesjach Gen4...'
+            $Config = Get-AdminConfig
+            $LogDir = [System.IO.Path]::Combine($Config.ResDir, 'logs')
+            $LocalizedCount = 0
+
+            if ([System.IO.Directory]::Exists($LogDir)) {
+                $Gen4WithUrls = @($ActiveSessions.Where({
+                    $_.Format -eq 'Gen4' -and $null -ne $_.Logs -and $_.Logs.Count -gt 0 -and
+                    $_.Logs.Where({ $_.StartsWith('http', [System.StringComparison]::OrdinalIgnoreCase) }).Count -gt 0
+                }))
+                foreach ($S in $Gen4WithUrls) {
+                    $NewLogs = [System.Collections.Generic.List[string]]::new()
+                    $AnyChanged = $false
+                    foreach ($LogEntry in $S.Logs) {
+                        if ($LogEntry.StartsWith('http', [System.StringComparison]::OrdinalIgnoreCase)) {
+                            $Normalized = Normalize-LogUrl -Url $LogEntry
+                            $FileName = ConvertTo-LogFileName -NormalizedUrl $Normalized
+                            $FilePath = [System.IO.Path]::Combine($LogDir, $FileName)
+                            if ([System.IO.File]::Exists($FilePath)) {
+                                $NewLogs.Add("res/logs/$FileName")
+                                $AnyChanged = $true
+                            } else {
+                                $NewLogs.Add($LogEntry)
+                            }
+                        } else {
+                            $NewLogs.Add($LogEntry)
+                        }
+                    }
+                    if ($AnyChanged) {
+                        $S | Set-Session -Logs $NewLogs.ToArray()
+                        $LocalizedCount++
+                    }
+                }
+            }
+
+            if ($LocalizedCount -gt 0) {
+                Write-StepOK "Zlokalizowano URL w $LocalizedCount sesjach Gen4"
+                # Hashes need refresh after localization
+                Update-PhaseChecklist -State $State -Phase 5 -Item 'HashesRefreshed' -Value $false
+            } else {
+                Write-StepOK 'Brak URL do lokalizacji'
+                # Hashes still valid (no content change)
+                Update-PhaseChecklist -State $State -Phase 5 -Item 'HashesRefreshed' -Value $true
+            }
+            Update-PhaseChecklist -State $State -Phase 5 -Item 'UrlsLocalized' -Value $true
+        } else {
+            # Hashes still valid (no format change occurred)
+            Update-PhaseChecklist -State $State -Phase 5 -Item 'HashesRefreshed' -Value $true
+        }
 
         # Generate session review file if not already generated
-        $ReviewDone = $State.Phases.ContainsKey('4') -and $State.Phases['4'].ContainsKey('Checklist') -and $State.Phases['4'].Checklist.ContainsKey('SessionReviewFileGenerated') -and $State.Phases['4'].Checklist['SessionReviewFileGenerated']
+        $ReviewDone = $State.Phases.ContainsKey('4') -and $State.Phases['5'].ContainsKey('Checklist') -and $State.Phases['5'].Checklist.ContainsKey('SessionReviewFileGenerated') -and $State.Phases['5'].Checklist['SessionReviewFileGenerated']
         if (-not $ReviewDone -and -not $WhatIf) {
             Write-Step -Number 4 -Text 'Generowanie pliku przeglądu sesji...'
             $Count = Export-SessionReviewFile -RepoRoot $RepoRoot
             Write-StepOK "Plik przeglądu: $Count sesji → all-sessions-to-review.md"
-            Update-PhaseChecklist -State $State -Phase 4 -Item 'SessionReviewFileGenerated' -Value $true
+            Update-PhaseChecklist -State $State -Phase 5 -Item 'SessionReviewFileGenerated' -Value $true
         }
 
         # Build session graph if not already built
-        $GraphDone = $State.Phases.ContainsKey('4') -and $State.Phases['4'].ContainsKey('Checklist') -and $State.Phases['4'].Checklist.ContainsKey('SessionGraphBuilt') -and $State.Phases['4'].Checklist['SessionGraphBuilt']
+        $GraphDone = $State.Phases.ContainsKey('4') -and $State.Phases['5'].ContainsKey('Checklist') -and $State.Phases['5'].Checklist.ContainsKey('SessionGraphBuilt') -and $State.Phases['5'].Checklist['SessionGraphBuilt']
         if (-not $GraphDone -and -not $WhatIf) {
             Write-Step -Number 5 -Text 'Budowanie grafu sesji...'
             try {
                 $GraphResult = Set-SessionGraph -Full -Confirm:$false
                 Write-StepOK "Graf sesji: $($GraphResult.SessionsProcessed) sesji, $($GraphResult.ParticipantsFound) uczestników"
-                Update-PhaseChecklist -State $State -Phase 4 -Item 'SessionGraphBuilt' -Value $true
+                Update-PhaseChecklist -State $State -Phase 5 -Item 'SessionGraphBuilt' -Value $true
             }
             catch {
                 Write-StepWarning "Budowanie grafu sesji nie powiodło się: $_"
             }
         }
 
-        $DedupAlsoResolved = $State.Phases.ContainsKey('4') -and $State.Phases['4'].ContainsKey('Checklist') -and $State.Phases['4'].Checklist.ContainsKey('FormatDedupResolved') -and $State.Phases['4'].Checklist['FormatDedupResolved']
-        $GraphBuilt = $State.Phases.ContainsKey('4') -and $State.Phases['4'].ContainsKey('Checklist') -and $State.Phases['4'].Checklist.ContainsKey('SessionGraphBuilt') -and $State.Phases['4'].Checklist['SessionGraphBuilt']
+        $DedupAlsoResolved = $State.Phases.ContainsKey('4') -and $State.Phases['5'].ContainsKey('Checklist') -and $State.Phases['5'].Checklist.ContainsKey('FormatDedupResolved') -and $State.Phases['5'].Checklist['FormatDedupResolved']
+        $GraphBuilt = $State.Phases.ContainsKey('4') -and $State.Phases['5'].ContainsKey('Checklist') -and $State.Phases['5'].Checklist.ContainsKey('SessionGraphBuilt') -and $State.Phases['5'].Checklist['SessionGraphBuilt']
         if ($DedupAlsoResolved -and $GraphBuilt) {
-            Set-PhaseCompleted -State $State -Phase 4
-            Write-PhaseSummary -Phase 4 -Status 'Completed' -Lines @('[OK] Wszystkie aktywne sesje w Gen4', '[OK] Konflikty formatu rozwiązane', '[OK] Plik przeglądu sesji wygenerowany', '[OK] Graf sesji zbudowany')
+            Set-PhaseCompleted -State $State -Phase 5
+            Write-PhaseSummary -Phase 5 -Status 'Completed' -Lines @('[OK] Wszystkie aktywne sesje w Gen4', '[OK] Konflikty formatu rozwiązane', '[OK] Plik przeglądu sesji wygenerowany', '[OK] Graf sesji zbudowany')
         } else {
-            Set-PhaseInProgress -State $State -Phase 4
+            Set-PhaseInProgress -State $State -Phase 5
         }
         if (-not $WhatIf) { Save-MigrationState -State $State }
         return
@@ -310,21 +368,67 @@ function Invoke-MigrationPhase4 {
         return
     }
 
+    # Step 5b: URL localization for already-Gen4 sessions
+    Write-Step -Number '5b' -Text 'Lokalizacja URL w sesjach Gen4...'
+
+    $Config = Get-AdminConfig
+    $LogDir = [System.IO.Path]::Combine($Config.ResDir, 'logs')
+    $LocalizedCount = 0
+
+    if ([System.IO.Directory]::Exists($LogDir)) {
+        $PostUpgradeSessions = @(Get-Session -ExcludeDirectory $script:MigrationExcludeDirs -Quiet)
+        $Gen4WithUrls = @($PostUpgradeSessions.Where({
+            $_.Format -eq 'Gen4' -and $null -ne $_.Logs -and $_.Logs.Count -gt 0 -and
+            $_.Logs.Where({ $_.StartsWith('http', [System.StringComparison]::OrdinalIgnoreCase) }).Count -gt 0
+        }))
+
+        foreach ($S in $Gen4WithUrls) {
+            $NewLogs = [System.Collections.Generic.List[string]]::new()
+            $AnyChanged = $false
+            foreach ($LogEntry in $S.Logs) {
+                if ($LogEntry.StartsWith('http', [System.StringComparison]::OrdinalIgnoreCase)) {
+                    $Normalized = Normalize-LogUrl -Url $LogEntry
+                    $FileName = ConvertTo-LogFileName -NormalizedUrl $Normalized
+                    $FilePath = [System.IO.Path]::Combine($LogDir, $FileName)
+                    if ([System.IO.File]::Exists($FilePath)) {
+                        $NewLogs.Add("res/logs/$FileName")
+                        $AnyChanged = $true
+                    } else {
+                        $NewLogs.Add($LogEntry)
+                    }
+                } else {
+                    $NewLogs.Add($LogEntry)
+                }
+            }
+            if ($AnyChanged) {
+                $S | Set-Session -Logs $NewLogs.ToArray()
+                $LocalizedCount++
+            }
+        }
+    }
+
+    if ($LocalizedCount -gt 0) {
+        Write-StepOK "Zlokalizowano URL w $LocalizedCount sesjach Gen4"
+    } else {
+        Write-StepOK 'Brak URL do lokalizacji (wszystkie już lokalne)'
+    }
+    Update-PhaseChecklist -State $State -Phase 5 -Item 'UrlsLocalized' -Value $true
+
     # Step 6: Verify post-upgrade format distribution
-    Write-Step -Number 5 -Text 'Weryfikacja po upgrade...'
+    Write-Step -Number 6 -Text 'Weryfikacja po upgrade...'
     $PostSessions = Get-Session -ExcludeDirectory $script:MigrationExcludeDirs -Quiet
     $PostActive = $PostSessions | Where-Object { $_.Date -and $_.Date -ge $Cutoff }
     $StillNonGen4 = ($PostActive | Where-Object { $_.Format -ne 'Gen4' } | Measure-Object).Count
 
     if ($StillNonGen4 -eq 0) {
         Write-StepOK 'Weryfikacja: wszystkie aktywne sesje w Gen4'
-        Update-PhaseChecklist -State $State -Phase 4 -Item 'UpgradeDone' -Value $true
+        Update-PhaseChecklist -State $State -Phase 5 -Item 'UpgradeDone' -Value $true
     } else {
         Write-StepWarning "Wciąż $StillNonGen4 sesji nie w Gen4"
     }
 
     # Step 7: Narrator verification (non-blocking - informational only)
-    $NarratorReviewDone = $State.Phases.ContainsKey('4') -and $State.Phases['4'].ContainsKey('Checklist') -and $State.Phases['4'].Checklist.ContainsKey('NarratorReviewDone') -and $State.Phases['4'].Checklist['NarratorReviewDone']
+    $NarratorReviewDone = $State.Phases.ContainsKey('4') -and $State.Phases['5'].ContainsKey('Checklist') -and $State.Phases['5'].Checklist.ContainsKey('NarratorReviewDone') -and $State.Phases['5'].Checklist['NarratorReviewDone']
     if (-not $NarratorReviewDone) {
         Write-Step -Number 6 -Text 'Weryfikacja narratorów po upgrade...'
 
@@ -350,14 +454,14 @@ function Invoke-MigrationPhase4 {
             }
         }
 
-        Update-PhaseChecklist -State $State -Phase 4 -Item 'NarratorReviewDone' -Value $true
+        Update-PhaseChecklist -State $State -Phase 5 -Item 'NarratorReviewDone' -Value $true
     } else {
         Write-Step -Number 6 -Text 'Weryfikacja narratorów...'
         Write-StepOK 'Weryfikacja narratorów już wykonana'
     }
 
     # Step 8: Location report review
-    $LocationReviewDone = $State.Phases.ContainsKey('4') -and $State.Phases['4'].ContainsKey('Checklist') -and $State.Phases['4'].Checklist.ContainsKey('LocationReviewDone') -and $State.Phases['4'].Checklist['LocationReviewDone']
+    $LocationReviewDone = $State.Phases.ContainsKey('4') -and $State.Phases['5'].ContainsKey('Checklist') -and $State.Phases['5'].Checklist.ContainsKey('LocationReviewDone') -and $State.Phases['5'].Checklist['LocationReviewDone']
     if (-not $LocationReviewDone) {
         Write-Step -Number 7 -Text 'Raport lokalizacji - przegląd nazw...'
 
@@ -503,7 +607,7 @@ function Invoke-MigrationPhase4 {
         }
 
         Write-StepOK 'Przegląd lokalizacji zakończony'
-        Update-PhaseChecklist -State $State -Phase 4 -Item 'LocationReviewDone' -Value $true
+        Update-PhaseChecklist -State $State -Phase 5 -Item 'LocationReviewDone' -Value $true
     } else {
         Write-Step -Number 7 -Text 'Raport lokalizacji...'
         Write-StepOK 'Przegląd lokalizacji już wykonany'
@@ -524,14 +628,14 @@ function Invoke-MigrationPhase4 {
         & git -C $RepoRoot commit -m 'Upgrade aktywnych sesji do formatu Gen4' 2>&1
         if ($LASTEXITCODE -eq 0) {
             Write-StepOK 'Zacommitowano'
-            Update-PhaseChecklist -State $State -Phase 4 -Item 'Committed' -Value $true
+            Update-PhaseChecklist -State $State -Phase 5 -Item 'Committed' -Value $true
         } else {
             Write-StepError 'Nie udało się zacommitować'
         }
     }
 
     # Step 9: Session review file (generate / apply / refresh)
-    $ReviewDone = $State.Phases.ContainsKey('4') -and $State.Phases['4'].ContainsKey('Checklist') -and $State.Phases['4'].Checklist.ContainsKey('SessionReviewFileGenerated') -and $State.Phases['4'].Checklist['SessionReviewFileGenerated']
+    $ReviewDone = $State.Phases.ContainsKey('4') -and $State.Phases['5'].ContainsKey('Checklist') -and $State.Phases['5'].Checklist.ContainsKey('SessionReviewFileGenerated') -and $State.Phases['5'].Checklist['SessionReviewFileGenerated']
     $ReviewPath = [System.IO.Path]::Combine($RepoRoot, '.robot', 'res', 'all-sessions-to-review.md')
 
     if (-not $ReviewDone) {
@@ -540,7 +644,7 @@ function Invoke-MigrationPhase4 {
         $Count = Export-SessionReviewFile -RepoRoot $RepoRoot -WhatIf:$WhatIf
         if (-not $WhatIf) {
             Write-StepOK "Plik przeglądu: $Count sesji → all-sessions-to-review.md"
-            Update-PhaseChecklist -State $State -Phase 4 -Item 'SessionReviewFileGenerated' -Value $true
+            Update-PhaseChecklist -State $State -Phase 5 -Item 'SessionReviewFileGenerated' -Value $true
         }
     } else {
         # SUBSEQUENT RUNS: Review file exists — offer apply/regenerate/skip
@@ -575,7 +679,7 @@ function Invoke-MigrationPhase4 {
             }
         } elseif ($Choice -eq 'H') {
             Set-SessionHash -Full -Confirm:$false
-            Update-PhaseChecklist -State $State -Phase 4 -Item 'HashesRefreshed' -Value $true
+            Update-PhaseChecklist -State $State -Phase 5 -Item 'HashesRefreshed' -Value $true
             Write-StepOK 'Hashe sesji odświeżone'
         }
     }
@@ -585,7 +689,7 @@ function Invoke-MigrationPhase4 {
     try {
         Set-SessionHash -Full -Confirm:$false
         Write-StepOK 'Hashe sesji odświeżone'
-        Update-PhaseChecklist -State $State -Phase 4 -Item 'HashesRefreshed' -Value $true
+        Update-PhaseChecklist -State $State -Phase 5 -Item 'HashesRefreshed' -Value $true
     }
     catch {
         Write-StepError "Odświeżenie hashy nie powiodło się: $_"
@@ -596,21 +700,21 @@ function Invoke-MigrationPhase4 {
     try {
         $GraphResult = Set-SessionGraph -Full -Confirm:$false
         Write-StepOK "Graf sesji: $($GraphResult.SessionsProcessed) sesji, $($GraphResult.ParticipantsFound) uczestników"
-        Update-PhaseChecklist -State $State -Phase 4 -Item 'SessionGraphBuilt' -Value $true
+        Update-PhaseChecklist -State $State -Phase 5 -Item 'SessionGraphBuilt' -Value $true
     }
     catch {
         Write-StepError "Budowanie grafu sesji nie powiodło się: $_"
     }
 
     # Phase summary and state persistence
-    $DedupAlsoResolved = $State.Phases.ContainsKey('4') -and $State.Phases['4'].ContainsKey('Checklist') -and $State.Phases['4'].Checklist.ContainsKey('FormatDedupResolved') -and $State.Phases['4'].Checklist['FormatDedupResolved']
-    $HashesDone = $State.Phases.ContainsKey('4') -and $State.Phases['4'].ContainsKey('Checklist') -and $State.Phases['4'].Checklist.ContainsKey('HashesRefreshed') -and $State.Phases['4'].Checklist['HashesRefreshed']
-    $GraphDone = $State.Phases.ContainsKey('4') -and $State.Phases['4'].ContainsKey('Checklist') -and $State.Phases['4'].Checklist.ContainsKey('SessionGraphBuilt') -and $State.Phases['4'].Checklist['SessionGraphBuilt']
+    $DedupAlsoResolved = $State.Phases.ContainsKey('4') -and $State.Phases['5'].ContainsKey('Checklist') -and $State.Phases['5'].Checklist.ContainsKey('FormatDedupResolved') -and $State.Phases['5'].Checklist['FormatDedupResolved']
+    $HashesDone = $State.Phases.ContainsKey('4') -and $State.Phases['5'].ContainsKey('Checklist') -and $State.Phases['5'].Checklist.ContainsKey('HashesRefreshed') -and $State.Phases['5'].Checklist['HashesRefreshed']
+    $GraphDone = $State.Phases.ContainsKey('4') -and $State.Phases['5'].ContainsKey('Checklist') -and $State.Phases['5'].Checklist.ContainsKey('SessionGraphBuilt') -and $State.Phases['5'].Checklist['SessionGraphBuilt']
     if ($StillNonGen4 -eq 0 -and $DedupAlsoResolved -and $HashesDone -and $GraphDone) {
-        Set-PhaseCompleted -State $State -Phase 4
-        Write-PhaseSummary -Phase 4 -Status 'Completed' -Lines @("[OK] $UpgradeCount sesji zaktualizowanych do Gen4", '[OK] Konflikty formatu rozwiązane', '[OK] Plik przeglądu sesji wygenerowany', '[OK] Hashe sesji odświeżone', '[OK] Graf sesji zbudowany')
+        Set-PhaseCompleted -State $State -Phase 5
+        Write-PhaseSummary -Phase 5 -Status 'Completed' -Lines @("[OK] $UpgradeCount sesji zaktualizowanych do Gen4", '[OK] Konflikty formatu rozwiązane', '[OK] Plik przeglądu sesji wygenerowany', '[OK] Hashe sesji odświeżone', '[OK] Graf sesji zbudowany')
     } else {
-        Set-PhaseInProgress -State $State -Phase 4
+        Set-PhaseInProgress -State $State -Phase 5
     }
 
     if (-not $WhatIf) { Save-MigrationState -State $State }
@@ -626,7 +730,7 @@ function Export-SessionReviewFile {
         [switch]$WhatIf
     )
 
-    $AllSessions = Get-Session -ExcludeDirectory $script:MigrationExcludeDirs -IncludeContent -Quiet
+    $AllSessions = Get-Session -ExcludeDirectory $script:MigrationExcludeDirs -IncludeContent -IncludeMentions -Quiet
     $Sorted = $AllSessions | Sort-Object { $_.Header }
 
     $Lines = [System.Collections.Generic.List[string]]::new()
@@ -670,6 +774,13 @@ function Export-SessionReviewFile {
             [void]$SourcePaths.Add($RelPath)
         }
         [void]$Lines.Add("<!-- Źródło: $($SourcePaths -join ', ') -->")
+
+        # Resolved entity mentions (informational for reviewer)
+        if ($S.Mentions -and $S.Mentions.Count -gt 0) {
+            $SortedMentions = @([System.Linq.Enumerable]::OrderBy([object[]]$S.Mentions, [Func[object,string]]{ param($X) $X.Name }))
+            $MentionTexts = ($SortedMentions.ForEach({ "$($_.Name) ($($_.Type))" })) -join ', '
+            [void]$Lines.Add("<!-- Wzmianki: $MentionTexts -->")
+        }
     }
 
     if (-not $WhatIf) {
@@ -706,6 +817,7 @@ function Import-SessionReviewFile {
     $ReviewSessions = [System.Collections.Generic.List[object]]::new()
     $HeaderPattern = [regex]'^###\s+(.+)$'
     $SourcePattern = [regex]'^<!--\s*Źródło:\s*(.+?)\s*-->$'
+    $MentionsPattern = [regex]'^<!--\s*Wzmianki:\s*(.+?)\s*-->$'
 
     $CurrentHeader = $null
     $CurrentBody = [System.Collections.Generic.List[string]]::new()
@@ -750,6 +862,9 @@ function Import-SessionReviewFile {
             $CurrentSource = $SMatch.Groups[1].Value
             continue
         }
+
+        # Mentions comment (informational, skip on import)
+        if ($MentionsPattern.IsMatch($Line)) { continue }
 
         # Body line
         if ($CurrentHeader) {

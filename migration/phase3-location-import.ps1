@@ -20,6 +20,13 @@
                   migration-location-helpers.ps1, robot module imported.
 #>
 
+# Dot-source entity write/find helpers (provides Read-EntityFile, Write-EntityFile,
+# Find-EntitySection, Find-EntityBullet, New-EntityBullet, Set-EntityTag, etc.)
+. ([System.IO.Path]::Combine($PSScriptRoot, '..', 'private', 'entity-writehelpers.ps1'))
+
+# Dot-source admin config (provides Get-AdminConfig for entity file paths)
+. ([System.IO.Path]::Combine($PSScriptRoot, '..', 'private', 'admin-config.ps1'))
+
 # Dot-source self-contained location helpers (no plugin dependency)
 . ([System.IO.Path]::Combine($PSScriptRoot, 'migration-location-helpers.ps1'))
 
@@ -80,32 +87,41 @@ function Invoke-MigrationPhase3 {
         [void]$NameSet.Add($Map.name)
     }
 
-    # Compute parent for each map
+    # Compute parent for each map using per-pattern intermediates.
+    # Intermediates are checked from most-specific to most-stripped,
+    # so "X - wieża p.1" prefers parent "X - wieża" over "X" when both exist.
+    # When no intermediate matches the NameSet, the most-stripped result is
+    # still used as a virtual parent (it will become a Lokacja entity).
     $ParentMap = [System.Collections.Generic.Dictionary[string, string]]::new([System.StringComparer]::OrdinalIgnoreCase)
     $RootCount = 0
     $ChildCount = 0
+    $VirtualParentCount = 0
 
     foreach ($Map in $Maps) {
         $Name = $Map.name
-        $BaseName = Get-MapBaseNameDeterministic -Name $Name
+        $Intermediates = @(Get-MapBaseNameIntermediates -Name $Name)
 
-        if ([string]::Equals($BaseName, $Name, [System.StringComparison]::OrdinalIgnoreCase)) {
+        if ($Intermediates.Count -eq 0) {
             # No stripping happened → root location
             $ParentMap[$Name] = $null
             $RootCount++
             continue
         }
 
-        if ($NameSet.Contains($BaseName)) {
-            # Deterministic base name exists → parent found
-            $ParentMap[$Name] = $BaseName
-            $ChildCount++
-            continue
+        # Check intermediates from most-specific to most-stripped
+        $Found = $false
+        foreach ($Base in $Intermediates) {
+            if ($NameSet.Contains($Base)) {
+                $ParentMap[$Name] = $Base
+                $ChildCount++
+                $Found = $true
+                break
+            }
         }
+        if ($Found) { continue }
 
         # Fallback: progressive word removal candidates
         $Candidates = Get-MapBaseNameCandidates -Name $Name
-        $Found = $false
         foreach ($Candidate in $Candidates) {
             if ($NameSet.Contains($Candidate)) {
                 $ParentMap[$Name] = $Candidate
@@ -114,27 +130,92 @@ function Invoke-MigrationPhase3 {
                 break
             }
         }
+        if ($Found) { continue }
 
-        if (-not $Found) {
-            $ParentMap[$Name] = $null
-            $RootCount++
+        # No existing map matches — use the most-stripped deterministic
+        # base as a virtual parent (will become a Lokacja entity)
+        $ParentMap[$Name] = $Intermediates[$Intermediates.Count - 1]
+        $ChildCount++
+        $VirtualParentCount++
+    }
+
+    # Maps confirmed as parents (other maps strip to them) should also
+    # get @lokacja pointing to the Lokacja entity of the same name.
+    # This links the parent Mapa to its corresponding Lokacja.
+    $ConfirmedParents = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+    foreach ($Entry in $ParentMap.GetEnumerator()) {
+        if (-not [string]::IsNullOrEmpty($Entry.Value)) {
+            [void]$ConfirmedParents.Add($Entry.Value)
+        }
+    }
+    $ParentSelfLinked = 0
+    foreach ($ParentName in $ConfirmedParents) {
+        if ($ParentMap.ContainsKey($ParentName) -and [string]::IsNullOrEmpty($ParentMap[$ParentName])) {
+            $ParentMap[$ParentName] = $ParentName
+            $ParentSelfLinked++
         }
     }
 
-    Write-StepOK "Hierarchia: $RootCount korzeni, $ChildCount dzieci"
+    # Standalone orphan maps (no children, no parent) with unique URLs
+    # also get @lokacja self-link. Shared-URL maps are generic room instances
+    # (e.g. "Apartament 101") reusing the same tile — skip those.
+    # Event maps (URL contains /eve/) are excluded entirely.
+    $UrlIndex = [System.Collections.Generic.Dictionary[string, int]]::new([System.StringComparer]::OrdinalIgnoreCase)
+    foreach ($Map in $Maps) {
+        if ($UrlIndex.ContainsKey($Map.url)) {
+            $UrlIndex[$Map.url] = $UrlIndex[$Map.url] + 1
+        } else {
+            $UrlIndex[$Map.url] = 1
+        }
+    }
+
+    # Build a lookup from name → url for orphan checks
+    $NameToUrl = [System.Collections.Generic.Dictionary[string, string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+    foreach ($Map in $Maps) {
+        $NameToUrl[$Map.name] = $Map.url
+    }
+
+    $OrphanSelfLinked = 0
+    $SelfLinkedNames = [System.Collections.Generic.HashSet[string]]::new($ConfirmedParents, [System.StringComparer]::OrdinalIgnoreCase)
+    # Collect orphan candidates first (cannot modify $ParentMap during enumeration)
+    $OrphanCandidates = [System.Collections.Generic.List[string]]::new()
+    foreach ($Entry in $ParentMap.GetEnumerator()) {
+        if (-not [string]::IsNullOrEmpty($Entry.Value)) { continue }
+        if ($ConfirmedParents.Contains($Entry.Key)) { continue }
+        $Url = $NameToUrl[$Entry.Key]
+        if (-not $Url) { continue }
+        if ($Url.Contains('/eve/')) { continue }
+        if ($UrlIndex[$Url] -gt 1) { continue }
+        $OrphanCandidates.Add($Entry.Key)
+    }
+    foreach ($OrphanName in $OrphanCandidates) {
+        $ParentMap[$OrphanName] = $OrphanName
+        $OrphanSelfLinked++
+        [void]$SelfLinkedNames.Add($OrphanName)
+    }
+
+    $VirtualMsg = if ($VirtualParentCount -gt 0) { " ($VirtualParentCount wirtualnych rodziców)" } else { '' }
+    $SelfLinkMsg = if (($ParentSelfLinked + $OrphanSelfLinked) -gt 0) {
+        ", $ParentSelfLinked rodziców + $OrphanSelfLinked samodzielnych z @lokacja"
+    } else { '' }
+    Write-StepOK "Hierarchia: $RootCount korzeni, $ChildCount dzieci$VirtualMsg$SelfLinkMsg"
     Update-PhaseChecklist -State $State -Phase 3 -Item 'HierarchyInferred' -Value $true
 
     # ── Step 3: Check existing entities ─────────────────────────────────────
     Write-Step -Number 3 -Text 'Sprawdzanie istniejących encji Mapa i Lokacja...'
-    $Entities = Get-Entity
+    $AdminConfig = Get-AdminConfig
+    $EntityDir = [System.IO.Path]::GetDirectoryName($AdminConfig.EntitiesFile)
+    $Entities = Get-Entity -Path $EntityDir -Quiet
 
     $ExistingMapaNames = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
     $ExistingLokacjaNames = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
     foreach ($E in $Entities) {
-        if ([string]::Equals($E.EntityType, 'Mapa', [System.StringComparison]::OrdinalIgnoreCase)) {
+        # Mapa entities: @typ overrides Type to 'zewnętrzna'/'wewnętrzna',
+        # so detect by @margonemid presence in Overrides
+        if ($E.Overrides -and $E.Overrides.ContainsKey('margonemid')) {
             [void]$ExistingMapaNames.Add($E.Name)
         }
-        elseif ([string]::Equals($E.EntityType, 'Lokacja', [System.StringComparison]::OrdinalIgnoreCase)) {
+        elseif ([string]::Equals($E.Type, 'Lokacja', [System.StringComparison]::OrdinalIgnoreCase)) {
             [void]$ExistingLokacjaNames.Add($E.Name)
         }
     }
@@ -161,9 +242,10 @@ function Invoke-MigrationPhase3 {
         if ($WhatIf) {
             Write-StepWarning "[SUCHY PRZEBIEG] Zaimportowałbym $($MapaToImport.Count) encji Mapa"
         } else {
-            # Determine overflow file path
-            $RobotNewDir = [System.IO.Path]::Combine($RepoRoot, '.robot.new')
-            $OverflowPath = [System.IO.Path]::Combine($RobotNewDir, 'maps-100-ent.md')
+            # Determine overflow file path (alongside entities.md)
+            $AdminConfig = Get-AdminConfig
+            $EntityDir = [System.IO.Path]::GetDirectoryName($AdminConfig.EntitiesFile)
+            $OverflowPath = [System.IO.Path]::Combine($EntityDir, 'maps-100-ent.md')
 
             # Create or read overflow file
             if ([System.IO.File]::Exists($OverflowPath)) {
@@ -213,17 +295,9 @@ function Invoke-MigrationPhase3 {
                     $Tags['wymiary'] = "$($Map.tileWidth), $($Map.tileHeight)"
                 }
 
-                New-EntityBullet -Lines $Lines -SectionEnd ($Section.EndIdx + $InsertOffset) -EntityName $Map.name -Tags $Tags
-
-                # Count inserted lines: bullet + tags + possible blank line
-                $TagCount = $Tags.Count
-                $InsertedLines = 1 + $TagCount  # bullet + tag lines
-                # New-EntityBullet may add a blank line before the entity
-                if (($Section.EndIdx + $InsertOffset) -gt 0 -and
-                    -not [string]::IsNullOrWhiteSpace($Lines[$Section.EndIdx + $InsertOffset - 1 - $InsertedLines])) {
-                    $InsertedLines++
-                }
-                $InsertOffset += $InsertedLines
+                $BeforeIdx = $Section.EndIdx + $InsertOffset
+                $AfterIdx = New-EntityBullet -Lines $Lines -SectionEnd $BeforeIdx -EntityName $Map.name -Tags $Tags
+                $InsertOffset += ($AfterIdx - $BeforeIdx)
             }
 
             Write-EntityFile -Path $OverflowPath -Lines $Lines -NL $NL
@@ -239,6 +313,56 @@ function Invoke-MigrationPhase3 {
         Update-PhaseChecklist -State $State -Phase 3 -Item 'MapaBulkImportDone' -Value $true
     }
 
+    # ── Step 4b: Patch @lokacja on existing self-linked Mapa entities ────
+    # Parent maps and standalone orphans that already exist in maps-100-ent.md
+    # may lack @lokacja (imported before self-linking logic was added).
+    if ($SelfLinkedNames.Count -gt 0 -and -not $WhatIf) {
+        $AdminConfig = Get-AdminConfig
+        $EntityDir = [System.IO.Path]::GetDirectoryName($AdminConfig.EntitiesFile)
+        $OverflowPath = [System.IO.Path]::Combine($EntityDir, 'maps-100-ent.md')
+
+        if ([System.IO.File]::Exists($OverflowPath)) {
+            $OverflowData = Read-EntityFile -Path $OverflowPath
+            $OverflowLines = $OverflowData.Lines
+            $OverflowNL = $OverflowData.NL
+            $Section = Find-EntitySection -Lines $OverflowLines.ToArray() -EntityType 'Mapa'
+
+            if ($Section) {
+                $PatchCount = 0
+                foreach ($ParentName in $SelfLinkedNames) {
+                    # Only patch maps that exist in the file
+                    if (-not $NameSet.Contains($ParentName)) { continue }
+
+                    $Bullet = Find-EntityBullet -Lines $OverflowLines.ToArray() `
+                        -SectionStart $Section.StartIdx -SectionEnd $Section.EndIdx `
+                        -EntityName $ParentName
+                    if (-not $Bullet) { continue }
+
+                    # Check if @lokacja already present
+                    $HasLokacja = $false
+                    for ($li = $Bullet.ChildrenStartIdx; $li -lt $Bullet.ChildrenEndIdx; $li++) {
+                        if ($OverflowLines[$li] -match '^\s+-\s+@lokacja:') {
+                            $HasLokacja = $true
+                            break
+                        }
+                    }
+                    if ($HasLokacja) { continue }
+
+                    Set-EntityTag -Lines $OverflowLines `
+                        -ChildrenStart $Bullet.ChildrenStartIdx `
+                        -ChildrenEnd $Bullet.ChildrenEndIdx `
+                        -TagName 'lokacja' -Value $ParentName
+                    $PatchCount++
+                }
+
+                if ($PatchCount -gt 0) {
+                    Write-EntityFile -Path $OverflowPath -Lines $OverflowLines -NL $OverflowNL
+                    Write-StepOK "Uzupełniono @lokacja na $PatchCount istniejących rodzicach Mapa"
+                }
+            }
+        }
+    }
+
     # ── Step 5: Derive Lokacja entities from hierarchy ──────────────────────
     $LokacjaDone = $Checklist.ContainsKey('LokacjaDerivationDone') -and $Checklist['LokacjaDerivationDone']
 
@@ -251,11 +375,14 @@ function Invoke-MigrationPhase3 {
         $UniqueLocationNames = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
 
         foreach ($Entry in $ParentMap.GetEnumerator()) {
-            # Root maps (no parent) are locations themselves
-            if ($null -eq $Entry.Value) {
-                [void]$UniqueLocationNames.Add($Entry.Key)
+            if ([string]::IsNullOrEmpty($Entry.Value)) {
+                # Unlinked root — only create Lokacja if it was NOT excluded
+                # (shared-URL generics and event maps stay without Lokacja)
+                # Self-linked maps already have Value = Key, so they hit the else branch.
+                # This branch catches only truly unlinked roots — skip them.
+                continue
             } else {
-                # The parent is a location
+                # The parent/self-link value is a location name
                 [void]$UniqueLocationNames.Add($Entry.Value)
             }
         }
@@ -267,7 +394,7 @@ function Invoke-MigrationPhase3 {
         foreach ($LocName in $UniqueLocationNames) {
             if ($ParentMap.ContainsKey($LocName)) {
                 $LocParent = $ParentMap[$LocName]
-                if ($null -ne $LocParent) {
+                if (-not [string]::IsNullOrEmpty($LocParent) -and -not [string]::Equals($LocParent, $LocName, [System.StringComparison]::OrdinalIgnoreCase)) {
                     $LocationParent[$LocName] = $LocParent
                 }
             }
@@ -286,7 +413,7 @@ function Invoke-MigrationPhase3 {
         if ($LokacjaToCreate.Count -gt 0 -and -not $WhatIf) {
             # Read entity file
             $AdminConfig = Get-AdminConfig
-            $EntityPath = $AdminConfig.EntityFile
+            $EntityPath = $AdminConfig.EntitiesFile
             Invoke-EnsureEntityFile -Path $EntityPath
             $FileData = Read-EntityFile -Path $EntityPath
             $Lines = $FileData.Lines
@@ -311,15 +438,9 @@ function Invoke-MigrationPhase3 {
                     $Tags['lokacja'] = $LocationParent[$LocName]
                 }
 
-                New-EntityBullet -Lines $Lines -SectionEnd ($Section.EndIdx + $InsertOffset) -EntityName $LocName -Tags $Tags
-
-                $TagCount = $Tags.Count
-                $InsertedLines = 1 + $TagCount
-                if (($Section.EndIdx + $InsertOffset) -gt 0 -and
-                    -not [string]::IsNullOrWhiteSpace($Lines[$Section.EndIdx + $InsertOffset - 1 - $InsertedLines])) {
-                    $InsertedLines++
-                }
-                $InsertOffset += $InsertedLines
+                $BeforeIdx = $Section.EndIdx + $InsertOffset
+                $AfterIdx = New-EntityBullet -Lines $Lines -SectionEnd $BeforeIdx -EntityName $LocName -Tags $Tags
+                $InsertOffset += ($AfterIdx - $BeforeIdx)
             }
 
             Write-EntityFile -Path $EntityPath -Lines $Lines -NL $NL
@@ -452,8 +573,9 @@ function Invoke-MigrationPhase3 {
 
             # Apply Section 1: nazwa_nerthus overrides → Mapa entities in overflow file
             if ($NerthusOverrides.Count -gt 0) {
-                $RobotNewDir = [System.IO.Path]::Combine($RepoRoot, '.robot.new')
-                $OverflowPath = [System.IO.Path]::Combine($RobotNewDir, 'maps-100-ent.md')
+                $AdminConfig = Get-AdminConfig
+                $EntityDir = [System.IO.Path]::GetDirectoryName($AdminConfig.EntitiesFile)
+                $OverflowPath = [System.IO.Path]::Combine($EntityDir, 'maps-100-ent.md')
 
                 if ([System.IO.File]::Exists($OverflowPath)) {
                     $OverflowData = Read-EntityFile -Path $OverflowPath
@@ -483,7 +605,7 @@ function Invoke-MigrationPhase3 {
             # Apply Section 2: virtual locations → Lokacja entities in entities.md
             if ($VirtualLocations.Count -gt 0) {
                 $AdminConfig = Get-AdminConfig
-                $EntityPath = $AdminConfig.EntityFile
+                $EntityPath = $AdminConfig.EntitiesFile
                 $FileData = Read-EntityFile -Path $EntityPath
                 $Lines = $FileData.Lines
                 $NL = $FileData.NL
@@ -548,16 +670,22 @@ function Invoke-MigrationPhase3 {
 
     # ── Step 8: Verification ──────────────────────────────────────────────
     Write-Step -Number 8 -Text 'Weryfikacja importu...'
-    $PostEntities = Get-Entity
 
-    $MapaEntities = @($PostEntities | Where-Object { $_.EntityType -eq 'Mapa' })
-    $MapaWithMargonemId = @($MapaEntities | Where-Object { $_.Tags -and $_.Tags.ContainsKey('margonemid') })
-    $MapaWithUrl = @($MapaEntities | Where-Object { $_.Overrides -and $_.Overrides.ContainsKey('url') })
-    $MapaWithLokacja = @($MapaEntities | Where-Object { $_.Tags -and $_.Tags.ContainsKey('lokacja') })
-    $MapaWithTyp = @($MapaEntities | Where-Object { $_.Tags -and $_.Tags.ContainsKey('typ') })
+    # Load entities from the actual data directory (not the module directory)
+    $AdminConfig = Get-AdminConfig
+    $EntityDir = [System.IO.Path]::GetDirectoryName($AdminConfig.EntitiesFile)
+    $PostEntities = Get-Entity -Path $EntityDir -Quiet
 
-    $LokacjaEntities = @($PostEntities | Where-Object { $_.EntityType -eq 'Lokacja' })
-    $LokacjaWithLokacja = @($LokacjaEntities | Where-Object { $_.Tags -and $_.Tags.ContainsKey('lokacja') })
+    # Mapa entities: @typ overrides entity Type to 'zewnętrzna'/'wewnętrzna',
+    # so identify Mapa entities by @margonemid presence in Overrides
+    $MapaEntities = @($PostEntities.Where({ $_.Overrides -and $_.Overrides.ContainsKey('margonemid') }))
+    $MapaWithMargonemId = $MapaEntities
+    $MapaWithUrl = @($MapaEntities.Where({ $_.Overrides.ContainsKey('url') }))
+    $MapaWithLokacja = @($MapaEntities.Where({ $null -ne $_.Location }))
+    $MapaWithTyp = @($MapaEntities.Where({ $_.TypeHistory.Count -gt 0 }))
+
+    $LokacjaEntities = @($PostEntities.Where({ $_.Type -eq 'Lokacja' }))
+    $LokacjaWithLokacja = @($LokacjaEntities.Where({ $null -ne $_.Location }))
 
     Write-Host "    Mapa ogółem: $($MapaEntities.Count)" -ForegroundColor Cyan
     Write-Host "      Z @margonemid: $($MapaWithMargonemId.Count)" -ForegroundColor DarkGray
@@ -573,8 +701,9 @@ function Invoke-MigrationPhase3 {
     if (-not $CommitDone -and -not $WhatIf) {
         Write-Step -Number 9 -Text 'Commit...'
 
-        $RobotNewDir = [System.IO.Path]::Combine($RepoRoot, '.robot.new')
-        $OverflowPath = [System.IO.Path]::Combine($RobotNewDir, 'maps-100-ent.md')
+        $AdminConfig = Get-AdminConfig
+        $EntityDir = [System.IO.Path]::GetDirectoryName($AdminConfig.EntitiesFile)
+        $OverflowPath = [System.IO.Path]::Combine($EntityDir, 'maps-100-ent.md')
         $OverflowExists = [System.IO.File]::Exists($OverflowPath)
 
         $GitDiff = & git -C $RepoRoot diff --name-only 'entities.md' 2>&1
@@ -584,7 +713,7 @@ function Invoke-MigrationPhase3 {
             if (Request-YesNo -Prompt 'Czy zacommitować import lokalizacji?' -Default $true -HelpText @(
                 'Zapisanie zmian do repozytorium git.',
                 '',
-                'Wykona: git add entities.md .robot.new/maps-*-ent.md .robot/res/location-overrides.txt',
+                'Wykona: git add entities.md maps-*-ent.md .robot/res/location-overrides.txt',
                 '        git commit "Import lokalizacji z mapy (Mapa + Lokacja)"',
                 '',
                 'Tak = git add + git commit',
@@ -592,7 +721,7 @@ function Invoke-MigrationPhase3 {
             )) {
                 & git -C $RepoRoot add 'entities.md' 2>&1
                 if ($OverflowExists) {
-                    & git -C $RepoRoot add '.robot.new/maps-100-ent.md' 2>&1
+                    & git -C $RepoRoot add 'maps-100-ent.md' 2>&1
                 }
                 if ($OverrideExists) {
                     & git -C $RepoRoot add '.robot/res/location-overrides.txt' 2>&1

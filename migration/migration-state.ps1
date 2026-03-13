@@ -30,7 +30,7 @@ function Resolve-MigrationStatePath {
 # Creates a default state hashtable with all phases set to NotStarted.
 function New-DefaultMigrationState {
     $Phases = @{}
-    for ($I = 0; $I -le 6; $I++) {
+    for ($I = 0; $I -le 8; $I++) {
         $Phases["$I"] = @{
             Status    = 'NotStarted'
             Checklist = @{}

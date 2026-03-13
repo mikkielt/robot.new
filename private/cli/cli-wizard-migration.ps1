@@ -101,6 +101,9 @@ function Get-MigrationMenuItems {
 function Invoke-MigrationPhaseAction {
     param([string]$PhaseID, [object]$State)
 
+    # Clear engine-rendered screen before switching to console-mode output
+    [System.Console]::Clear()
+
     if (-not $script:MigrationAvailable) {
         Write-CLILine -Text 'Migracja nie jest dostępna.' -Color (Get-CLIColor -Role 'Error')
         Write-CLILine -Text 'Naciśnij dowolny klawisz...' -Color (Get-CLIColor -Role 'Disabled')

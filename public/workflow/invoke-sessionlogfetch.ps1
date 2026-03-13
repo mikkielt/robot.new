@@ -139,7 +139,7 @@ function Invoke-SessionLogFetch {
             }
         }
 
-        [System.Console]::Out.WriteLine("Found $Total log URLs ($Cached already fetched, $Skipped previously failed, $($Pending.Count) to fetch)")
+        [System.Console]::Out.WriteLine("Znaleziono $Total URL logów (pobrane: $Cached, wcześniej nieudane: $Skipped, do pobrania: $($Pending.Count))")
 
         # WhatIf: report what would be fetched
         if (-not $PSCmdlet.ShouldProcess(
@@ -172,8 +172,9 @@ function Invoke-SessionLogFetch {
             $FilePath = [System.IO.Path]::Combine($LogDirectory, $FileName)
             $FailedPath = "$FilePath.failed"
 
-            Write-Progress -Activity 'Fetching session logs' `
-                -Status "$Current / $($Pending.Count) - $FileName" `
+            $Remaining = $Pending.Count - $Current
+            Write-Progress -Activity 'Pobieranie logów sesji' `
+                -Status "[$Current / $($Pending.Count)] Pobrane:$FetchedCount Błędy:$FailedCount Pozostało:$Remaining — $FileName" `
                 -PercentComplete ([math]::Min(100, [int](($Current / $Pending.Count) * 100)))
 
             $Success = $false
@@ -252,7 +253,7 @@ function Invoke-SessionLogFetch {
             }
         }
 
-        Write-Progress -Activity 'Fetching session logs' -Completed
+        Write-Progress -Activity 'Pobieranie logów sesji' -Completed
 
         return [PSCustomObject]@{
             Total      = $Total

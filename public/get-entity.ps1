@@ -98,7 +98,7 @@ function Get-Entity {
 
     [CmdletBinding()] param(
         [Parameter(HelpMessage = "Path(s) to entity files or directories containing entities.md / *-*-ent.md")]
-        [string[]]$Path = @("$(Get-RepoRoot)/.robot.new"),
+        [string[]]$Path = @("$(Get-RepoRoot)"),
 
         [Parameter(HelpMessage = "Filter temporally-scoped data to entries active on this date")]
         [datetime]$ActiveOn,

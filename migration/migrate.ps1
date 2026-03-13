@@ -160,7 +160,7 @@ while ($true) {
         }
     } else {
         # Fallback: Read-Host numbered menu
-        $ValidChoices = @('0', '1', '2', '3', '4', '5', '6', 'D', 'R', 'Q')
+        $ValidChoices = @('0', '1', '2', '3', '4', '5', '6', '7', '8', 'D', 'R', 'Q')
         $Choice = Request-UserChoice -Prompt 'Wybierz opcję:' -ValidChoices $ValidChoices
 
         switch ($Choice) {

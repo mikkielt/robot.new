@@ -233,11 +233,13 @@ function Split-SessionSection {
 
 # Helper: converts an existing Gen3 metadata block (raw lines) to Gen4 format.
 # Renames the root tag and re-indents children to 4-space base.
+# When $LogDirectory is provided, log URLs in 'logs' blocks are localized.
 function ConvertTo-Gen4FromRawBlock {
     param(
         [string]$Tag,
         [string[]]$Lines,
-        [string]$NL
+        [string]$NL,
+        [string]$LogDirectory
     )
 
     $Gen4Tag = switch ($Tag) {
@@ -279,6 +281,12 @@ function ConvertTo-Gen4FromRawBlock {
         foreach ($CL in $ChildLines) {
             $Stripped = $CL.TrimStart()
             if ($Stripped.Length -eq 0) { continue }
+            # Localize log URLs if this is a logs block
+            if ($Tag -eq 'logs' -and $Stripped.StartsWith('- ')) {
+                $ChildValue = $Stripped.Substring(2).Trim()
+                $ChildValue = Resolve-LogUrlToLocalPath -Url $ChildValue -LogDirectory $LogDirectory
+                $Stripped = "- $ChildValue"
+            }
             $OldIndent = $CL.Length - $Stripped.Length
             $IndentLevel = [Math]::Max(1, [int][Math]::Round([double]$OldIndent / $IndentBase))
             $NewIndent = $IndentLevel * 4
@@ -320,22 +328,50 @@ function ConvertFrom-ItalicLocation {
     return ConvertTo-Gen4MetadataBlock -Tag 'Lokacje' -Items $Items.ToArray() -NL $NL
 }
 
+# Helper: replaces a log URL with a local path if the cached file exists.
+# Returns the original URL if no local file is found or $LogDirectory is empty.
+function Resolve-LogUrlToLocalPath {
+    param(
+        [string]$Url,
+        [string]$LogDirectory
+    )
+
+    if ([string]::IsNullOrEmpty($LogDirectory)) { return $Url }
+    if (-not $Url.StartsWith('http', [System.StringComparison]::OrdinalIgnoreCase)) { return $Url }
+
+    $Normalized = Normalize-LogUrl -Url $Url
+    $FileName = ConvertTo-LogFileName -NormalizedUrl $Normalized
+    $FilePath = [System.IO.Path]::Combine($LogDirectory, $FileName)
+
+    if ([System.IO.File]::Exists($FilePath)) {
+        return "res/logs/$FileName"
+    }
+
+    return $Url
+}
+
 # Helper: converts Gen1/2 plain text log lines (Logi: URL) to a Gen4 block.
+# When $LogDirectory is provided, URLs with locally cached files are replaced
+# with relative paths (res/logs/filename).
 function ConvertFrom-PlainTextLog {
     param(
         [string[]]$Lines,
-        [string]$NL
+        [string]$NL,
+        [string]$LogDirectory
     )
 
     $UrlRegex = [regex]::new('(https?://\S+)')
-    $Urls = [System.Collections.Generic.List[string]]::new()
+    $Items = [System.Collections.Generic.List[string]]::new()
     foreach ($Line in $Lines) {
         $Match = $UrlRegex.Match($Line)
-        if ($Match.Success) { $Urls.Add($Match.Groups[1].Value) }
+        if ($Match.Success) {
+            $Url = $Match.Groups[1].Value
+            $Items.Add((Resolve-LogUrlToLocalPath -Url $Url -LogDirectory $LogDirectory))
+        }
     }
 
-    if ($Urls.Count -eq 0) { return $null }
-    return ConvertTo-Gen4MetadataBlock -Tag 'Logi' -Items $Urls.ToArray() -NL $NL
+    if ($Items.Count -eq 0) { return $null }
+    return ConvertTo-Gen4MetadataBlock -Tag 'Logi' -Items $Items.ToArray() -NL $NL
 }
 
 # Helper: derives format generation from Split-SessionSection MetaBlocks dictionary.

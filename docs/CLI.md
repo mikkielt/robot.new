@@ -99,7 +99,7 @@ Commands execute immediately — there is no need to press Enter after the lette
 | Sesje | Create, edit, query, and validate sessions |
 | Gracze i Postacie | Register players and characters, view player/character cards |
 | Encje | Create, edit, search, and browse entities (NPCs, locations, groups, items) |
-| Waluta | Transfer currency between entities, run reconciliation checks |
+| Waluta | Transfer currency between entities, run reconciliation checks, analyze the economy |
 | PU | Monthly PU assignment, PU diagnostics |
 | Raporty i Narzędzia | Reporting, auditing, session graph, location reports, and utilities |
 | Migracja | Migration tools (when migration files are available) |
@@ -262,6 +262,9 @@ Several diagnostic tools are available:
 - **PU > Diagnostyka PU** — checks for unresolved character names, malformed PU values, duplicates
 - **PU > Diagnostyka przed przydziałem** — pre-assignment checks with name suggestions
 - **Waluta > Uzgodnienie walut** — verifies currency entity consistency
+- **Waluta > Obraz gospodarki** — shows a complete picture of the economy at a point in time: total currency in circulation, treasury reserves, player balances, and wealth distribution. The Coordinator uses this to understand the current economic state before making decisions about budgets or supply adjustments
+- **Waluta > Oś czasu gospodarki** — shows how the economy evolved over time, tracking total currency supply, physical vs virtual holdings, and transfer volume across months. Useful for spotting trends like supply growth or unusual transaction spikes
+- **Waluta > Raport materializacji** — analyzes where currency exists as physical game items vs virtual bookkeeping. Shows per-denomination and per-player breakdowns, and flags orphan physical currency held by inactive characters that may need to be recovered
 - **Sesje > Walidacja sesji** — checks sessions for unresolved names in PU and Changes blocks
 
 ## Preview and Confirmation

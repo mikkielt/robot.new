@@ -174,6 +174,17 @@ function Test-SessionIntegrity {
         }
     }
 
+    # Pre-read raw lines for all files (used by format anomaly check later,
+    # avoids redundant ReadAllLines after Get-Markdown already parsed them)
+    $RawLinesByPath = [System.Collections.Generic.Dictionary[string, string[]]]::new(
+        [System.StringComparer]::OrdinalIgnoreCase
+    )
+    foreach ($FP in $FilesToCheck) {
+        if ([System.IO.File]::Exists($FP)) {
+            $RawLinesByPath[$FP] = [System.IO.File]::ReadAllLines($FP)
+        }
+    }
+
     # Batch-parse all files
     $MarkdownResults = @(Get-Markdown -File @($FilesToCheck))
     $MarkdownByPath = [System.Collections.Generic.Dictionary[string, object]]::new(
@@ -237,8 +248,8 @@ function Test-SessionIntegrity {
             }
 
             # Check 8: Format anomalies
-            if ([System.IO.File]::Exists($FilePath)) {
-                $RawLines = [System.IO.File]::ReadAllLines($FilePath)
+            if ($RawLinesByPath.ContainsKey($FilePath)) {
+                $RawLines = $RawLinesByPath[$FilePath]
                 $InCodeBlock = $false
                 for ($i = 0; $i -lt $RawLines.Length; $i++) {
                     $RawLine = $RawLines[$i]
@@ -407,8 +418,8 @@ function Test-SessionIntegrity {
             }
         }
 
-        # Check 8: Format anomalies (raw line scan)
-        $RawLines = [System.IO.File]::ReadAllLines($FilePath)
+        # Check 8: Format anomalies (raw line scan — uses pre-read cache)
+        $RawLines = if ($RawLinesByPath.ContainsKey($FilePath)) { $RawLinesByPath[$FilePath] } else { [System.IO.File]::ReadAllLines($FilePath) }
         $InCodeBlock = $false
         for ($i = 0; $i -lt $RawLines.Length; $i++) {
             $RawLine = $RawLines[$i]

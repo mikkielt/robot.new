@@ -92,16 +92,29 @@ function Get-SessionLog {
             $LogDirectory = [System.IO.Path]::Combine($Config.ResDir, 'logs')
         }
 
-        # Collect all unique URLs across all sessions
+        # Collect all unique URLs and local paths across all sessions
         $AllUrls = [System.Collections.Generic.List[string]]::new()
+        $LocalPaths = [System.Collections.Generic.Dictionary[string,string]]::new(
+            [System.StringComparer]::OrdinalIgnoreCase)
+        $RepoRoot = Get-RepoRoot
         foreach ($S in $CollectedSessions) {
             if ($null -eq $S.Logs -or $S.Logs.Count -eq 0) { continue }
             foreach ($Url in $S.Logs) {
-                $AllUrls.Add($Url)
+                if (-not $Url.StartsWith('http', [System.StringComparison]::OrdinalIgnoreCase)) {
+                    # Local path (e.g. res/logs/pastebincomrawX)
+                    if (-not $LocalPaths.ContainsKey($Url)) {
+                        $FullPath = [System.IO.Path]::Combine($RepoRoot, '.robot', $Url)
+                        if ([System.IO.File]::Exists($FullPath)) {
+                            $LocalPaths[$Url] = [System.IO.File]::ReadAllText($FullPath)
+                        }
+                    }
+                } else {
+                    $AllUrls.Add($Url)
+                }
             }
         }
 
-        # Batch fetch (deduplicates internally, respects cache, throttles HTTP)
+        # Batch fetch URLs (deduplicates internally, respects cache, throttles HTTP)
         $FetchedContent = @{}
         if ($AllUrls.Count -gt 0) {
             if ($SkipFetch) {
@@ -122,6 +135,11 @@ function Get-SessionLog {
             }
         }
 
+        # Merge local path content into fetched content
+        foreach ($Entry in $LocalPaths.GetEnumerator()) {
+            $FetchedContent[$Entry.Key] = $Entry.Value
+        }
+
         # Process each session
         $Results = [System.Collections.Generic.List[PSCustomObject]]::new()
 
@@ -131,8 +149,10 @@ function Get-SessionLog {
             $LogObjects = [System.Collections.Generic.List[PSCustomObject]]::new()
 
             foreach ($Url in $S.Logs) {
-                $NormalizedUrl = Normalize-LogUrl -Url $Url
-                $Content = $FetchedContent[$NormalizedUrl]
+                $LookupKey = if ($Url.StartsWith('http', [System.StringComparison]::OrdinalIgnoreCase)) {
+                    Normalize-LogUrl -Url $Url
+                } else { $Url }
+                $Content = $FetchedContent[$LookupKey]
 
                 if ($null -eq $Content -or $Content.Length -eq 0) { continue }
 

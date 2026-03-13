@@ -200,7 +200,7 @@ Describe 'Test-PlayerCharacterPUAssignment' {
 
         It 'detects PU data in failed sessions' {
             $Result = Test-PlayerCharacterPUAssignment -Year 2024 -Month 6
-            $Result.OK | Should -BeFalse
+            $Result.OK | Should -BeTrue  # informational — does not block OK
             $Result.FailedSessionsWithPU.Count | Should -BeGreaterThan 0
             $Result.FailedSessionsWithPU[0].ParseError | Should -Be 'Invalid date format'
             $Result.FailedSessionsWithPU[0].PUCandidates | Should -Contain 'SomeChar'

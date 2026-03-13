@@ -37,7 +37,10 @@ function Invoke-RobotCLI {
         Launches the interactive Robot CLI menu.
     #>
 
-    [CmdletBinding()] param()
+    [CmdletBinding()]
+    param(
+        [switch]$NoHealthCheck
+    )
 
     # Dot-source CLI helpers (loaded on demand, not at module import)
     $CLIRoot = [System.IO.Path]::Combine($script:ModuleRoot, 'private', 'cli')
@@ -113,23 +116,46 @@ function Invoke-RobotCLI {
     $NameIdx  = Get-NameIndex -Players $Players -Entities $Entities
 
     # Health dashboard: run quick checks and cache results
-    Write-Host "  Sprawdzanie stanu systemu..." -ForegroundColor DarkGray
     $HealthCache = @{
         PU        = $null
         Currency  = $null
         Integrity = $null
         Graph     = $null
-        CheckedAt = Get-Date
+        CheckedAt = $null
         Errors    = @()
+        Skipped   = $false
     }
-    try { $HealthCache.PU        = Test-PlayerCharacterPUAssignment -Quiet }
-    catch { $HealthCache.Errors += "PU: $($_.Exception.Message)" }
-    try { $HealthCache.Currency  = Test-CurrencyReconciliation -Quiet }
-    catch { $HealthCache.Errors += "Waluta: $($_.Exception.Message)" }
-    try { $HealthCache.Integrity = Test-SessionIntegrity -Quiet -Since (Get-Date).AddMonths(-2) }
-    catch { $HealthCache.Errors += "Sesje: $($_.Exception.Message)" }
-    try { $HealthCache.Graph     = Test-SessionGraphIntegrity -Quiet }
-    catch { $HealthCache.Errors += "Graf: $($_.Exception.Message)" }
+    if ($NoHealthCheck) {
+        $HealthCache.Skipped = $true
+    }
+    else {
+        Write-Host "  Sprawdzanie stanu systemu..." -ForegroundColor DarkGray
+        $HealthCache.CheckedAt = Get-Date
+
+        # Suppress non-terminating errors during health checks — internal calls
+        # (e.g. Get-Player when Gracze.md is missing) would otherwise corrupt
+        # the CLI display. Health checks have their own error reporting via
+        # $HealthCache.Errors.
+        $PrevEAP = $ErrorActionPreference
+        $ErrorActionPreference = 'SilentlyContinue'
+
+        # Pre-load shared data once to avoid redundant loads across health checks:
+        # - AllSessions: used by PU (stale history), Currency, and Graph checks
+        # - EntityState: used by Currency check (enriched entity data)
+        $SharedSessions    = Get-Session -Quiet -Entities $Entities -Players $Players
+        $SharedEntityState = Get-EntityState -Quiet
+
+        try { $HealthCache.PU        = Test-PlayerCharacterPUAssignment -Quiet -AllSessions $SharedSessions }
+        catch { $HealthCache.Errors += "PU: $($_.Exception.Message)" }
+        try { $HealthCache.Currency  = Test-CurrencyReconciliation -Quiet -Entities $SharedEntityState -Sessions $SharedSessions }
+        catch { $HealthCache.Errors += "Waluta: $($_.Exception.Message)" }
+        try { $HealthCache.Integrity = Test-SessionIntegrity -Quiet -Since (Get-Date).AddMonths(-2) }
+        catch { $HealthCache.Errors += "Sesje: $($_.Exception.Message)" }
+        try { $HealthCache.Graph     = Test-SessionGraphIntegrity -Quiet -Sessions $SharedSessions -NameIndex $NameIdx }
+        catch { $HealthCache.Errors += "Graf: $($_.Exception.Message)" }
+
+        $ErrorActionPreference = $PrevEAP
+    }
 
     $NavState = [PSCustomObject]@{
         BreadcrumbStack = [System.Collections.Generic.Stack[string]]::new()

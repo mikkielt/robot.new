@@ -1,13 +1,15 @@
 <#
     .SYNOPSIS
-    Location name helpers for migration Phase 5.
+    Location name helpers for migration Phase 3.
 
     .DESCRIPTION
-    Provides two functions for inferring parent-child hierarchy from Margonem
+    Provides three functions for inferring parent-child hierarchy from Margonem
     game-map location names during bulk import:
 
-    - Get-MapBaseNameDeterministic: 9-pattern iterative stripping → single base name
-    - Get-MapBaseNameCandidates:    progressive word removal → candidate array
+    - Get-MapBaseNameDeterministic:  9-pattern iterative stripping → single base name
+    - Get-MapBaseNameIntermediates:  per-pattern intermediates → candidate array
+                                    (most-specific first, most-stripped last)
+    - Get-MapBaseNameCandidates:     progressive word removal → candidate array
 
     Regex patterns are imported from the canonical source in
     private/location-helpers.ps1 so they stay in sync across migration,
@@ -19,6 +21,67 @@
 # ── Import canonical location regex patterns ────────────────────────────────
 . "$PSScriptRoot/../private/location-helpers.ps1"
 
+# ── Get-MapBaseNameIntermediates ───────────────────────────────────────────
+
+function Get-MapBaseNameIntermediates {
+    <#
+        .SYNOPSIS
+        Collects per-pattern intermediate base names during suffix stripping.
+
+        .DESCRIPTION
+        Applies 9 precompiled regex patterns iteratively until stable,
+        capturing the result after EACH individual pattern application that
+        changes the value. Returns an array of unique intermediate base names
+        ordered from most-specific (least stripped) to most-generic (most
+        stripped). Returns empty array if no stripping occurred.
+
+        This allows callers to check intermediate forms against a name set
+        and pick the closest (most-specific) parent, rather than only the
+        maximally-stripped result.
+
+        .PARAMETER Name
+        The raw game-map location name.
+
+        .OUTPUTS
+        [string[]] Intermediate base names, most-specific first.
+    #>
+    param(
+        [Parameter(Mandatory)]
+        [string]$Name
+    )
+
+    $Patterns = @(
+        $script:LocDifficultyPattern,
+        $script:LocFloorPattern,
+        $script:LocRoomSuffixPattern,
+        $script:LocSalaPattern,
+        $script:LocNamedSalaPattern,
+        $script:LocDirectionPattern,
+        $script:LocPietroPattern,
+        $script:LocPiwnicaPattern,
+        $script:LocNamedSubareaPattern
+    )
+
+    $Result = $Name
+    $Intermediates = [System.Collections.Generic.List[string]]::new()
+    $Seen = [System.Collections.Generic.HashSet[string]]::new(
+        [System.StringComparer]::OrdinalIgnoreCase)
+    [void]$Seen.Add($Name)
+
+    do {
+        $Prev = $Result
+        foreach ($Pattern in $Patterns) {
+            $After = $Pattern.Replace($Result, '')
+            if ($After -ne $Result -and $Seen.Add($After)) {
+                $Intermediates.Add($After)
+            }
+            $Result = $After
+        }
+    } while ($Result -ne $Prev)
+
+    return [string[]]$Intermediates.ToArray()
+}
+
 # ── Get-MapBaseNameDeterministic ────────────────────────────────────────────
 
 function Get-MapBaseNameDeterministic {
@@ -28,8 +91,9 @@ function Get-MapBaseNameDeterministic {
 
         .DESCRIPTION
         Applies 9 precompiled regex patterns iteratively until stable.
-        Returns a single deterministic base name. Used as the primary method
-        for inferring parent location from a child location name.
+        Returns a single deterministic base name (the most-stripped result).
+        Equivalent to the last element of Get-MapBaseNameIntermediates,
+        or the original name if no stripping occurred.
 
         .PARAMETER Name
         The raw game-map location name.
@@ -42,21 +106,11 @@ function Get-MapBaseNameDeterministic {
         [string]$Name
     )
 
-    $Result = $Name
-    do {
-        $Prev = $Result
-        $Result = $script:LocDifficultyPattern.Replace($Result, '')
-        $Result = $script:LocFloorPattern.Replace($Result, '')
-        $Result = $script:LocRoomSuffixPattern.Replace($Result, '')
-        $Result = $script:LocSalaPattern.Replace($Result, '')
-        $Result = $script:LocNamedSalaPattern.Replace($Result, '')
-        $Result = $script:LocDirectionPattern.Replace($Result, '')
-        $Result = $script:LocPietroPattern.Replace($Result, '')
-        $Result = $script:LocPiwnicaPattern.Replace($Result, '')
-        $Result = $script:LocNamedSubareaPattern.Replace($Result, '')
-    } while ($Result -ne $Prev)
-
-    return $Result
+    $Intermediates = @(Get-MapBaseNameIntermediates -Name $Name)
+    if ($Intermediates.Count -gt 0) {
+        return $Intermediates[$Intermediates.Count - 1]
+    }
+    return $Name
 }
 
 # ── Get-MapBaseNameCandidates ───────────────────────────────────────────────

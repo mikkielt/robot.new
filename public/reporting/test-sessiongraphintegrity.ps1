@@ -31,6 +31,12 @@ function Test-SessionGraphIntegrity {
         [Parameter(HelpMessage = "Directories to exclude from session scanning")]
         [string[]]$ExcludeDirectory,
 
+        [Parameter(HelpMessage = "Pre-fetched session list from Get-Session (avoids redundant load)")]
+        [object[]]$Sessions,
+
+        [Parameter(HelpMessage = "Pre-fetched name index from Get-NameIndex (avoids redundant load)")]
+        [object]$NameIndex,
+
         [Parameter(HelpMessage = "Suppress warning output to stderr")]
         [switch]$Quiet
     )
@@ -82,7 +88,7 @@ function Test-SessionGraphIntegrity {
     $StoredNameVersion = $Meta['NameIndexVersion']
     if ($StoredNameVersion) {
         $AllEntityNames = [System.Collections.Generic.List[string]]::new()
-        $NameIdx = Get-NameIndex
+        $NameIdx = if ($PSBoundParameters.ContainsKey('NameIndex') -and $NameIndex) { $NameIndex } else { Get-NameIndex }
         foreach ($Key in $NameIdx.Index.Keys) {
             [void]$AllEntityNames.Add($Key)
         }
@@ -114,9 +120,14 @@ function Test-SessionGraphIntegrity {
     }
 
     # Load current sessions for orphan/missing checks
-    $GetSessionArgs = @{}
-    if ($ExcludeDirectory) { $GetSessionArgs['ExcludeDirectory'] = $ExcludeDirectory }
-    $AllSessions = @(Get-Session @GetSessionArgs)
+    if ($PSBoundParameters.ContainsKey('Sessions') -and $Sessions) {
+        $AllSessions = @($Sessions)
+    }
+    else {
+        $GetSessionArgs = @{}
+        if ($ExcludeDirectory) { $GetSessionArgs['ExcludeDirectory'] = $ExcludeDirectory }
+        $AllSessions = @(Get-Session @GetSessionArgs)
+    }
 
     $CurrentHeaders = [System.Collections.Generic.HashSet[string]]::new(
         [System.StringComparer]::OrdinalIgnoreCase)
