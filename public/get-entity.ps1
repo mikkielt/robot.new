@@ -397,9 +397,11 @@ function Get-Entity {
                         if ($CoordParts.Length -ge 2) {
                             $XStr = $CoordParts[0].Trim()
                             $YStr = $CoordParts[1].Trim()
-                            if ($XStr -match '^\-?\d+$' -and $YStr -match '^\-?\d+$') {
-                                $CoordX = [int]$XStr
-                                $CoordY = [int]$YStr
+                            [int]$ParsedX = 0
+                            [int]$ParsedY = 0
+                            if ([int]::TryParse($XStr, [ref]$ParsedX) -and [int]::TryParse($YStr, [ref]$ParsedY)) {
+                                $CoordX = $ParsedX
+                                $CoordY = $ParsedY
                             }
                         }
                         if ($null -ne $CoordX) {

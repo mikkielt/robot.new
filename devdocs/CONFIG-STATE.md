@@ -237,6 +237,8 @@ Dot-sourced by `private/entity-writehelpers.ps1` (non-fatal if missing) and chec
 | `UndoHint` | string | Undo guidance |
 | `Timestamp` | datetime | Time of result creation |
 
+**Context cleanup**: `Clear-OperationContext` is called in a `finally` block within `New-OperationResult`, ensuring accumulators are always reset even if result construction throws. The return statement is inside the `try` block so the result object is built before cleanup occurs.
+
 **Note**: Has `SuppressMessageAttribute` for `PSUseShouldProcessForStateChangingFunctions` — drains in-memory accumulators, not system state.
 
 ### 4.7 Integration Points

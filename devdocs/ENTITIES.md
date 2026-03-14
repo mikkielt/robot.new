@@ -247,12 +247,19 @@ After all sessions processed, for each modified entity:
 1. Sort all history lists by `ValidFrom` (custom comparer: `$null` sorts first -> always-active entries stable at start)
 2. Recompute active values via `Get-LastActiveValue` / `Get-AllActiveValues`
 
+### 4.8 Performance Optimizations
+
+- **NameIndex reuse**: Callers processing multiple `Get-EntityState` invocations with the same entity set (e.g., `Get-EconomicTimeline`) can pre-build the name index via `Get-NameIndex` and pass it via `-NameIndex` to avoid repeated BK-tree construction.
+- **Lazy currency loading**: `private/currency-helpers.ps1` is dot-sourced only when the first session with `Transfers` is encountered. A `CurrencyLookup` dictionary (from `Build-CurrencyEntityLookup`) is built once and reused for all `Find-CurrencyEntity` calls within the invocation.
+
 ### 4.7 Parameters
 
 | Parameter | Type | Description |
 |---|---|---|
 | `Entities` | object[] | Pre-fetched from `Get-Entity` (auto-fetched if omitted) |
 | `Sessions` | object[] | Pre-fetched from `Get-Session` (auto-fetched if omitted) |
+| `Players` | object[] | Pre-fetched from `Get-Player` (auto-fetched if omitted) |
+| `NameIndex` | hashtable | Pre-built name index from `Get-NameIndex`. When provided, avoids redundant BK-tree rebuild. |
 | `ActiveOn` | datetime | Temporal filter for merged state |
 
 ---

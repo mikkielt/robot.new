@@ -212,10 +212,14 @@ function Test-TemporalActivity {
     if ($Item.ValidFrom -and $ActiveOn -lt $Item.ValidFrom)   { return $false }
     if ($Item.ValidTo   -and $ActiveOn -gt $Item.ValidTo)     { return $false }
 
-    # Season check: if item has a Season constraint, verify it matches the ActiveOn date
+    # Season check: if item has a Season constraint, verify it matches the ActiveOn date.
+    # Cache the resolved season per date to avoid thousands of redundant Resolve-SeasonForDate calls.
     if ($Item.Season) {
-        $CurrentSeason = Resolve-SeasonForDate -Date $ActiveOn
-        if (-not [string]::Equals($Item.Season, $CurrentSeason, [System.StringComparison]::OrdinalIgnoreCase)) {
+        if ($script:CachedSeasonDate -ne $ActiveOn) {
+            $script:CachedSeasonDate   = $ActiveOn
+            $script:CachedSeasonResult = Resolve-SeasonForDate -Date $ActiveOn
+        }
+        if (-not [string]::Equals($Item.Season, $script:CachedSeasonResult, [System.StringComparison]::OrdinalIgnoreCase)) {
             return $false
         }
     }
@@ -263,9 +267,15 @@ function Get-LastActiveValue {
 
     if ($History.Count -eq 0) { return $null }
 
-    $Active = $History.Where({ Test-TemporalActivity -Item $_ -ActiveOn $ActiveOn })
-    if ($Active.Count -eq 0) { return $null }
-    return $Active[-1].$PropertyName
+    # Reverse-scan: return on first match instead of filtering entire list.
+    # History is sorted by ValidFrom (null first, then ascending), so the
+    # last active entry is the most recent — scanning backward finds it fastest.
+    for ($i = $History.Count - 1; $i -ge 0; $i--) {
+        if (Test-TemporalActivity -Item $History[$i] -ActiveOn $ActiveOn) {
+            return $History[$i].$PropertyName
+        }
+    }
+    return $null
 }
 
 # Helper: resolve all active values from history as string[]

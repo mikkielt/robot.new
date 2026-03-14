@@ -34,6 +34,9 @@ function Test-CurrencyReconciliation {
         [Parameter(HelpMessage = "Only check changes since this date")]
         [datetime]$Since,
 
+        [Parameter(HelpMessage = "Optional callback for CLI progress reporting (receives Current, Total, ItemDetail)")]
+        [scriptblock]$ProgressCallback,
+
         [Parameter(HelpMessage = "Suppress warning output to stderr")]
         [switch]$Quiet
     )
@@ -133,7 +136,23 @@ function Test-CurrencyReconciliation {
     }
 
     # Check 4: Symmetric transaction check (per-session per-denomination deltas should sum to zero)
+    # Pre-build O(1) lookup from entity name → currency item (avoids O(n²) nested loop)
+    $CurrencyByName = [System.Collections.Generic.Dictionary[string, object]]::new([System.StringComparer]::OrdinalIgnoreCase)
+    foreach ($Item in $CurrencyItems) {
+        if (-not $CurrencyByName.ContainsKey($Item.Entity.Name)) {
+            $CurrencyByName[$Item.Entity.Name] = $Item
+        }
+    }
+
+    $script:ProgressSessIdx = 0
+    $script:ProgressSessTotal = $Sessions.Count
+
     foreach ($Session in $Sessions) {
+        $script:ProgressSessIdx++
+        if ($ProgressCallback -and ($script:ProgressSessIdx % 10 -eq 0 -or $script:ProgressSessIdx -eq $script:ProgressSessTotal)) {
+            & $ProgressCallback $script:ProgressSessIdx $script:ProgressSessTotal $null
+        }
+
         if ($null -eq $Session.Date) { continue }
         if ($Since -and $Session.Date -lt $Since) { continue }
         if (-not $Session.Changes -or $Session.Changes.Count -eq 0) { continue }
@@ -142,13 +161,10 @@ function Test-CurrencyReconciliation {
         $DenomDeltas = [System.Collections.Generic.Dictionary[string, int]]::new([System.StringComparer]::OrdinalIgnoreCase)
 
         foreach ($Change in $Session.Changes) {
-            # Find matching enriched currency item
+            # Find matching enriched currency item via pre-built dictionary (O(1))
             $MatchItem = $null
-            foreach ($Item in $CurrencyItems) {
-                if ([string]::Equals($Item.Entity.Name, $Change.EntityName, [System.StringComparison]::OrdinalIgnoreCase)) {
-                    $MatchItem = $Item
-                    break
-                }
+            if ($Change.EntityName -and $CurrencyByName.ContainsKey($Change.EntityName)) {
+                $MatchItem = $CurrencyByName[$Change.EntityName]
             }
             if (-not $MatchItem) { continue }
 

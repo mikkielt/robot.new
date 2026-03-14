@@ -37,10 +37,12 @@ function Invoke-MigrationPhase5 {
     Write-PhaseHeader -Phase 5 -Status $PhaseStatus
 
     $RepoRoot = Get-RepoRoot
+    $PhaseEntities = Get-Entity -Quiet
+    $PhasePlayers  = Get-Player -Entities $PhaseEntities
 
     # Step 1: Show current session format distribution
     Write-Step -Number 1 -Text 'Sprawdzanie dystrybucji formatów sesji...'
-    $AllSessions = Get-Session -ExcludeDirectory $script:MigrationExcludeDirs -Quiet
+    $AllSessions = Get-Session -ExcludeDirectory $script:MigrationExcludeDirs -Entities $PhaseEntities -Players $PhasePlayers -Quiet
     $FormatGroups = $AllSessions | Group-Object Format | Sort-Object Name
     foreach ($Group in $FormatGroups) {
         Write-Host "    $($Group.Name): $($Group.Count) sesji" -ForegroundColor DarkGray
@@ -57,37 +59,18 @@ function Invoke-MigrationPhase5 {
             Write-StepOK 'Brak zdeduplikowanych sesji'
             Update-PhaseChecklist -State $State -Phase 5 -Item 'FormatDedupResolved' -Value $true
         } else {
-            # Collect unique file paths from all merged sessions
-            $DedupFiles = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
-            foreach ($M in $MergedSessions) {
-                foreach ($FP in $M.FilePaths) { [void]$DedupFiles.Add($FP) }
-            }
-
-            # Scan each file individually to get per-copy format
-            $PerFileSessions = @{}
-            foreach ($FPath in $DedupFiles) {
-                $PerFileSessions[$FPath] = @(Get-Session -File $FPath -Quiet)
-            }
-
-            # Detect format conflicts
+            # Detect format conflicts using CopyFormats from merge data
             $FormatConflicts = [System.Collections.Generic.List[object]]::new()
             foreach ($M in $MergedSessions) {
-                $CopyFormats = [System.Collections.Generic.HashSet[string]]::new()
-                $CopyDetails = [System.Collections.Generic.List[object]]::new()
-                foreach ($FP in $M.FilePaths) {
-                    if (-not $PerFileSessions.ContainsKey($FP)) { continue }
-                    $FileSess = $PerFileSessions[$FP] | Where-Object { $_.Header -eq $M.Header } | Select-Object -First 1
-                    if ($FileSess) {
-                        [void]$CopyFormats.Add($FileSess.Format)
-                        $CopyDetails.Add([PSCustomObject]@{ FilePath = $FP; Format = $FileSess.Format })
-                    }
-                }
-                if ($CopyFormats.Count -gt 1) {
+                if (-not $M.CopyFormats -or $M.CopyFormats.Count -le 1) { continue }
+                $DistinctFormats = [System.Collections.Generic.HashSet[string]]::new()
+                foreach ($CF in $M.CopyFormats) { [void]$DistinctFormats.Add($CF.Format) }
+                if ($DistinctFormats.Count -gt 1) {
                     $FormatConflicts.Add([PSCustomObject]@{
                         Header  = $M.Header
                         Merged  = $M
-                        Copies  = $CopyDetails
-                        Formats = ($CopyFormats -join ' vs ')
+                        Copies  = $M.CopyFormats
+                        Formats = ($DistinctFormats -join ' vs ')
                     })
                 }
             }
@@ -249,7 +232,7 @@ function Invoke-MigrationPhase5 {
         $ReviewDone = $State.Phases.ContainsKey('4') -and $State.Phases['5'].ContainsKey('Checklist') -and $State.Phases['5'].Checklist.ContainsKey('SessionReviewFileGenerated') -and $State.Phases['5'].Checklist['SessionReviewFileGenerated']
         if (-not $ReviewDone -and -not $WhatIf) {
             Write-Step -Number 4 -Text 'Generowanie pliku przeglądu sesji...'
-            $Count = Export-SessionReviewFile -RepoRoot $RepoRoot
+            $Count = Export-SessionReviewFile -RepoRoot $RepoRoot -Entities $PhaseEntities -Players $PhasePlayers
             Write-StepOK "Plik przeglądu: $Count sesji → all-sessions-to-review.md"
             Update-PhaseChecklist -State $State -Phase 5 -Item 'SessionReviewFileGenerated' -Value $true
         }
@@ -376,7 +359,7 @@ function Invoke-MigrationPhase5 {
     $LocalizedCount = 0
 
     if ([System.IO.Directory]::Exists($LogDir)) {
-        $PostUpgradeSessions = @(Get-Session -ExcludeDirectory $script:MigrationExcludeDirs -Quiet)
+        $PostUpgradeSessions = @(Get-Session -ExcludeDirectory $script:MigrationExcludeDirs -Entities $PhaseEntities -Players $PhasePlayers -Quiet)
         $Gen4WithUrls = @($PostUpgradeSessions.Where({
             $_.Format -eq 'Gen4' -and $null -ne $_.Logs -and $_.Logs.Count -gt 0 -and
             $_.Logs.Where({ $_.StartsWith('http', [System.StringComparison]::OrdinalIgnoreCase) }).Count -gt 0
@@ -416,8 +399,11 @@ function Invoke-MigrationPhase5 {
 
     # Step 6: Verify post-upgrade format distribution
     Write-Step -Number 6 -Text 'Weryfikacja po upgrade...'
-    $PostSessions = Get-Session -ExcludeDirectory $script:MigrationExcludeDirs -Quiet
-    $PostActive = $PostSessions | Where-Object { $_.Date -and $_.Date -ge $Cutoff }
+    # Reuse $PostUpgradeSessions — URL localization only changes .Logs, not .Format
+    if (-not $PostUpgradeSessions) {
+        $PostUpgradeSessions = @(Get-Session -ExcludeDirectory $script:MigrationExcludeDirs -Entities $PhaseEntities -Players $PhasePlayers -Quiet)
+    }
+    $PostActive = @($PostUpgradeSessions.Where({ $_.Date -and $_.Date -ge $Cutoff }))
     $StillNonGen4 = ($PostActive | Where-Object { $_.Format -ne 'Gen4' } | Measure-Object).Count
 
     if ($StillNonGen4 -eq 0) {
@@ -465,7 +451,7 @@ function Invoke-MigrationPhase5 {
     if (-not $LocationReviewDone) {
         Write-Step -Number 7 -Text 'Raport lokalizacji - przegląd nazw...'
 
-        $LocationReportResult = Get-NamedLocationReport -Sessions $PostActive -Entities (Get-Entity)
+        $LocationReportResult = Get-NamedLocationReport -Sessions $PostActive -Entities $PhaseEntities
         $LocationReport = $LocationReportResult.Locations
 
         # Load exclusions (non-locations marked by coordinator on previous runs)
@@ -641,7 +627,7 @@ function Invoke-MigrationPhase5 {
     if (-not $ReviewDone) {
         # FIRST RUN: Generate review file
         Write-Step -Number 9 -Text 'Generowanie pliku przeglądu sesji...'
-        $Count = Export-SessionReviewFile -RepoRoot $RepoRoot -WhatIf:$WhatIf
+        $Count = Export-SessionReviewFile -RepoRoot $RepoRoot -Entities $PhaseEntities -Players $PhasePlayers -WhatIf:$WhatIf
         if (-not $WhatIf) {
             Write-StepOK "Plik przeglądu: $Count sesji → all-sessions-to-review.md"
             Update-PhaseChecklist -State $State -Phase 5 -Item 'SessionReviewFileGenerated' -Value $true
@@ -671,9 +657,9 @@ function Invoke-MigrationPhase5 {
             )
 
         if ($Choice -eq 'Z') {
-            $Result = Import-SessionReviewFile -RepoRoot $RepoRoot -WhatIf:$WhatIf
+            $Result = Import-SessionReviewFile -RepoRoot $RepoRoot -Entities $PhaseEntities -Players $PhasePlayers -WhatIf:$WhatIf
         } elseif ($Choice -eq 'R') {
-            $Count = Export-SessionReviewFile -RepoRoot $RepoRoot -WhatIf:$WhatIf
+            $Count = Export-SessionReviewFile -RepoRoot $RepoRoot -Entities $PhaseEntities -Players $PhasePlayers -WhatIf:$WhatIf
             if (-not $WhatIf) {
                 Write-StepOK "Plik przeglądu zregenerowany: $Count sesji"
             }
@@ -727,10 +713,15 @@ function Invoke-MigrationPhase5 {
 function Export-SessionReviewFile {
     param(
         [Parameter(Mandatory)] [string]$RepoRoot,
-        [switch]$WhatIf
+        [switch]$WhatIf,
+        [object[]]$Entities,
+        [object[]]$Players
     )
 
-    $AllSessions = Get-Session -ExcludeDirectory $script:MigrationExcludeDirs -IncludeContent -IncludeMentions -Quiet
+    $SessionArgs = @{ ExcludeDirectory = $script:MigrationExcludeDirs; IncludeContent = $true; IncludeMentions = $true; Quiet = $true }
+    if ($Entities) { $SessionArgs['Entities'] = $Entities }
+    if ($Players)  { $SessionArgs['Players']  = $Players }
+    $AllSessions = Get-Session @SessionArgs
     $Sorted = $AllSessions | Sort-Object { $_.Header }
 
     $Lines = [System.Collections.Generic.List[string]]::new()
@@ -802,7 +793,9 @@ function Export-SessionReviewFile {
 function Import-SessionReviewFile {
     param(
         [Parameter(Mandatory)] [string]$RepoRoot,
-        [switch]$WhatIf
+        [switch]$WhatIf,
+        [object[]]$Entities,
+        [object[]]$Players
     )
 
     $ReviewPath = [System.IO.Path]::Combine($RepoRoot, '.robot', 'res', 'all-sessions-to-review.md')
@@ -882,7 +875,10 @@ function Import-SessionReviewFile {
     }
 
     # Fetch current state from source files
-    $CurrentSessions = Get-Session -ExcludeDirectory $script:MigrationExcludeDirs -IncludeContent -Quiet
+    $ImportArgs = @{ ExcludeDirectory = $script:MigrationExcludeDirs; IncludeContent = $true; Quiet = $true }
+    if ($Entities) { $ImportArgs['Entities'] = $Entities }
+    if ($Players)  { $ImportArgs['Players']  = $Players }
+    $CurrentSessions = Get-Session @ImportArgs
     $CurrentByHeader = @{}
     foreach ($CS in $CurrentSessions) {
         $CurrentByHeader[$CS.Header] = $CS
@@ -966,7 +962,12 @@ function Import-SessionReviewFile {
     $DeletedCount = 0
     $NewCount = 0
 
-    # Apply modified sessions
+    # Group all modifications and deletions by target file for batched I/O.
+    # Each file is read once, all changes applied in-memory, then written once.
+    $FileOps = [System.Collections.Generic.Dictionary[string,System.Collections.Generic.List[object]]]::new(
+        [System.StringComparer]::OrdinalIgnoreCase)
+
+    # Collect modification ops
     foreach ($M in $Modified) {
         $TargetPaths = @()
         if ($M.SourceLine) {
@@ -977,60 +978,64 @@ function Import-SessionReviewFile {
             $CS = $M.CurrentSession
             $TargetPaths = if ($CS.FilePaths) { @($CS.FilePaths) } else { @($CS.FilePath) }
         }
-
-        $NewBodyLines = @($M.NewBody.Split("`n"))
-
         foreach ($TP in $TargetPaths) {
-            if (-not [System.IO.File]::Exists($TP)) { continue }
-            $FileLines = [System.IO.File]::ReadAllLines($TP)
-            $Matches = Find-SessionInFile -Lines $FileLines -TargetHeader $M.Header
-            if ($Matches.Count -eq 0) { continue }
-            $Match = $Matches[0]
-
-            # Rebuild: lines up to and including header + new body + lines from next section onward
-            $Before = @()
-            if ($Match.HeaderLineIdx -ge 0) {
-                $Before = $FileLines[0..$Match.HeaderLineIdx]
+            if (-not $FileOps.ContainsKey($TP)) {
+                $FileOps[$TP] = [System.Collections.Generic.List[object]]::new()
             }
-            $After = @()
-            if ($Match.SectionEndIdx -lt $FileLines.Count) {
-                $After = $FileLines[$Match.SectionEndIdx..($FileLines.Count - 1)]
-            }
-
-            $NewLines = @($Before) + @('') + $NewBodyLines + @('') + @($After)
-
-            if (-not $WhatIf) {
-                [System.IO.File]::WriteAllLines($TP, $NewLines, $UTF8NoBOM)
-            }
+            [void]$FileOps[$TP].Add(@{ Type = 'Modify'; Header = $M.Header; NewBody = $M.NewBody })
         }
         $ModifiedCount++
     }
 
-    # Apply deletions
+    # Collect deletion ops
     foreach ($D in $Deleted) {
-        $FilePath = $D.FilePath
+        $FP = $D.FilePath
+        if (-not $FileOps.ContainsKey($FP)) {
+            $FileOps[$FP] = [System.Collections.Generic.List[object]]::new()
+        }
+        [void]$FileOps[$FP].Add(@{ Type = 'Delete'; Header = $D.Header })
+        $DeletedCount++
+    }
+
+    # Apply batched operations: one read + one write per file
+    foreach ($FilePath in $FileOps.Keys) {
         if (-not [System.IO.File]::Exists($FilePath)) { continue }
         $FileLines = [System.IO.File]::ReadAllLines($FilePath)
-        $Matches = Find-SessionInFile -Lines $FileLines -TargetHeader $D.Header
-        if ($Matches.Count -eq 0) { continue }
-        $Match = $Matches[0]
 
-        # Rebuild: lines before header + lines from next section onward
-        $Before = @()
-        if ($Match.HeaderLineIdx -gt 0) {
-            $Before = $FileLines[0..($Match.HeaderLineIdx - 1)]
+        # Apply ops in reverse section order to preserve line indices
+        $Ops = $FileOps[$FilePath]
+        $OpMatches = [System.Collections.Generic.List[object]]::new()
+        foreach ($Op in $Ops) {
+            $Matches = Find-SessionInFile -Lines $FileLines -TargetHeader $Op.Header
+            if ($Matches.Count -gt 0) {
+                [void]$OpMatches.Add(@{ Op = $Op; Match = $Matches[0] })
+            }
         }
-        $After = @()
-        if ($Match.SectionEndIdx -lt $FileLines.Count) {
-            $After = $FileLines[$Match.SectionEndIdx..($FileLines.Count - 1)]
-        }
+        # Sort by HeaderLineIdx descending so later sections are processed first
+        $OpMatches.Sort([System.Comparison[object]]{ param($a, $b) $b.Match.HeaderLineIdx.CompareTo($a.Match.HeaderLineIdx) })
 
-        $NewLines = @($Before) + @($After)
+        foreach ($OM in $OpMatches) {
+            $Match = $OM.Match
+            if ($OM.Op.Type -eq 'Modify') {
+                $NewBodyLines = @($OM.Op.NewBody.Split("`n"))
+                $Before = @()
+                if ($Match.HeaderLineIdx -ge 0) { $Before = $FileLines[0..$Match.HeaderLineIdx] }
+                $After = @()
+                if ($Match.SectionEndIdx -lt $FileLines.Count) { $After = $FileLines[$Match.SectionEndIdx..($FileLines.Count - 1)] }
+                $FileLines = @($Before) + @('') + $NewBodyLines + @('') + @($After)
+            }
+            elseif ($OM.Op.Type -eq 'Delete') {
+                $Before = @()
+                if ($Match.HeaderLineIdx -gt 0) { $Before = $FileLines[0..($Match.HeaderLineIdx - 1)] }
+                $After = @()
+                if ($Match.SectionEndIdx -lt $FileLines.Count) { $After = $FileLines[$Match.SectionEndIdx..($FileLines.Count - 1)] }
+                $FileLines = @($Before) + @($After)
+            }
+        }
 
         if (-not $WhatIf) {
-            [System.IO.File]::WriteAllLines($FilePath, $NewLines, $UTF8NoBOM)
+            [System.IO.File]::WriteAllLines($FilePath, $FileLines, $UTF8NoBOM)
         }
-        $DeletedCount++
     }
 
     # Create new session files

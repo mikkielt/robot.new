@@ -51,7 +51,8 @@ function ConvertFrom-SessionHeader {
     param(
         [string]$Header,
         [regex]$DateRegex,
-        [object]$Match  # optional pre-matched regex result to avoid redundant matching
+        [object]$Match,        # optional pre-matched regex result to avoid redundant matching
+        [datetime]$ParsedDate  # optional pre-parsed date to avoid redundant TryParseExact
     )
 
     if (-not $Match) { $Match = $DateRegex.Match($Header) }
@@ -60,9 +61,13 @@ function ConvertFrom-SessionHeader {
     $DateStr    = $Match.Groups[1].Value
     $EndDayStr  = $Match.Groups[2].Value
 
-    [datetime]$Parsed = [datetime]::MinValue
-    if (-not [datetime]::TryParseExact($DateStr, "yyyy-MM-dd", [System.Globalization.CultureInfo]::InvariantCulture, [System.Globalization.DateTimeStyles]::None, [ref]$Parsed)) {
-        return $null
+    if ($PSBoundParameters.ContainsKey('ParsedDate')) {
+        $Parsed = $ParsedDate
+    } else {
+        [datetime]$Parsed = [datetime]::MinValue
+        if (-not [datetime]::TryParseExact($DateStr, "yyyy-MM-dd", [System.Globalization.CultureInfo]::InvariantCulture, [System.Globalization.DateTimeStyles]::None, [ref]$Parsed)) {
+            return $null
+        }
     }
 
     $DateEnd = $null
@@ -128,6 +133,7 @@ function Merge-SessionGroup {
         $S.FilePaths      = @($S.FilePath)
         $S.IsMerged       = $false
         $S.DuplicateCount = 1
+        $S | Add-Member -NotePropertyName 'CopyFormats' -NotePropertyValue $null -Force
         return $S
     }
 
@@ -149,10 +155,12 @@ function Merge-SessionGroup {
         }
     }
 
-    # Collect all file paths (HashSet for O(1) dedup)
+    # Collect all file paths and per-copy format info (for dedup conflict analysis)
     $AllFilePaths = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+    $CopyFormatsList = [System.Collections.Generic.List[PSCustomObject]]::new($Count)
     foreach ($S in $Group) {
         [void]$AllFilePaths.Add($S.FilePath)
+        [void]$CopyFormatsList.Add([PSCustomObject]@{ FilePath = $S.FilePath; Format = $S.Format })
     }
 
     # Conflict detection for scalar fields
@@ -248,6 +256,7 @@ function Merge-SessionGroup {
         Transfers      = $MergedTransfers.ToArray()
         Mentions       = [object[]]$MergedMentions.Values
         Intel          = $MergedIntel.ToArray()
+        CopyFormats    = $CopyFormatsList.ToArray()
     }
 
     return $Merged
@@ -293,6 +302,12 @@ function Get-Session {
 
         [Parameter(HelpMessage = "Fetch and parse log content, attaching LogData to each session")]
         [switch]$IncludeLogs,
+
+        [Parameter(HelpMessage = "Optional callback for CLI progress reporting (receives Current, Total, ItemDetail)")]
+        [scriptblock]$ProgressCallback,
+
+        [Parameter(HelpMessage = "Pre-built name index from Get-NameIndex (avoids redundant BK-tree rebuild)")]
+        [hashtable]$NameIndex,
 
         [Parameter(HelpMessage = "Suppress warning output to stderr")]
         [switch]$Quiet
@@ -372,13 +387,40 @@ function Get-Session {
     if (-not $PSBoundParameters.ContainsKey('Players')) {
         $Players  = Get-Player -Entities $Entities
     }
-    $NameIndexResult = Get-NameIndex -Players $Players -Entities $Entities
+    $NameIndexResult = if ($PSBoundParameters.ContainsKey('NameIndex') -and $NameIndex) {
+        $NameIndex
+    } else {
+        Get-NameIndex -Players $Players -Entities $Entities
+    }
     $Index     = $NameIndexResult.Index
     $StemIndex = $NameIndexResult.StemIndex
     $BKTree    = $NameIndexResult.BKTree
 
-    $MentionCache = @{}
-    $IntelCache   = @{}
+    $MentionCache  = @{}
+    $IntelCache    = @{}
+    $NarratorCache = [System.Collections.Generic.Dictionary[string, object]]::new([System.StringComparer]::OrdinalIgnoreCase)
+
+    # Pre-build entity indices for O(1) Intel resolution (replaces O(E) scans per directive)
+    $EntityByGroup = @{}
+    $EntityByLocation = @{}
+    foreach ($Entity in $Entities) {
+        if ($Entity.GroupHistory -and $Entity.GroupHistory.Count -gt 0) {
+            foreach ($GH in $Entity.GroupHistory) {
+                if (-not $EntityByGroup.ContainsKey($GH.Group)) {
+                    $EntityByGroup[$GH.Group] = [System.Collections.Generic.List[object]]::new()
+                }
+                $EntityByGroup[$GH.Group].Add(@{ Entity = $Entity; History = $GH })
+            }
+        }
+        if ($Entity.LocationHistory -and $Entity.LocationHistory.Count -gt 0) {
+            foreach ($LH in $Entity.LocationHistory) {
+                if (-not $EntityByLocation.ContainsKey($LH.Location)) {
+                    $EntityByLocation[$LH.Location] = [System.Collections.Generic.List[object]]::new()
+                }
+                $EntityByLocation[$LH.Location].Add(@{ Entity = $Entity; History = $LH })
+            }
+        }
+    }
 
     # Precompile regex patterns
 
@@ -401,7 +443,14 @@ function Get-Session {
 
     # Main file processing loop
 
+    $script:ProgressFileIdx = 0
+    $script:ProgressFileTotal = $FilesToProcess.Count
+
     foreach ($FilePath in $FilesToProcess) {
+        $script:ProgressFileIdx++
+        if ($ProgressCallback -and ($script:ProgressFileIdx % 5 -eq 0 -or $script:ProgressFileIdx -eq $script:ProgressFileTotal)) {
+            & $ProgressCallback $script:ProgressFileIdx $script:ProgressFileTotal $null
+        }
 
         $Markdown = if ($MarkdownByPath.ContainsKey($FilePath)) { $MarkdownByPath[$FilePath] } else { $null }
         if ($null -eq $Markdown) { continue }
@@ -415,6 +464,7 @@ function Get-Session {
         $ParseableSections   = [System.Collections.Generic.List[object]]::new()
         $ParseableIndices    = [System.Collections.Generic.HashSet[int]]::new()
         $CachedDateMatches   = [System.Collections.Generic.Dictionary[int, object]]::new()
+        $CachedDateParsed    = [System.Collections.Generic.Dictionary[int, object]]::new()
 
         for ($i = 0; $i -lt $SessionSections.Count; $i++) {
             $Sect = $SessionSections[$i]
@@ -425,13 +475,13 @@ function Get-Session {
                 $ParseableSections.Add($Sect)
                 [void]$ParseableIndices.Add($i)
 
-                if (-not $HasCandidateSession) {
-                    $DStr = $DMatch.Groups[1].Value
-                    [datetime]$DParsed = [datetime]::MinValue
-                    if ([datetime]::TryParseExact($DStr, "yyyy-MM-dd", [System.Globalization.CultureInfo]::InvariantCulture, [System.Globalization.DateTimeStyles]::None, [ref]$DParsed)) {
-                        if ($DParsed -ge $MinDate -and $DParsed -le $MaxDate) {
-                            $HasCandidateSession = $true
-                        }
+                # Parse and cache the date for reuse by ConvertFrom-SessionHeader
+                $DStr = $DMatch.Groups[1].Value
+                [datetime]$DParsed = [datetime]::MinValue
+                if ([datetime]::TryParseExact($DStr, "yyyy-MM-dd", [System.Globalization.CultureInfo]::InvariantCulture, [System.Globalization.DateTimeStyles]::None, [ref]$DParsed)) {
+                    $CachedDateParsed[$i] = $DParsed
+                    if (-not $HasCandidateSession -and $DParsed -ge $MinDate -and $DParsed -le $MaxDate) {
+                        $HasCandidateSession = $true
                     }
                 }
             } else {
@@ -443,7 +493,7 @@ function Get-Session {
 
         $NarratorResults = $null
         if ($ParseableSections.Count -gt 0) {
-            $NarratorResults = Resolve-Narrator -Sessions $ParseableSections.ToArray() -Index $Index -StemIndex $StemIndex -BKTree $BKTree
+            $NarratorResults = Resolve-Narrator -Sessions $ParseableSections.ToArray() -Index $Index -StemIndex $StemIndex -BKTree $BKTree -NarratorCache $NarratorCache
         }
 
         # Process each section
@@ -453,9 +503,11 @@ function Get-Session {
             $Section = $SessionSections[$i]
             $Header  = $Section.Header.Text
 
-            # Parse date from header (using cached regex match)
+            # Parse date from header (using cached regex match and pre-parsed date)
             $CachedMatch = if ($CachedDateMatches.ContainsKey($i)) { $CachedDateMatches[$i] } else { $null }
-            $DateInfo = ConvertFrom-SessionHeader -Header $Header -DateRegex $DateRegex -Match $CachedMatch
+            $HeaderArgs = @{ Header = $Header; DateRegex = $DateRegex; Match = $CachedMatch }
+            if ($CachedDateParsed.ContainsKey($i)) { $HeaderArgs['ParsedDate'] = $CachedDateParsed[$i] }
+            $DateInfo = ConvertFrom-SessionHeader @HeaderArgs
 
             # @Data override: scan for date override tag before failed-session check.
             # This rescues sessions with malformed header dates (e.g. "2024-07-014").
@@ -557,11 +609,24 @@ function Get-Session {
 
             $Format = Get-SessionFormat -FirstNonEmptyLine $FirstNonEmptyLine -SectionLists $Section.Lists
 
+            # Build parent→children list index once per section - shared by
+            # Get-SessionLocations, Get-SessionListMetadata, and Get-SessionMentions
+            $SectionChildrenOf = @{}
+            foreach ($LI in $Section.Lists) {
+                if ($null -ne $LI.ParentListItem) {
+                    $ParentId = [System.Runtime.CompilerServices.RuntimeHelpers]::GetHashCode($LI.ParentListItem)
+                    if (-not $SectionChildrenOf.ContainsKey($ParentId)) {
+                        $SectionChildrenOf[$ParentId] = [System.Collections.Generic.List[object]]::new()
+                    }
+                    $SectionChildrenOf[$ParentId].Add($LI)
+                }
+            }
+
             # Location extraction
-            $Locations = Get-SessionLocations -Format $Format -FirstNonEmptyLine $FirstNonEmptyLine -SectionLists $Section.Lists -LocItalicRegex $LocItalicRegex -Index $Index
+            $Locations = Get-SessionLocations -Format $Format -FirstNonEmptyLine $FirstNonEmptyLine -SectionLists $Section.Lists -LocItalicRegex $LocItalicRegex -Index $Index -ChildrenOf $SectionChildrenOf
 
             # List-based metadata (PU, Logs)
-            $ListMeta = Get-SessionListMetadata -SectionLists $Section.Lists -PURegex $PURegex -UrlRegex $UrlRegex
+            $ListMeta = Get-SessionListMetadata -SectionLists $Section.Lists -PURegex $PURegex -UrlRegex $UrlRegex -ChildrenOf $SectionChildrenOf
 
             $Logs    = $ListMeta.Logs
             $PU      = $ListMeta.PU
@@ -625,7 +690,9 @@ function Get-Session {
                     -FirstNonEmptyLine $FirstNonEmptyLine `
                     -Index $Index `
                     -StemIndex $StemIndex `
-                    -ResolveCache $MentionCache
+                    -ResolveCache $MentionCache `
+                    -ChildrenOf $SectionChildrenOf `
+                    -ContentLines $ContentLines
                 $MentionsV = if ($RawMentions -and $RawMentions.Count -gt 0) { @($RawMentions) } else { @() }
             }
 
@@ -639,7 +706,9 @@ function Get-Session {
                     -Index $Index `
                     -StemIndex $StemIndex `
                     -Players $Players `
-                    -ResolveCache $IntelCache
+                    -ResolveCache $IntelCache `
+                    -EntityByGroup $EntityByGroup `
+                    -EntityByLocation $EntityByLocation
                 $IntelV = if ($ResolvedIntel -and $ResolvedIntel.Count -gt 0) { @($ResolvedIntel) } else { @() }
             }
 

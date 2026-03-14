@@ -40,6 +40,9 @@ function Get-EconomicTimeline {
         [Parameter(HelpMessage = "Scope to a specific denomination")]
         [string]$Denomination,
 
+        [Parameter(HelpMessage = "Optional callback for CLI progress reporting (receives Current, Total, ItemDetail)")]
+        [scriptblock]$ProgressCallback,
+
         [Parameter(HelpMessage = "Suppress warning output to stderr")]
         [switch]$Quiet
     )
@@ -49,11 +52,12 @@ function Get-EconomicTimeline {
     try {
 
     if (-not $PSBoundParameters.ContainsKey('Entities')) {
-        $Entities = Get-Entity
+        $Entities = Get-Entity -Quiet:$Quiet
     }
     if (-not $PSBoundParameters.ContainsKey('Sessions')) {
-        $Sessions = Get-Session
+        $Sessions = Get-Session -Quiet:$Quiet
     }
+    $NameIndex = Get-NameIndex -Entities $Entities
 
     $Timeline = [System.Collections.Generic.List[object]]::new()
 
@@ -61,20 +65,24 @@ function Get-EconomicTimeline {
     $Current = [datetime]::new($MinDate.Year, $MinDate.Month, 1)
     $EndBoundary = [datetime]::new($MaxDate.Year, $MaxDate.Month, 1).AddMonths(1).AddDays(-1)
 
+    $script:ProgressMonthIdx = 0
+    $script:ProgressMonthTotal = (($MaxDate.Year - $MinDate.Year) * 12 + $MaxDate.Month - $MinDate.Month + 1)
+
     while ($Current -le $EndBoundary) {
+        $script:ProgressMonthIdx++
+        if ($ProgressCallback) {
+            & $ProgressCallback $script:ProgressMonthIdx $script:ProgressMonthTotal $Current.ToString('yyyy-MM')
+        }
         $MonthEnd = $Current.AddMonths(1).AddDays(-1)
         $EffectiveDate = if ($MonthEnd -gt $MaxDate) { $MaxDate } else { $MonthEnd }
 
-        # Get entity state at this point in time (fresh copy per iteration since Get-EntityState mutates)
-        $MonthEntities = Get-Entity -ActiveOn $EffectiveDate
+        # Get-Entity -ActiveOn filters entities by ValidFrom/ValidTo at the data level
+        $MonthEntities = Get-Entity -ActiveOn $EffectiveDate -Quiet
         if (-not $MonthEntities) { $MonthEntities = @() }
-
-        $SessionArgs = @{ ActiveOn = $EffectiveDate; Quiet = $true }
-        if ($Sessions -and $Sessions.Count -gt 0) { $SessionArgs['Sessions'] = $Sessions }
 
         $MonthState = @()
         if ($MonthEntities.Count -gt 0) {
-            $MonthState = Get-EntityState -Entities $MonthEntities @SessionArgs
+            $MonthState = @(Get-EntityState -Entities $MonthEntities -Sessions $Sessions -NameIndex $NameIndex -ActiveOn $EffectiveDate -Quiet)
         }
         if (-not $MonthState) { $MonthState = @() }
 

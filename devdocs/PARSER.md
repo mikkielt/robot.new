@@ -200,6 +200,7 @@ Content is accumulated into a `StringBuilder` between headers. When a new header
 - **File I/O**: Uses `[System.IO.File]::ReadAllLines()` (not `Get-Content`) for speed
 - **Directory scanning**: Uses `[System.IO.Directory]::GetFiles()` with `SearchOption.AllDirectories`
 - **Regex**: `$MdLinkPattern` and `$PlainUrlPattern` are compiled once at script scope
+- **Parser script caching**: The parser script text (`private/parse-markdownfile.ps1`) is read from disk once and cached at `$script:CachedParseFileScriptStr`. Subsequent `Get-Markdown` calls reuse the cached string for both sequential invocation (via `[scriptblock]::Create`) and parallel workers (via `AddScript`), avoiding repeated file I/O.
 - **StringBuilder**: Used for section content accumulation to avoid string concatenation
 - **Parallelism threshold**: 4 files (below this, pool setup overhead exceeds parsing time)
 

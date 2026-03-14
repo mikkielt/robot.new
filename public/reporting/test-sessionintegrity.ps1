@@ -61,6 +61,9 @@ function Test-SessionIntegrity {
         [Parameter(HelpMessage = "Directories to exclude from scanning")]
         [string[]]$ExcludeDirectory,
 
+        [Parameter(HelpMessage = "Optional callback for CLI progress reporting (receives Current, Total, ItemDetail)")]
+        [scriptblock]$ProgressCallback,
+
         [Parameter(HelpMessage = "Suppress warning output to stderr")]
         [switch]$Quiet
     )
@@ -174,17 +177,6 @@ function Test-SessionIntegrity {
         }
     }
 
-    # Pre-read raw lines for all files (used by format anomaly check later,
-    # avoids redundant ReadAllLines after Get-Markdown already parsed them)
-    $RawLinesByPath = [System.Collections.Generic.Dictionary[string, string[]]]::new(
-        [System.StringComparer]::OrdinalIgnoreCase
-    )
-    foreach ($FP in $FilesToCheck) {
-        if ([System.IO.File]::Exists($FP)) {
-            $RawLinesByPath[$FP] = [System.IO.File]::ReadAllLines($FP)
-        }
-    }
-
     # Batch-parse all files
     $MarkdownResults = @(Get-Markdown -File @($FilesToCheck))
     $MarkdownByPath = [System.Collections.Generic.Dictionary[string, object]]::new(
@@ -196,7 +188,15 @@ function Test-SessionIntegrity {
         }
     }
 
+    $script:ProgressFileIdx = 0
+    $script:ProgressFileTotal = $FilesToCheck.Count
+
     foreach ($FilePath in $FilesToCheck) {
+        $script:ProgressFileIdx++
+        if ($ProgressCallback -and ($script:ProgressFileIdx % 5 -eq 0 -or $script:ProgressFileIdx -eq $script:ProgressFileTotal)) {
+            & $ProgressCallback $script:ProgressFileIdx $script:ProgressFileTotal $null
+        }
+
         $RelPath = Get-RelativeHashPath -FilePath $FilePath -RepoRoot $RepoRoot
         $JsonPath = [System.IO.Path]::Combine($HashDir, "$RelPath.json")
 
@@ -247,27 +247,30 @@ function Test-SessionIntegrity {
                 }
             }
 
-            # Check 8: Format anomalies
-            if ($RawLinesByPath.ContainsKey($FilePath)) {
-                $RawLines = $RawLinesByPath[$FilePath]
+            # Check 8: Format anomalies (from parsed sections — no extra file read)
+            if ($null -ne $MdResult) {
                 $InCodeBlock = $false
-                for ($i = 0; $i -lt $RawLines.Length; $i++) {
-                    $RawLine = $RawLines[$i]
-                    if ($RawLine -match '^```') { $InCodeBlock = -not $InCodeBlock; continue }
-                    if ($InCodeBlock) { continue }
+                foreach ($Section in $MdResult.Sections) {
+                    $ContentStartLine = if ($null -eq $Section.Header) { 1 } else { $Section.Header.LineNumber + 1 }
+                    if ([string]::IsNullOrEmpty($Section.Content)) { continue }
+                    $ContentLines = $Section.Content.Split([char]"`n")
+                    for ($i = 0; $i -lt $ContentLines.Length; $i++) {
+                        $RawLine = $ContentLines[$i]
+                        if ($RawLine -match '^```') { $InCodeBlock = -not $InCodeBlock; continue }
+                        if ($InCodeBlock) { continue }
 
-                    if ($script:DateLineLikePattern.IsMatch($RawLine) -and -not $RawLine.StartsWith('### ')) {
-                        # Exclude lines inside list items (indented) — those are likely @Data or other tags
-                        if ($RawLine.Length -gt 0 -and ($RawLine[0] -eq ' ' -or $RawLine[0] -eq "`t" -or $RawLine[0] -eq '-' -or $RawLine[0] -eq '*')) {
-                            continue
+                        if ($script:DateLineLikePattern.IsMatch($RawLine) -and -not $RawLine.StartsWith('### ')) {
+                            if ($RawLine.Length -gt 0 -and ($RawLine[0] -eq ' ' -or $RawLine[0] -eq "`t" -or $RawLine[0] -eq '-' -or $RawLine[0] -eq '*')) {
+                                continue
+                            }
+                            [void]$FormatAnomalies.Add([PSCustomObject]@{
+                                FilePath     = $FilePath
+                                RelativePath = $RelPath
+                                LineNumber   = $ContentStartLine + $i
+                                Line         = $RawLine
+                                Issue        = "Date-like line without ### header prefix"
+                            })
                         }
-                        $FormatAnomalies.Add([PSCustomObject]@{
-                            FilePath     = $FilePath
-                            RelativePath = $RelPath
-                            LineNumber   = $i + 1
-                            Line         = $RawLine
-                            Issue        = "Date-like line without ### header prefix"
-                        })
                     }
                 }
             }
@@ -418,26 +421,29 @@ function Test-SessionIntegrity {
             }
         }
 
-        # Check 8: Format anomalies (raw line scan — uses pre-read cache)
-        $RawLines = if ($RawLinesByPath.ContainsKey($FilePath)) { $RawLinesByPath[$FilePath] } else { [System.IO.File]::ReadAllLines($FilePath) }
+        # Check 8: Format anomalies (from parsed sections — no extra file read)
         $InCodeBlock = $false
-        for ($i = 0; $i -lt $RawLines.Length; $i++) {
-            $RawLine = $RawLines[$i]
-            if ($RawLine -match '^```') { $InCodeBlock = -not $InCodeBlock; continue }
-            if ($InCodeBlock) { continue }
+        foreach ($Section in $MdResult.Sections) {
+            $ContentStartLine = if ($null -eq $Section.Header) { 1 } else { $Section.Header.LineNumber + 1 }
+            if ([string]::IsNullOrEmpty($Section.Content)) { continue }
+            $ContentLines = $Section.Content.Split([char]"`n")
+            for ($i = 0; $i -lt $ContentLines.Length; $i++) {
+                $RawLine = $ContentLines[$i]
+                if ($RawLine -match '^```') { $InCodeBlock = -not $InCodeBlock; continue }
+                if ($InCodeBlock) { continue }
 
-            if ($script:DateLineLikePattern.IsMatch($RawLine) -and -not $RawLine.StartsWith('### ')) {
-                # Exclude lines inside list items (indented) — those are likely @Data or other tags
-                if ($RawLine.Length -gt 0 -and ($RawLine[0] -eq ' ' -or $RawLine[0] -eq "`t" -or $RawLine[0] -eq '-' -or $RawLine[0] -eq '*')) {
-                    continue
+                if ($script:DateLineLikePattern.IsMatch($RawLine) -and -not $RawLine.StartsWith('### ')) {
+                    if ($RawLine.Length -gt 0 -and ($RawLine[0] -eq ' ' -or $RawLine[0] -eq "`t" -or $RawLine[0] -eq '-' -or $RawLine[0] -eq '*')) {
+                        continue
+                    }
+                    [void]$FormatAnomalies.Add([PSCustomObject]@{
+                        FilePath     = $FilePath
+                        RelativePath = $RelPath
+                        LineNumber   = $ContentStartLine + $i
+                        Line         = $RawLine
+                        Issue        = "Date-like line without ### header prefix"
+                    })
                 }
-                $FormatAnomalies.Add([PSCustomObject]@{
-                    FilePath     = $FilePath
-                    RelativePath = $RelPath
-                    LineNumber   = $i + 1
-                    Line         = $RawLine
-                    Issue        = "Date-like line without ### header prefix"
-                })
             }
         }
     }

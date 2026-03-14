@@ -37,6 +37,9 @@ function Test-SessionGraphIntegrity {
         [Parameter(HelpMessage = "Pre-fetched name index from Get-NameIndex (avoids redundant load)")]
         [object]$NameIndex,
 
+        [Parameter(HelpMessage = "Optional callback for CLI progress reporting (receives Current, Total, ItemDetail)")]
+        [scriptblock]$ProgressCallback,
+
         [Parameter(HelpMessage = "Suppress warning output to stderr")]
         [switch]$Quiet
     )
@@ -131,7 +134,15 @@ function Test-SessionGraphIntegrity {
 
     $CurrentHeaders = [System.Collections.Generic.HashSet[string]]::new(
         [System.StringComparer]::OrdinalIgnoreCase)
+    $script:ProgressSessIdx = 0
+    $script:ProgressSessTotal = $AllSessions.Count
+
     foreach ($Session in $AllSessions) {
+        $script:ProgressSessIdx++
+        if ($ProgressCallback -and ($script:ProgressSessIdx % 10 -eq 0 -or $script:ProgressSessIdx -eq $script:ProgressSessTotal)) {
+            & $ProgressCallback $script:ProgressSessIdx $script:ProgressSessTotal $null
+        }
+
         if (-not [string]::IsNullOrWhiteSpace($Session.Header)) {
             [void]$CurrentHeaders.Add($Session.Header)
         }

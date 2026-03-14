@@ -109,11 +109,32 @@ function Invoke-RobotCLI {
 
     # Pre-load shared data for fuzzy search
     Write-Host ''
-    Write-Host "  Ładowanie danych..." -ForegroundColor DarkGray
+    $LoadProgress = New-ProgressState -Title 'Ładowanie danych' -TotalSteps 4
 
+    Start-ProgressStep -State $LoadProgress -Label 'Encje'
     $Entities = Get-Entity -Quiet
+    Complete-ProgressStep -State $LoadProgress -Detail "$($Entities.Count)"
+
+    Start-ProgressStep -State $LoadProgress -Label 'Gracze'
     $Players  = Get-Player
+    Complete-ProgressStep -State $LoadProgress -Detail "$($Players.Count)"
+
+    Start-ProgressStep -State $LoadProgress -Label 'Indeks nazw'
     $NameIdx  = Get-NameIndex -Players $Players -Entities $Entities
+    Complete-ProgressStep -State $LoadProgress -Detail "$($NameIdx.Count) wpisów"
+
+    # Build entity type index for O(1) type-filtered lookups in fuzzy search
+    Start-ProgressStep -State $LoadProgress -Label 'Indeks typów'
+    $EntityTypeIdx = @{}
+    foreach ($E in $Entities) {
+        if (-not $EntityTypeIdx.ContainsKey($E.Type)) {
+            $EntityTypeIdx[$E.Type] = [System.Collections.Generic.List[object]]::new()
+        }
+        [void]$EntityTypeIdx[$E.Type].Add($E)
+    }
+    Complete-ProgressStep -State $LoadProgress -Detail "$($EntityTypeIdx.Count) typów"
+
+    Complete-ProgressGroup -State $LoadProgress
 
     # Health dashboard: run quick checks and cache results
     $HealthCache = @{
@@ -129,7 +150,7 @@ function Invoke-RobotCLI {
         $HealthCache.Skipped = $true
     }
     else {
-        Write-Host "  Sprawdzanie stanu systemu..." -ForegroundColor DarkGray
+        $HCProgress = New-ProgressState -Title 'Sprawdzanie stanu systemu' -TotalSteps 6
         $HealthCache.CheckedAt = Get-Date
 
         # Suppress non-terminating errors during health checks — internal calls
@@ -142,19 +163,50 @@ function Invoke-RobotCLI {
         # Pre-load shared data once to avoid redundant loads across health checks:
         # - AllSessions: used by PU (stale history), Currency, and Graph checks
         # - EntityState: used by Currency check (enriched entity data)
-        $SharedSessions    = Get-Session -Quiet -Entities $Entities -Players $Players
-        $SharedEntityState = Get-EntityState -Quiet
+        Start-ProgressStep -State $HCProgress -Label 'Sesje'
+        $SessCB = { param($C,$T,$D); Update-ProgressStep -State $HCProgress -Detail "$C/$T" }.GetNewClosure()
+        $SharedSessions = Get-Session -Quiet -Entities $Entities -Players $Players -NameIndex $NameIdx -ProgressCallback $SessCB
+        Complete-ProgressStep -State $HCProgress -Detail "$($SharedSessions.Count)"
 
-        try { $HealthCache.PU        = Test-PlayerCharacterPUAssignment -Quiet -AllSessions $SharedSessions }
-        catch { $HealthCache.Errors += "PU: $($_.Exception.Message)" }
-        try { $HealthCache.Currency  = Test-CurrencyReconciliation -Quiet -Entities $SharedEntityState -Sessions $SharedSessions }
-        catch { $HealthCache.Errors += "Waluta: $($_.Exception.Message)" }
-        try { $HealthCache.Integrity = Test-SessionIntegrity -Quiet -Since (Get-Date).AddMonths(-2) }
-        catch { $HealthCache.Errors += "Sesje: $($_.Exception.Message)" }
-        try { $HealthCache.Graph     = Test-SessionGraphIntegrity -Quiet -Sessions $SharedSessions -NameIndex $NameIdx }
-        catch { $HealthCache.Errors += "Graf: $($_.Exception.Message)" }
+        Start-ProgressStep -State $HCProgress -Label 'Stan encji'
+        $EntCB = { param($C,$T,$D); Update-ProgressStep -State $HCProgress -Detail "$C/$T" }.GetNewClosure()
+        $SharedEntityState = Get-EntityState -Quiet `
+            -Entities $Entities -Sessions $SharedSessions `
+            -Players $Players -NameIndex $NameIdx `
+            -ProgressCallback $EntCB
+        Complete-ProgressStep -State $HCProgress
+
+        Start-ProgressStep -State $HCProgress -Label 'Walidacja PU'
+        $PUCB = { param($C,$T,$D); Update-ProgressStep -State $HCProgress -Detail "$C/$T" }.GetNewClosure()
+        try { $HealthCache.PU = Test-PlayerCharacterPUAssignment -Quiet -AllSessions $SharedSessions -ProgressCallback $PUCB
+              Complete-ProgressStep -State $HCProgress -Detail 'OK' }
+        catch { $HealthCache.Errors += "PU: $($_.Exception.Message)"
+                Complete-ProgressStep -State $HCProgress -Detail 'BŁĄD' -Failed }
+
+        Start-ProgressStep -State $HCProgress -Label 'Walidacja walut'
+        $CurCB = { param($C,$T,$D); Update-ProgressStep -State $HCProgress -Detail "$C/$T" }.GetNewClosure()
+        try { $HealthCache.Currency = Test-CurrencyReconciliation -Quiet -Entities $SharedEntityState -Sessions $SharedSessions -ProgressCallback $CurCB
+              Complete-ProgressStep -State $HCProgress -Detail 'OK' }
+        catch { $HealthCache.Errors += "Waluta: $($_.Exception.Message)"
+                Complete-ProgressStep -State $HCProgress -Detail 'BŁĄD' -Failed }
+
+        Start-ProgressStep -State $HCProgress -Label 'Integralność sesji'
+        $IntCB = { param($C,$T,$D); Update-ProgressStep -State $HCProgress -Detail "$C/$T" }.GetNewClosure()
+        try { $HealthCache.Integrity = Test-SessionIntegrity -Quiet -Since (Get-Date).AddMonths(-2) -ProgressCallback $IntCB
+              Complete-ProgressStep -State $HCProgress -Detail 'OK' }
+        catch { $HealthCache.Errors += "Sesje: $($_.Exception.Message)"
+                Complete-ProgressStep -State $HCProgress -Detail 'BŁĄD' -Failed }
+
+        Start-ProgressStep -State $HCProgress -Label 'Graf sesji'
+        $GrCB = { param($C,$T,$D); Update-ProgressStep -State $HCProgress -Detail "$C/$T" }.GetNewClosure()
+        try { $HealthCache.Graph = Test-SessionGraphIntegrity -Quiet -Sessions $SharedSessions -NameIndex $NameIdx -ProgressCallback $GrCB
+              Complete-ProgressStep -State $HCProgress -Detail 'OK' }
+        catch { $HealthCache.Errors += "Graf: $($_.Exception.Message)"
+                Complete-ProgressStep -State $HCProgress -Detail 'BŁĄD' -Failed }
 
         $ErrorActionPreference = $PrevEAP
+
+        Complete-ProgressGroup -State $HCProgress
     }
 
     $NavState = [PSCustomObject]@{
@@ -162,6 +214,7 @@ function Invoke-RobotCLI {
         NameIndex       = $NameIdx
         Players         = $Players
         Entities        = $Entities
+        EntityTypeIndex = $EntityTypeIdx
         ResolveCache    = @{}
         Theme           = $Theme
         HealthCache     = $HealthCache

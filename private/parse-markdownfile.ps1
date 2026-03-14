@@ -29,9 +29,13 @@
 
 param([string]$FilePath)
 
-# Precompiled link patterns - used on every line outside code blocks
-$MdLinkPattern  = [regex]'\[(.+?)\]\((.+?)\)'
-$PlainUrlPattern = [regex]'https?:\/\/[^\s\)\]]+'
+# Precompiled patterns - reused on every line, avoids per-line regex compilation
+$MdLinkPattern    = [regex]'\[(.+?)\]\((.+?)\)'
+$PlainUrlPattern  = [regex]'https?:\/\/[^\s\)\]]+'
+$CodeFencePattern = [regex]'^```'
+$HeaderPattern    = [regex]'^(#+)\s*(.+)$'
+$ListItemPattern  = [regex]'^(\s*)(\d+\.|[-\*\+])\s+(.+)$'
+$MarkerNumPattern = [regex]'^\d+\.'
 
 $Lines = [System.IO.File]::ReadAllLines($FilePath)
 
@@ -56,7 +60,7 @@ foreach ($Line in $Lines) {
     $TrimLine = $Line.TrimEnd()
 
     # Code block fence toggle - everything between ``` pairs is opaque to the parser
-    if ($TrimLine -match '^```') {
+    if ($CodeFencePattern.IsMatch($TrimLine)) {
         $InCodeBlock = -not $InCodeBlock
         [void]$CurrentSectionContent.Append($Line).Append("`n")
         continue
@@ -86,9 +90,10 @@ foreach ($Line in $Lines) {
     }
 
     # Header detection: "# Text", "## Text", etc.
-    if ($TrimLine -match '^(#+)\s*(.+)$') {
-        $Level = $Matches[1].Length
-        $Text  = $Matches[2].Trim()
+    $HeaderMatch = $HeaderPattern.Match($TrimLine)
+    if ($HeaderMatch.Success) {
+        $Level = $HeaderMatch.Groups[1].Value.Length
+        $Text  = $HeaderMatch.Groups[2].Value.Trim()
 
         # Pop headers at same or deeper level to find the correct parent
         while ($HeaderStack.Count -gt 0 -and $HeaderStack.Peek().Level -ge $Level) {
@@ -123,14 +128,14 @@ foreach ($Line in $Lines) {
     }
 
     # List item detection: "- text", "* text", "+ text", "1. text"
-    $ListMatch = [regex]::Match($TrimLine, '^(\s*)(\d+\.|[-\*\+])\s+(.+)$')
+    $ListMatch = $ListItemPattern.Match($TrimLine)
     if ($ListMatch.Success) {
         $RawIndent = $ListMatch.Groups[1].Value.Length
         # Normalize to multiples of 2 - tolerates 1-3 space indents that all mean "one level"
         $Indent    = [Math]::Floor($RawIndent / 2) * 2
 
         $Marker = $ListMatch.Groups[2].Value
-        $Type   = if ($Marker -match '^\d+\.') { 'Numbered' } else { 'Bullet' }
+        $Type   = if ($MarkerNumPattern.IsMatch($Marker)) { 'Numbered' } else { 'Bullet' }
         $Text   = $ListMatch.Groups[3].Value.Trim()
 
         # Pop items at same or deeper indent to find the correct parent

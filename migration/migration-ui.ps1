@@ -102,11 +102,10 @@ function Write-MigrationLog {
         }
     }
     $script:MigrationLogLines.Add('')
-
-    Flush-MigrationLog
 }
 
-# Writes accumulated lines to disk (overwrites the entire file each time)
+# Writes accumulated lines to disk (overwrites the entire file each time).
+# Called explicitly at the end of each phase rather than after every log entry.
 function Flush-MigrationLog {
     if (-not $script:MigrationLogPath -or -not $script:MigrationLogLines) { return }
     try {
@@ -326,6 +325,9 @@ function Write-PhaseSummary {
     # Log phase summary
     $LogLevel = if ($Status -eq 'Completed') { 'INFO' } elseif ($Status -eq 'InProgress') { 'WARN' } else { 'INFO' }
     Write-MigrationLog -Level $LogLevel -Phase "Faza $Phase" -Summary "PODSUMOWANIE: $($StatusInfo.Text)" -Details $Lines
+
+    # Flush log to disk at phase boundary (batch write instead of per-entry)
+    Flush-MigrationLog
 }
 
 # Renders a formatted table row with padding

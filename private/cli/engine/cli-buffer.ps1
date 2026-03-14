@@ -32,8 +32,10 @@
 
 # ── Module-level data ────────────────────────────────────────────────────────
 
-$script:FrontBuffer = $null
-$script:BackBuffer  = $null
+$script:FrontBuffer     = $null
+$script:BackBuffer      = $null
+$script:FrontBufferHash = $null
+$script:BackBufferHash  = $null
 
 # ── New-ScreenBuffer ─────────────────────────────────────────────────────────
 
@@ -51,8 +53,10 @@ function New-ScreenBuffer {
 
 function Initialize-Buffers {
     $H = $script:ScreenHeight
-    $script:FrontBuffer = New-ScreenBuffer -Height $H
-    $script:BackBuffer  = New-ScreenBuffer -Height $H
+    $script:FrontBuffer     = New-ScreenBuffer -Height $H
+    $script:BackBuffer      = New-ScreenBuffer -Height $H
+    $script:FrontBufferHash = [int[]]::new($H)
+    $script:BackBufferHash  = [int[]]::new($H)
 }
 
 # ── Clear-BufferRegion ───────────────────────────────────────────────────────
@@ -81,6 +85,21 @@ function Set-BufferLine {
 
     if ($Row -ge 0 -and $Row -lt $Buffer.Count) {
         $Buffer[$Row] = $Segments
+
+        # Update parallel hash array for fast diff comparison.
+        # Uses pure XOR (no multiply/shift) to stay within [int] range.
+        if ($null -ne $script:BackBufferHash -and $Row -lt $script:BackBufferHash.Count) {
+            [int]$Hash = $Segments.Count
+            foreach ($Seg in $Segments) {
+                if ($null -ne $Seg -and $Seg.Text) {
+                    $Hash = $Hash -bxor $Seg.Text.GetHashCode()
+                    if ($Seg.Color) { $Hash = $Hash -bxor $Seg.Color.GetHashCode() }
+                    if ($Seg.Bold)  { $Hash = $Hash -bxor 0x1A2B3C4D }
+                    if ($Seg.Dim)   { $Hash = $Hash -bxor 0x5E6F7A8B }
+                }
+            }
+            $script:BackBufferHash[$Row] = $Hash
+        }
     }
 }
 
@@ -207,19 +226,35 @@ function Render-BufferDiff {
     if ($null -eq $script:FrontBuffer -or $null -eq $script:BackBuffer) { return }
 
     $Height = [Math]::Min($script:FrontBuffer.Count, $script:BackBuffer.Count)
+    $HasHash = ($null -ne $script:FrontBufferHash -and $null -ne $script:BackBufferHash)
 
     for ($Row = 0; $Row -lt $Height; $Row++) {
-        $OldLine = $script:FrontBuffer[$Row]
-        $NewLine = $script:BackBuffer[$Row]
+        $Changed = $false
 
-        if (-not (Compare-BufferLine -LineA $OldLine -LineB $NewLine)) {
-            Render-Line -Row $Row -Segments $NewLine
+        if ($HasHash) {
+            if ($script:FrontBufferHash[$Row] -ne $script:BackBufferHash[$Row]) {
+                # Hash mismatch — definitely changed, skip full comparison
+                $Changed = $true
+            } elseif ($script:FrontBufferHash[$Row] -eq 0 -and $script:BackBufferHash[$Row] -eq 0) {
+                # Both empty/unset — skip
+                continue
+            } else {
+                # Hash match — verify (hash collision possible)
+                if (Compare-BufferLine -LineA $script:FrontBuffer[$Row] -LineB $script:BackBuffer[$Row]) {
+                    continue
+                }
+                $Changed = $true
+            }
+        } else {
+            $Changed = -not (Compare-BufferLine -LineA $script:FrontBuffer[$Row] -LineB $script:BackBuffer[$Row])
         }
-    }
 
-    # Swap: copy back buffer to front buffer (deep copy line references)
-    for ($Row = 0; $Row -lt $Height; $Row++) {
-        $script:FrontBuffer[$Row] = $script:BackBuffer[$Row]
+        if ($Changed) {
+            $NewLine = $script:BackBuffer[$Row]
+            Render-Line -Row $Row -Segments $NewLine
+            $script:FrontBuffer[$Row] = $NewLine
+            if ($HasHash) { $script:FrontBufferHash[$Row] = $script:BackBufferHash[$Row] }
+        }
     }
 }
 
@@ -233,9 +268,12 @@ function Render-FullBuffer {
         Render-Line -Row $Row -Segments $script:BackBuffer[$Row]
     }
 
-    # Copy back to front
+    # Copy back to front (including hash arrays)
     for ($Row = 0; $Row -lt $script:BackBuffer.Count; $Row++) {
         $script:FrontBuffer[$Row] = $script:BackBuffer[$Row]
+    }
+    if ($null -ne $script:BackBufferHash -and $null -ne $script:FrontBufferHash) {
+        [System.Array]::Copy($script:BackBufferHash, $script:FrontBufferHash, $script:BackBufferHash.Count)
     }
 }
 

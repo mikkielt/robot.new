@@ -316,7 +316,7 @@ File selection logic is identical to `Set-SessionHash` (section 9.2).
       - Compare: hash mismatch -> Check 1; if modified section contains `@PU:` -> Check 6; if 2+ PU markers -> Check 7
       - Headers only in stored -> Check 2; headers only in current -> Check 3
       - Scan level-3 headers for date validity (Check 5) and future dates (Check 9)
-      - Raw line scan for format anomalies (Check 8)
+      - Section-based scan for format anomalies (Check 8)
 
 ### 10.4 Precompiled Regex Patterns
 
@@ -328,12 +328,14 @@ File selection logic is identical to `Set-SessionHash` (section 9.2).
 
 ### 10.5 Format Anomaly Detection
 
-Raw line scan skips:
+Format anomaly detection uses parsed section data (from `Get-Markdown`) instead of a separate raw file read. For each section, the `Content` string is split on newline characters and scanned with line numbers computed from `Section.Header.LineNumber`.
+
+The scan skips:
 - Lines inside code blocks (` ``` ` toggle)
 - Lines starting with whitespace, `-`, `*`, or tab (list items, metadata)
 - Lines starting with `### ` (valid headers)
 
-Only bare date-like lines at column 0 without `### ` prefix are flagged.
+Only bare date-like lines at column 0 without `### ` prefix are flagged. This approach eliminates redundant file I/O — the parser output already contains all the content needed for anomaly detection.
 
 ### 10.6 Output Schema
 

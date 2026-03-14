@@ -86,27 +86,29 @@ function New-OperationResult {
         [string]$UndoHint
     )
 
-    $Changes  = @($script:OpChanges)
-    $Warnings = @($script:OpWarnings)
+    try {
+        $Changes  = @($script:OpChanges)
+        $Warnings = @($script:OpWarnings)
 
-    # FilePath: scalar when 1 file, array when multiple, $null when none
-    $FileCount = $script:OpFiles.Count
-    $FilePath = if ($FileCount -eq 0) { $null }
-                elseif ($FileCount -eq 1) { @($script:OpFiles)[0] }
-                else { @($script:OpFiles) }
+        # FilePath: scalar when 1 file, array when multiple, $null when none
+        $FileCount = $script:OpFiles.Count
+        $FilePath = if ($FileCount -eq 0) { $null }
+                    elseif ($FileCount -eq 1) { @($script:OpFiles)[0] }
+                    else { @($script:OpFiles) }
 
-    Clear-OperationContext
-
-    return [PSCustomObject]@{
-        PSTypeName = 'Robot.OperationResult'
-        Success    = $Success
-        Action     = $Action
-        TargetType = $TargetType
-        TargetName = $TargetName
-        FilePath   = $FilePath
-        Changes    = $Changes
-        Warnings   = $Warnings
-        UndoHint   = $UndoHint
-        Timestamp  = [datetime]::Now
+        return [PSCustomObject]@{
+            PSTypeName = 'Robot.OperationResult'
+            Success    = $Success
+            Action     = $Action
+            TargetType = $TargetType
+            TargetName = $TargetName
+            FilePath   = $FilePath
+            Changes    = $Changes
+            Warnings   = $Warnings
+            UndoHint   = $UndoHint
+            Timestamp  = [datetime]::Now
+        }
+    } finally {
+        Clear-OperationContext
     }
 }

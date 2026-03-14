@@ -40,13 +40,18 @@ function Invoke-IntelPreviewWorkflow {
     $MinDate = Invoke-WizardStep -Step $MinDateStep -State $State
     if ($MinDate -eq '__back__') { return }
 
-    Write-Host '  Pobieranie sesji z Intel...' -ForegroundColor $DisabledColor
+    $IntelProg = New-ProgressState -Title 'Przegląd Intel' -TotalSteps 1
+    Start-ProgressStep -State $IntelProg -Label 'Sesje'
 
     $SessionParams = @{ IncludeContent = $true }
     if ($MinDate) { $SessionParams['MinDate'] = $MinDate }
 
     try {
+        $SessCB = { param($C,$T,$D); Update-ProgressStep -State $IntelProg -Detail "$C/$T" }.GetNewClosure()
+        $SessionParams['ProgressCallback'] = $SessCB
         $Sessions = Get-Session @SessionParams
+        Complete-ProgressStep -State $IntelProg -Detail "$($Sessions.Count)"
+        Complete-ProgressGroup -State $IntelProg
 
         $IntelEntries = [System.Collections.Generic.List[PSCustomObject]]::new()
 
@@ -78,6 +83,8 @@ function Invoke-IntelPreviewWorkflow {
         }
     }
     catch {
+        Complete-ProgressStep -State $IntelProg -Detail 'BŁĄD' -Failed
+        Complete-ProgressGroup -State $IntelProg
         Write-CLILine -Text "Błąd: $_" -Color (Get-CLIColor -Role 'Error')
     }
 
@@ -131,7 +138,8 @@ function Invoke-FetchLogsWorkflow {
     $MaxDate = Invoke-WizardStep -Step $MaxDateStep -State $State
     if ($MaxDate -eq '__back__') { return }
 
-    Write-Host '  Pobieranie sesji...' -ForegroundColor $DisabledColor
+    $LogProg = New-ProgressState -Title 'Pobieranie logów' -TotalSteps 2
+    Start-ProgressStep -State $LogProg -Label 'Sesje'
 
     # Get sessions
     $SessionParams = @{}
@@ -139,7 +147,10 @@ function Invoke-FetchLogsWorkflow {
     if ($MaxDate) { $SessionParams['MaxDate'] = $MaxDate }
 
     try {
+        $SessCB = { param($C,$T,$D); Update-ProgressStep -State $LogProg -Detail "$C/$T" }.GetNewClosure()
+        $SessionParams['ProgressCallback'] = $SessCB
         $Sessions = Get-Session @SessionParams
+        Complete-ProgressStep -State $LogProg -Detail "$($Sessions.Count)"
         $WithLogs = [System.Collections.Generic.List[object]]::new()
         foreach ($S in $Sessions) {
             if ($null -ne $S.Logs -and $S.Logs.Count -gt 0) { $WithLogs.Add($S) }
@@ -169,9 +180,10 @@ function Invoke-FetchLogsWorkflow {
         if ($Confirm -ne $true) { return }
 
         Write-Host ''
-        Write-Host '  Rozpoczynam pobieranie...' -ForegroundColor $DisabledColor
-
+        Start-ProgressStep -State $LogProg -Label 'Pobieranie URL'
         $Result = $WithLogs | Invoke-SessionLogFetch
+        Complete-ProgressStep -State $LogProg -Detail "$($Result.Fetched) pobrano"
+        Complete-ProgressGroup -State $LogProg
         Write-Host ''
         Write-CLILine -Text "Pobrano: $($Result.Fetched)" -Color $AccentColor
         Write-CLILine -Text "Z cache: $($Result.Cached)" -Color $DisabledColor
@@ -184,6 +196,8 @@ function Invoke-FetchLogsWorkflow {
         }
     }
     catch {
+        Complete-ProgressStep -State $LogProg -Detail 'BŁĄD' -Failed
+        Complete-ProgressGroup -State $LogProg
         Write-CLILine -Text "Błąd: $_" -Color (Get-CLIColor -Role 'Error')
     }
 
@@ -213,15 +227,22 @@ function Invoke-LogLocationReportWorkflow {
     $MinDate = Invoke-WizardStep -Step $MinDateStep -State $State
     if ($MinDate -eq '__back__') { return }
 
-    Write-Host '  Przetwarzanie logów (tylko z cache)...' -ForegroundColor $DisabledColor
+    $LocProg = New-ProgressState -Title 'Raport lokacji z logów' -TotalSteps 2
+    Start-ProgressStep -State $LocProg -Label 'Sesje'
 
     try {
         $SessionParams = @{}
         if ($MinDate) { $SessionParams['MinDate'] = $MinDate }
+        $SessCB = { param($C,$T,$D); Update-ProgressStep -State $LocProg -Detail "$C/$T" }.GetNewClosure()
+        $SessionParams['ProgressCallback'] = $SessCB
         $Sessions = Get-Session @SessionParams
+        Complete-ProgressStep -State $LocProg -Detail "$($Sessions.Count)"
 
+        Start-ProgressStep -State $LocProg -Label 'Analiza logów'
         $LogResults = $Sessions | Get-SessionLog -Index $State.NameIndex -SkipFetch
         $LogResultArray = @($LogResults)
+        Complete-ProgressStep -State $LocProg -Detail "$($LogResultArray.Count) logów"
+        Complete-ProgressGroup -State $LocProg
 
         if ($LogResultArray.Count -eq 0) {
             Write-CLILine -Text 'Brak sparsowanych logów. Najpierw użyj "Pobierz logi sesji".' -Color $WarningColor
@@ -297,6 +318,8 @@ function Invoke-LogLocationReportWorkflow {
         }
     }
     catch {
+        Complete-ProgressStep -State $LocProg -Detail 'BŁĄD' -Failed
+        Complete-ProgressGroup -State $LocProg
         Write-CLILine -Text "Błąd: $_" -Color (Get-CLIColor -Role 'Error')
     }
 
@@ -380,7 +403,8 @@ function Invoke-LocationGraphWorkflow {
     if ($MoveChoice -eq '__back__') { return }
     if ($MoveChoice -eq 'Tak') { $IncludeMovement = $true }
 
-    Write-Host '  Budowanie grafu lokacji...' -ForegroundColor $DisabledColor
+    $GrProg = New-ProgressState -Title 'Graf lokacji' -TotalSteps 1
+    Start-ProgressStep -State $GrProg -Label 'Budowanie'
 
     try {
         $GraphParams = @{ Quiet = $true }
@@ -388,6 +412,8 @@ function Invoke-LocationGraphWorkflow {
         if ($IncludeMovement) { $GraphParams['IncludeMovementEdges'] = $true }
 
         $Graph = Get-LocationGraph @GraphParams
+        Complete-ProgressStep -State $GrProg -Detail "$($Graph.Summary.NodeCount) węzłów"
+        Complete-ProgressGroup -State $GrProg
 
         if (-not $Graph -or $Graph.Summary.NodeCount -eq 0) {
             Write-CLILine -Text 'Brak danych do wyświetlenia.' -Color $WarningColor
@@ -431,6 +457,8 @@ function Invoke-LocationGraphWorkflow {
         }
     }
     catch {
+        Complete-ProgressStep -State $GrProg -Detail 'BŁĄD' -Failed
+        Complete-ProgressGroup -State $GrProg
         Write-CLILine -Text "Błąd: $_" -Color (Get-CLIColor -Role 'Error')
         Write-Host ''
     }
@@ -473,10 +501,13 @@ function Invoke-CompareParticipationWorkflow {
         return
     }
 
-    Write-Host '  Porównywanie...' -ForegroundColor $DisabledColor
+    $CmpProg = New-ProgressState -Title 'Porównanie uczestnictwa' -TotalSteps 1
+    Start-ProgressStep -State $CmpProg -Label 'Analiza'
 
     try {
         $Result = Compare-SessionParticipation -EntityNames @($EntityNames) -Quiet
+        Complete-ProgressStep -State $CmpProg -Detail "$($Result.CommonSessions.Count) wspólnych"
+        Complete-ProgressGroup -State $CmpProg
 
         Write-Host ''
         Write-CLILine -Text "  Wspólne sesje: $($Result.CommonSessions.Count)" -Color $AccentColor
@@ -501,6 +532,8 @@ function Invoke-CompareParticipationWorkflow {
         }
     }
     catch {
+        Complete-ProgressStep -State $CmpProg -Detail 'BŁĄD' -Failed
+        Complete-ProgressGroup -State $CmpProg
         Write-CLILine -Text "Błąd: $_" -Color (Get-CLIColor -Role 'Error')
     }
 
@@ -537,7 +570,8 @@ function Invoke-SessionLeaderboardWorkflow {
     if ($TopValue -eq '__back__') { return }
     $TopN = if ($TopValue -and $TopValue -match '^\d+$') { [int]$TopValue } else { 20 }
 
-    Write-Host '  Budowanie rankingu...' -ForegroundColor $DisabledColor
+    $LbProg = New-ProgressState -Title 'Ranking uczestnictwa' -TotalSteps 1
+    Start-ProgressStep -State $LbProg -Label 'Budowanie'
 
     try {
         $Params = @{ Top = $TopN; Quiet = $true }
@@ -546,6 +580,8 @@ function Invoke-SessionLeaderboardWorkflow {
         }
 
         $Result = Get-SessionGraphLeaderboard @Params
+        Complete-ProgressStep -State $LbProg -Detail "$($Result.Count) pozycji"
+        Complete-ProgressGroup -State $LbProg
 
         if (-not $Result -or $Result.Count -eq 0) {
             Write-CLILine -Text 'Brak danych.' -Color $WarningColor
@@ -573,6 +609,8 @@ function Invoke-SessionLeaderboardWorkflow {
         }
     }
     catch {
+        Complete-ProgressStep -State $LbProg -Detail 'BŁĄD' -Failed
+        Complete-ProgressGroup -State $LbProg
         Write-CLILine -Text "Błąd: $_" -Color (Get-CLIColor -Role 'Error')
     }
 
@@ -657,7 +695,8 @@ function Invoke-SessionGraphWorkflow {
         if ($SessionHeader -eq '__back__') { return }
     }
 
-    Write-Host '  Wczytywanie indeksu...' -ForegroundColor $DisabledColor
+    $SgProg = New-ProgressState -Title 'Graf sesji' -TotalSteps 1
+    Start-ProgressStep -State $SgProg -Label 'Zapytanie'
 
     try {
         $QueryParams = @{ Mode = $Mode; Quiet = $true }
@@ -665,6 +704,8 @@ function Invoke-SessionGraphWorkflow {
         if ($SessionHeader) { $QueryParams['SessionHeader'] = $SessionHeader }
 
         $Result = Get-SessionGraph @QueryParams
+        Complete-ProgressStep -State $SgProg -Detail 'OK'
+        Complete-ProgressGroup -State $SgProg
 
         if ($Mode -eq 'Summary') {
             Write-Host ''
@@ -739,6 +780,8 @@ function Invoke-SessionGraphWorkflow {
         }
     }
     catch {
+        Complete-ProgressStep -State $SgProg -Detail 'BŁĄD' -Failed
+        Complete-ProgressGroup -State $SgProg
         Write-CLILine -Text "Błąd: $_" -Color (Get-CLIColor -Role 'Error')
         Write-Host ''
     }

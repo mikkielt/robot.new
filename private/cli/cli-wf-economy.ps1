@@ -35,7 +35,8 @@ function Invoke-EconomicSnapshotWorkflow {
     $DenomChoice = Invoke-WizardStep -Step $DenomStep -State $State
     if ($DenomChoice -eq '__back__') { return }
 
-    Write-Host '  Obliczanie...' -ForegroundColor $DisabledColor
+    $SnapProg = New-ProgressState -Title 'Migawka ekonomiczna' -TotalSteps 1
+    Start-ProgressStep -State $SnapProg -Label 'Obliczanie'
 
     try {
         $Params = @{ Quiet = $true }
@@ -44,6 +45,8 @@ function Invoke-EconomicSnapshotWorkflow {
         }
 
         $Snapshot = Get-EconomicSnapshot @Params
+        Complete-ProgressStep -State $SnapProg -Detail 'OK'
+        Complete-ProgressGroup -State $SnapProg
 
         Write-Host ''
         Write-CLILine -Text "  Data: $($Snapshot.SnapshotDate.ToString('yyyy-MM-dd'))" -Color $AccentColor
@@ -84,6 +87,8 @@ function Invoke-EconomicSnapshotWorkflow {
         }
     }
     catch {
+        Complete-ProgressStep -State $SnapProg -Detail 'BŁĄD' -Failed
+        Complete-ProgressGroup -State $SnapProg
         Write-CLILine -Text "Błąd: $_" -Color (Get-CLIColor -Role 'Error')
     }
 
@@ -121,10 +126,14 @@ function Invoke-EconomicTimelineWorkflow {
     $MaxDate = Invoke-WizardStep -Step $MaxDateStep -State $State
     if ($MaxDate -eq '__back__') { return }
 
-    Write-Host '  Generowanie osi czasu...' -ForegroundColor $DisabledColor
+    $TlProg = New-ProgressState -Title 'Oś czasu ekonomiczna' -TotalSteps 1
+    Start-ProgressStep -State $TlProg -Label 'Generowanie'
 
     try {
-        $Timeline = Get-EconomicTimeline -MinDate $MinDate -MaxDate $MaxDate -Quiet
+        $TlCB = { param($C,$T,$D); Update-ProgressStep -State $TlProg -Detail "$C/$T" }.GetNewClosure()
+        $Timeline = Get-EconomicTimeline -MinDate $MinDate -MaxDate $MaxDate -Quiet -ProgressCallback $TlCB
+        Complete-ProgressStep -State $TlProg -Detail "$($Timeline.Count) miesięcy"
+        Complete-ProgressGroup -State $TlProg
 
         if (-not $Timeline -or $Timeline.Count -eq 0) {
             Write-CLILine -Text 'Brak danych w wybranym zakresie.' -Color $WarningColor
@@ -147,6 +156,8 @@ function Invoke-EconomicTimelineWorkflow {
         }
     }
     catch {
+        Complete-ProgressStep -State $TlProg -Detail 'BŁĄD' -Failed
+        Complete-ProgressGroup -State $TlProg
         Write-CLILine -Text "Błąd: $_" -Color (Get-CLIColor -Role 'Error')
     }
 
@@ -167,10 +178,13 @@ function Invoke-MaterializationReportWorkflow {
     Write-CLILine -Text 'Raport materializacji' -Color $AccentColor
     Write-Host ''
 
-    Write-Host '  Obliczanie...' -ForegroundColor $DisabledColor
+    $MatProg = New-ProgressState -Title 'Raport materializacji' -TotalSteps 1
+    Start-ProgressStep -State $MatProg -Label 'Obliczanie'
 
     try {
         $Report = Get-MaterializationReport -Quiet
+        Complete-ProgressStep -State $MatProg -Detail 'OK'
+        Complete-ProgressGroup -State $MatProg
 
         Write-Host ''
 
@@ -230,6 +244,8 @@ function Invoke-MaterializationReportWorkflow {
         }
     }
     catch {
+        Complete-ProgressStep -State $MatProg -Detail 'BŁĄD' -Failed
+        Complete-ProgressGroup -State $MatProg
         Write-CLILine -Text "Błąd: $_" -Color (Get-CLIColor -Role 'Error')
     }
 

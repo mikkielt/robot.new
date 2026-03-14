@@ -63,6 +63,9 @@ function Test-PlayerCharacterPUAssignment {
         [Parameter(HelpMessage = "Pre-fetched full session list for stale history detection (avoids redundant Get-Session call)")]
         [object[]]$AllSessions,
 
+        [Parameter(HelpMessage = "Optional callback for CLI progress reporting (receives Current, Total, ItemDetail)")]
+        [scriptblock]$ProgressCallback,
+
         [Parameter(HelpMessage = "Suppress warning output to stderr")]
         [switch]$Quiet
     )
@@ -125,9 +128,19 @@ function Test-PlayerCharacterPUAssignment {
     }
     if ($ExcludeDirectory) { $SessionParams['ExcludeDirectory'] = $ExcludeDirectory }
 
-    $AllSessions = Get-Session @SessionParams
+    if (-not $PSBoundParameters.ContainsKey('AllSessions')) {
+        $AllSessions = Get-Session @SessionParams
+    }
+
+    $script:ProgressSessIdx = 0
+    $script:ProgressSessTotal = $AllSessions.Count
 
     foreach ($Session in $AllSessions) {
+        $script:ProgressSessIdx++
+        if ($ProgressCallback -and ($script:ProgressSessIdx % 10 -eq 0 -or $script:ProgressSessIdx -eq $script:ProgressSessTotal)) {
+            & $ProgressCallback $script:ProgressSessIdx $script:ProgressSessTotal $null
+        }
+
         # Failed sessions: scan content for PU data that was silently dropped
         if ($null -ne $Session.ParseError) {
             if (-not $Session.Content) { continue }

@@ -161,18 +161,10 @@ function Resolve-Name {
         return $Cached
     }
 
-    # Inline filter - kept as a nested function rather than a helper because it captures
-    # $OwnerType from the parent scope, avoiding an extra parameter on every call site
-    function Test-TypeFilter {
-        param([object]$Entry)
-        if (-not $OwnerType) { return $true }
-        return ($Entry.OwnerType -eq $OwnerType)
-    }
-
     # Stage 1: Exact index lookup (case-insensitive via index comparer)
     if ($Index.ContainsKey($Query)) {
         $Entry = $Index[$Query]
-        if (-not $Entry.Ambiguous -and (Test-TypeFilter $Entry)) {
+        if (-not $Entry.Ambiguous -and (-not $OwnerType -or $Entry.OwnerType -eq $OwnerType)) {
             if ($Cache) { $Cache[$CacheKey] = $Entry.Owner }
             return $Entry.Owner
         }
@@ -186,7 +178,7 @@ function Resolve-Name {
         foreach ($TokenKey in $StemIndex[$QueryStem]) {
             if ($Index.ContainsKey($TokenKey)) {
                 $Entry = $Index[$TokenKey]
-                if (-not $Entry.Ambiguous -and (Test-TypeFilter $Entry)) {
+                if (-not $Entry.Ambiguous -and (-not $OwnerType -or $Entry.OwnerType -eq $OwnerType)) {
                     if ($Cache) { $Cache[$CacheKey] = $Entry.Owner }
                     return $Entry.Owner
                 }
@@ -200,7 +192,7 @@ function Resolve-Name {
     foreach ($Candidate in $QueryCandidates) {
         if ($Index.ContainsKey($Candidate)) {
             $Entry = $Index[$Candidate]
-            if (-not $Entry.Ambiguous -and (Test-TypeFilter $Entry)) {
+            if (-not $Entry.Ambiguous -and (-not $OwnerType -or $Entry.OwnerType -eq $OwnerType)) {
                 if ($Cache) { $Cache[$CacheKey] = $Entry.Owner }
                 return $Entry.Owner
             }
@@ -231,7 +223,7 @@ function Resolve-Name {
             if ($BKResult.Distance -lt $BestDistance) {
                 if ($Index.ContainsKey($BKResult.Key)) {
                     $Entry = $Index[$BKResult.Key]
-                    if (-not $Entry.Ambiguous -and (Test-TypeFilter $Entry)) {
+                    if (-not $Entry.Ambiguous -and (-not $OwnerType -or $Entry.OwnerType -eq $OwnerType)) {
                         $BestDistance = $BKResult.Distance
                         $BestOwner   = $Entry.Owner
                     }
@@ -252,7 +244,7 @@ function Resolve-Name {
 
             if ($Distance -lt $BestDistance) {
                 $Entry = $Index[$TokenKey]
-                if (-not $Entry.Ambiguous -and (Test-TypeFilter $Entry)) {
+                if (-not $Entry.Ambiguous -and (-not $OwnerType -or $Entry.OwnerType -eq $OwnerType)) {
                     $BestDistance = $Distance
                     $BestOwner   = $Entry.Owner
                 }

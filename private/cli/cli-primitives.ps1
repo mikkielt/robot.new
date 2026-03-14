@@ -10,9 +10,14 @@
     cli-menus.ps1, which is chain-loaded via dot-source at the end of this file.
 
     Active helpers (NOT deprecated):
-    - Resolve-CLITheme:   background-adaptive Dark/Light detection
-    - Get-CLIColor:       semantic role → ConsoleColor (colorblind-safe)
-    - Write-CLILine:      consistent indented Write-Host wrapper
+    - Resolve-CLITheme:     background-adaptive Dark/Light detection
+    - Get-CLIColor:         semantic role → ConsoleColor (colorblind-safe)
+    - Write-CLILine:        consistent indented Write-Host wrapper
+    - New-ProgressState:    create Docker-style progress group (title + N steps)
+    - Start-ProgressStep:   begin a step (renders [X/N] ⠿ Label...)
+    - Update-ProgressStep:  update current step in-place (spinner + detail)
+    - Complete-ProgressStep: finish step with ✓/✗ + elapsed time
+    - Complete-ProgressGroup: finalize group with total elapsed on title line
 
     DEPRECATED helpers (use engine equivalents instead):
     - Read-ArrowKey:      → engine input handling (Start-InputLoop)
@@ -24,6 +29,8 @@
     Module-level data:
     - $script:CLIColorScheme: dark/light adaptive color mappings
     - $script:BannerArt:      ASCII art string
+    - $script:SpinnerFrames:  braille animation frames (8 chars)
+    - $script:SpinnerStatic:  static braille indicator for blocking calls
 
     Design:
     - Colors never rely on Red/Green (colorblind-safe). Every semantic meaning
@@ -112,6 +119,195 @@ function Write-CLILine {
     if ($Color) { $Params['ForegroundColor'] = $Color }
     if ($NoNewline) { $Params['NoNewline'] = $true }
     Write-Host @Params
+}
+
+# ── Progress Reporting (Docker-style) ────────────────────────────────────────
+
+# Braille spinner frames for animated progress (cycled by Update-ProgressStep)
+$script:SpinnerFrames = @(
+    [char]0x280B, # ⠋
+    [char]0x2819, # ⠙
+    [char]0x2839, # ⠹
+    [char]0x2838, # ⠸
+    [char]0x283C, # ⠼
+    [char]0x2834, # ⠴
+    [char]0x2826, # ⠦
+    [char]0x2827  # ⠧
+)
+
+# Static indicator shown during blocking calls (no callback to animate)
+$script:SpinnerStatic = [char]0x283F # ⠿
+
+function New-ProgressState {
+    param(
+        [Parameter(Mandatory)] [string]$Title,
+        [Parameter(Mandatory)] [int]$TotalSteps
+    )
+
+    $StartRow = [System.Console]::CursorTop
+    $GS = [System.Diagnostics.Stopwatch]::new()
+    $GS.Start()
+
+    # Render the title line (no counter, no symbol)
+    $Clr = Get-CLIColor -Role 'Disabled'
+    Write-Host "  $Title" -ForegroundColor $Clr
+
+    return @{
+        Title       = $Title
+        Steps       = [System.Collections.Generic.List[hashtable]]::new()
+        TotalSteps  = $TotalSteps
+        CurrentStep = 0
+        StartRow    = $StartRow
+        GroupStart  = $GS
+        StepWatch   = $null
+        SpinnerIdx  = 0
+        Failed      = $false
+    }
+}
+
+function Start-ProgressStep {
+    param(
+        [Parameter(Mandatory)] [hashtable]$State,
+        [Parameter(Mandatory)] [string]$Label
+    )
+
+    $State.CurrentStep++
+    $SW = [System.Diagnostics.Stopwatch]::new()
+    $SW.Start()
+    $State.StepWatch = $SW
+    $State.SpinnerIdx = 0
+
+    $Step = @{
+        Label   = $Label
+        Status  = 'Running'
+        Detail  = ''
+        Elapsed = 0.0
+    }
+    [void]$State.Steps.Add($Step)
+
+    # Render: [X/N] ⠿ Label...
+    $Row = $State.StartRow + $State.CurrentStep
+    $Width = [System.Console]::WindowWidth
+    $Clr = Get-CLIColor -Role 'Disabled'
+    $AccClr = Get-CLIColor -Role 'Accent'
+    $Counter = "[{0}/{1}]" -f $State.CurrentStep, $State.TotalSteps
+
+    [System.Console]::SetCursorPosition(0, $Row)
+    Write-Host "  $Counter " -NoNewline -ForegroundColor $Clr
+    Write-Host "$($script:SpinnerStatic) " -NoNewline -ForegroundColor $AccClr
+    $Tail = "$Label..."
+    $Pad = $Width - 2 - $Counter.Length - 1 - 2 - $Tail.Length
+    if ($Pad -lt 0) { $Pad = 0 }
+    Write-Host "$Tail$(' ' * $Pad)" -ForegroundColor $Clr
+}
+
+function Update-ProgressStep {
+    param(
+        [Parameter(Mandatory)] [hashtable]$State,
+        [string]$Detail
+    )
+
+    if ($State.Steps.Count -eq 0) { return }
+    $Step = $State.Steps[$State.Steps.Count - 1]
+    if ($Detail) { $Step.Detail = $Detail }
+
+    # Advance spinner
+    $State.SpinnerIdx = ($State.SpinnerIdx + 1) % $script:SpinnerFrames.Count
+    $Spinner = $script:SpinnerFrames[$State.SpinnerIdx]
+
+    # Re-render current line in-place
+    $Row = $State.StartRow + $State.CurrentStep
+    $Width = [System.Console]::WindowWidth
+    $Clr = Get-CLIColor -Role 'Disabled'
+    $AccClr = Get-CLIColor -Role 'Accent'
+    $Counter = "[{0}/{1}]" -f $State.CurrentStep, $State.TotalSteps
+
+    $LeftText = "$($Step.Label)..."
+    $RightText = if ($Step.Detail) { "  $($Step.Detail)" } else { '' }
+    # Prefix: "  [X/N] S " = 2 + counter + 1 + 2 = varies
+    $PrefixLen = 2 + $Counter.Length + 1 + 2
+    $Pad = $Width - $PrefixLen - $LeftText.Length - $RightText.Length
+    if ($Pad -lt 0) { $Pad = 0 }
+
+    [System.Console]::SetCursorPosition(0, $Row)
+    Write-Host "  $Counter " -NoNewline -ForegroundColor $Clr
+    Write-Host "$Spinner " -NoNewline -ForegroundColor $AccClr
+    Write-Host "$LeftText$(' ' * $Pad)$RightText" -NoNewline -ForegroundColor $Clr
+    # Clear any leftover chars from previous longer render
+    $Written = $PrefixLen + $LeftText.Length + $Pad + $RightText.Length
+    $Extra = $Width - $Written
+    if ($Extra -gt 0) { [System.Console]::Write(' ' * $Extra) }
+}
+
+function Complete-ProgressStep {
+    param(
+        [Parameter(Mandatory)] [hashtable]$State,
+        [string]$Detail,
+        [switch]$Failed
+    )
+
+    if ($State.Steps.Count -eq 0) { return }
+    $Step = $State.Steps[$State.Steps.Count - 1]
+
+    $State.StepWatch.Stop()
+    $Step.Elapsed = $State.StepWatch.Elapsed.TotalSeconds
+    $Step.Status = if ($Failed) { 'Error' } else { 'Done' }
+    if ($Detail) { $Step.Detail = $Detail }
+    if ($Failed) { $State.Failed = $true }
+
+    $Symbol = if ($Failed) { [char]0x2717 } else { [char]0x2713 }
+    $SymClr = if ($Failed) { Get-CLIColor -Role 'Error' } else { Get-CLIColor -Role 'Success' }
+
+    $ElapsedStr = '{0:F1}s' -f $Step.Elapsed
+
+    $Row = $State.StartRow + $State.CurrentStep
+    $Width = [System.Console]::WindowWidth
+    $Clr = Get-CLIColor -Role 'Disabled'
+    $Counter = "[{0}/{1}]" -f $State.CurrentStep, $State.TotalSteps
+
+    $LabelText = $Step.Label
+    $RightText = ''
+    if ($Step.Detail) { $RightText += "  $($Step.Detail)" }
+    $RightText += "   $ElapsedStr"
+    $PrefixLen = 2 + $Counter.Length + 1 + 2
+    $Pad = $Width - $PrefixLen - $LabelText.Length - $RightText.Length
+    if ($Pad -lt 0) { $Pad = 0 }
+
+    [System.Console]::SetCursorPosition(0, $Row)
+    Write-Host "  $Counter " -NoNewline -ForegroundColor $Clr
+    Write-Host "$Symbol " -NoNewline -ForegroundColor $SymClr
+    Write-Host "$LabelText$(' ' * $Pad)$RightText" -NoNewline -ForegroundColor $Clr
+    # Clear remainder
+    $Written = $PrefixLen + $LabelText.Length + $Pad + $RightText.Length
+    $Extra = $Width - $Written
+    if ($Extra -gt 0) { [System.Console]::Write(' ' * $Extra) }
+    Write-Host ''
+}
+
+function Complete-ProgressGroup {
+    param(
+        [Parameter(Mandatory)] [hashtable]$State
+    )
+
+    $State.GroupStart.Stop()
+    $TotalElapsed = '{0:F1}s' -f $State.GroupStart.Elapsed.TotalSeconds
+
+    # Update the title line with total elapsed (right-aligned)
+    $Row = $State.StartRow
+    $Width = [System.Console]::WindowWidth
+    $Clr = Get-CLIColor -Role 'Disabled'
+
+    $LeftPart = "  $($State.Title)"
+    $Pad = $Width - $LeftPart.Length - $TotalElapsed.Length - 3
+    if ($Pad -lt 0) { $Pad = 0 }
+
+    [System.Console]::SetCursorPosition(0, $Row)
+    Write-Host "$LeftPart$(' ' * $Pad)   $TotalElapsed" -ForegroundColor $Clr
+
+    # Move cursor below the last step + blank line
+    $FinalRow = $State.StartRow + $State.TotalSteps + 1
+    [System.Console]::SetCursorPosition(0, $FinalRow)
+    Write-Host ''
 }
 
 # ── Read-ArrowKey ────────────────────────────────────────────────────────────

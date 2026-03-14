@@ -76,14 +76,19 @@ function Invoke-SessionValidation {
     $MaxDate = Invoke-WizardStep -Step $MaxDateStep -State $State
     if ($MaxDate -eq '__back__') { return }
 
-    Write-Host '  Pobieranie sesji...' -ForegroundColor (Get-CLIColor -Role 'Disabled')
+    $ValProg = New-ProgressState -Title 'Walidacja sesji' -TotalSteps 1
+    Start-ProgressStep -State $ValProg -Label 'Sesje'
 
     $SessionParams = @{}
     if ($MinDate) { $SessionParams['MinDate'] = $MinDate }
     if ($MaxDate) { $SessionParams['MaxDate'] = $MaxDate }
 
     try {
+        $SessCB = { param($C,$T,$D); Update-ProgressStep -State $ValProg -Detail "$C/$T" }.GetNewClosure()
+        $SessionParams['ProgressCallback'] = $SessCB
         $Sessions = Get-Session @SessionParams
+        Complete-ProgressStep -State $ValProg -Detail "$($Sessions.Count)"
+        Complete-ProgressGroup -State $ValProg
         $IssuesFound = $false
 
         Write-Host ''
@@ -147,6 +152,8 @@ function Invoke-SessionValidation {
         }
     }
     catch {
+        Complete-ProgressStep -State $ValProg -Detail 'BŁĄD' -Failed
+        Complete-ProgressGroup -State $ValProg
         Write-CLILine -Text "$([char]0x2717) Błąd walidacji: $_" -Color $ErrorColor
     }
 

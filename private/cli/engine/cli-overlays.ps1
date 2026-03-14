@@ -241,7 +241,7 @@ function New-HealthDashboardComponent {
 
             # PU section
             $Row = Render-HealthSection -Row $Row -Label 'PU' -Data $HC.PU `
-                -CheckFn { param($D) @($D | Where-Object { $_.Status -ne 'OK' }).Count }
+                -CheckFn { param($D) $C = 0; foreach ($Item in $D) { if ($Item.Status -ne 'OK') { $C++ } }; return $C }
             $Row++
 
             # Currency section
@@ -251,7 +251,7 @@ function New-HealthDashboardComponent {
 
             # Integrity section
             $Row = Render-HealthSection -Row $Row -Label 'Integralnosc sesji' -Data $HC.Integrity `
-                -CheckFn { param($D) @($D | Where-Object { -not $_.IsValid }).Count }
+                -CheckFn { param($D) $C = 0; foreach ($Item in $D) { if (-not $Item.IsValid) { $C++ } }; return $C }
             $Row++
 
             # Graph section

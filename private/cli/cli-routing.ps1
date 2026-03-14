@@ -36,17 +36,18 @@ function Get-MenuItems {
 
     $Items = [System.Collections.Generic.List[PSCustomObject]]::new()
 
-    foreach ($Entry in $script:MenuRegistry) {
-        if ($Entry.Menu -ne $Category) { continue }
-
-        [void]$Items.Add([PSCustomObject]@{
-            ID          = $Entry.ID
-            Label       = $Entry.Label
-            Description = if ($Entry.Description) { $Entry.Description } else { '' }
-            RoleTag     = if ($Entry.Role) { $Entry.Role } else { $null }
-            InfoText    = if ($Entry.InfoText) { $Entry.InfoText } else { $null }
-            Disabled    = $false
-        })
+    $CategoryEntries = $null
+    if ($script:MenuRegistryByCategory -and $script:MenuRegistryByCategory.TryGetValue($Category, [ref]$CategoryEntries)) {
+        foreach ($Entry in $CategoryEntries) {
+            [void]$Items.Add([PSCustomObject]@{
+                ID          = $Entry.ID
+                Label       = $Entry.Label
+                Description = if ($Entry.Description) { $Entry.Description } else { '' }
+                RoleTag     = if ($Entry.Role) { $Entry.Role } else { $null }
+                InfoText    = if ($Entry.InfoText) { $Entry.InfoText } else { $null }
+                Disabled    = $false
+            })
+        }
     }
 
     return $Items
@@ -54,8 +55,9 @@ function Get-MenuItems {
 
 function Get-RegistryEntry {
     param([Parameter(Mandatory)] [string]$ID)
-    foreach ($Entry in $script:MenuRegistry) {
-        if ($Entry.ID -eq $ID) { return $Entry }
+    $Entry = $null
+    if ($script:MenuRegistryByID -and $script:MenuRegistryByID.TryGetValue($ID, [ref]$Entry)) {
+        return $Entry
     }
     return $null
 }
@@ -145,6 +147,12 @@ function Merge-PluginMenuItems {
 
         $script:MenuRegistry += $Item
         [void]$ExistingIDs.Add($Item.ID)
+        # Update indexes
+        $script:MenuRegistryByID[$Item.ID] = $Item
+        if (-not $script:MenuRegistryByCategory.ContainsKey($Item.Menu)) {
+            $script:MenuRegistryByCategory[$Item.Menu] = [System.Collections.Generic.List[hashtable]]::new()
+        }
+        [void]$script:MenuRegistryByCategory[$Item.Menu].Add($Item)
     }
 
     } # end if PluginMenuItems
@@ -326,23 +334,35 @@ function Invoke-QueryAction {
 
         # Apply ColumnResolvers for computed columns
         if ($Entry.ColumnResolvers -and $Entry.ColumnResolvers.Count -gt 0) {
+            # Pre-split columns into resolved vs. passthrough to avoid per-cell ContainsKey
+            $ResolvedCols = [System.Collections.Generic.List[object]]::new()
+            $PassthroughCols = [System.Collections.Generic.List[string]]::new()
+            foreach ($ColName in $Columns) {
+                if ($Entry.ColumnResolvers.ContainsKey($ColName)) {
+                    [void]$ResolvedCols.Add(@{ Name = $ColName; Resolver = $Entry.ColumnResolvers[$ColName] })
+                } else {
+                    [void]$PassthroughCols.Add($ColName)
+                }
+            }
+
             $TransformedData = [System.Collections.Generic.List[PSCustomObject]]::new()
             foreach ($Row in $QueryResult) {
                 $Props = [ordered]@{}
-                foreach ($ColName in $Columns) {
-                    if ($Entry.ColumnResolvers.ContainsKey($ColName)) {
-                        $Props[$ColName] = & $Entry.ColumnResolvers[$ColName] $Row
-                    }
-                    elseif ($Row.PSObject.Properties[$ColName]) {
-                        $Props[$ColName] = $Row.$ColName
-                    }
-                    else {
-                        $Props[$ColName] = ''
-                    }
+                foreach ($RC in $ResolvedCols) {
+                    $Props[$RC.Name] = & $RC.Resolver $Row
+                }
+                foreach ($PC in $PassthroughCols) {
+                    $Props[$PC] = if ($Row.PSObject.Properties[$PC]) { $Row.$PC } else { '' }
                 }
                 [void]$TransformedData.Add([PSCustomObject]$Props)
             }
             $QueryResult = $TransformedData.ToArray()
+        }
+
+        # Build identity→index map once for O(1) detail card lookups
+        $IdMap = [System.Collections.Generic.Dictionary[int,int]]::new($QueryResult.Count)
+        for ($I = 0; $I -lt $QueryResult.Count; $I++) {
+            $IdMap[[System.Runtime.CompilerServices.RuntimeHelpers]::GetHashCode($QueryResult[$I])] = $I
         }
 
         # Engine-driven table → detail card loop
@@ -386,22 +406,10 @@ function Invoke-QueryAction {
             if ($SelectedRow -eq '__back__') { break }
             if (-not $SelectedRow) { break }
 
-            # Map selected row back to original data for detail card
+            # Map selected row back to original data via pre-built identity hash map
             $RowIdx = -1
-            $TableData = $TableComponent.Data
-            for ($I = 0; $I -lt $TableData.Count; $I++) {
-                if ([object]::ReferenceEquals($TableData[$I], $SelectedRow)) {
-                    $RowIdx = $I; break
-                }
-            }
-            # If filter was active, search AllData for the absolute index
-            if ($RowIdx -lt 0) {
-                for ($I = 0; $I -lt $QueryResult.Count; $I++) {
-                    if ([object]::ReferenceEquals($QueryResult[$I], $SelectedRow)) {
-                        $RowIdx = $I; break
-                    }
-                }
-            }
+            $SelHash = [System.Runtime.CompilerServices.RuntimeHelpers]::GetHashCode($SelectedRow)
+            if ($IdMap.ContainsKey($SelHash)) { $RowIdx = $IdMap[$SelHash] }
             $OriginalRow = if ($RowIdx -ge 0 -and $RowIdx -lt $OriginalData.Count) { $OriginalData[$RowIdx] } else { $SelectedRow }
 
             # Use custom detail function if defined, otherwise engine detail card
@@ -734,7 +742,8 @@ function Show-MainMenu {
         # Build top-level category items
         $CategoryItems = [System.Collections.Generic.List[PSCustomObject]]::new()
         foreach ($Cat in $script:MenuOrder) {
-            $SubCount = ($script:MenuRegistry | Where-Object { $_.Menu -eq $Cat }).Count
+            $CatList = $null
+            $SubCount = if ($script:MenuRegistryByCategory -and $script:MenuRegistryByCategory.TryGetValue($Cat, [ref]$CatList)) { $CatList.Count } else { 0 }
             [void]$CategoryItems.Add([PSCustomObject]@{
                 ID          = $Cat
                 Label       = $Cat
@@ -818,11 +827,35 @@ function Get-MigrationMenuItems {
 function Refresh-NavState {
     param([Parameter(Mandatory)] [object]$State)
 
-    Write-Host "  Odświeżanie danych..." -ForegroundColor (Get-CLIColor -Role 'Disabled')
+    $Progress = New-ProgressState -Title 'Odświeżanie danych' -TotalSteps 4
+
+    Start-ProgressStep -State $Progress -Label 'Encje'
     $State.Entities = Get-Entity -Quiet
+    Complete-ProgressStep -State $Progress -Detail "$($State.Entities.Count)"
+
+    Start-ProgressStep -State $Progress -Label 'Gracze'
     $State.Players  = Get-Player
+    Complete-ProgressStep -State $Progress -Detail "$($State.Players.Count)"
+
+    Start-ProgressStep -State $Progress -Label 'Indeks nazw'
     $State.NameIndex = Get-NameIndex -Players $State.Players -Entities $State.Entities
+    Complete-ProgressStep -State $Progress -Detail "$($State.NameIndex.Count) wpisów"
+
     $State.ResolveCache = @{}
+
+    # Rebuild entity type index
+    Start-ProgressStep -State $Progress -Label 'Indeks typów'
+    $TypeIdx = @{}
+    foreach ($E in $State.Entities) {
+        if (-not $TypeIdx.ContainsKey($E.Type)) {
+            $TypeIdx[$E.Type] = [System.Collections.Generic.List[object]]::new()
+        }
+        [void]$TypeIdx[$E.Type].Add($E)
+    }
+    $State.EntityTypeIndex = $TypeIdx
+    Complete-ProgressStep -State $Progress -Detail "$($TypeIdx.Count) typów"
+
+    Complete-ProgressGroup -State $Progress
 }
 
 function Refresh-HealthChecks {
@@ -833,24 +866,57 @@ function Refresh-HealthChecks {
     $HC.Errors = @()
     $HC.Skipped = $false
 
+    $Progress = New-ProgressState -Title 'Sprawdzanie stanu systemu' -TotalSteps 6
+
     # Suppress non-terminating errors during health checks — internal calls
     # would otherwise corrupt the CLI display.
     $PrevEAP = $ErrorActionPreference
     $ErrorActionPreference = 'SilentlyContinue'
 
-    $SharedSessions    = Get-Session -Quiet -Entities $State.Entities -Players $State.Players
-    $SharedEntityState = Get-EntityState -Quiet
+    Start-ProgressStep -State $Progress -Label 'Sesje'
+    $SessCB = { param($C,$T,$D); Update-ProgressStep -State $Progress -Detail "$C/$T" }.GetNewClosure()
+    $SharedSessions = Get-Session -Quiet -Entities $State.Entities -Players $State.Players -NameIndex $State.NameIndex -ProgressCallback $SessCB
+    Complete-ProgressStep -State $Progress -Detail "$($SharedSessions.Count)"
 
-    try { $HC.PU        = Test-PlayerCharacterPUAssignment -Quiet -AllSessions $SharedSessions }
-    catch { $HC.Errors += "PU: $($_.Exception.Message)" }
-    try { $HC.Currency  = Test-CurrencyReconciliation -Quiet -Entities $SharedEntityState -Sessions $SharedSessions }
-    catch { $HC.Errors += "Waluta: $($_.Exception.Message)" }
-    try { $HC.Integrity = Test-SessionIntegrity -Quiet -Since (Get-Date).AddMonths(-2) }
-    catch { $HC.Errors += "Sesje: $($_.Exception.Message)" }
-    try { $HC.Graph     = Test-SessionGraphIntegrity -Quiet -Sessions $SharedSessions -NameIndex $State.NameIndex }
-    catch { $HC.Errors += "Graf: $($_.Exception.Message)" }
+    Start-ProgressStep -State $Progress -Label 'Stan encji'
+    $EntCB = { param($C,$T,$D); Update-ProgressStep -State $Progress -Detail "$C/$T" }.GetNewClosure()
+    $SharedEntityState = Get-EntityState -Quiet `
+        -Entities $State.Entities -Sessions $SharedSessions `
+        -Players $State.Players -NameIndex $State.NameIndex `
+        -ProgressCallback $EntCB
+    Complete-ProgressStep -State $Progress
+
+    Start-ProgressStep -State $Progress -Label 'Walidacja PU'
+    $PUCB = { param($C,$T,$D); Update-ProgressStep -State $Progress -Detail "$C/$T" }.GetNewClosure()
+    try { $HC.PU = Test-PlayerCharacterPUAssignment -Quiet -AllSessions $SharedSessions -ProgressCallback $PUCB
+          Complete-ProgressStep -State $Progress -Detail 'OK' }
+    catch { $HC.Errors += "PU: $($_.Exception.Message)"
+            Complete-ProgressStep -State $Progress -Detail 'BŁĄD' -Failed }
+
+    Start-ProgressStep -State $Progress -Label 'Walidacja walut'
+    $CurCB = { param($C,$T,$D); Update-ProgressStep -State $Progress -Detail "$C/$T" }.GetNewClosure()
+    try { $HC.Currency = Test-CurrencyReconciliation -Quiet -Entities $SharedEntityState -Sessions $SharedSessions -ProgressCallback $CurCB
+          Complete-ProgressStep -State $Progress -Detail 'OK' }
+    catch { $HC.Errors += "Waluta: $($_.Exception.Message)"
+            Complete-ProgressStep -State $Progress -Detail 'BŁĄD' -Failed }
+
+    Start-ProgressStep -State $Progress -Label 'Integralność sesji'
+    $IntCB = { param($C,$T,$D); Update-ProgressStep -State $Progress -Detail "$C/$T" }.GetNewClosure()
+    try { $HC.Integrity = Test-SessionIntegrity -Quiet -Since (Get-Date).AddMonths(-2) -ProgressCallback $IntCB
+          Complete-ProgressStep -State $Progress -Detail 'OK' }
+    catch { $HC.Errors += "Sesje: $($_.Exception.Message)"
+            Complete-ProgressStep -State $Progress -Detail 'BŁĄD' -Failed }
+
+    Start-ProgressStep -State $Progress -Label 'Graf sesji'
+    $GrCB = { param($C,$T,$D); Update-ProgressStep -State $Progress -Detail "$C/$T" }.GetNewClosure()
+    try { $HC.Graph = Test-SessionGraphIntegrity -Quiet -Sessions $SharedSessions -NameIndex $State.NameIndex -ProgressCallback $GrCB
+          Complete-ProgressStep -State $Progress -Detail 'OK' }
+    catch { $HC.Errors += "Graf: $($_.Exception.Message)"
+            Complete-ProgressStep -State $Progress -Detail 'BŁĄD' -Failed }
 
     $ErrorActionPreference = $PrevEAP
+
+    Complete-ProgressGroup -State $Progress
 }
 
 function Invoke-MigrationPhaseAction {

@@ -489,9 +489,15 @@ After format upgrade, narrator verification, and location review, Phase 5 genera
 
 **Export** (`Export-SessionReviewFile`): Calls `Get-Session -ExcludeDirectory $script:MigrationExcludeDirs -IncludeContent -Quiet`, sorts by `Header`, splits `Content` on `[char]10` with `.TrimEnd([char]13)`, builds relative paths from `FilePaths` via `$P.Substring($RepoRoot.Length + 1)`. Writes via `[System.IO.File]::WriteAllLines()` with UTF-8 no BOM.
 
-**Import** (`Import-SessionReviewFile`): Parses the edited review file into session blocks (header + body + source comment). Fetches current state via `Get-Session -IncludeContent`. Classifies changes into Modified (header exists in both, content differs), New (header in review but not source), and Deleted (header in source but not review). Uses `Find-SessionInFile` for line-range lookup and array splicing for updates. New sessions are written to `.robot/res/review-additions/YYYY-MM-DD-slug.md`. Requires `Request-YesNo` confirmation before applying.
+**Import** (`Import-SessionReviewFile`): Parses the edited review file into session blocks (header + body + source comment). Fetches current state via `Get-Session -IncludeContent`. Classifies changes into Modified (header exists in both, content differs), New (header in review but not source), and Deleted (header in source but not review).
+
+File operations are batched: all modifications and deletions are grouped by target file path into a `Dictionary[string, List[object]]`. Each file is read once, all operations are applied in reverse section order (highest `HeaderLineIdx` first to preserve line indices), and the result is written once. This replaces the previous per-operation read-modify-write pattern. Uses `Find-SessionInFile` for line-range lookup and array splicing within the in-memory buffer.
+
+New sessions are written to `.robot/res/review-additions/YYYY-MM-DD-slug.md`. Requires `Request-YesNo` confirmation before applying.
 
 **Step lifecycle**: On first run (checklist `SessionReviewFileGenerated` not set), generates the file. On subsequent runs, presents a `Request-UserChoice` menu: **P** (skip), **Z** (apply edits), **R** (regenerate), **H** (refresh hashes via `Set-SessionHash -Full`). The review step is Step 9; hash refresh is Step 10; graph build is Step 11.
+
+**Entity caching**: Phase 5 lazy-loads the entity roster (`$PhaseEntities`) on first use in the location review step and reuses it for subsequent steps, avoiding redundant `Get-Entity` calls within the phase.
 
 **Checklist**: `SessionReviewFileGenerated`. Not included in the phase completion gate — the review workflow is optional and asynchronous.
 
@@ -511,7 +517,7 @@ Implemented in `migration/migration-ui.ps1`. Three functions provide a structure
 |---|---|
 | `Initialize-MigrationLog` | Opens a fresh log file with timestamp header. Called once at migration start (`migrate.ps1`). Overwrites any previous log. |
 | `Write-MigrationLog` | Appends a structured entry with level, phase context, summary, and optional detail lines. |
-| `Flush-MigrationLog` | Writes accumulated lines to disk via `[System.IO.File]::WriteAllLines()` (UTF-8 no BOM). Called after every `Write-MigrationLog`. |
+| `Flush-MigrationLog` | Writes accumulated lines to disk via `[System.IO.File]::WriteAllLines()` (UTF-8 no BOM). Called at phase boundaries (via `Write-PhaseSummary`) rather than after every log entry, reducing I/O overhead. |
 
 #### `Write-MigrationLog` Parameters
 

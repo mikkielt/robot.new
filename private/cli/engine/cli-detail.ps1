@@ -197,6 +197,9 @@ function Format-DetailValue {
         # Temporal objects (have ValidFrom)
         if ($Value[0] -is [PSCustomObject] -and $Value[0].PSObject.Properties['ValidFrom']) {
             $Lines = [System.Collections.Generic.List[string]]::new()
+            $SkipNames = [System.Collections.Generic.HashSet[string]]::new(
+                [string[]]@('ValidFrom','ValidTo','Path','CN'),
+                [System.StringComparer]::Ordinal)
             $ShowCount = [Math]::Min($Value.Count, 8)
             for ($I = 0; $I -lt $ShowCount; $I++) {
                 $V = $Value[$I]
@@ -208,7 +211,7 @@ function Format-DetailValue {
                 elseif ($V.PSObject.Properties['Value'] -and $V.Value) { $VV = $V.Value }
                 else {
                     foreach ($SP in $V.PSObject.Properties) {
-                        if ($SP.Name -in @('ValidFrom','ValidTo','Path','CN')) { continue }
+                        if ($SkipNames.Contains($SP.Name)) { continue }
                         if ($null -eq $SP.Value) { continue }
                         if ($SP.Value -is [string] -or $SP.Value -is [decimal] -or $SP.Value -is [int]) {
                             $VV = [string]$SP.Value; break

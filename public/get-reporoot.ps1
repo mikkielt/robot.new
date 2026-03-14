@@ -38,6 +38,11 @@ function Get-RepoRoot {
         return $script:DataDirectoryOverride
     }
 
+    # Return cached result when no explicit ModuleRoot override is given
+    if (-not $ModuleRoot -and $script:CachedRepoRoot) {
+        return $script:CachedRepoRoot
+    }
+
     if (-not $ModuleRoot) {
         $ModuleRoot = $script:ModuleRoot
     }
@@ -54,6 +59,7 @@ function Get-RepoRoot {
 
     while ($CurrentDir -ne [System.IO.Path]::GetPathRoot($CurrentDir)) {
         if ([System.IO.Directory]::Exists([System.IO.Path]::Combine($CurrentDir, ".git"))) {
+            $script:CachedRepoRoot = $CurrentDir
             return $CurrentDir
         }
         $CurrentDir = [System.IO.Path]::GetDirectoryName($CurrentDir)
@@ -62,6 +68,7 @@ function Get-RepoRoot {
     # Fallback: the module directory itself may be the repo root (standalone checkout, e.g. CI)
     $GitPath = [System.IO.Path]::Combine($ModuleRoot, ".git")
     if ([System.IO.Directory]::Exists($GitPath) -or [System.IO.File]::Exists($GitPath)) {
+        $script:CachedRepoRoot = $ModuleRoot
         return $ModuleRoot
     }
 

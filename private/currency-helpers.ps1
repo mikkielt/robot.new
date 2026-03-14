@@ -12,6 +12,7 @@
     - ConvertFrom-CurrencyBaseUnit:    convert Kogi amount to highest-denomination breakdown
     - Resolve-CurrencyDenomination:    resolve colloquial/stem denomination name to canonical
     - Test-IsCurrencyEntity:           check if an entity is a currency entity
+    - Build-CurrencyEntityLookup:      pre-build denomination+owner -> entity hashtable
     - Find-CurrencyEntity:             find a currency entity by denomination and owner
     - Resolve-CurrencyOwnerType:       classify owner as Physical/Virtual/Unknown by entity type
     - Get-CurrencyEntitiesFiltered:    identify, filter by status, and enrich currency entities
@@ -146,12 +147,34 @@ function Test-IsCurrencyEntity {
     return $false
 }
 
+function Build-CurrencyEntityLookup {
+    param(
+        [Parameter(Mandatory)]
+        [object[]]$Entities
+    )
+
+    $Lookup = [System.Collections.Generic.Dictionary[string, object]]::new([System.StringComparer]::OrdinalIgnoreCase)
+
+    foreach ($Entity in $Entities) {
+        if (-not $Entity.GenericNames -or $Entity.GenericNames.Count -eq 0) { continue }
+        if ($Entity.Type -ne 'Przedmiot') { continue }
+        if (-not $Entity.Owner) { continue }
+
+        foreach ($GN in $Entity.GenericNames) {
+            $Resolved = Resolve-CurrencyDenomination -Name $GN
+            if ($Resolved) {
+                $Key = "$($Resolved.Name)|$($Entity.Owner)"
+                if (-not $Lookup.ContainsKey($Key)) {
+                    $Lookup[$Key] = $Entity
+                }
+            }
+        }
+    }
+
+    return $Lookup
+}
+
 function Find-CurrencyEntity {
-    <#
-        .SYNOPSIS
-        Finds a currency entity matching a denomination and owner from a list of entities.
-        Matches by @generyczne_nazwy containing the denomination AND @należy_do matching the owner.
-    #>
     param(
         [Parameter(Mandatory)]
         [object[]]$Entities,
@@ -160,13 +183,24 @@ function Find-CurrencyEntity {
         [string]$Denomination,
 
         [Parameter(Mandatory)]
-        [string]$OwnerName
+        [string]$OwnerName,
+
+        [System.Collections.Generic.Dictionary[string, object]]$CurrencyLookup
     )
 
     $ResolvedDenom = Resolve-CurrencyDenomination -Name $Denomination
     if (-not $ResolvedDenom) { return $null }
 
     $CanonicalName = $ResolvedDenom.Name
+
+    if ($CurrencyLookup) {
+        $Key = "$CanonicalName|$OwnerName"
+        $Found = $null
+        if ($CurrencyLookup.TryGetValue($Key, [ref]$Found)) {
+            return $Found
+        }
+        return $null
+    }
 
     foreach ($Entity in $Entities) {
         if (-not $Entity.GenericNames -or $Entity.GenericNames.Count -eq 0) { continue }

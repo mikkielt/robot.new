@@ -69,44 +69,50 @@ function Get-FuzzySearchCandidates {
             }
         }
         'locations' {
-            foreach ($E in $State.Entities) {
-                if ($E.Type -ieq 'Lokacja') {
-                    [void]$Candidates.Add([PSCustomObject]@{
-                        Name        = $E.Name
-                        Type        = 'Lokacja'
-                        DisplayText = $E.Name
-                        Owner       = $E
-                    })
-                }
+            $TypeFiltered = if ($State.EntityTypeIndex -and $State.EntityTypeIndex.ContainsKey('Lokacja')) { $State.EntityTypeIndex['Lokacja'] } else { $null }
+            $Items = if ($TypeFiltered) { $TypeFiltered } else { $State.Entities }
+            foreach ($E in $Items) {
+                if (-not $TypeFiltered -and $E.Type -ine 'Lokacja') { continue }
+                [void]$Candidates.Add([PSCustomObject]@{
+                    Name        = $E.Name
+                    Type        = 'Lokacja'
+                    DisplayText = $E.Name
+                    Owner       = $E
+                })
             }
         }
         'groups' {
-            foreach ($E in $State.Entities) {
-                if ($E.Type -ieq 'Grupa') {
-                    [void]$Candidates.Add([PSCustomObject]@{
-                        Name        = $E.Name
-                        Type        = 'Grupa'
-                        DisplayText = $E.Name
-                        Owner       = $E
-                    })
-                }
+            $TypeFiltered = if ($State.EntityTypeIndex -and $State.EntityTypeIndex.ContainsKey('Grupa')) { $State.EntityTypeIndex['Grupa'] } else { $null }
+            $Items = if ($TypeFiltered) { $TypeFiltered } else { $State.Entities }
+            foreach ($E in $Items) {
+                if (-not $TypeFiltered -and $E.Type -ine 'Grupa') { continue }
+                [void]$Candidates.Add([PSCustomObject]@{
+                    Name        = $E.Name
+                    Type        = 'Grupa'
+                    DisplayText = $E.Name
+                    Owner       = $E
+                })
             }
         }
         'npcs' {
-            foreach ($E in $State.Entities) {
-                if ($E.Type -ieq 'NPC') {
-                    [void]$Candidates.Add([PSCustomObject]@{
-                        Name        = $E.Name
-                        Type        = 'NPC'
-                        DisplayText = $E.Name
-                        Owner       = $E
-                    })
-                }
+            $TypeFiltered = if ($State.EntityTypeIndex -and $State.EntityTypeIndex.ContainsKey('NPC')) { $State.EntityTypeIndex['NPC'] } else { $null }
+            $Items = if ($TypeFiltered) { $TypeFiltered } else { $State.Entities }
+            foreach ($E in $Items) {
+                if (-not $TypeFiltered -and $E.Type -ine 'NPC') { continue }
+                [void]$Candidates.Add([PSCustomObject]@{
+                    Name        = $E.Name
+                    Type        = 'NPC'
+                    DisplayText = $E.Name
+                    Owner       = $E
+                })
             }
         }
         'currency' {
-            foreach ($E in $State.Entities) {
-                if ($E.Type -ieq 'Przedmiot' -and $E.Tags -and $E.Tags['ilość']) {
+            $CurrItems = if ($State.EntityTypeIndex -and $State.EntityTypeIndex.ContainsKey('Przedmiot')) { $State.EntityTypeIndex['Przedmiot'] } else { $null }
+            $CurrSource = if ($CurrItems) { $CurrItems } else { $State.Entities }
+            foreach ($E in $CurrSource) {
+                if (-not $CurrItems -and $E.Type -ine 'Przedmiot') { continue }
+                if ($E.Tags -and $E.Tags['ilość']) {
                     [void]$Candidates.Add([PSCustomObject]@{
                         Name        = $E.Name
                         Type        = 'Waluta'
@@ -159,20 +165,23 @@ function Filter-FuzzyCandidates {
     }
 
     $Results = [System.Collections.Generic.List[PSCustomObject]]::new()
+    $Seen = [System.Collections.Generic.HashSet[object]]::new()
 
     # Stage 1: Prefix match
     foreach ($C in $Candidates) {
         if ($C.Name.StartsWith($Query, [System.StringComparison]::OrdinalIgnoreCase)) {
             [void]$Results.Add($C)
+            [void]$Seen.Add($C)
             if ($Results.Count -ge $MaxResults) { return $Results }
         }
     }
 
     # Stage 2: Contains match
     foreach ($C in $Candidates) {
-        if ($Results.Contains($C)) { continue }
+        if ($Seen.Contains($C)) { continue }
         if ($C.Name.IndexOf($Query, [System.StringComparison]::OrdinalIgnoreCase) -ge 0) {
             [void]$Results.Add($C)
+            [void]$Seen.Add($C)
             if ($Results.Count -ge $MaxResults) { return $Results }
         }
     }
@@ -188,7 +197,7 @@ function Filter-FuzzyCandidates {
         if ($Resolved) {
             $ResolvedName = if ($Resolved.Name) { $Resolved.Name } else { [string]$Resolved }
             foreach ($C in $Candidates) {
-                if ($Results.Contains($C)) { continue }
+                if ($Seen.Contains($C)) { continue }
                 if ([string]::Equals($C.Name, $ResolvedName, [System.StringComparison]::OrdinalIgnoreCase)) {
                     [void]$Results.Add($C)
                     break

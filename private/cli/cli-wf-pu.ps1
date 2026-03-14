@@ -64,11 +64,19 @@ function Invoke-PUAssignmentWorkflow {
     Write-Host ''
     Write-CLILine -Text "  Rok: $Year  Miesiąc: $Month" -Color $DisabledColor
     Write-Host ''
-    Write-Host '  Sprawdzanie integralności sesji...' -ForegroundColor $DisabledColor
-
+    $PUProg = New-ProgressState -Title 'Sprawdzanie integralności sesji' -TotalSteps 1
+    Start-ProgressStep -State $PUProg -Label 'Integralność'
     $IntegrityPassed = $true
     try {
-        $Integrity = Test-SessionIntegrity
+        $IntCB = { param($C,$T,$D); Update-ProgressStep -State $PUProg -Detail "$C/$T" }.GetNewClosure()
+        $Integrity = Test-SessionIntegrity -ProgressCallback $IntCB
+
+        if (-not $Integrity.OK) {
+            Complete-ProgressStep -State $PUProg -Detail 'Problemy' -Failed
+        } else {
+            Complete-ProgressStep -State $PUProg -Detail 'OK'
+        }
+        Complete-ProgressGroup -State $PUProg
 
         if (-not $Integrity.OK) {
             Write-Host ''
@@ -116,6 +124,8 @@ function Invoke-PUAssignmentWorkflow {
         }
     }
     catch {
+        Complete-ProgressStep -State $PUProg -Detail 'BŁĄD' -Failed
+        Complete-ProgressGroup -State $PUProg
         Write-CLILine -Text "$([char]0x26A0) Nie udało się sprawdzić integralności: $_" -Color $WarningColor
     }
 
@@ -125,10 +135,13 @@ function Invoke-PUAssignmentWorkflow {
     Write-Host ''
     Write-CLILine -Text "  Rok: $Year  Miesiąc: $Month" -Color $DisabledColor
     Write-Host ''
-    Write-Host "  Obliczanie PU za $Month/$Year..." -ForegroundColor $DisabledColor
+    $DryProg = New-ProgressState -Title "Obliczanie PU za $Month/$Year" -TotalSteps 1
+    Start-ProgressStep -State $DryProg -Label 'Symulacja'
 
     try {
         $DryResults = Invoke-PlayerCharacterPUAssignment -Year $Year -Month $Month -WhatIf *>&1 | Out-String
+        Complete-ProgressStep -State $DryProg -Detail 'OK'
+        Complete-ProgressGroup -State $DryProg
 
         Write-Host ''
         Write-CLILine -Text 'Wynik próbny:' -Color $WarningColor
@@ -139,6 +152,8 @@ function Invoke-PUAssignmentWorkflow {
         }
     }
     catch {
+        Complete-ProgressStep -State $DryProg -Detail 'BŁĄD' -Failed
+        Complete-ProgressGroup -State $DryProg
         Write-CLILine -Text "Błąd: $_" -Color $ErrorColor
         Write-CLILine -Text 'Naciśnij dowolny klawisz...' -Color $DisabledColor
         [void][System.Console]::ReadKey($true)
@@ -251,11 +266,18 @@ function Invoke-PrePUDiagnostics {
         Show-InfoBox -Checks $Entry.PreChecks
     }
 
-    Write-Host '  Uruchamianie diagnostyki...' -ForegroundColor (Get-CLIColor -Role 'Disabled')
-    Write-Host ''
-
+    $DiagProg = New-ProgressState -Title 'Diagnostyka PU' -TotalSteps 1
+    Start-ProgressStep -State $DiagProg -Label 'Walidacja'
     try {
-        $Diag = Test-PlayerCharacterPUAssignment
+        $DiagCB = { param($C,$T,$D); Update-ProgressStep -State $DiagProg -Detail "$C/$T" }.GetNewClosure()
+        $Diag = Test-PlayerCharacterPUAssignment -ProgressCallback $DiagCB
+
+        if ($Diag.OK) {
+            Complete-ProgressStep -State $DiagProg -Detail 'OK'
+        } else {
+            Complete-ProgressStep -State $DiagProg -Detail 'Problemy' -Failed
+        }
+        Complete-ProgressGroup -State $DiagProg
 
         if ($Diag.OK) {
             Write-CLILine -Text "$([char]0x2713) Diagnostyka PU: brak problemów." -Color $SuccessColor
@@ -295,6 +317,8 @@ function Invoke-PrePUDiagnostics {
         }
     }
     catch {
+        Complete-ProgressStep -State $DiagProg -Detail 'BŁĄD' -Failed
+        Complete-ProgressGroup -State $DiagProg
         Write-CLILine -Text "$([char]0x2717) Błąd diagnostyki: $_" -Color $ErrorColor
     }
 

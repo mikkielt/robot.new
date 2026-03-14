@@ -21,6 +21,7 @@ private/currency-helpers.ps1         Denomination constants, conversion, identif
     ├── ConvertFrom-CurrencyBaseUnit Kogi -> denomination breakdown
     ├── Resolve-CurrencyDenomination Stem/colloquial -> canonical denomination
     ├── Test-IsCurrencyEntity        Check if entity is currency
+    ├── Build-CurrencyEntityLookup  Pre-build denomination+owner -> entity hashtable
     ├── Find-CurrencyEntity          Find currency entity by denomination + owner
     └── Get-CurrencyEntitiesFiltered Identify, filter by status, and enrich currency entities
 
@@ -96,10 +97,18 @@ Currency entities are `Przedmiot` entities with `@generyczne_nazwy` set to a can
 
 ### 4.3 Ownership Lookup
 
-`Find-CurrencyEntity` resolves a currency entity by matching:
-1. `@generyczne_nazwy` contains the resolved denomination name (via `Resolve-CurrencyDenomination`)
-2. Entity `Type` is `Przedmiot`
-3. `Owner` property matches the target owner name (case-insensitive)
+`Find-CurrencyEntity` resolves a currency entity by matching denomination and owner:
+
+| Parameter | Type | Description |
+|---|---|---|
+| `Entities` | object[] | **Mandatory**. Entity collection to search. |
+| `Denomination` | string | **Mandatory**. Denomination name (resolved via `Resolve-CurrencyDenomination`). |
+| `OwnerName` | string | **Mandatory**. Owner entity name to match. |
+| `CurrencyLookup` | Dictionary[string,object] | Optional. Pre-built lookup from `Build-CurrencyEntityLookup`. When provided, performs O(1) key lookup instead of linear scan. |
+
+**Without lookup**: Linear scan — checks `@generyczne_nazwy` contains the resolved denomination, entity `Type` is `Przedmiot`, and `Owner` matches (case-insensitive).
+
+**With lookup**: Constructs key `"{CanonicalDenom}|{OwnerName}"` and performs dictionary `TryGetValue`. Falls back to `$null` on miss.
 
 ---
 
@@ -176,6 +185,16 @@ Identifies currency entities from a collection, filters by status, and returns e
 
 **Filtering pipeline**: Entity must pass `Test-IsCurrencyEntity` -> status filter -> denomination resolution.
 
+### 5.5 `Build-CurrencyEntityLookup`
+
+Pre-builds a denomination+owner lookup hashtable for O(1) currency entity resolution. Used by `Get-EntityState` to avoid repeated linear scans when processing multiple `@Transfer` directives within a session batch.
+
+| Parameter | Type | Description |
+|---|---|---|
+| `Entities` | object[] | **Mandatory**. Entity collection from `Get-Entity`. |
+
+Iterates all `Przedmiot` entities with `GenericNames` and an `Owner`. For each generic name that resolves via `Resolve-CurrencyDenomination`, builds a composite key `"{CanonicalDenom}|{Owner}"` and stores the first matching entity. Returns `Dictionary[string, object]` with `OrdinalIgnoreCase` comparer.
+
 ---
 
 ## 6. `@Transfer` Session Directive
@@ -212,6 +231,8 @@ After processing regular Zmiany changes, `Get-EntityState` expands each Transfer
 4. Applies `-N` to source's `QuantityHistory` (session date as `ValidFrom`)
 5. Applies `+N` to destination's `QuantityHistory`
 6. Both entities are added to `ModifiedEntities` for history resorting
+
+**Performance**: Currency helpers (`private/currency-helpers.ps1`) are dot-sourced lazily — only when the first session with `Transfers` is encountered. A `CurrencyLookup` dictionary is built once via `Build-CurrencyEntityLookup` and reused for all subsequent `Find-CurrencyEntity` calls within the same `Get-EntityState` invocation.
 
 **Missing entities**: If source or destination entity is not found, a warning is emitted to stderr and that side of the transfer is skipped (the other side still applies). Balance defaults to 0.
 

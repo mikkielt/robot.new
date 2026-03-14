@@ -1216,3 +1216,19 @@ $script:MenuRegistry = @(
         InfoText = @('Pełny raport z wynikami każdej fazy migracji.')
     }
 )
+
+# ── Registry Indexes (built once, updated by Merge-PluginMenuItems) ─────────
+# O(1) lookups by ID and category instead of linear scans.
+
+$script:MenuRegistryByID = [System.Collections.Generic.Dictionary[string,hashtable]]::new(
+    [System.StringComparer]::OrdinalIgnoreCase)
+$script:MenuRegistryByCategory = [System.Collections.Generic.Dictionary[string,System.Collections.Generic.List[hashtable]]]::new(
+    [System.StringComparer]::OrdinalIgnoreCase)
+
+foreach ($Entry in $script:MenuRegistry) {
+    $script:MenuRegistryByID[$Entry.ID] = $Entry
+    if (-not $script:MenuRegistryByCategory.ContainsKey($Entry.Menu)) {
+        $script:MenuRegistryByCategory[$Entry.Menu] = [System.Collections.Generic.List[hashtable]]::new()
+    }
+    [void]$script:MenuRegistryByCategory[$Entry.Menu].Add($Entry)
+}

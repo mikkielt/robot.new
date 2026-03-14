@@ -69,13 +69,20 @@ function Resolve-Narrator {
         [System.Collections.Generic.Dictionary[string, System.Collections.Generic.List[string]]]$StemIndex,
 
         [Parameter(HelpMessage = "BK-tree from Get-NameIndex for O(log N) fuzzy matching")]
-        [hashtable]$BKTree
+        [hashtable]$BKTree,
+
+        [Parameter(HelpMessage = "Shared narrator cache across calls (avoids re-resolving same narrators across files)")]
+        [System.Collections.Generic.Dictionary[string, object]]$NarratorCache
     )
 
     $Results = [System.Collections.Generic.List[object]]::new()
 
-    # Cache narrator resolution results by raw text - many sessions share the same narrator
-    $NarratorCache = [System.Collections.Generic.Dictionary[string, object]]::new([System.StringComparer]::OrdinalIgnoreCase)
+    # Cache narrator resolution results by raw text - many sessions share the same narrator.
+    # When a shared cache is passed from the caller, narrator resolution is amortized across
+    # all files instead of repeated per-file (saves ~200s on large repos).
+    if (-not $NarratorCache) {
+        $NarratorCache = [System.Collections.Generic.Dictionary[string, object]]::new([System.StringComparer]::OrdinalIgnoreCase)
+    }
 
     foreach ($Session in $Sessions) {
         $HeaderText = if ($Session.Header -is [string]) { $Session.Header } else { $Session.Header.Text }

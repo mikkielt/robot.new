@@ -67,7 +67,8 @@ function Get-SessionLocations {
         [string]$FirstNonEmptyLine,
         [object]$SectionLists,
         [regex]$LocItalicRegex,
-        [System.Collections.Generic.Dictionary[string, object]]$Index
+        [System.Collections.Generic.Dictionary[string, object]]$Index,
+        [hashtable]$ChildrenOf
     )
 
     $Locations = [System.Collections.Generic.List[string]]::new()
@@ -83,22 +84,37 @@ function Get-SessionLocations {
             }
         }
         { $_ -eq 'Gen3' -or $_ -eq 'Gen4' } {
+            # Use pre-built parent→children index when provided, otherwise build locally
+            $LocChildrenOf = if ($ChildrenOf) { $ChildrenOf } else {
+                $Local = @{}
+                foreach ($LI in $SectionLists) {
+                    if ($null -ne $LI.ParentListItem) {
+                        $ParentId = [System.Runtime.CompilerServices.RuntimeHelpers]::GetHashCode($LI.ParentListItem)
+                        if (-not $Local.ContainsKey($ParentId)) {
+                            $Local[$ParentId] = [System.Collections.Generic.List[object]]::new()
+                        }
+                        $Local[$ParentId].Add($LI)
+                    }
+                }
+                $Local
+            }
+
             # Strategy 1: Entity resolution - find a nested list where all
             # resolved names are Lokacja entities (tag-name-independent)
             if ($Index) {
                 foreach ($TopLI in $SectionLists) {
                     if ($TopLI.Indent -ne 0) { continue }
 
-                    $Children = [System.Collections.Generic.List[object]]::new()
-                    foreach ($LI in $SectionLists) {
-                        if ($LI.ParentListItem -eq $TopLI) { $Children.Add($LI) }
-                    }
-                    if ($Children.Count -eq 0) { continue }
+                    $TopLIId = [System.Runtime.CompilerServices.RuntimeHelpers]::GetHashCode($TopLI)
+                    $Children = if ($LocChildrenOf.ContainsKey($TopLIId)) { $LocChildrenOf[$TopLIId] } else { $null }
+                    if (-not $Children -or $Children.Count -eq 0) { continue }
 
+                    $CandidateNames      = [System.Collections.Generic.List[string]]::new($Children.Count)
                     $ResolvedLocCount    = 0
                     $ResolvedNonLocCount = 0
                     foreach ($Child in $Children) {
                         $ChildText = $Child.Text.Trim()
+                        $CandidateNames.Add($ChildText)
                         if ($Index.ContainsKey($ChildText)) {
                             $Entry = $Index[$ChildText]
                             if (-not $Entry.Ambiguous -and $Entry.OwnerType -eq 'Lokacja') {
@@ -110,9 +126,7 @@ function Get-SessionLocations {
                     }
 
                     if ($ResolvedLocCount -gt 0 -and $ResolvedNonLocCount -eq 0) {
-                        foreach ($Child in $Children) {
-                            $Locations.Add($Child.Text.Trim())
-                        }
+                        $Locations.AddRange($CandidateNames)
                         break
                     }
                 }
@@ -131,8 +145,10 @@ function Get-SessionLocations {
                     }
                 }
                 if ($LocList) {
-                    foreach ($LI in $SectionLists) {
-                        if ($LI.ParentListItem -eq $LocList) {
+                    $LocListId = [System.Runtime.CompilerServices.RuntimeHelpers]::GetHashCode($LocList)
+                    $LocChildren = if ($LocChildrenOf.ContainsKey($LocListId)) { $LocChildrenOf[$LocListId] } else { $null }
+                    if ($LocChildren) {
+                        foreach ($LI in $LocChildren) {
                             $Locations.Add($LI.Text.Trim())
                         }
                     }
@@ -161,7 +177,8 @@ function Get-SessionListMetadata {
     param(
         [object]$SectionLists,
         [regex]$PURegex,
-        [regex]$UrlRegex
+        [regex]$UrlRegex,
+        [hashtable]$ChildrenOf
     )
 
     $Logs         = [System.Collections.Generic.List[string]]::new()
@@ -172,24 +189,44 @@ function Get-SessionListMetadata {
     $Narrators    = [System.Collections.Generic.List[string]]::new()
     $DateOverride = $null
 
+    # Use pre-built parent→children index when provided, otherwise build locally.
+    # Same pattern used in Get-Entity (line 214) and Get-Player (line 78).
+    if (-not $ChildrenOf) {
+        $ChildrenOf = @{}
+        foreach ($LI in $SectionLists) {
+            if ($null -ne $LI.ParentListItem) {
+                $ParentId = [System.Runtime.CompilerServices.RuntimeHelpers]::GetHashCode($LI.ParentListItem)
+                if (-not $ChildrenOf.ContainsKey($ParentId)) {
+                    $ChildrenOf[$ParentId] = [System.Collections.Generic.List[object]]::new()
+                }
+                $ChildrenOf[$ParentId].Add($LI)
+            }
+        }
+    }
+
     foreach ($ListItem in $SectionLists) {
         $ItemText  = $ListItem.Text
         $LowerText = $ItemText.ToLowerInvariant()
         $MatchText = if ($LowerText.StartsWith('@')) { $LowerText.Substring(1) } else { $LowerText }
 
+        # O(1) children lookup replaces O(L) inner scans
+        $ListItemId = [System.Runtime.CompilerServices.RuntimeHelpers]::GetHashCode($ListItem)
+        $Children = if ($ChildrenOf.ContainsKey($ListItemId)) { $ChildrenOf[$ListItemId] } else { $null }
+
         # PU entries: "- PU:" or "- @PU:" with nested "- CharName: 0,3"
         if ($MatchText.StartsWith('pu') -and $MatchText.Length -gt 2 -and ($MatchText[2] -eq ':' -or $MatchText[2] -eq ' ')) {
-            foreach ($PUItem in $SectionLists) {
-                if ($PUItem.ParentListItem -ne $ListItem) { continue }
-                $PUMatch = $PURegex.Match($PUItem.Text)
-                if ($PUMatch.Success) {
-                    $CharName = $PUMatch.Groups[1].Value.Trim()
-                    $ValueStr = $PUMatch.Groups[2].Value.Trim().Replace(',', '.')
-                    [decimal]$DecValue = [decimal]::Zero
-                    if ([decimal]::TryParse($ValueStr, [System.Globalization.NumberStyles]::Any, [System.Globalization.CultureInfo]::InvariantCulture, [ref]$DecValue)) {
-                        $PU.Add([PSCustomObject]@{ Character = $CharName; Value = $DecValue })
-                    } else {
-                        $PU.Add([PSCustomObject]@{ Character = $CharName; Value = $null })
+            if ($Children) {
+                foreach ($PUItem in $Children) {
+                    $PUMatch = $PURegex.Match($PUItem.Text)
+                    if ($PUMatch.Success) {
+                        $CharName = $PUMatch.Groups[1].Value.Trim()
+                        $ValueStr = $PUMatch.Groups[2].Value.Trim().Replace(',', '.')
+                        [decimal]$DecValue = [decimal]::Zero
+                        if ([decimal]::TryParse($ValueStr, [System.Globalization.NumberStyles]::Any, [System.Globalization.CultureInfo]::InvariantCulture, [ref]$DecValue)) {
+                            $PU.Add([PSCustomObject]@{ Character = $CharName; Value = $DecValue })
+                        } else {
+                            $PU.Add([PSCustomObject]@{ Character = $CharName; Value = $null })
+                        }
                     }
                 }
             }
@@ -197,15 +234,16 @@ function Get-SessionListMetadata {
 
         # Logi: URLs or local paths (or @Logi: in Gen4)
         if ($MatchText.StartsWith('logi') -and $MatchText.Length -gt 4 -and ($MatchText[4] -eq ':' -or $MatchText[4] -eq ' ')) {
-            foreach ($LogItem in $SectionLists) {
-                if ($LogItem.ParentListItem -ne $ListItem) { continue }
-                $LogItemText = $LogItem.Text.Trim()
-                $UrlMatch = $UrlRegex.Match($LogItemText)
-                if ($UrlMatch.Success) {
-                    $Logs.Add($UrlMatch.Groups[1].Value)
-                } elseif ($LogItemText.StartsWith('res/logs/')) {
-                    # Local file path (URL localized during migration)
-                    $Logs.Add($LogItemText)
+            if ($Children) {
+                foreach ($LogItem in $Children) {
+                    $LogItemText = $LogItem.Text.Trim()
+                    $UrlMatch = $UrlRegex.Match($LogItemText)
+                    if ($UrlMatch.Success) {
+                        $Logs.Add($UrlMatch.Groups[1].Value)
+                    } elseif ($LogItemText.StartsWith('res/logs/')) {
+                        # Local file path (URL localized during migration)
+                        $Logs.Add($LogItemText)
+                    }
                 }
             }
             # Also check inline
@@ -218,64 +256,69 @@ function Get-SessionListMetadata {
         # Zmiany: entity state changes (session-based overrides)
         # Structure: - Zmiany: / - EntityName / - @tag: value (or - @Zmiany: in Gen4)
         if ($MatchText.StartsWith('zmiany') -and ($MatchText.Length -eq 6 -or $MatchText[6] -eq ':' -or $MatchText[6] -eq ' ')) {
-            foreach ($EntityItem in $SectionLists) {
-                if ($EntityItem.ParentListItem -ne $ListItem) { continue }
+            if ($Children) {
+                foreach ($EntityItem in $Children) {
+                    $EntityName = $EntityItem.Text.Trim()
+                    $Tags = [System.Collections.Generic.List[object]]::new()
 
-                $EntityName = $EntityItem.Text.Trim()
-                $Tags = [System.Collections.Generic.List[object]]::new()
+                    # O(1) grandchildren lookup replaces O(L) inner scan
+                    $EntityItemId = [System.Runtime.CompilerServices.RuntimeHelpers]::GetHashCode($EntityItem)
+                    $TagChildren = if ($ChildrenOf.ContainsKey($EntityItemId)) { $ChildrenOf[$EntityItemId] } else { $null }
 
-                foreach ($TagItem in $SectionLists) {
-                    if ($TagItem.ParentListItem -ne $EntityItem) { continue }
+                    if ($TagChildren) {
+                        foreach ($TagItem in $TagChildren) {
+                            $TagText = $TagItem.Text.Trim()
+                            if (-not $TagText.StartsWith('@')) { continue }
 
-                    $TagText = $TagItem.Text.Trim()
-                    if (-not $TagText.StartsWith('@')) { continue }
+                            $ColonIdx = $TagText.IndexOf(':')
+                            if ($ColonIdx -lt 0) { continue }
 
-                    $ColonIdx = $TagText.IndexOf(':')
-                    if ($ColonIdx -lt 0) { continue }
+                            $Tags.Add([PSCustomObject]@{
+                                Tag   = $TagText.Substring(0, $ColonIdx).Trim().ToLowerInvariant()
+                                Value = $TagText.Substring($ColonIdx + 1).Trim()
+                            })
+                        }
+                    }
 
-                    $Tags.Add([PSCustomObject]@{
-                        Tag   = $TagText.Substring(0, $ColonIdx).Trim().ToLowerInvariant()
-                        Value = $TagText.Substring($ColonIdx + 1).Trim()
-                    })
-                }
-
-                if ($Tags.Count -gt 0) {
-                    $Changes.Add([PSCustomObject]@{
-                        EntityName = $EntityName
-                        Tags       = $Tags.ToArray()
-                    })
+                    if ($Tags.Count -gt 0) {
+                        $Changes.Add([PSCustomObject]@{
+                            EntityName = $EntityName
+                            Tags       = $Tags.ToArray()
+                        })
+                    }
                 }
             }
         }
 
         # Intel: targeted messages (or @Intel: in Gen4)
         if ($MatchText.StartsWith('intel') -and ($MatchText.Length -eq 5 -or $MatchText[5] -eq ':' -or $MatchText[5] -eq ' ')) {
-            foreach ($IntelItem in $SectionLists) {
-                if ($IntelItem.ParentListItem -ne $ListItem) { continue }
+            if ($Children) {
+                foreach ($IntelItem in $Children) {
+                    $IntelText = $IntelItem.Text.Trim()
+                    $ColonIdx = $IntelText.IndexOf(':')
+                    if ($ColonIdx -lt 0) { continue }
 
-                $IntelText = $IntelItem.Text.Trim()
-                $ColonIdx = $IntelText.IndexOf(':')
-                if ($ColonIdx -lt 0) { continue }
+                    $RawTarget = $IntelText.Substring(0, $ColonIdx).Trim()
+                    $Message   = $IntelText.Substring($ColonIdx + 1).Trim()
 
-                $RawTarget = $IntelText.Substring(0, $ColonIdx).Trim()
-                $Message   = $IntelText.Substring($ColonIdx + 1).Trim()
+                    if ([string]::IsNullOrWhiteSpace($RawTarget) -or [string]::IsNullOrWhiteSpace($Message)) { continue }
 
-                if ([string]::IsNullOrWhiteSpace($RawTarget) -or [string]::IsNullOrWhiteSpace($Message)) { continue }
-
-                $Intel.Add([PSCustomObject]@{
-                    RawTarget = $RawTarget
-                    Message   = $Message
-                })
+                    $Intel.Add([PSCustomObject]@{
+                        RawTarget = $RawTarget
+                        Message   = $Message
+                    })
+                }
             }
         }
 
         # Narrator: canonical names for @Narrator metadata override
         if ($MatchText.StartsWith('narrator') -and ($MatchText.Length -eq 8 -or $MatchText[8] -eq ':' -or $MatchText[8] -eq ' ')) {
-            foreach ($NarrItem in $SectionLists) {
-                if ($NarrItem.ParentListItem -ne $ListItem) { continue }
-                $NarrName = $NarrItem.Text.Trim()
-                if (-not [string]::IsNullOrWhiteSpace($NarrName)) {
-                    $Narrators.Add($NarrName)
+            if ($Children) {
+                foreach ($NarrItem in $Children) {
+                    $NarrName = $NarrItem.Text.Trim()
+                    if (-not [string]::IsNullOrWhiteSpace($NarrName)) {
+                        $Narrators.Add($NarrName)
+                    }
                 }
             }
         }
@@ -290,12 +333,13 @@ function Get-SessionListMetadata {
                     $DateOverride = $DataInline
                 } else {
                     # Child list item: "- @Data:\n    - 2024-07-14"
-                    foreach ($DataItem in $SectionLists) {
-                        if ($DataItem.ParentListItem -ne $ListItem) { continue }
-                        $DataVal = $DataItem.Text.Trim()
-                        if (-not [string]::IsNullOrWhiteSpace($DataVal)) {
-                            $DateOverride = $DataVal
-                            break
+                    if ($Children) {
+                        foreach ($DataItem in $Children) {
+                            $DataVal = $DataItem.Text.Trim()
+                            if (-not [string]::IsNullOrWhiteSpace($DataVal)) {
+                                $DateOverride = $DataVal
+                                break
+                            }
                         }
                     }
                 }

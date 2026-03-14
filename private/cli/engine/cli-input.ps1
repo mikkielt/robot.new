@@ -49,6 +49,7 @@ $script:FilterHintShown   = $false
 $script:FilterHintPending = $false
 $script:LastKeyTimestamp   = [datetime]::MinValue
 $script:FuzzyDebounceMs   = 300
+$script:FilterPrefixRegex = [regex]::new('^([a-zA-Z\u0105\u0107\u0119\u0142\u0144\u00F3\u015B\u017A\u017C\u0104\u0106\u0118\u0141\u0143\u00D3\u015A\u0179\u017B]+):(.*)$', [System.Text.RegularExpressions.RegexOptions]::Compiled)
 
 # ── Action Types ─────────────────────────────────────────────────────────────
 
@@ -90,9 +91,10 @@ function Split-FilterQuery {
     )
 
     # Polish-aware prefix pattern: "prefix:query"
-    if ($RawInput -match '^([a-zA-Z\u0105\u0107\u0119\u0142\u0144\u00F3\u015B\u017A\u017C\u0104\u0106\u0118\u0141\u0143\u00D3\u015A\u0179\u017B]+):(.*)$') {
-        $PrefixKey = $Matches[1]
-        $Query = $Matches[2]
+    $M = $script:FilterPrefixRegex.Match($RawInput)
+    if ($M.Success) {
+        $PrefixKey = $M.Groups[1].Value
+        $Query = $M.Groups[2].Value
 
         if ($FilterPrefixes -and $FilterPrefixes.ContainsKey($PrefixKey)) {
             return @{

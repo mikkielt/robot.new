@@ -22,6 +22,12 @@
     temporal-helpers.ps1 (available via module scope).
 #>
 
+# Precompiled regex patterns for Get-SessionMentions (avoids per-session recompilation)
+$script:MentionListLineRegex    = [regex]::new('^\s*(\d+\.|[-\*\+])\s+')
+$script:MentionLogiPlainRegex   = [regex]::new('^Logi:\s*https?://')
+$script:MentionMdLinkRegex      = [regex]::new('\[(.+?)\]\(.+?\)')
+$script:MentionPunctuationRegex = [regex]::new('[,\.\;\:\!\?\(\)\[\]\{\}\"' + "'" + '\-\-\/\>\<\#\^\=\+\~\`]+')
+
 # Helper: resolve Discord webhook URL for any entity, with Player fallback
 # for character entities. Checks entity @prfwebhook override first, then
 # falls back to owning Player's PRFWebhook for Gracz/Postać types.
@@ -103,7 +109,9 @@ function Resolve-IntelTargets {
         [System.Collections.Generic.Dictionary[string, object]]$Index,
         [System.Collections.Generic.Dictionary[string, System.Collections.Generic.List[string]]]$StemIndex,
         [object[]]$Players,
-        [hashtable]$ResolveCache
+        [hashtable]$ResolveCache,
+        [hashtable]$EntityByGroup,
+        [hashtable]$EntityByLocation
     )
 
     $Result = [System.Collections.Generic.List[object]]::new()
@@ -152,15 +160,29 @@ function Resolve-IntelTargets {
                         [void]$GroupNames.Add($Resolved.Name)
                     }
 
-                    foreach ($Entity in $Entities) {
-                        if ($Entity.Name -eq $Resolved.Name) { continue }
-                        if ($Entity.GroupHistory.Count -eq 0) { continue }
+                    # Use pre-built EntityByGroup index when available: O(G) instead of O(E)
+                    if ($EntityByGroup) {
+                        foreach ($GName in $GroupNames) {
+                            if ($EntityByGroup.ContainsKey($GName)) {
+                                foreach ($GEntry in $EntityByGroup[$GName]) {
+                                    if ($GEntry.Entity.Name -eq $Resolved.Name) { continue }
+                                    if (Test-TemporalActivity -Item $GEntry.History -ActiveOn $SessionDate) {
+                                        $RecipientEntities.Add($GEntry.Entity)
+                                    }
+                                }
+                            }
+                        }
+                    } else {
+                        foreach ($Entity in $Entities) {
+                            if ($Entity.Name -eq $Resolved.Name) { continue }
+                            if ($Entity.GroupHistory.Count -eq 0) { continue }
 
-                        foreach ($GH in $Entity.GroupHistory) {
-                            if (-not (Test-TemporalActivity -Item $GH -ActiveOn $SessionDate)) { continue }
-                            if ($GroupNames.Contains($GH.Group)) {
-                                $RecipientEntities.Add($Entity)
-                                break
+                            foreach ($GH in $Entity.GroupHistory) {
+                                if (-not (Test-TemporalActivity -Item $GH -ActiveOn $SessionDate)) { continue }
+                                if ($GroupNames.Contains($GH.Group)) {
+                                    $RecipientEntities.Add($Entity)
+                                    break
+                                }
                             }
                         }
                     }
@@ -174,38 +196,69 @@ function Resolve-IntelTargets {
                     )
                     [void]$LocationSet.Add($Resolved.Name)
 
-                    $Queue = [System.Collections.Generic.Queue[string]]::new()
-                    $Queue.Enqueue($Resolved.Name)
-
-                    while ($Queue.Count -gt 0) {
-                        $Current = $Queue.Dequeue()
-                        foreach ($Entity in $Entities) {
-                            if ($Entity.Type -ne 'Lokacja') { continue }
-                            if ($LocationSet.Contains($Entity.Name)) { continue }
-
-                            foreach ($LH in $Entity.LocationHistory) {
-                                if (-not (Test-TemporalActivity -Item $LH -ActiveOn $SessionDate)) { continue }
-                                if ([string]::Equals($LH.Location, $Current,
-                                    [System.StringComparison]::OrdinalIgnoreCase)) {
-                                    [void]$LocationSet.Add($Entity.Name)
-                                    $Queue.Enqueue($Entity.Name)
-                                    $RecipientEntities.Add($Entity)
-                                    break
+                    # Build location tree using pre-built index when available
+                    if ($EntityByLocation) {
+                        $Queue = [System.Collections.Generic.Queue[string]]::new()
+                        $Queue.Enqueue($Resolved.Name)
+                        while ($Queue.Count -gt 0) {
+                            $Current = $Queue.Dequeue()
+                            if ($EntityByLocation.ContainsKey($Current)) {
+                                foreach ($LEntry in $EntityByLocation[$Current]) {
+                                    if ($LEntry.Entity.Type -ne 'Lokacja') { continue }
+                                    if ($LocationSet.Contains($LEntry.Entity.Name)) { continue }
+                                    if (-not (Test-TemporalActivity -Item $LEntry.History -ActiveOn $SessionDate)) { continue }
+                                    [void]$LocationSet.Add($LEntry.Entity.Name)
+                                    $Queue.Enqueue($LEntry.Entity.Name)
+                                    $RecipientEntities.Add($LEntry.Entity)
                                 }
                             }
                         }
-                    }
 
-                    foreach ($Entity in $Entities) {
-                        if ($Entity.Type -eq 'Lokacja') { continue }
-                        if ($Entity.Type -eq 'Mapa') { continue }
-                        if ($Entity.LocationHistory.Count -eq 0) { continue }
+                        # Find non-location entities in the location set
+                        foreach ($LocName in @($LocationSet)) {
+                            if ($EntityByLocation.ContainsKey($LocName)) {
+                                foreach ($LEntry in $EntityByLocation[$LocName]) {
+                                    if ($LEntry.Entity.Type -eq 'Lokacja') { continue }
+                                    if ($LEntry.Entity.Type -eq 'Mapa') { continue }
+                                    if (-not (Test-TemporalActivity -Item $LEntry.History -ActiveOn $SessionDate)) { continue }
+                                    $RecipientEntities.Add($LEntry.Entity)
+                                }
+                            }
+                        }
+                    } else {
+                        $Queue = [System.Collections.Generic.Queue[string]]::new()
+                        $Queue.Enqueue($Resolved.Name)
 
-                        foreach ($LH in $Entity.LocationHistory) {
-                            if (-not (Test-TemporalActivity -Item $LH -ActiveOn $SessionDate)) { continue }
-                            if (Test-LocationMatch -LocationValue $LH.Location -LocationSet $LocationSet) {
-                                $RecipientEntities.Add($Entity)
-                                break
+                        while ($Queue.Count -gt 0) {
+                            $Current = $Queue.Dequeue()
+                            foreach ($Entity in $Entities) {
+                                if ($Entity.Type -ne 'Lokacja') { continue }
+                                if ($LocationSet.Contains($Entity.Name)) { continue }
+
+                                foreach ($LH in $Entity.LocationHistory) {
+                                    if (-not (Test-TemporalActivity -Item $LH -ActiveOn $SessionDate)) { continue }
+                                    if ([string]::Equals($LH.Location, $Current,
+                                        [System.StringComparison]::OrdinalIgnoreCase)) {
+                                        [void]$LocationSet.Add($Entity.Name)
+                                        $Queue.Enqueue($Entity.Name)
+                                        $RecipientEntities.Add($Entity)
+                                        break
+                                    }
+                                }
+                            }
+                        }
+
+                        foreach ($Entity in $Entities) {
+                            if ($Entity.Type -eq 'Lokacja') { continue }
+                            if ($Entity.Type -eq 'Mapa') { continue }
+                            if ($Entity.LocationHistory.Count -eq 0) { continue }
+
+                            foreach ($LH in $Entity.LocationHistory) {
+                                if (-not (Test-TemporalActivity -Item $LH -ActiveOn $SessionDate)) { continue }
+                                if (Test-LocationMatch -LocationValue $LH.Location -LocationSet $LocationSet) {
+                                    $RecipientEntities.Add($Entity)
+                                    break
+                                }
                             }
                         }
                     }
@@ -258,7 +311,9 @@ function Get-SessionMentions {
         [string]$FirstNonEmptyLine,
         [System.Collections.Generic.Dictionary[string, object]]$Index,
         [System.Collections.Generic.Dictionary[string, System.Collections.Generic.List[string]]]$StemIndex,
-        [hashtable]$ResolveCache
+        [hashtable]$ResolveCache,
+        [hashtable]$ChildrenOf,
+        [string[]]$ContentLines
     )
 
     # Phase 1: Build Excluded List-Item Set
@@ -283,20 +338,33 @@ function Get-SessionMentions {
         }
     }
 
-    # Multi-pass: propagate exclusion to all descendants (arbitrary nesting depth)
-    do {
-        $Added = $false
+    # Single-pass DFS: propagate exclusion to all descendants via parent→children index.
+    # Replaces multi-pass O(L×D) convergence loop with O(L) DFS traversal.
+    # Use pre-built index when provided, otherwise build locally.
+    $MentionChildrenOf = if ($ChildrenOf) { $ChildrenOf } else {
+        $Local = @{}
         foreach ($LI in $SectionLists) {
-            $LIId = [System.Runtime.CompilerServices.RuntimeHelpers]::GetHashCode($LI)
-            if ($ExcludedListItems.Contains($LIId)) { continue }
-            if ($null -eq $LI.ParentListItem) { continue }
-            $ParentId = [System.Runtime.CompilerServices.RuntimeHelpers]::GetHashCode($LI.ParentListItem)
-            if ($ExcludedListItems.Contains($ParentId)) {
-                [void]$ExcludedListItems.Add($LIId)
-                $Added = $true
+            if ($null -ne $LI.ParentListItem) {
+                $ParentHashId = [System.Runtime.CompilerServices.RuntimeHelpers]::GetHashCode($LI.ParentListItem)
+                if (-not $Local.ContainsKey($ParentHashId)) {
+                    $Local[$ParentHashId] = [System.Collections.Generic.List[object]]::new()
+                }
+                $Local[$ParentHashId].Add($LI)
             }
         }
-    } while ($Added)
+        $Local
+    }
+    $ExclStack = [System.Collections.Generic.Stack[int]]::new()
+    foreach ($ExId in @($ExcludedListItems)) { $ExclStack.Push($ExId) }
+    while ($ExclStack.Count -gt 0) {
+        $ParentHash = $ExclStack.Pop()
+        if ($MentionChildrenOf.ContainsKey($ParentHash)) {
+            foreach ($Child in $MentionChildrenOf[$ParentHash]) {
+                $ChildHash = [System.Runtime.CompilerServices.RuntimeHelpers]::GetHashCode($Child)
+                if ($ExcludedListItems.Add($ChildHash)) { $ExclStack.Push($ChildHash) }
+            }
+        }
+    }
 
     # Phase 2: Extract Scannable Text (Dual-Source)
 
@@ -310,10 +378,10 @@ function Get-SessionMentions {
     }
 
     # Source B: Paragraph (non-list) content lines
-    $ListLineRegex = [regex]::new('^\s*(\d+\.|[-\*\+])\s+')
-    $LogiPlainRegex = [regex]::new('^Logi:\s*https?://')
+    $ListLineRegex  = $script:MentionListLineRegex
+    $LogiPlainRegex = $script:MentionLogiPlainRegex
 
-    $ContentLines = $Content.Split([char]"`n")
+    if (-not $ContentLines) { $ContentLines = $Content.Split([char]"`n") }
     $SkippedFirstLine = $false
 
     foreach ($Line in $ContentLines) {
@@ -337,8 +405,8 @@ function Get-SessionMentions {
 
     # Phase 3: Tokenize
 
-    $MdLinkRegex = [regex]::new('\[(.+?)\]\(.+?\)')
-    $PunctuationRegex = [regex]::new('[,\.\;\:\!\?\(\)\[\]\{\}\"' + "'" + '\-\-\/\>\<\#\^\=\+\~\`]+')
+    $MdLinkRegex      = $script:MentionMdLinkRegex
+    $PunctuationRegex = $script:MentionPunctuationRegex
 
     $CandidateTokens = [System.Collections.Generic.List[string]]::new()
 
@@ -368,12 +436,16 @@ function Get-SessionMentions {
     }
 
     # Phase 4: Resolve Tokens (stages 1, 2, 2b only - no fuzzy)
+    # Deduplicate tokens before resolution to avoid redundant Resolve-Name calls.
+    # Typical session: ~150 tokens but only ~50 unique — saves ~3× function call overhead.
+
+    $UniqueTokens = [System.Collections.Generic.HashSet[string]]::new($CandidateTokens, [System.StringComparer]::OrdinalIgnoreCase)
 
     $ResolvedEntities = [System.Collections.Generic.Dictionary[string, object]]::new(
         [System.StringComparer]::OrdinalIgnoreCase
     )
 
-    foreach ($Token in $CandidateTokens) {
+    foreach ($Token in $UniqueTokens) {
         $Resolved = Resolve-Name -Query $Token -Index $Index -StemIndex $StemIndex -Cache $ResolveCache -NoFuzzy
 
         if ($null -ne $Resolved -and -not $ResolvedEntities.ContainsKey($Resolved.Name)) {

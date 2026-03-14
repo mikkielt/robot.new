@@ -190,18 +190,19 @@ Array of monthly data points:
 ### 6.3 Implementation Flow
 
 1. Auto-fetch entities and sessions if not provided
-2. Iterate month boundaries from MinDate to MaxDate
-3. For each month:
+2. Pre-build `$NameIndex` once via `Get-NameIndex` (shared across all months)
+3. Iterate month boundaries from MinDate to MaxDate
+4. For each month:
    a. Compute `$EffectiveDate` = last day of month (capped at MaxDate)
-   b. `Get-Entity -ActiveOn $EffectiveDate` for fresh entity copy
-   c. `Get-EntityState` with temporal filtering for month-end state
+   b. `Get-Entity -ActiveOn $EffectiveDate -Quiet` for fresh entity copy
+   c. `Get-EntityState -NameIndex $NameIndex -Sessions $Sessions -ActiveOn $EffectiveDate -Quiet` with pre-built name index
    d. Build entity lookup → `Get-CurrencyEntitiesFiltered -EntityLookup`
    e. Apply denomination/entity filters
    f. `Get-SessionDirectiveEntries` scoped to month boundaries for transfer count
    g. `New-EconomicSnapshotData` for supply computation
-4. Return array of monthly PSCustomObjects
+5. Return array of monthly PSCustomObjects
 
-**Note**: `Get-Entity` and `Get-EntityState` are called per-month (not cached) because `Get-EntityState` mutates its input entities.
+**Note**: `Get-Entity` is called per-month because `Get-EntityState` mutates its input entities. The `NameIndex` is shared across months since the entity roster does not change within a timeline query. Sessions are passed explicitly to avoid redundant re-parsing each month.
 
 ---
 

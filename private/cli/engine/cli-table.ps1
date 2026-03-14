@@ -42,6 +42,19 @@ function New-ResultTableComponent {
         $Widths = @(20) * $Headers.Count
     }
 
+    # Pre-build lowercase search index: one concatenated string per row for O(1)-column filter
+    $SearchIndex = [string[]]::new($Data.Count)
+    for ($SI = 0; $SI -lt $Data.Count; $SI++) {
+        $SB = [System.Text.StringBuilder]::new()
+        foreach ($Col in $Columns) {
+            if ($Data[$SI].PSObject.Properties[$Col]) {
+                $V = $Data[$SI].$Col
+                if ($null -ne $V) { [void]$SB.Append([string]$V); [void]$SB.Append(' ') }
+            }
+        }
+        $SearchIndex[$SI] = $SB.ToString().ToLowerInvariant()
+    }
+
     $Component = @{
         Type           = 'ResultTable'
         Data           = $Data
@@ -57,6 +70,9 @@ function New-ResultTableComponent {
         FilterPrefixes = $FilterPrefixes
         FilteredCount  = $Data.Count
         TotalCount     = $Data.Count
+        SearchIndex    = $SearchIndex
+        _VisColsCache  = $null
+        _VisColsWidth  = -1
         StatusHints    = "$([char]0x2191)$([char]0x2193) nawigacja  $([char]0x2190)$([char]0x2192) strony  Enter szczegoly  Esc wstecz"
 
         Render = {
@@ -77,10 +93,14 @@ function New-ResultTableComponent {
             $Headers = $ComponentRef.Headers
             $Widths = $ComponentRef.Widths
 
-            # Responsive columns: hide low-priority columns at narrow widths
-            $VisibleCols = Resolve-VisibleColumns -Columns $Columns -Headers $Headers `
-                -Widths $Widths -ColumnPriority $ComponentRef.ColumnPriority `
-                -AvailableWidth $script:ScreenWidth
+            # Responsive columns: cached per screen width (only recomputed on resize)
+            if ($ComponentRef._VisColsWidth -ne $script:ScreenWidth) {
+                $ComponentRef._VisColsCache = Resolve-VisibleColumns -Columns $Columns -Headers $Headers `
+                    -Widths $Widths -ColumnPriority $ComponentRef.ColumnPriority `
+                    -AvailableWidth $script:ScreenWidth
+                $ComponentRef._VisColsWidth = $script:ScreenWidth
+            }
+            $VisibleCols = $ComponentRef._VisColsCache
 
             if ($Data.Count -eq 0) {
                 Set-BufferLine -Buffer $script:BackBuffer -Row $Region.StartRow -Segments @(
@@ -141,12 +161,13 @@ function New-ResultTableComponent {
 
                 foreach ($VC in $VisibleCols) {
                     $Val = ''
-                    if ($DataRow.PSObject.Properties[$VC.Column]) {
+                    try {
                         $RawVal = $DataRow.($VC.Column)
-                        if ($null -eq $RawVal) { $Val = '' }
-                        elseif ($RawVal -is [System.Collections.IList] -or $RawVal -is [array]) { $Val = [string]$RawVal.Count }
-                        else { $Val = [string]$RawVal }
-                    }
+                        if ($null -ne $RawVal) {
+                            if ($RawVal -is [System.Collections.IList] -or $RawVal -is [array]) { $Val = [string]$RawVal.Count }
+                            else { $Val = [string]$RawVal }
+                        }
+                    } catch { }
 
                     # Truncation with ellipsis (… is 1 char, leave 1 char margin)
                     if ($Val.Length -gt ($VC.Width - 1)) {
@@ -241,26 +262,35 @@ function Invoke-TableFilter {
     $Query = $Parsed.Query.ToLowerInvariant()
 
     $Filtered = [System.Collections.Generic.List[object]]::new()
+    $AllData = $Component.AllData
+    $Index = $Component.SearchIndex
 
-    foreach ($Row in $Component.AllData) {
-        # Check any column for match
-        $Matched = $false
+    if ([string]::IsNullOrEmpty($Query) -and -not $Parsed.TypeFilter) {
+        # No filter — return all data
+        $Component.Data = $AllData
+        $Component.SelectedAbs = 0
+        $Component.FilteredCount = $AllData.Count
+        return
+    }
 
-        if ([string]::IsNullOrEmpty($Query) -and -not $Parsed.TypeFilter) {
-            $Matched = $true
+    # Use pre-built lowercase search index for O(1)-column matching per row
+    for ($RI = 0; $RI -lt $AllData.Count; $RI++) {
+        if ($Index -and $RI -lt $Index.Count) {
+            if ($Index[$RI].IndexOf($Query) -ge 0) {
+                [void]$Filtered.Add($AllData[$RI])
+            }
         } else {
+            # Fallback: per-column search
             foreach ($Col in $Component.Columns) {
-                if ($Row.PSObject.Properties[$Col]) {
-                    $Val = [string]$Row.$Col
+                if ($AllData[$RI].PSObject.Properties[$Col]) {
+                    $Val = [string]$AllData[$RI].$Col
                     if ($Val -and $Val.IndexOf($Query, [System.StringComparison]::OrdinalIgnoreCase) -ge 0) {
-                        $Matched = $true
+                        [void]$Filtered.Add($AllData[$RI])
                         break
                     }
                 }
             }
         }
-
-        if ($Matched) { [void]$Filtered.Add($Row) }
     }
 
     $Component.Data = @($Filtered)

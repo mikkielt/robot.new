@@ -199,7 +199,7 @@ On each render cycle:
 1. Components write segments into `$script:BackBuffer` via `Set-BufferLine`
 2. `Render-BufferDiff` compares back vs front buffer line-by-line
 3. Only changed lines are re-rendered to the terminal
-4. Back buffer becomes the new front buffer
+4. Changed lines are copied from back to front buffer inline during the diff pass (no separate swap loop)
 
 On PS 7+, Bold and Dim use ANSI escape sequences. On PS 5.1, Bold is simulated via the Accent ConsoleColor and Dim is suppressed.
 
@@ -268,7 +268,7 @@ These wrap the engine lifecycle for common view patterns:
 
 ### 4.10 Filter Prefixes and Typed Filtering
 
-In filter mode, `Split-FilterQuery` parses `prefix:query` syntax. The prefix maps to a column name via the registry entry's `FilterPrefixes` hashtable, restricting the filter to a single column.
+In filter mode, `Split-FilterQuery` parses `prefix:query` syntax. The prefix pattern is a precompiled regex at `$script:FilterPrefixRegex` (Polish-aware character class, `RegexOptions.Compiled`) to avoid per-call regex compilation. The prefix maps to a column name via the registry entry's `FilterPrefixes` hashtable, restricting the filter to a single column.
 
 Example: typing `typ:NPC` in an entity list filters only the Type column for "NPC".
 
@@ -345,6 +345,8 @@ Wraps `[Console]::ReadKey($true)` to return a normalized key object. Superseded 
 | `currency` | Entities where Type = `Przedmiot` and has `ilość` tag |
 | `narrators` | All players (Type = `Narrator`) |
 
+**Performance**: For `locations`, `groups`, and `npcs` sources, `Get-FuzzySearchCandidates` uses `$State.EntityTypeIndex` (a hashtable of type → entity lists built at CLI startup and on refresh) for O(1) type-filtered access instead of linear-scanning all entities.
+
 ### 6.2 Filtering Pipeline
 
 `Filter-FuzzyCandidates` applies a 3-stage filter:
@@ -354,6 +356,8 @@ Wraps `[Console]::ReadKey($true)` to return a normalized key object. Superseded 
 3. **Resolve-Name fallback** (BK-tree fuzzy matching from the name index, if available)
 
 Prefix matches are ranked before contains matches. Results are capped at `MaxResults` (default 10).
+
+**Deduplication**: A `HashSet[object]` tracks already-added candidates across stages to avoid O(n) `Contains` calls on the result list.
 
 The engine-driven fuzzy search (`Invoke-EngineFuzzySearch`) applies stages 1-2 immediately on each keystroke and triggers stage 3 after a 300ms debounce (`Invoke-FuzzyDebounce`). Stage 3 matches display with a `≈` prefix to indicate approximate results.
 
@@ -488,6 +492,17 @@ For Query entries, also add `ColumnPriority` and `FilterPrefixes`:
 }
 ```
 
+### 8.3 Registry Indexes
+
+Two dictionary indexes are built from `$script:MenuRegistry` at load time for O(1) lookups:
+
+| Variable | Type | Key | Purpose |
+|---|---|---|---|
+| `$script:MenuRegistryByID` | `Dictionary[string, hashtable]` (OrdinalIgnoreCase) | Entry `ID` | O(1) lookup by menu item ID (used by `Get-RegistryEntry`) |
+| `$script:MenuRegistryByCategory` | `Dictionary[string, List[hashtable]]` (OrdinalIgnoreCase) | Entry `Menu` | O(1) category → items listing (used by `Get-MenuItems`, `Show-MainMenu` subcounts) |
+
+Both indexes are updated by `Merge-PluginMenuItems` when plugin items are added. `Get-MenuItems` and `Get-RegistryEntry` use the indexes instead of linear scans over `$script:MenuRegistry`.
+
 ---
 
 ## 9. Routing & Dispatch (`cli-routing.ps1`)
@@ -576,6 +591,7 @@ The `NavState` PSCustomObject is created by `Invoke-RobotCLI` and threaded throu
 | `NameIndex` | `PSCustomObject` | Contains `Index`, `StemIndex`, `BKTree` for name resolution |
 | `Players` | `array` | Pre-loaded player data |
 | `Entities` | `array` | Pre-loaded entity data |
+| `EntityTypeIndex` | `hashtable` | Entity type → `List[object]` index for O(1) type-filtered lookups |
 | `ResolveCache` | `hashtable` | Memoization cache for `Resolve-Name` calls |
 | `Theme` | `string` | `'Dark'` or `'Light'` |
 | `HealthCache` | `hashtable` | Background health check results (see §11.1) |

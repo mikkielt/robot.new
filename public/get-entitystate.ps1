@@ -49,8 +49,14 @@ function Get-EntityState {
         [Parameter(HelpMessage = "Pre-fetched player roster from Get-Player")]
         [object[]]$Players,
 
+        [Parameter(HelpMessage = "Pre-built name index from Get-NameIndex (avoids redundant BK-tree rebuild)")]
+        [hashtable]$NameIndex,
+
         [Parameter(HelpMessage = "Filter temporally-scoped data to entries active on this date")]
         [datetime]$ActiveOn,
+
+        [Parameter(HelpMessage = "Optional callback for CLI progress reporting (receives Current, Total, ItemDetail)")]
+        [scriptblock]$ProgressCallback,
 
         [Parameter(HelpMessage = "Suppress warning output to stderr")]
         [switch]$Quiet
@@ -82,7 +88,7 @@ function Get-EntityState {
     if (-not $PSBoundParameters.ContainsKey('Players')) {
         $Players = Get-Player -Entities $Entities
     }
-    $NameIndexResult = Get-NameIndex -Players $Players -Entities $Entities
+    $NameIndexResult = if ($PSBoundParameters.ContainsKey('NameIndex') -and $NameIndex) { $NameIndex } else { Get-NameIndex -Players $Players -Entities $Entities }
     $Cache = @{}
 
     # Track which entities were modified to recompute their active values
@@ -99,7 +105,17 @@ function Get-EntityState {
     }
     $SessionsWithChanges.Sort([System.Comparison[object]]{ param($a, $b) $a.Date.CompareTo($b.Date) })
 
+    $CurrencyLookup = $null
+
+    $script:ProgressSessIdx = 0
+    $script:ProgressSessTotal = $SessionsWithChanges.Count
+
     foreach ($Session in $SessionsWithChanges) {
+        $script:ProgressSessIdx++
+        if ($ProgressCallback -and ($script:ProgressSessIdx % 10 -eq 0 -or $script:ProgressSessIdx -eq $script:ProgressSessTotal)) {
+            & $ProgressCallback $script:ProgressSessIdx $script:ProgressSessTotal $null
+        }
+
         foreach ($Change in $Session.Changes) {
 
             # Resolve entity name - exact entity lookup first, then fuzzy fallback
@@ -278,9 +294,11 @@ function Get-EntityState {
                         if ($CoordParts.Length -ge 2) {
                             $XStr = $CoordParts[0].Trim()
                             $YStr = $CoordParts[1].Trim()
-                            if ($XStr -match '^\-?\d+$' -and $YStr -match '^\-?\d+$') {
-                                $CoordX = [int]$XStr
-                                $CoordY = [int]$YStr
+                            [int]$ParsedX = 0
+                            [int]$ParsedY = 0
+                            if ([int]::TryParse($XStr, [ref]$ParsedX) -and [int]::TryParse($YStr, [ref]$ParsedY)) {
+                                $CoordX = $ParsedX
+                                $CoordY = $ParsedY
                             }
                         }
                         if ($null -ne $CoordX) {
@@ -308,7 +326,10 @@ function Get-EntityState {
 
         # Expand @Transfer directives into symmetric @ilość deltas
         if ($Session.PSObject.Properties['Transfers'] -and $Session.Transfers -and $Session.Transfers.Count -gt 0) {
-            . "$script:ModuleRoot/private/currency-helpers.ps1"
+            if (-not $CurrencyLookup) {
+                . "$script:ModuleRoot/private/currency-helpers.ps1"
+                $CurrencyLookup = Build-CurrencyEntityLookup -Entities $Entities
+            }
 
             foreach ($Transfer in $Session.Transfers) {
                 $ResolvedDenom = Resolve-CurrencyDenomination -Name $Transfer.Denomination
@@ -354,13 +375,13 @@ function Get-EntityState {
                 }
 
                 # Find source currency entity
-                $SourceEntity = Find-CurrencyEntity -Entities $Entities -Denomination $Transfer.Denomination -OwnerName $ResolvedSourceName
+                $SourceEntity = Find-CurrencyEntity -Entities $Entities -Denomination $Transfer.Denomination -OwnerName $ResolvedSourceName -CurrencyLookup $CurrencyLookup
                 if (-not $SourceEntity) {
                     Write-RobotWarning "[WARN Get-EntityState] No currency entity for '$($ResolvedSourceName)' ($($ResolvedDenom.Name)) in @Transfer in session '$($Session.Header)' - assuming 0 balance"
                 }
 
                 # Find destination currency entity
-                $DestEntity = Find-CurrencyEntity -Entities $Entities -Denomination $Transfer.Denomination -OwnerName $ResolvedDestName
+                $DestEntity = Find-CurrencyEntity -Entities $Entities -Denomination $Transfer.Denomination -OwnerName $ResolvedDestName -CurrencyLookup $CurrencyLookup
                 if (-not $DestEntity) {
                     Write-RobotWarning "[WARN Get-EntityState] No currency entity for '$($ResolvedDestName)' ($($ResolvedDenom.Name)) in @Transfer in session '$($Session.Header)' - assuming 0 balance"
                 }
@@ -372,8 +393,9 @@ function Get-EntityState {
                     }
                     $CurrentSrcQty = 0
                     $LastSrcQty = Get-LastActiveValue -History $SourceEntity.QuantityHistory -PropertyName 'Quantity' -ActiveOn $Session.Date
-                    if ($LastSrcQty -and $LastSrcQty -match '^\-?\d+$') {
-                        $CurrentSrcQty = [int]$LastSrcQty
+                    [int]$ParsedSrcQty = 0
+                    if ($LastSrcQty -and [int]::TryParse($LastSrcQty, [ref]$ParsedSrcQty)) {
+                        $CurrentSrcQty = $ParsedSrcQty
                     }
                     $SourceEntity.QuantityHistory.Add([PSCustomObject]@{
                         Quantity  = [string]($CurrentSrcQty - $Transfer.Amount)
@@ -390,8 +412,9 @@ function Get-EntityState {
                     }
                     $CurrentDstQty = 0
                     $LastDstQty = Get-LastActiveValue -History $DestEntity.QuantityHistory -PropertyName 'Quantity' -ActiveOn $Session.Date
-                    if ($LastDstQty -and $LastDstQty -match '^\-?\d+$') {
-                        $CurrentDstQty = [int]$LastDstQty
+                    [int]$ParsedDstQty = 0
+                    if ($LastDstQty -and [int]::TryParse($LastDstQty, [ref]$ParsedDstQty)) {
+                        $CurrentDstQty = $ParsedDstQty
                     }
                     $DestEntity.QuantityHistory.Add([PSCustomObject]@{
                         Quantity  = [string]($CurrentDstQty + $Transfer.Amount)

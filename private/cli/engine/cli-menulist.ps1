@@ -44,6 +44,14 @@ function New-MenuListComponent {
         }
     }
 
+    # Pre-compute max label width (labels don't change during session)
+    $PreMaxLabel = 0
+    foreach ($Item in $Items) {
+        $LLen = $Item.Label.Length
+        if ($Item.RoleTag) { $LLen += $Item.RoleTag.Length + 3 }
+        if ($LLen -gt $PreMaxLabel) { $PreMaxLabel = $LLen }
+    }
+
     $Component = @{
         Type              = 'MenuList'
         Items             = $Items
@@ -59,6 +67,7 @@ function New-MenuListComponent {
         TotalCount        = $Items.Count
         MatchInfoList     = @()
         FuzzyCallback     = $FuzzyCallback
+        _MaxLabelWidth    = $PreMaxLabel
         StatusHints       = "$([char]0x2191)$([char]0x2193) nawigacja  Enter wybierz  /h pomoc  $(if ($ShowBack) { 'Esc wstecz' } else { 'Esc/q zakoncz' })"
 
         Render = {
@@ -80,14 +89,8 @@ function New-MenuListComponent {
             $SelPos = $ComponentRef.SelectedPos
             $CurrentIndex = if ($SelIdx.Count -gt 0) { $SelIdx[$SelPos] } else { -1 }
 
-            # Calculate max label width
-            $MaxLabelWidth = 0
-            foreach ($Item in $Items) {
-                $LLen = $Item.Label.Length
-                if ($Item.RoleTag) { $LLen += $Item.RoleTag.Length + 3 }
-                if ($LLen -gt $MaxLabelWidth) { $MaxLabelWidth = $LLen }
-            }
-            $MaxLabelWidth = [Math]::Min($MaxLabelWidth + 4, $script:ScreenWidth - 20)
+            # Use pre-computed max label width (recalculated on filter via _MaxLabelWidth)
+            $MaxLabelWidth = [Math]::Min($ComponentRef._MaxLabelWidth + 4, $script:ScreenWidth - 20)
 
             $ContentHeight = Get-RegionHeight -Name 'Content'
             $Row = $Region.StartRow
@@ -194,11 +197,16 @@ function New-MenuListComponent {
                     $ComponentRef.Items = $ComponentRef.AllItems
                     $ComponentRef.MatchInfoList = @()
                     $ComponentRef.SelectableIndices = [System.Collections.Generic.List[int]]::new()
+                    $ClearMax = 0
                     for ($I = 0; $I -lt $ComponentRef.AllItems.Count; $I++) {
                         if (-not $ComponentRef.AllItems[$I].Disabled) {
                             [void]$ComponentRef.SelectableIndices.Add($I)
                         }
+                        $CLen = $ComponentRef.AllItems[$I].Label.Length
+                        if ($ComponentRef.AllItems[$I].RoleTag) { $CLen += $ComponentRef.AllItems[$I].RoleTag.Length + 3 }
+                        if ($CLen -gt $ClearMax) { $ClearMax = $CLen }
                     }
+                    $ComponentRef._MaxLabelWidth = $ClearMax
                     $ComponentRef.SelectedPos = 0
                     $ComponentRef.FilteredCount = $ComponentRef.AllItems.Count
                 }
@@ -268,11 +276,17 @@ function Invoke-MenuFilter {
     $Component.Items = @($Filtered)
     $Component.MatchInfoList = @($MatchInfoList)
     $Component.SelectableIndices = [System.Collections.Generic.List[int]]::new()
+    # Recalculate max label width for filtered set
+    $NewMax = 0
     for ($I = 0; $I -lt $Filtered.Count; $I++) {
         if (-not $Filtered[$I].Disabled) {
             [void]$Component.SelectableIndices.Add($I)
         }
+        $LLen = $Filtered[$I].Label.Length
+        if ($Filtered[$I].RoleTag) { $LLen += $Filtered[$I].RoleTag.Length + 3 }
+        if ($LLen -gt $NewMax) { $NewMax = $LLen }
     }
+    $Component._MaxLabelWidth = $NewMax
     $Component.SelectedPos = 0
     $Component.FilteredCount = $Filtered.Count
 }
@@ -326,12 +340,17 @@ function Invoke-MenuFuzzyExtend {
     $Component.Items = @($NewItems)
     $Component.MatchInfoList = @($NewMatchInfo)
 
-    # Rebuild selectable indices
+    # Rebuild selectable indices and update max label width
     $Component.SelectableIndices = [System.Collections.Generic.List[int]]::new()
+    $FuzzyMax = $Component._MaxLabelWidth
     for ($I = 0; $I -lt $NewItems.Count; $I++) {
         if (-not $NewItems[$I].Disabled) {
             [void]$Component.SelectableIndices.Add($I)
         }
+        $FLen = $NewItems[$I].Label.Length
+        if ($NewItems[$I].RoleTag) { $FLen += $NewItems[$I].RoleTag.Length + 3 }
+        if ($FLen -gt $FuzzyMax) { $FuzzyMax = $FLen }
     }
+    $Component._MaxLabelWidth = $FuzzyMax
     $Component.FilteredCount = $NewItems.Count
 }

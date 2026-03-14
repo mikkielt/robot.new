@@ -20,6 +20,16 @@ Traverses the directory tree upward from the current working directory to find t
 - Stops at filesystem root (`GetPathRoot()` check)
 - Throws if no `.git` directory found in any parent
 
+### 2.3 Result Caching
+
+`Get-RepoRoot` caches its result in `$script:CachedRepoRoot` after the first successful traversal. Subsequent calls without an explicit `-ModuleRoot` override return the cached value immediately, avoiding repeated filesystem traversal.
+
+The cache is bypassed when:
+- An explicit `-ModuleRoot` parameter is provided
+- `$script:DataDirectoryOverride` is set (via `Set-DataDirectory`)
+
+`Set-DataDirectory -Reset` does not clear the traversal cache (only the manifest cache). The traversal cache persists for the module session.
+
 ### 2.2 `Get-ParentRepoRoot`
 
 Companion function for submodule environments. Walks upward from `Get-RepoRoot` past the submodule `.git` boundary to find the enclosing parent repository root.

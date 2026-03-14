@@ -69,10 +69,14 @@ function Get-Markdown {
     $AllResults = [System.Collections.Generic.List[object]]::new()
 
     # Load the parser script as a string - needed both for sequential invocation
-    # (via [scriptblock]::Create) and for parallel workers (which receive it as AddScript text)
-    $ParseFileScriptPath = [System.IO.Path]::Combine($script:ModuleRoot, 'private', 'parse-markdownfile.ps1')
-    $ParseFileScriptStr  = [System.IO.File]::ReadAllText($ParseFileScriptPath)
-    $ParseFileScript     = [scriptblock]::Create($ParseFileScriptStr)
+    # (via [scriptblock]::Create) and for parallel workers (which receive it as AddScript text).
+    # Cached at script scope after first read to avoid repeated file I/O.
+    if (-not $script:CachedParseFileScriptStr) {
+        $ParseFileScriptPath = [System.IO.Path]::Combine($script:ModuleRoot, 'private', 'parse-markdownfile.ps1')
+        $script:CachedParseFileScriptStr = [System.IO.File]::ReadAllText($ParseFileScriptPath)
+    }
+    $ParseFileScriptStr = $script:CachedParseFileScriptStr
+    $ParseFileScript    = [scriptblock]::Create($ParseFileScriptStr)
 
     # Parallel threshold: RunspacePool setup has fixed overhead (~50ms), only worth it
     # when there are enough files to amortize that cost across workers

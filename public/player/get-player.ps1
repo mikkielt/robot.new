@@ -257,7 +257,7 @@ function Get-Player {
                 Triggers   = @()
                 Characters = [System.Collections.Generic.List[object]]::new()
             }
-            $TargetPlayer.Names.Add($TargetPlayerName)
+            [void]$TargetPlayer.Names.Add($TargetPlayerName)
             $Players.Add($TargetPlayer)
         }
 
@@ -327,6 +327,15 @@ function Get-Player {
             $InfoStr = $Entity.Overrides["info"] -join "`n"
             $TargetChar.AdditionalInfo = if ($TargetChar.AdditionalInfo) { $TargetChar.AdditionalInfo + "`n" + $InfoStr } else { $InfoStr }
         }
+    }
+
+    # Re-apply Name filter — entity overrides may have added stubs for non-requested players
+    if ($Name) {
+        $Filtered = [System.Collections.Generic.List[object]]::new()
+        foreach ($P in $Players) {
+            if ($Name -contains $P.Name) { $Filtered.Add($P) }
+        }
+        return $Filtered
     }
 
     return $Players
