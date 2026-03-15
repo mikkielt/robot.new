@@ -26,11 +26,7 @@ function Invoke-DiscordPUNotificationWorkflow {
     $Player = Invoke-EngineFuzzySearch -Prompt 'Wybierz gracza' -Source 'players' -State $State
     if (-not $Player) { return }
 
-    $MonthStep = [PSCustomObject]@{
-        Name = 'Month'; Label = 'Miesiąc (RRRR-MM)'; StepType = 'text'; Required = $true
-        Source = $null; Options = $null; SubSteps = $null; EntrySource = $null
-        Condition = $null; Transform = $null; Default = $null
-    }
+    $MonthStep = New-WizardTextStep -Name 'Month' -Label 'Miesiąc (RRRR-MM)' -Required
     $Month = Invoke-WizardStep -Step $MonthStep -State $State
     if (-not $Month -or $Month -eq '__back__') { return }
 
@@ -44,21 +40,15 @@ function Invoke-DiscordPUNotificationWorkflow {
 function Invoke-DiscordAnnouncementWorkflow {
     param([object]$State, [hashtable]$Entry)
 
-    $AccentColor = Get-CLIColor -Role 'Accent'
-    $SuccessColor = Get-CLIColor -Role 'Success'
-    $ErrorColor = Get-CLIColor -Role 'Error'
-    $DisabledColor = Get-CLIColor -Role 'Disabled'
+    $Colors = Initialize-WorkflowScreen -Title 'Ogłoszenie Discord' -NoSeparator
+    $AccentColor   = $Colors.Accent
+    $SuccessColor  = $Colors.Success
+    $ErrorColor    = $Colors.Error
+    $DisabledColor = $Colors.Disabled
 
     # ── Step 1: Webhook URL ──
-    [System.Console]::Clear()
-    Write-CLILine -Text 'Ogłoszenie Discord' -Color $AccentColor
-    Write-Host ''
 
-    $WebhookStep = [PSCustomObject]@{
-        Name = 'WebhookUrl'; Label = 'Webhook URL'; StepType = 'text'; Required = $true
-        Source = $null; Options = $null; SubSteps = $null; EntrySource = $null
-        Condition = $null; Transform = $null; Default = $null
-    }
+    $WebhookStep = New-WizardTextStep -Name 'WebhookUrl' -Label 'Webhook URL' -Required
     $Webhook = Invoke-WizardStep -Step $WebhookStep -State $State
     if (-not $Webhook -or $Webhook -eq '__back__') { return }
 
@@ -69,11 +59,7 @@ function Invoke-DiscordAnnouncementWorkflow {
     Write-CLILine -Text "  Webhook: $($Webhook.Substring(0, [System.Math]::Min(50, $Webhook.Length)))..." -Color $DisabledColor
     Write-Host ''
 
-    $TitleStep = [PSCustomObject]@{
-        Name = 'Title'; Label = 'Tytuł ogłoszenia'; StepType = 'text'; Required = $true
-        Source = $null; Options = $null; SubSteps = $null; EntrySource = $null
-        Condition = $null; Transform = $null; Default = $null
-    }
+    $TitleStep = New-WizardTextStep -Name 'Title' -Label 'Tytuł ogłoszenia' -Required
     $Title = Invoke-WizardStep -Step $TitleStep -State $State
     if (-not $Title -or $Title -eq '__back__') { return }
 
@@ -85,11 +71,7 @@ function Invoke-DiscordAnnouncementWorkflow {
     Write-CLILine -Text "  Tytuł: $Title" -Color $DisabledColor
     Write-Host ''
 
-    $BodyStep = [PSCustomObject]@{
-        Name = 'Body'; Label = 'Treść ogłoszenia'; StepType = 'text'; Required = $true
-        Source = $null; Options = $null; SubSteps = $null; EntrySource = $null
-        Condition = $null; Transform = $null; Default = $null
-    }
+    $BodyStep = New-WizardTextStep -Name 'Body' -Label 'Treść ogłoszenia' -Required
     $Body = Invoke-WizardStep -Step $BodyStep -State $State
     if (-not $Body -or $Body -eq '__back__') { return }
 

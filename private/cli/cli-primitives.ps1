@@ -310,6 +310,36 @@ function Complete-ProgressGroup {
     Write-Host ''
 }
 
+# ── Initialize-WorkflowScreen ────────────────────────────────────────────────
+# Common workflow screen setup: clear, title, separator, empty line.
+# Returns hashtable of all standard CLI colors for caller use.
+
+function Initialize-WorkflowScreen {
+    param(
+        [Parameter(Mandatory)] [string]$Title,
+        [switch]$NoSeparator
+    )
+
+    $Colors = @{
+        Accent   = Get-CLIColor -Role 'Accent'
+        Disabled = Get-CLIColor -Role 'Disabled'
+        Info     = Get-CLIColor -Role 'Info'
+        Warning  = Get-CLIColor -Role 'Warning'
+        Success  = Get-CLIColor -Role 'Success'
+        Error    = Get-CLIColor -Role 'Error'
+    }
+
+    [System.Console]::Clear()
+    Write-CLILine -Text $Title -Color $Colors.Accent
+    if (-not $NoSeparator) {
+        $Sep = [string][char]0x2500 * 50
+        Write-Host "  $Sep" -ForegroundColor $Colors.Disabled
+    }
+    Write-Host ''
+
+    return $Colors
+}
+
 # ── Read-ArrowKey ────────────────────────────────────────────────────────────
 # DEPRECATED: Use engine input handling (Start-InputLoop) instead.
 # Retained for plugin/migration compatibility. Will be removed in a future version.

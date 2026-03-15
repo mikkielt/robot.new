@@ -297,3 +297,38 @@ function Get-AllActiveValues {
     foreach ($Entry in $Active) { $Values.Add($Entry.$PropertyName) }
     return $Values.ToArray()
 }
+
+function ConvertTo-SessionDate {
+    <#
+        .SYNOPSIS
+        Parses a yyyy-MM-dd date string. Returns [datetime] on success, $null on failure.
+    #>
+    param([Parameter(Mandatory)] [string]$DateString)
+
+    [datetime]$Parsed = [datetime]::MinValue
+    if ([datetime]::TryParseExact($DateString, 'yyyy-MM-dd',
+            [System.Globalization.CultureInfo]::InvariantCulture,
+            [System.Globalization.DateTimeStyles]::None,
+            [ref]$Parsed)) {
+        return $Parsed
+    }
+    return $null
+}
+
+function ConvertFrom-CoordinateString {
+    <#
+        .SYNOPSIS
+        Parses "X, Y" coordinate pair. Returns @{ X = [int]; Y = [int] } or $null.
+    #>
+    param([Parameter(Mandatory)] [string]$Text)
+
+    $Parts = $Text.Split(',')
+    if ($Parts.Length -ge 2) {
+        [int]$X = 0
+        [int]$Y = 0
+        if ([int]::TryParse($Parts[0].Trim(), [ref]$X) -and [int]::TryParse($Parts[1].Trim(), [ref]$Y)) {
+            return @{ X = $X; Y = $Y }
+        }
+    }
+    return $null
+}

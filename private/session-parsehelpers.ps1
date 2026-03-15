@@ -68,6 +68,7 @@ function Get-SessionLocations {
         [object]$SectionLists,
         [regex]$LocItalicRegex,
         [System.Collections.Generic.Dictionary[string, object]]$Index,
+        [Parameter(Mandatory)]
         [hashtable]$ChildrenOf
     )
 
@@ -84,20 +85,7 @@ function Get-SessionLocations {
             }
         }
         { $_ -eq 'Gen3' -or $_ -eq 'Gen4' } {
-            # Use pre-built parent→children index when provided, otherwise build locally
-            $LocChildrenOf = if ($ChildrenOf) { $ChildrenOf } else {
-                $Local = @{}
-                foreach ($LI in $SectionLists) {
-                    if ($null -ne $LI.ParentListItem) {
-                        $ParentId = [System.Runtime.CompilerServices.RuntimeHelpers]::GetHashCode($LI.ParentListItem)
-                        if (-not $Local.ContainsKey($ParentId)) {
-                            $Local[$ParentId] = [System.Collections.Generic.List[object]]::new()
-                        }
-                        $Local[$ParentId].Add($LI)
-                    }
-                }
-                $Local
-            }
+            $LocChildrenOf = $ChildrenOf
 
             # Strategy 1: Entity resolution - find a nested list where all
             # resolved names are Lokacja entities (tag-name-independent)
@@ -178,6 +166,7 @@ function Get-SessionListMetadata {
         [object]$SectionLists,
         [regex]$PURegex,
         [regex]$UrlRegex,
+        [Parameter(Mandatory)]
         [hashtable]$ChildrenOf
     )
 
@@ -188,21 +177,6 @@ function Get-SessionListMetadata {
     $Transfers    = [System.Collections.Generic.List[object]]::new()
     $Narrators    = [System.Collections.Generic.List[string]]::new()
     $DateOverride = $null
-
-    # Use pre-built parent→children index when provided, otherwise build locally.
-    # Same pattern used in Get-Entity (line 214) and Get-Player (line 78).
-    if (-not $ChildrenOf) {
-        $ChildrenOf = @{}
-        foreach ($LI in $SectionLists) {
-            if ($null -ne $LI.ParentListItem) {
-                $ParentId = [System.Runtime.CompilerServices.RuntimeHelpers]::GetHashCode($LI.ParentListItem)
-                if (-not $ChildrenOf.ContainsKey($ParentId)) {
-                    $ChildrenOf[$ParentId] = [System.Collections.Generic.List[object]]::new()
-                }
-                $ChildrenOf[$ParentId].Add($LI)
-            }
-        }
-    }
 
     foreach ($ListItem in $SectionLists) {
         $ItemText  = $ListItem.Text

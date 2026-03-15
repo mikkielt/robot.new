@@ -15,15 +15,19 @@ This document covers the currency tracking subsystem: denomination constants, co
 ## 2. Architecture Overview
 
 ```
-private/currency-helpers.ps1         Denomination constants, conversion, identification
-    ├── $CurrencyDenominations       Canonical denomination definitions
-    ├── ConvertTo-CurrencyBaseUnit   Amount -> Kogi conversion
-    ├── ConvertFrom-CurrencyBaseUnit Kogi -> denomination breakdown
-    ├── Resolve-CurrencyDenomination Stem/colloquial -> canonical denomination
-    ├── Test-IsCurrencyEntity        Check if entity is currency
-    ├── Build-CurrencyEntityLookup  Pre-build denomination+owner -> entity hashtable
-    ├── Find-CurrencyEntity          Find currency entity by denomination + owner
-    └── Get-CurrencyEntitiesFiltered Identify, filter by status, and enrich currency entities
+private/currency-helpers.ps1              Denomination constants, conversion, identification
+    ├── $CurrencyDenominations            Canonical denomination definitions
+    ├── $DenomLookup                      Precomputed O(1) denomination lookup table
+    ├── ConvertTo-CurrencyBaseUnit        Amount -> Kogi conversion
+    ├── ConvertFrom-CurrencyBaseUnit      Kogi -> denomination breakdown
+    ├── Resolve-CurrencyDenomination      Stem/colloquial -> canonical denomination
+    ├── Test-IsCurrencyEntity             Check if entity is currency
+    ├── Test-CurrencyOwnerMatch           Owner filter predicate
+    ├── Test-CurrencyDenominationMatch    Denomination filter predicate
+    ├── Build-CurrencyEntityLookup        Pre-build denomination+owner -> entity hashtable
+    ├── Find-CurrencyEntity               Find currency entity by denomination + owner
+    ├── Resolve-CurrencyOwnerType         Owner name -> Physical/Virtual/Unknown
+    └── Get-CurrencyEntitiesFiltered      Identify, filter by status, and enrich currency entities
 
 public/currency/                     Currency entity CRUD
     ├── New-CurrencyEntity           Create currency entity (denomination-validated, auto-named)
@@ -148,11 +152,13 @@ Returns: `@{ Korony = [int]; Talary = [int]; Kogi = [int] }`
 
 ### 5.3 `Resolve-CurrencyDenomination`
 
-Resolves any denomination reference to its canonical definition. Uses three-tier matching:
+Resolves any denomination reference to its canonical definition. Uses a precomputed `$script:DenomLookup` hashtable built at dot-source time for O(1) exact match, with stem prefix fallback.
 
-1. Exact match on canonical name (case-insensitive)
-2. Exact match on short name
-3. Stem prefix match (`kor` -> Korony, `tal` -> Talary, `kog` -> Kogi)
+**Precomputed lookup** (`$script:DenomLookup`): Built once when `currency-helpers.ps1` is dot-sourced. Maps all canonical names, short names, and stems (lowercased) to their denomination objects. This avoids repeated linear scans of `$CurrencyDenominations`.
+
+**Resolution pipeline**:
+1. O(1) exact match on `$DenomLookup` (canonical name, short name, or stem — all lowercased)
+2. Stem prefix fallback: iterates `$DenomLookup` keys, returns the first where the input `StartsWith` the key (for partial names like `"koron"` matching `"kor"` stem)
 
 | Parameter | Type | Description |
 |---|---|---|
@@ -160,7 +166,29 @@ Resolves any denomination reference to its canonical definition. Uses three-tier
 
 Returns the denomination object (`Name`, `Short`, `Tier`, `Multiplier`, `Stems`) or `$null`.
 
-### 5.4 `Get-CurrencyEntitiesFiltered`
+### 5.4 `Test-CurrencyOwnerMatch`
+
+Predicate function for filtering currency entities by owner. Used internally by `Get-CurrencyEntity` and `Get-CurrencyReport` to centralize owner-matching logic.
+
+| Parameter | Type | Description |
+|---|---|---|
+| `EntityOwner` | string | The currency entity's `Owner` property value. |
+| `FilterOwner` | string | The owner filter string (from `-Owner` parameter). |
+
+Returns `$true` if `FilterOwner` is null/empty (no filter) or if `EntityOwner` matches `FilterOwner` (case-insensitive via `OrdinalIgnoreCase`). Returns `$false` when the filter is set but the entity has no owner or the names do not match.
+
+### 5.5 `Test-CurrencyDenominationMatch`
+
+Predicate function for filtering currency entities by denomination. Used internally by `Get-CurrencyEntity`, `Get-CurrencyReport`, and `Get-TransactionLedger` to centralize denomination-matching logic.
+
+| Parameter | Type | Description |
+|---|---|---|
+| `DenominationName` | string | The resolved denomination canonical name (from entity). |
+| `DenomFilter` | object | The resolved denomination filter object (from `Resolve-CurrencyDenomination`). |
+
+Returns `$true` if `DenomFilter` is null (no filter) or if `DenominationName` matches `DenomFilter.Name` (case-insensitive). Callers resolve the user-supplied denomination string via `Resolve-CurrencyDenomination` before passing it as `DenomFilter`.
+
+### 5.6 `Get-CurrencyEntitiesFiltered`
 
 Identifies currency entities from a collection, filters by status, and returns enriched objects with resolved denomination and parsed quantity. Used internally by `Get-CurrencyReport` and `Test-CurrencyReconciliation` to avoid duplicate identification/enrichment logic.
 
@@ -185,7 +213,7 @@ Identifies currency entities from a collection, filters by status, and returns e
 
 **Filtering pipeline**: Entity must pass `Test-IsCurrencyEntity` -> status filter -> denomination resolution.
 
-### 5.5 `Build-CurrencyEntityLookup`
+### 5.7 `Build-CurrencyEntityLookup`
 
 Pre-builds a denomination+owner lookup hashtable for O(1) currency entity resolution. Used by `Get-EntityState` to avoid repeated linear scans when processing multiple `@Transfer` directives within a session batch.
 
@@ -193,7 +221,9 @@ Pre-builds a denomination+owner lookup hashtable for O(1) currency entity resolu
 |---|---|---|
 | `Entities` | object[] | **Mandatory**. Entity collection from `Get-Entity`. |
 
-Iterates all `Przedmiot` entities with `GenericNames` and an `Owner`. For each generic name that resolves via `Resolve-CurrencyDenomination`, builds a composite key `"{CanonicalDenom}|{Owner}"` and stores the first matching entity. Returns `Dictionary[string, object]` with `OrdinalIgnoreCase` comparer.
+**Filtering pipeline**: Iterates all entities, skipping those without `GenericNames`, those where `Type` is not `Przedmiot`, and those without an `Owner`. For each qualifying entity, resolves each generic name via `Resolve-CurrencyDenomination`. On match, builds a composite key `"{CanonicalDenom}|{Owner}"` and stores the first matching entity (duplicates are silently ignored via `ContainsKey` guard).
+
+Returns `Dictionary[string, object]` with `OrdinalIgnoreCase` comparer.
 
 ---
 

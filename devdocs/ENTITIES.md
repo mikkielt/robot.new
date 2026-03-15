@@ -51,6 +51,8 @@ All temporal helpers live in `private/temporal-helpers.ps1`, which is dot-source
 | `Get-NestedBulletText` | Collects child bullet text passing temporal filter; uses `RuntimeHelpers.GetHashCode()` for parent lookup |
 | `Get-LastActiveValue` | Returns last active entry from a history list |
 | `Get-AllActiveValues` | Returns all active entries as `string[]` |
+| `ConvertTo-SessionDate` | Parses a `yyyy-MM-dd` date string via `TryParseExact`. Returns `[datetime]` on success, `$null` on failure. Used by session and reporting consumers that need strict date parsing without exceptions. |
+| `ConvertFrom-CoordinateString` | Parses `"X, Y"` coordinate strings from `@koordynaty` tag values. Splits on comma, `TryParse`s both parts as `[int]`. Returns `@{ X = [int]; Y = [int] }` on success, `$null` on malformed input. |
 | `Resolve-EntityCN` | Builds hierarchical canonical names for locations via `@lokacja` chain (in `public/get-entity.ps1`) |
 
 **Module-level regex patterns** (defined at `$script:` scope in `temporal-helpers.ps1`):
@@ -103,6 +105,26 @@ Collects text from child bullets of a parent list item, filtered through `Test-T
 | `ActiveOn` | datetime? | Temporal filter; `$null` passes all children |
 
 Returns a single newline-joined string of all temporally-active child texts, or `$null` when no children match.
+
+### 3.1d `ConvertTo-SessionDate`
+
+Strict date parser for `yyyy-MM-dd` strings. Uses `[datetime]::TryParseExact` with `InvariantCulture` — no exceptions on malformed input.
+
+| Parameter | Type | Description |
+|---|---|---|
+| `DateString` | string | **Mandatory**. Date string in `yyyy-MM-dd` format. |
+
+Returns `[datetime]` on success, `$null` on failure. Used by session and reporting code that needs date parsing without try/catch overhead (e.g., batch processing session headers).
+
+### 3.1e `ConvertFrom-CoordinateString`
+
+Parses `@koordynaty` tag values in `"X, Y"` format into a typed hashtable.
+
+| Parameter | Type | Description |
+|---|---|---|
+| `Text` | string | **Mandatory**. Coordinate string (e.g., `"15, 23"`). |
+
+Splits on comma, trims whitespace, and `[int]::TryParse`s both parts. Returns `@{ X = [int]; Y = [int] }` on success, `$null` when the string has fewer than two parts or either part is non-numeric. Called by `Get-Entity` and `Get-EntityState` when processing `@koordynaty` tags.
 
 ### 3.2 Multi-File Merge
 
@@ -260,6 +282,7 @@ After all sessions processed, for each modified entity:
 | `Sessions` | object[] | Pre-fetched from `Get-Session` (auto-fetched if omitted) |
 | `Players` | object[] | Pre-fetched from `Get-Player` (auto-fetched if omitted) |
 | `NameIndex` | hashtable | Pre-built name index from `Get-NameIndex`. When provided, avoids redundant BK-tree rebuild. |
+| `ProgressCallback` | scriptblock | Optional callback for CLI progress reporting. Invoked with `(Current, Total, ItemDetail)` every 10 sessions and on completion. |
 | `ActiveOn` | datetime | Temporal filter for merged state |
 
 ---

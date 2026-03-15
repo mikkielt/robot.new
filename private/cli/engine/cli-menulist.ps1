@@ -194,7 +194,7 @@ function New-MenuListComponent {
                 }
 
                 'FilterClear' {
-                    $ComponentRef.Items = $ComponentRef.AllItems
+                    $ComponentRef.Items = [object[]]$ComponentRef.AllItems.Clone()
                     $ComponentRef.MatchInfoList = @()
                     $ComponentRef.SelectableIndices = [System.Collections.Generic.List[int]]::new()
                     $ClearMax = 0

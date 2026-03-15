@@ -110,7 +110,9 @@ function Resolve-IntelTargets {
         [System.Collections.Generic.Dictionary[string, System.Collections.Generic.List[string]]]$StemIndex,
         [object[]]$Players,
         [hashtable]$ResolveCache,
+        [Parameter(Mandatory)]
         [hashtable]$EntityByGroup,
+        [Parameter(Mandatory)]
         [hashtable]$EntityByLocation
     )
 
@@ -160,28 +162,12 @@ function Resolve-IntelTargets {
                         [void]$GroupNames.Add($Resolved.Name)
                     }
 
-                    # Use pre-built EntityByGroup index when available: O(G) instead of O(E)
-                    if ($EntityByGroup) {
-                        foreach ($GName in $GroupNames) {
-                            if ($EntityByGroup.ContainsKey($GName)) {
-                                foreach ($GEntry in $EntityByGroup[$GName]) {
-                                    if ($GEntry.Entity.Name -eq $Resolved.Name) { continue }
-                                    if (Test-TemporalActivity -Item $GEntry.History -ActiveOn $SessionDate) {
-                                        $RecipientEntities.Add($GEntry.Entity)
-                                    }
-                                }
-                            }
-                        }
-                    } else {
-                        foreach ($Entity in $Entities) {
-                            if ($Entity.Name -eq $Resolved.Name) { continue }
-                            if ($Entity.GroupHistory.Count -eq 0) { continue }
-
-                            foreach ($GH in $Entity.GroupHistory) {
-                                if (-not (Test-TemporalActivity -Item $GH -ActiveOn $SessionDate)) { continue }
-                                if ($GroupNames.Contains($GH.Group)) {
-                                    $RecipientEntities.Add($Entity)
-                                    break
+                    foreach ($GName in $GroupNames) {
+                        if ($EntityByGroup.ContainsKey($GName)) {
+                            foreach ($GEntry in $EntityByGroup[$GName]) {
+                                if ($GEntry.Entity.Name -eq $Resolved.Name) { continue }
+                                if (Test-TemporalActivity -Item $GEntry.History -ActiveOn $SessionDate) {
+                                    [void]$RecipientEntities.Add($GEntry.Entity)
                                 }
                             }
                         }
@@ -189,83 +175,45 @@ function Resolve-IntelTargets {
                 }
 
                 'Lokacja' {
-                    $RecipientEntities.Add($Resolved)
+                    [void]$RecipientEntities.Add($Resolved)
 
                     $LocationSet = [System.Collections.Generic.HashSet[string]]::new(
                         [System.StringComparer]::OrdinalIgnoreCase
                     )
                     [void]$LocationSet.Add($Resolved.Name)
 
-                    # Build location tree using pre-built index when available
-                    if ($EntityByLocation) {
-                        $Queue = [System.Collections.Generic.Queue[string]]::new()
-                        $Queue.Enqueue($Resolved.Name)
-                        while ($Queue.Count -gt 0) {
-                            $Current = $Queue.Dequeue()
-                            if ($EntityByLocation.ContainsKey($Current)) {
-                                foreach ($LEntry in $EntityByLocation[$Current]) {
-                                    if ($LEntry.Entity.Type -ne 'Lokacja') { continue }
-                                    if ($LocationSet.Contains($LEntry.Entity.Name)) { continue }
-                                    if (-not (Test-TemporalActivity -Item $LEntry.History -ActiveOn $SessionDate)) { continue }
-                                    [void]$LocationSet.Add($LEntry.Entity.Name)
-                                    $Queue.Enqueue($LEntry.Entity.Name)
-                                    $RecipientEntities.Add($LEntry.Entity)
-                                }
+                    # Build location tree using pre-built index
+                    $Queue = [System.Collections.Generic.Queue[string]]::new()
+                    [void]$Queue.Enqueue($Resolved.Name)
+                    while ($Queue.Count -gt 0) {
+                        $Current = $Queue.Dequeue()
+                        if ($EntityByLocation.ContainsKey($Current)) {
+                            foreach ($LEntry in $EntityByLocation[$Current]) {
+                                if ($LEntry.Entity.Type -ne 'Lokacja') { continue }
+                                if ($LocationSet.Contains($LEntry.Entity.Name)) { continue }
+                                if (-not (Test-TemporalActivity -Item $LEntry.History -ActiveOn $SessionDate)) { continue }
+                                [void]$LocationSet.Add($LEntry.Entity.Name)
+                                [void]$Queue.Enqueue($LEntry.Entity.Name)
+                                [void]$RecipientEntities.Add($LEntry.Entity)
                             }
                         }
+                    }
 
-                        # Find non-location entities in the location set
-                        foreach ($LocName in @($LocationSet)) {
-                            if ($EntityByLocation.ContainsKey($LocName)) {
-                                foreach ($LEntry in $EntityByLocation[$LocName]) {
-                                    if ($LEntry.Entity.Type -eq 'Lokacja') { continue }
-                                    if ($LEntry.Entity.Type -eq 'Mapa') { continue }
-                                    if (-not (Test-TemporalActivity -Item $LEntry.History -ActiveOn $SessionDate)) { continue }
-                                    $RecipientEntities.Add($LEntry.Entity)
-                                }
-                            }
-                        }
-                    } else {
-                        $Queue = [System.Collections.Generic.Queue[string]]::new()
-                        $Queue.Enqueue($Resolved.Name)
-
-                        while ($Queue.Count -gt 0) {
-                            $Current = $Queue.Dequeue()
-                            foreach ($Entity in $Entities) {
-                                if ($Entity.Type -ne 'Lokacja') { continue }
-                                if ($LocationSet.Contains($Entity.Name)) { continue }
-
-                                foreach ($LH in $Entity.LocationHistory) {
-                                    if (-not (Test-TemporalActivity -Item $LH -ActiveOn $SessionDate)) { continue }
-                                    if ([string]::Equals($LH.Location, $Current,
-                                        [System.StringComparison]::OrdinalIgnoreCase)) {
-                                        [void]$LocationSet.Add($Entity.Name)
-                                        $Queue.Enqueue($Entity.Name)
-                                        $RecipientEntities.Add($Entity)
-                                        break
-                                    }
-                                }
-                            }
-                        }
-
-                        foreach ($Entity in $Entities) {
-                            if ($Entity.Type -eq 'Lokacja') { continue }
-                            if ($Entity.Type -eq 'Mapa') { continue }
-                            if ($Entity.LocationHistory.Count -eq 0) { continue }
-
-                            foreach ($LH in $Entity.LocationHistory) {
-                                if (-not (Test-TemporalActivity -Item $LH -ActiveOn $SessionDate)) { continue }
-                                if (Test-LocationMatch -LocationValue $LH.Location -LocationSet $LocationSet) {
-                                    $RecipientEntities.Add($Entity)
-                                    break
-                                }
+                    # Find non-location entities in the location set
+                    foreach ($LocName in @($LocationSet)) {
+                        if ($EntityByLocation.ContainsKey($LocName)) {
+                            foreach ($LEntry in $EntityByLocation[$LocName]) {
+                                if ($LEntry.Entity.Type -eq 'Lokacja') { continue }
+                                if ($LEntry.Entity.Type -eq 'Mapa') { continue }
+                                if (-not (Test-TemporalActivity -Item $LEntry.History -ActiveOn $SessionDate)) { continue }
+                                [void]$RecipientEntities.Add($LEntry.Entity)
                             }
                         }
                     }
                 }
 
                 'Direct' {
-                    $RecipientEntities.Add($Resolved)
+                    [void]$RecipientEntities.Add($Resolved)
                 }
             }
         }
@@ -312,6 +260,7 @@ function Get-SessionMentions {
         [System.Collections.Generic.Dictionary[string, object]]$Index,
         [System.Collections.Generic.Dictionary[string, System.Collections.Generic.List[string]]]$StemIndex,
         [hashtable]$ResolveCache,
+        [Parameter(Mandatory)]
         [hashtable]$ChildrenOf,
         [string[]]$ContentLines
     )
@@ -339,21 +288,7 @@ function Get-SessionMentions {
     }
 
     # Single-pass DFS: propagate exclusion to all descendants via parent→children index.
-    # Replaces multi-pass O(L×D) convergence loop with O(L) DFS traversal.
-    # Use pre-built index when provided, otherwise build locally.
-    $MentionChildrenOf = if ($ChildrenOf) { $ChildrenOf } else {
-        $Local = @{}
-        foreach ($LI in $SectionLists) {
-            if ($null -ne $LI.ParentListItem) {
-                $ParentHashId = [System.Runtime.CompilerServices.RuntimeHelpers]::GetHashCode($LI.ParentListItem)
-                if (-not $Local.ContainsKey($ParentHashId)) {
-                    $Local[$ParentHashId] = [System.Collections.Generic.List[object]]::new()
-                }
-                $Local[$ParentHashId].Add($LI)
-            }
-        }
-        $Local
-    }
+    $MentionChildrenOf = $ChildrenOf
     $ExclStack = [System.Collections.Generic.Stack[int]]::new()
     foreach ($ExId in @($ExcludedListItems)) { $ExclStack.Push($ExId) }
     while ($ExclStack.Count -gt 0) {

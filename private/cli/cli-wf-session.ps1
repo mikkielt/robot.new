@@ -60,19 +60,11 @@ function Invoke-SessionValidation {
     }
 
     # Get date range
-    $MinDateStep = [PSCustomObject]@{
-        Name = 'MinDate'; Label = 'Od daty'; StepType = 'date'; Required = $false
-        Source = $null; Options = $null; SubSteps = $null; EntrySource = $null
-        Condition = $null; Transform = $null; Default = $null
-    }
+    $MinDateStep = New-WizardDateStep -Name 'MinDate' -Label 'Od daty'
     $MinDate = Invoke-WizardStep -Step $MinDateStep -State $State
     if ($MinDate -eq '__back__') { return }
 
-    $MaxDateStep = [PSCustomObject]@{
-        Name = 'MaxDate'; Label = 'Do daty'; StepType = 'date'; Required = $false
-        Source = $null; Options = $null; SubSteps = $null; EntrySource = $null
-        Condition = $null; Transform = $null; Default = $null
-    }
+    $MaxDateStep = New-WizardDateStep -Name 'MaxDate' -Label 'Do daty'
     $MaxDate = Invoke-WizardStep -Step $MaxDateStep -State $State
     if ($MaxDate -eq '__back__') { return }
 

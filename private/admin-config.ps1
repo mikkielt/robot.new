@@ -59,6 +59,22 @@ function Resolve-ConfigValue {
     return $null
 }
 
+# Validates that a resolved path is under the repository root (prevents path traversal)
+function Test-PathUnderRoot {
+    param(
+        [Parameter(Mandatory)] [string]$Path,
+        [Parameter(Mandatory)] [string]$Root
+    )
+
+    $FullPath = [System.IO.Path]::GetFullPath($Path)
+    $FullRoot = [System.IO.Path]::GetFullPath($Root)
+    # Ensure root ends with separator for prefix matching
+    if (-not $FullRoot.EndsWith([System.IO.Path]::DirectorySeparatorChar)) {
+        $FullRoot = $FullRoot + [System.IO.Path]::DirectorySeparatorChar
+    }
+    return $FullPath.StartsWith($FullRoot, [System.StringComparison]::OrdinalIgnoreCase)
+}
+
 # Session-scoped cache for data manifest
 $script:CachedManifest = $null
 $script:CachedManifestDir = $null
@@ -127,7 +143,14 @@ function Get-AdminConfig {
         foreach ($Key in $Manifest.Keys) {
             $RelPath = $Manifest[$Key]
             if ($RelPath -is [string]) {
-                $ManifestPaths[$Key] = [System.IO.Path]::GetFullPath([System.IO.Path]::Combine($ManifestDir, $RelPath))
+                $Resolved = [System.IO.Path]::GetFullPath([System.IO.Path]::Combine($ManifestDir, $RelPath))
+                # Security: prevent path traversal outside repository root
+                if (-not (Test-PathUnderRoot -Path $Resolved -Root $RepoRoot)) {
+                    [System.Console]::Error.WriteLine(
+                        "[WARN Get-AdminConfig] Manifest path '$Key' resolves to '$Resolved' outside repository root - skipping")
+                    continue
+                }
+                $ManifestPaths[$Key] = $Resolved
             }
         }
     }

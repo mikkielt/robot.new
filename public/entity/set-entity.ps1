@@ -116,22 +116,7 @@ function Set-Entity {
     if ($PSCmdlet.ShouldProcess($FilePath, "Set-Entity: update '$Name' tags")) {
         Write-EntityFile -Path $FilePath -Lines $Lines -NL $NL
 
-        # Flag Tier 2 as stale — entity name set may have changed
-        try {
-            if (-not (Get-Command 'Read-SessionGraphMeta' -ErrorAction SilentlyContinue)) {
-                . "$script:ModuleRoot/private/session-graphhelpers.ps1"
-            }
-            $GraphDir = [System.IO.Path]::Combine($Config.ResDir, 'session-graph')
-            $MetaPath = [System.IO.Path]::Combine($GraphDir, '_meta.json')
-            if ([System.IO.File]::Exists($MetaPath)) {
-                $GraphMeta = Read-SessionGraphMeta -MetaPath $MetaPath
-                $GraphMeta['Tier2Stale'] = $true
-                $GraphMeta['Tier2StaleReason'] = "Encja '$Name' została zmodyfikowana"
-                Write-SessionGraphMeta -MetaPath $MetaPath -Meta $GraphMeta
-            }
-        } catch {
-            # Best-effort; do not fail the entity write
-        }
+        Set-SessionGraphStale -Reason "Encja '$Name' została zmodyfikowana" -ResDir $Config.ResDir
 
         if ($script:HasOpCtx) {
             return (New-OperationResult -Success $true -Action 'Update' `

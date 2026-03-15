@@ -62,7 +62,22 @@ function Get-MigrationState {
         return $State
     }
     catch {
-        [System.Console]::Error.WriteLine("[WARN Get-MigrationState] Nie udało się odczytać pliku stanu: $($_.Exception.Message)")
+        # Primary state corrupt — try backup
+        $BackupPath = "$Path.bak"
+        if ([System.IO.File]::Exists($BackupPath)) {
+            [System.Console]::Error.WriteLine("[WARN Get-MigrationState] Stan główny uszkodzony, przywracanie z kopii zapasowej")
+            try {
+                $Json = [System.IO.File]::ReadAllText($BackupPath, $script:UTF8NoBOM)
+                $Parsed = $Json | ConvertFrom-Json
+                $State = ConvertTo-HashtableDeep -InputObject $Parsed
+                # Restore primary from backup
+                [System.IO.File]::Copy($BackupPath, $Path, $true)
+                return $State
+            }
+            catch {
+                [System.Console]::Error.WriteLine("[WARN Get-MigrationState] Kopia zapasowa również uszkodzona: $($_.Exception.Message)")
+            }
+        }
         [System.Console]::Error.WriteLine("[WARN Get-MigrationState] Tworzenie domyślnego stanu...")
         return New-DefaultMigrationState
     }
@@ -102,7 +117,8 @@ function ConvertTo-HashtableDeep {
     return $InputObject
 }
 
-# Writes updated state to JSON file (UTF-8 no BOM).
+# Writes updated state to JSON file (UTF-8 no BOM) using atomic temp-file swap.
+# Creates a .bak backup before overwriting, enabling recovery from corruption.
 function Save-MigrationState {
     param([Parameter(Mandatory)] [hashtable]$State)
 
@@ -115,7 +131,22 @@ function Save-MigrationState {
     }
 
     $Json = $State | ConvertTo-Json -Depth 10
-    [System.IO.File]::WriteAllText($Path, $Json, $script:UTF8NoBOM)
+    $TempPath = "$Path.tmp"
+    $BackupPath = "$Path.bak"
+
+    # Write to temp file first
+    [System.IO.File]::WriteAllText($TempPath, $Json, $script:UTF8NoBOM)
+
+    # Backup existing file before overwrite
+    if ([System.IO.File]::Exists($Path)) {
+        if ([System.IO.File]::Exists($BackupPath)) {
+            [System.IO.File]::Delete($BackupPath)
+        }
+        [System.IO.File]::Move($Path, $BackupPath)
+    }
+
+    # Move temp to target (atomic on same filesystem; PS5.1-compatible)
+    [System.IO.File]::Move($TempPath, $Path)
 }
 
 # Returns status string for a given phase (Completed/InProgress/NotStarted).

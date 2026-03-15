@@ -32,11 +32,7 @@ function Invoke-IntelPreviewWorkflow {
     Write-Host ''
 
     # Date range
-    $MinDateStep = [PSCustomObject]@{
-        Name = 'MinDate'; Label = 'Od daty'; StepType = 'date'; Required = $false
-        Source = $null; Options = $null; SubSteps = $null; EntrySource = $null
-        Condition = $null; Transform = $null; Default = $null
-    }
+    $MinDateStep = New-WizardDateStep -Name 'MinDate' -Label 'Od daty'
     $MinDate = Invoke-WizardStep -Step $MinDateStep -State $State
     if ($MinDate -eq '__back__') { return }
 
@@ -122,19 +118,11 @@ function Invoke-FetchLogsWorkflow {
     Write-Host ''
 
     # Date range steps
-    $MinDateStep = [PSCustomObject]@{
-        Name = 'MinDate'; Label = 'Od daty (opcjonalne)'; StepType = 'date'; Required = $false
-        Source = $null; Options = $null; SubSteps = $null; EntrySource = $null
-        Condition = $null; Transform = $null; Default = $null
-    }
+    $MinDateStep = New-WizardDateStep -Name 'MinDate' -Label 'Od daty (opcjonalne)'
     $MinDate = Invoke-WizardStep -Step $MinDateStep -State $State
     if ($MinDate -eq '__back__') { return }
 
-    $MaxDateStep = [PSCustomObject]@{
-        Name = 'MaxDate'; Label = 'Do daty (opcjonalne)'; StepType = 'date'; Required = $false
-        Source = $null; Options = $null; SubSteps = $null; EntrySource = $null
-        Condition = $null; Transform = $null; Default = $null
-    }
+    $MaxDateStep = New-WizardDateStep -Name 'MaxDate' -Label 'Do daty (opcjonalne)'
     $MaxDate = Invoke-WizardStep -Step $MaxDateStep -State $State
     if ($MaxDate -eq '__back__') { return }
 
@@ -219,11 +207,7 @@ function Invoke-LogLocationReportWorkflow {
     Write-Host ''
 
     # Date range
-    $MinDateStep = [PSCustomObject]@{
-        Name = 'MinDate'; Label = 'Od daty (opcjonalne)'; StepType = 'date'; Required = $false
-        Source = $null; Options = $null; SubSteps = $null; EntrySource = $null
-        Condition = $null; Transform = $null; Default = $null
-    }
+    $MinDateStep = New-WizardDateStep -Name 'MinDate' -Label 'Od daty (opcjonalne)'
     $MinDate = Invoke-WizardStep -Step $MinDateStep -State $State
     if ($MinDate -eq '__back__') { return }
 
@@ -384,21 +368,13 @@ function Invoke-LocationGraphWorkflow {
     Write-Host ''
 
     # Date range (optional)
-    $MinDateStep = [PSCustomObject]@{
-        Name = 'MinDate'; Label = 'Od daty (opcjonalne)'; StepType = 'date'; Required = $false
-        Source = $null; Options = $null; SubSteps = $null; EntrySource = $null
-        Condition = $null; Transform = $null; Default = $null
-    }
+    $MinDateStep = New-WizardDateStep -Name 'MinDate' -Label 'Od daty (opcjonalne)'
     $MinDate = Invoke-WizardStep -Step $MinDateStep -State $State
     if ($MinDate -eq '__back__') { return }
 
     # Include movement edges?
     $IncludeMovement = $false
-    $MoveStep = [PSCustomObject]@{
-        Name = 'IncludeMovement'; Label = 'Dołączyć krawędzie ruchu z logów?'; StepType = 'choice'; Required = $false
-        Source = $null; Options = @('Nie', 'Tak'); SubSteps = $null; EntrySource = $null
-        Condition = $null; Transform = $null; Default = 'Nie'
-    }
+    $MoveStep = New-WizardChoiceStep -Name 'IncludeMovement' -Label 'Dołączyć krawędzie ruchu z logów?' -Options @('Nie', 'Tak') -Default 'Nie'
     $MoveChoice = Invoke-WizardStep -Step $MoveStep -State $State
     if ($MoveChoice -eq '__back__') { return }
     if ($MoveChoice -eq 'Tak') { $IncludeMovement = $true }
@@ -553,19 +529,12 @@ function Invoke-SessionLeaderboardWorkflow {
     Write-Host ''
 
     # Optional entity type filter
-    $TypeStep = [PSCustomObject]@{
-        Name = 'EntityType'; Label = 'Typ encji (opcjonalny)'; StepType = 'choice'; Required = $false
-        Source = $null; Options = @('Wszystkie', 'Postać', 'NPC', 'Lokacja', 'Grupa')
-        SubSteps = $null; EntrySource = $null; Condition = $null; Transform = $null; Default = 'Wszystkie'
-    }
+    $TypeStep = New-WizardChoiceStep -Name 'EntityType' -Label 'Typ encji (opcjonalny)' `
+        -Options @('Wszystkie', 'Postać', 'NPC', 'Lokacja', 'Grupa') -Default 'Wszystkie'
     $TypeChoice = Invoke-WizardStep -Step $TypeStep -State $State
     if ($TypeChoice -eq '__back__') { return }
 
-    $TopStep = [PSCustomObject]@{
-        Name = 'Top'; Label = 'Ile pozycji? (domyślnie 20)'; StepType = 'text'; Required = $false
-        Source = $null; Options = $null; SubSteps = $null; EntrySource = $null
-        Condition = $null; Transform = $null; Default = '20'
-    }
+    $TopStep = New-WizardTextStep -Name 'Top' -Label 'Ile pozycji? (domyślnie 20)' -Default '20'
     $TopValue = Invoke-WizardStep -Step $TopStep -State $State
     if ($TopValue -eq '__back__') { return }
     $TopN = if ($TopValue -and $TopValue -match '^\d+$') { [int]$TopValue } else { 20 }
@@ -655,11 +624,8 @@ function Invoke-SessionGraphWorkflow {
     }
 
     # Mode selection
-    $ModeStep = [PSCustomObject]@{
-        Name = 'Mode'; Label = 'Tryb zapytania'; StepType = 'choice'; Required = $true
-        Source = $null; Options = @('Sesje encji', 'Współuczestnicy', 'Uczestnicy sesji', 'Podsumowanie')
-        SubSteps = $null; EntrySource = $null; Condition = $null; Transform = $null; Default = 'Sesje encji'
-    }
+    $ModeStep = New-WizardChoiceStep -Name 'Mode' -Label 'Tryb zapytania' -Required `
+        -Options @('Sesje encji', 'Współuczestnicy', 'Uczestnicy sesji', 'Podsumowanie') -Default 'Sesje encji'
     $ModeChoice = Invoke-WizardStep -Step $ModeStep -State $State
     if ($ModeChoice -eq '__back__') { return }
 
@@ -674,11 +640,7 @@ function Invoke-SessionGraphWorkflow {
     # Entity name (required for Sessions/CoParticipants)
     $EntityName = $null
     if ($Mode -in @('Sessions', 'CoParticipants')) {
-        $NameStep = [PSCustomObject]@{
-            Name = 'EntityName'; Label = 'Nazwa encji'; StepType = 'text'; Required = $true
-            Source = $null; Options = $null; SubSteps = $null; EntrySource = $null
-            Condition = $null; Transform = $null; Default = $null
-        }
+        $NameStep = New-WizardTextStep -Name 'EntityName' -Label 'Nazwa encji' -Required
         $EntityName = Invoke-WizardStep -Step $NameStep -State $State
         if ($EntityName -eq '__back__') { return }
     }
@@ -686,11 +648,7 @@ function Invoke-SessionGraphWorkflow {
     # Session header (required for EntityTimeline)
     $SessionHeader = $null
     if ($Mode -eq 'EntityTimeline') {
-        $HeaderStep = [PSCustomObject]@{
-            Name = 'SessionHeader'; Label = 'Nagłówek sesji (### YYYY-MM-DD, Tytuł, Narrator)'; StepType = 'text'; Required = $true
-            Source = $null; Options = $null; SubSteps = $null; EntrySource = $null
-            Condition = $null; Transform = $null; Default = $null
-        }
+        $HeaderStep = New-WizardTextStep -Name 'SessionHeader' -Label 'Nagłówek sesji (### YYYY-MM-DD, Tytuł, Narrator)' -Required
         $SessionHeader = Invoke-WizardStep -Step $HeaderStep -State $State
         if ($SessionHeader -eq '__back__') { return }
     }

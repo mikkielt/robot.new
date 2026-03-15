@@ -226,8 +226,8 @@ function Test-SessionIntegrity {
                     }
 
                     $DateStr = $DateMatch.Groups[1].Value
-                    [datetime]$ParsedDate = [datetime]::MinValue
-                    if (-not [datetime]::TryParseExact($DateStr, "yyyy-MM-dd", [System.Globalization.CultureInfo]::InvariantCulture, [System.Globalization.DateTimeStyles]::None, [ref]$ParsedDate)) {
+                    $ParsedDate = ConvertTo-SessionDate -DateString $DateStr
+                    if ($null -eq $ParsedDate) {
                         $MalformedHeaders.Add([PSCustomObject]@{
                             FilePath     = $FilePath
                             RelativePath = $RelPath
@@ -401,8 +401,8 @@ function Test-SessionIntegrity {
             }
 
             $DateStr = $DateMatch.Groups[1].Value
-            [datetime]$ParsedDate = [datetime]::MinValue
-            if (-not [datetime]::TryParseExact($DateStr, "yyyy-MM-dd", [System.Globalization.CultureInfo]::InvariantCulture, [System.Globalization.DateTimeStyles]::None, [ref]$ParsedDate)) {
+            $ParsedDate = ConvertTo-SessionDate -DateString $DateStr
+            if ($null -eq $ParsedDate) {
                 $MalformedHeaders.Add([PSCustomObject]@{
                     FilePath     = $FilePath
                     RelativePath = $RelPath

@@ -68,11 +68,8 @@ function Get-EntitySessionProfile {
     $Dates = [System.Collections.Generic.List[datetime]]::new()
     foreach ($S in $Sessions) {
         if ($S.Date) {
-            [datetime]$Parsed = [datetime]::MinValue
-            if ([datetime]::TryParseExact($S.Date, 'yyyy-MM-dd',
-                [System.Globalization.CultureInfo]::InvariantCulture,
-                [System.Globalization.DateTimeStyles]::None,
-                [ref]$Parsed)) {
+            $Parsed = ConvertTo-SessionDate -DateString $S.Date
+            if ($Parsed) {
                 [void]$Dates.Add($Parsed)
             }
         }

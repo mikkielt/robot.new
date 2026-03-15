@@ -48,7 +48,7 @@ After importing the Robot module, run:
 Invoke-RobotCLI
 ```
 
-The CLI loads game data and presents the main menu. This may take a few seconds on first load as entities, players, and the name index are preloaded and background health checks run.
+The CLI loads game data and presents the main menu. This may take a few seconds on first load as entities, players, and the name index are preloaded and background health checks run. During loading, a progress panel shows each step with a spinner, step name, and elapsed time, so the Coordinator can see exactly what is happening.
 
 **Requirements**: A standard terminal (not PowerShell ISE). The CLI uses full-screen rendering which requires `[Console]::ReadKey` support. Minimum terminal size: 60 columns by 15 rows.
 
@@ -101,7 +101,7 @@ Commands execute immediately — there is no need to press Enter after the lette
 | Encje | Create, edit, search, and browse entities (NPCs, locations, groups, items) |
 | Waluta | Transfer currency between entities, run reconciliation checks, analyze the economy |
 | PU | Monthly PU assignment, PU diagnostics |
-| Raporty i Narzędzia | Reporting, auditing, session graph, location reports, and utilities |
+| Raporty i Narzędzia | Reporting, auditing, session graph, location graph, participation comparison, leaderboard, and utilities |
 | Migracja | Migration tools (when migration files are available) |
 
 Each category shows the number of available actions. Select a category to see its items. Some items are marked with a role badge — **N** for Narrator-only, **K** for Coordinator-only, or **N/K** for both.
@@ -132,6 +132,8 @@ Press `/s` to open the health dashboard showing the status of four subsystems:
 | Graf sesji | Czy indeks grafu sesji jest aktualny |
 
 Each section shows a checkmark (OK) or warning icon (issues found) with a count of problems. The dashboard also shows when the last check was performed. Press Escape to close the dashboard and return to your previous view.
+
+When the health dashboard runs its checks, a progress panel shows each subsystem being validated (PU, currency, session integrity, session graph) with spinners and elapsed times, so the Coordinator can see exactly which check is running.
 
 The same health status is summarized as compact badges in the top-right corner of the navigation bar, visible at all times.
 
@@ -266,6 +268,29 @@ Several diagnostic tools are available:
 - **Waluta > Oś czasu gospodarki** — shows how the economy evolved over time, tracking total currency supply, physical vs virtual holdings, and transfer volume across months. Useful for spotting trends like supply growth or unusual transaction spikes
 - **Waluta > Raport materializacji** — analyzes where currency exists as physical game items vs virtual bookkeeping. Shows per-denomination and per-player breakdowns, and flags orphan physical currency held by inactive characters that may need to be recovered
 - **Sesje > Walidacja sesji** — checks sessions for unresolved names in PU and Changes blocks
+
+### Reporting and Analysis Tools
+
+The **Raporty i Narzędzia** category provides tools for analyzing entity participation across sessions:
+
+- **Graf sesji** — queries the session participation index in four modes: which sessions an entity appeared in, who co-participated with an entity, who participated in a specific session, and overall statistics. If entity data has changed since the last full index rebuild, a staleness warning appears at the top of the screen advising the Coordinator to rebuild the index
+- **Graf lokacji** — builds and displays a graph of connections between locations based on entity data, session routes, and optionally movement edges from session logs. The result shows each location with its connection count and coordinates (if available)
+- **Porównanie uczestnictwa** — compares two or more entities to find shared sessions, sessions exclusive to each entity, and a pairwise overlap matrix showing what percentage of sessions they share
+- **Ranking uczestnictwa** — ranks entities by the number of sessions they participated in, with an optional filter by entity type (Postac, NPC, Lokacja, Grupa) and configurable number of positions. Each entry shows a breakdown by detection confidence tier
+- **Profil encji w sesjach** — a comprehensive profile of a single entity's session history: total sessions, date range, confidence tier breakdown, total PU weight, top co-participants, and monthly activity trend
+- **Profil narratora w sesjach** — statistics for a narrator: how many sessions they narrated, unique participants, participant type distribution, and average party size
+
+## Progress Indicators
+
+When the CLI performs multi-step operations (loading data, running diagnostics, building graphs, fetching logs), it displays a progress panel showing:
+
+- A **group title** at the top identifying the overall operation
+- **Numbered steps** (`[1/3]`, `[2/3]`, etc.) with the current step name
+- An **animated spinner** while a step is in progress, showing real-time detail (e.g., the count of items processed so far)
+- A **checkmark** or **cross** when each step completes, along with the elapsed time
+- A **total elapsed time** on the title line after all steps finish
+
+This feedback appears during health checks, session loading, graph building, log fetching, and any other operation that takes more than a moment. The Coordinator always knows which step is running and how long it has taken.
 
 ## Preview and Confirmation
 

@@ -360,3 +360,76 @@ function Invoke-WizardStep {
         }
     }
 }
+
+# ── Wizard step factory functions ────────────────────────────────────────────
+# Reduce boilerplate for inline wizard step definitions in workflow files.
+
+function New-WizardTextStep {
+    param(
+        [Parameter(Mandatory)] [string]$Name,
+        [Parameter(Mandatory)] [string]$Label,
+        [switch]$Required,
+        [string]$Default
+    )
+    return [PSCustomObject]@{
+        Name = $Name; Label = $Label; StepType = 'text'; Required = [bool]$Required
+        Source = $null; Options = $null; SubSteps = $null; EntrySource = $null
+        Condition = $null; Transform = $null; Default = $Default
+    }
+}
+
+function New-WizardNumberStep {
+    param(
+        [Parameter(Mandatory)] [string]$Name,
+        [Parameter(Mandatory)] [string]$Label,
+        [switch]$Required,
+        [string]$Default
+    )
+    return [PSCustomObject]@{
+        Name = $Name; Label = $Label; StepType = 'number'; Required = [bool]$Required
+        Source = $null; Options = $null; SubSteps = $null; EntrySource = $null
+        Condition = $null; Transform = $null; Default = $Default
+    }
+}
+
+function New-WizardDateStep {
+    param(
+        [Parameter(Mandatory)] [string]$Name,
+        [Parameter(Mandatory)] [string]$Label,
+        [switch]$Required,
+        [string]$Default
+    )
+    return [PSCustomObject]@{
+        Name = $Name; Label = $Label; StepType = 'date'; Required = [bool]$Required
+        Source = $null; Options = $null; SubSteps = $null; EntrySource = $null
+        Condition = $null; Transform = $null; Default = $Default
+    }
+}
+
+function New-WizardChoiceStep {
+    param(
+        [Parameter(Mandatory)] [string]$Name,
+        [Parameter(Mandatory)] [string]$Label,
+        [Parameter(Mandatory)] [string[]]$Options,
+        [switch]$Required,
+        [string]$Default
+    )
+    return [PSCustomObject]@{
+        Name = $Name; Label = $Label; StepType = 'choice'; Required = [bool]$Required
+        Source = $null; Options = $Options; SubSteps = $null; EntrySource = $null
+        Condition = $null; Transform = $null; Default = $Default
+    }
+}
+
+function New-WizardFuzzyStep {
+    param(
+        [Parameter(Mandatory)] [string]$Name,
+        [Parameter(Mandatory)] [string]$Label,
+        [Parameter(Mandatory)] [string]$Source
+    )
+    return [PSCustomObject]@{
+        Name = $Name; Label = $Label; StepType = 'fuzzy'; Required = $true
+        Source = $Source; Options = $null; SubSteps = $null; EntrySource = $null
+        Condition = $null; Transform = $null; Default = $null
+    }
+}

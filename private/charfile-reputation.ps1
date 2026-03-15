@@ -100,7 +100,7 @@ function Read-ReputationTier {
                     $SubIndent = $SubLine.Length - $SubStripped.Length
                     if ($SubIndent -le $CurrentIndent) { break }
                     $SubDetails.Add($SubStripped.Substring(1).Trim())
-                    $i = $k  # advance outer loop
+                    $i = $k  # Intentionally advance outer loop past consumed sub-bullets
                 }
                 $DetailStr = if ($SubDetails.Count -gt 0) { $SubDetails -join '; ' } else { $null }
                 $Results.Add([PSCustomObject]@{

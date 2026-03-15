@@ -390,15 +390,7 @@ function ConvertFrom-GraphEntryDate {
 
     if (-not $Entry.ContainsKey('Date') -or -not $Entry['Date']) { return $null }
 
-    [datetime]$Parsed = [datetime]::MinValue
-    if ([datetime]::TryParseExact($Entry['Date'], 'yyyy-MM-dd',
-        [System.Globalization.CultureInfo]::InvariantCulture,
-        [System.Globalization.DateTimeStyles]::None,
-        [ref]$Parsed)) {
-        return $Parsed
-    }
-
-    return $null
+    return (ConvertTo-SessionDate -DateString $Entry['Date'])
 }
 
 # Test whether a graph entry's date falls within [MinDate, MaxDate].

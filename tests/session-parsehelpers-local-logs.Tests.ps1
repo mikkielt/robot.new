@@ -21,6 +21,22 @@ BeforeAll {
     $script:PURegex  = [regex]::new('^(.+?):\s*([\d,\.]+)')
     $script:UrlRegex = [regex]::new('(https?://\S+)')
 
+    # Helper: Build parent→children index from list items (same structure as get-session.ps1)
+    function Build-ChildrenOf {
+        param([object[]]$Items)
+        $Result = @{}
+        foreach ($LI in $Items) {
+            if ($null -ne $LI.ParentListItem) {
+                $ParentId = [System.Runtime.CompilerServices.RuntimeHelpers]::GetHashCode($LI.ParentListItem)
+                if (-not $Result.ContainsKey($ParentId)) {
+                    $Result[$ParentId] = [System.Collections.Generic.List[object]]::new()
+                }
+                $Result[$ParentId].Add($LI)
+            }
+        }
+        return $Result
+    }
+
     # Helper: Build list items matching the structure from Get-Markdown section parser
     function New-MockListItem {
         param(
@@ -45,10 +61,12 @@ Describe 'Get-SessionListMetadata' {
             $LogiParent = New-MockListItem -Text 'Logi:' -Indent 0
             $LogChild   = New-MockListItem -Text 'res/logs/pastebincomrawABC123' -Indent 1 -Parent $LogiParent
 
+            $Items = @($LogiParent, $LogChild)
             $script:Result = Get-SessionListMetadata `
-                -SectionLists @($LogiParent, $LogChild) `
+                -SectionLists $Items `
                 -PURegex $script:PURegex `
-                -UrlRegex $script:UrlRegex
+                -UrlRegex $script:UrlRegex `
+                -ChildrenOf (Build-ChildrenOf -Items $Items)
         }
 
         It 'extracts local path as a log entry' {
@@ -62,10 +80,12 @@ Describe 'Get-SessionListMetadata' {
             $LogiParent = New-MockListItem -Text 'Logi:' -Indent 0
             $LogChild   = New-MockListItem -Text 'https://pastebin.com/raw/XYZ789' -Indent 1 -Parent $LogiParent
 
+            $Items = @($LogiParent, $LogChild)
             $script:Result = Get-SessionListMetadata `
-                -SectionLists @($LogiParent, $LogChild) `
+                -SectionLists $Items `
                 -PURegex $script:PURegex `
-                -UrlRegex $script:UrlRegex
+                -UrlRegex $script:UrlRegex `
+                -ChildrenOf (Build-ChildrenOf -Items $Items)
         }
 
         It 'extracts URL as a log entry' {
@@ -81,10 +101,12 @@ Describe 'Get-SessionListMetadata' {
             $LogLocal   = New-MockListItem -Text 'res/logs/pastebincomrawBBB222' -Indent 1 -Parent $LogiParent
             $LogUrl2    = New-MockListItem -Text 'https://example.com/log-xyz' -Indent 1 -Parent $LogiParent
 
+            $Items = @($LogiParent, $LogUrl, $LogLocal, $LogUrl2)
             $script:Result = Get-SessionListMetadata `
-                -SectionLists @($LogiParent, $LogUrl, $LogLocal, $LogUrl2) `
+                -SectionLists $Items `
                 -PURegex $script:PURegex `
-                -UrlRegex $script:UrlRegex
+                -UrlRegex $script:UrlRegex `
+                -ChildrenOf (Build-ChildrenOf -Items $Items)
         }
 
         It 'extracts all three entries' {
@@ -108,10 +130,12 @@ Describe 'Get-SessionListMetadata' {
             $LogLocal   = New-MockListItem -Text 'res/logs/pastebincomrawGEN4' -Indent 1 -Parent $LogiParent
             $LogUrl     = New-MockListItem -Text 'https://pastebin.com/raw/GEN4URL' -Indent 1 -Parent $LogiParent
 
+            $Items = @($LogiParent, $LogLocal, $LogUrl)
             $script:Result = Get-SessionListMetadata `
-                -SectionLists @($LogiParent, $LogLocal, $LogUrl) `
+                -SectionLists $Items `
                 -PURegex $script:PURegex `
-                -UrlRegex $script:UrlRegex
+                -UrlRegex $script:UrlRegex `
+                -ChildrenOf (Build-ChildrenOf -Items $Items)
         }
 
         It 'extracts local path from @Logi block' {
@@ -129,10 +153,12 @@ Describe 'Get-SessionListMetadata' {
             $PUParent = New-MockListItem -Text 'PU:' -Indent 0
             $PUChild  = New-MockListItem -Text 'Xeron: 0,3' -Indent 1 -Parent $PUParent
 
+            $Items = @($PUParent, $PUChild)
             $script:Result = Get-SessionListMetadata `
-                -SectionLists @($PUParent, $PUChild) `
+                -SectionLists $Items `
                 -PURegex $script:PURegex `
-                -UrlRegex $script:UrlRegex
+                -UrlRegex $script:UrlRegex `
+                -ChildrenOf (Build-ChildrenOf -Items $Items)
         }
 
         It 'returns empty Logs collection' {
@@ -147,10 +173,12 @@ Describe 'Get-SessionListMetadata' {
             $LogJunk    = New-MockListItem -Text 'brak logów z tej sesji' -Indent 1 -Parent $LogiParent
             $LogUrl     = New-MockListItem -Text 'https://pastebin.com/raw/VALID01' -Indent 1 -Parent $LogiParent
 
+            $Items = @($LogiParent, $LogJunk, $LogUrl)
             $script:Result = Get-SessionListMetadata `
-                -SectionLists @($LogiParent, $LogJunk, $LogUrl) `
+                -SectionLists $Items `
                 -PURegex $script:PURegex `
-                -UrlRegex $script:UrlRegex
+                -UrlRegex $script:UrlRegex `
+                -ChildrenOf (Build-ChildrenOf -Items $Items)
         }
 
         It 'ignores non-URL non-path entries' {
@@ -164,10 +192,12 @@ Describe 'Get-SessionListMetadata' {
             # "- Logi: https://example.com/inline-log" (Gen2/Gen3 inline pattern)
             $LogiInline = New-MockListItem -Text 'Logi: https://example.com/inline-log' -Indent 0
 
+            $Items = @($LogiInline)
             $script:Result = Get-SessionListMetadata `
-                -SectionLists @($LogiInline) `
+                -SectionLists $Items `
                 -PURegex $script:PURegex `
-                -UrlRegex $script:UrlRegex
+                -UrlRegex $script:UrlRegex `
+                -ChildrenOf (Build-ChildrenOf -Items $Items)
         }
 
         It 'extracts inline URL from Logi header' {
@@ -183,10 +213,12 @@ Describe 'Get-SessionListMetadata' {
             $LogLocal2  = New-MockListItem -Text 'res/logs/pastebincomrawFILE2' -Indent 1 -Parent $LogiParent
             $LogLocal3  = New-MockListItem -Text 'res/logs/examplecomlogABC' -Indent 1 -Parent $LogiParent
 
+            $Items = @($LogiParent, $LogLocal1, $LogLocal2, $LogLocal3)
             $script:Result = Get-SessionListMetadata `
-                -SectionLists @($LogiParent, $LogLocal1, $LogLocal2, $LogLocal3) `
+                -SectionLists $Items `
                 -PURegex $script:PURegex `
-                -UrlRegex $script:UrlRegex
+                -UrlRegex $script:UrlRegex `
+                -ChildrenOf (Build-ChildrenOf -Items $Items)
         }
 
         It 'extracts all local paths' {

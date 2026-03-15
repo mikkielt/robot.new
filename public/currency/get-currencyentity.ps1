@@ -82,15 +82,11 @@ function Get-CurrencyEntity {
         if (-not $EntityDenom) { continue }
 
         # Denomination filter
-        if ($DenomFilter -and $EntityDenom.Name -ne $DenomFilter.Name) { continue }
+        if (-not (Test-CurrencyDenominationMatch -DenominationName $EntityDenom.Name -DenomFilter $DenomFilter)) { continue }
 
         # Owner filter
         $EntityOwner = $Entity.Owner
-        if (-not [string]::IsNullOrWhiteSpace($Owner)) {
-            if (-not $EntityOwner -or -not [string]::Equals($EntityOwner, $Owner, [System.StringComparison]::OrdinalIgnoreCase)) {
-                continue
-            }
-        }
+        if (-not (Test-CurrencyOwnerMatch -EntityOwner $EntityOwner -FilterOwner $Owner)) { continue }
 
         # Parse balance
         $CurrentQty = if ($Entity.Quantity) { $Entity.Quantity } else { '0' }

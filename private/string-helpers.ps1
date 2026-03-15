@@ -12,9 +12,13 @@
       case-insensitive via ToLowerInvariant)
 #>
 
-# Levenshtein distance (two-row matrix, case-insensitive)
+# Levenshtein distance (two-row matrix, case-insensitive, optional early-exit threshold)
 function Get-LevenshteinDistance {
-    param([string]$Source, [string]$Target)
+    param(
+        [string]$Source,
+        [string]$Target,
+        [int]$MaxDistance = [int]::MaxValue
+    )
 
     $SourceLower = $Source.ToLowerInvariant()
     $TargetLower = $Target.ToLowerInvariant()
@@ -24,6 +28,7 @@ function Get-LevenshteinDistance {
 
     if ($SourceLength -eq 0) { return $TargetLength }
     if ($TargetLength -eq 0) { return $SourceLength }
+    if ([Math]::Abs($SourceLength - $TargetLength) -gt $MaxDistance) { return $MaxDistance + 1 }
 
     $PreviousRow = [int[]]::new($TargetLength + 1)
     $CurrentRow  = [int[]]::new($TargetLength + 1)
@@ -32,6 +37,7 @@ function Get-LevenshteinDistance {
 
     for ($I = 1; $I -le $SourceLength; $I++) {
         $CurrentRow[0] = $I
+        $RowMin = $I
 
         for ($J = 1; $J -le $TargetLength; $J++) {
             $Cost = if ($SourceLower[$I - 1] -eq $TargetLower[$J - 1]) { 0 } else { 1 }
@@ -40,7 +46,11 @@ function Get-LevenshteinDistance {
                 [Math]::Min($CurrentRow[$J - 1] + 1, $PreviousRow[$J] + 1),
                 $PreviousRow[$J - 1] + $Cost
             )
+            if ($CurrentRow[$J] -lt $RowMin) { $RowMin = $CurrentRow[$J] }
         }
+
+        # Early exit: if minimum possible distance exceeds threshold, abort
+        if ($RowMin -gt $MaxDistance) { return $MaxDistance + 1 }
 
         $TempRow     = $PreviousRow
         $PreviousRow = $CurrentRow

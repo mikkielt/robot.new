@@ -162,6 +162,31 @@ The codebase prefers .NET static methods over PowerShell cmdlets for performance
 [System.DateTimeOffset]::Parse($DateString, [System.Globalization.CultureInfo]::InvariantCulture)
 ```
 
+### Compiled C# Types (`lib/`)
+
+Performance-critical code that would suffer from PowerShell interpretation overhead is implemented in C# source files under `lib/`. These are loaded at first use via `Add-Type` with a type-existence guard:
+
+```powershell
+if (-not ([System.Management.Automation.PSTypeName]'Robot.BKTree').Type) {
+    $CsPath = [System.IO.Path]::Combine($script:ModuleRoot, 'lib', 'BKTree.cs')
+    if ([System.IO.File]::Exists($CsPath)) {
+        Add-Type -TypeDefinition ([System.IO.File]::ReadAllText($CsPath)) -Language CSharp
+    }
+}
+```
+
+Rules:
+- All C# source lives in `lib/*.cs` — never inline `Add-Type` heredocs in `.ps1` files
+- Namespace is `Robot` (e.g. `Robot.BKTree`)
+- Guard with `PSTypeName` check to avoid re-compilation across dot-source calls
+- PowerShell callers must handle the case where the type is unavailable (fallback path)
+
+Current types:
+
+| File | Class | Purpose |
+|------|-------|---------|
+| `lib/BKTree.cs` | `Robot.BKTree` | BK-tree with integrated Levenshtein distance for O(log N) fuzzy name matching |
+
 ### Output Suppression
 
 `[void]` cast is used to suppress unwanted return values:

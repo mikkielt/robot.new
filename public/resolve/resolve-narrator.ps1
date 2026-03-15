@@ -32,7 +32,7 @@ function Resolve-NarratorCandidate {
         [string]$Query,
         [System.Collections.Generic.Dictionary[string, object]]$Index,
         [System.Collections.Generic.Dictionary[string, System.Collections.Generic.List[string]]]$StemIndex,
-        [hashtable]$BKTree
+        $BKTree
     )
 
     # Exact index lookup -> High confidence
@@ -69,7 +69,7 @@ function Resolve-Narrator {
         [System.Collections.Generic.Dictionary[string, System.Collections.Generic.List[string]]]$StemIndex,
 
         [Parameter(HelpMessage = "BK-tree from Get-NameIndex for O(log N) fuzzy matching")]
-        [hashtable]$BKTree,
+        $BKTree,
 
         [Parameter(HelpMessage = "Shared narrator cache across calls (avoids re-resolving same narrators across files)")]
         [System.Collections.Generic.Dictionary[string, object]]$NarratorCache

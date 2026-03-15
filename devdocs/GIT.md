@@ -22,15 +22,24 @@ Traverses the directory tree upward from the current working directory to find t
 
 ### 2.3 Result Caching
 
-`Get-RepoRoot` caches its result in `$script:CachedRepoRoot` after the first successful traversal. Subsequent calls without an explicit `-ModuleRoot` override return the cached value immediately, avoiding repeated filesystem traversal.
+`Get-RepoRoot` caches its result in `$script:CachedRepoRoot` after the first successful traversal. Subsequent calls without an explicit `-ModuleRoot` override return the cached value immediately, avoiding repeated filesystem traversal. The cache is populated as a side effect of the directory walk — when a `.git` directory is found, the result is stored before returning.
 
 The cache is bypassed when:
-- An explicit `-ModuleRoot` parameter is provided
-- `$script:DataDirectoryOverride` is set (via `Set-DataDirectory`)
+- An explicit `-ModuleRoot` parameter is provided (forces fresh traversal from the specified root)
+- `$script:DataDirectoryOverride` is set (via `Set-DataDirectory`) — the override takes absolute priority, returning immediately without consulting or updating the cache
 
-`Set-DataDirectory -Reset` does not clear the traversal cache (only the manifest cache). The traversal cache persists for the module session.
+**Cache priority order**:
+1. `$script:DataDirectoryOverride` (checked first, returns immediately if set)
+2. `$script:CachedRepoRoot` (returned when no `-ModuleRoot` override and no data directory override)
+3. Fresh traversal (when neither cache nor override applies; result cached for future calls)
 
-### 2.2 `Get-ParentRepoRoot`
+`Set-DataDirectory -Reset` does not clear the traversal cache (only the manifest cache). The traversal cache persists for the module session. This is intentional: the traversal result is deterministic for a given module location and does not change within a session.
+
+### 2.4 Fallback: Module as Repository Root
+
+If no `.git` directory is found in any parent of the module directory, `Get-RepoRoot` checks whether the module directory itself contains a `.git` directory or file (standalone checkout, e.g., CI environments). If found, the module root is treated as the repository root and cached. Otherwise, throws.
+
+### 2.5 `Get-ParentRepoRoot`
 
 Companion function for submodule environments. Walks upward from `Get-RepoRoot` past the submodule `.git` boundary to find the enclosing parent repository root.
 
@@ -181,6 +190,10 @@ On failure, the PU workflow falls back to full repository scan via `Get-Session`
 | Rename with similarity < 100% | `RenameScore` reflects partial similarity |
 | Large diffs | Stream-parsed line-by-line, never materialized fully into memory |
 | Git not available | `Process.Start()` throws; caller must handle |
+| `Get-RepoRoot` called repeatedly | Returns cached `$script:CachedRepoRoot` after first successful traversal |
+| `Get-RepoRoot -ModuleRoot` with explicit path | Bypasses cache, performs fresh traversal from specified root |
+| `$script:DataDirectoryOverride` set | `Get-RepoRoot` returns override path immediately, no traversal or cache |
+| Module directory is standalone git repo | `.git` check on module root succeeds; used as repo root (CI fallback) |
 
 ---
 

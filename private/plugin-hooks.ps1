@@ -27,6 +27,9 @@
 $script:CachedRbacConfig     = $null
 $script:CachedRbacConfigPath = $null
 
+# Cached command lookups for hook handlers — avoids repeated Get-Command per invocation
+$script:HookCommandCache = @{}
+
 function Invoke-PluginHook {
     param(
         [Parameter(Mandatory)]
@@ -52,16 +55,30 @@ function Invoke-PluginHook {
     foreach ($Handler in $Handlers) {
         $FuncName = $Handler.Handler
 
-        # Verify the function exists (may have failed to load)
-        $Cmd = Get-Command $FuncName -ErrorAction SilentlyContinue
-        if (-not $Cmd) {
-            [System.Console]::Error.WriteLine(
-                "[WARN plugin-hooks] Handler '$FuncName' from plugin '$($Handler.Plugin)' not found - skipping")
-            continue
+        # Cached command lookup — resolve once per function name, reuse on subsequent invocations
+        if ($script:HookCommandCache.ContainsKey($FuncName)) {
+            $Cmd = $script:HookCommandCache[$FuncName]
+            if ($Cmd -is [System.DBNull]) { continue }
+        } else {
+            $Cmd = Get-Command $FuncName -ErrorAction SilentlyContinue
+            if (-not $Cmd) {
+                $script:HookCommandCache[$FuncName] = [DBNull]::Value
+                [System.Console]::Error.WriteLine(
+                    "[WARN plugin-hooks] Handler '$FuncName' from plugin '$($Handler.Plugin)' not found - skipping")
+                continue
+            }
+            # Safety: handler must be a user-defined Function, not a Cmdlet/Alias/Application
+            if ($Cmd.CommandType -ne 'Function') {
+                $script:HookCommandCache[$FuncName] = [DBNull]::Value
+                [System.Console]::Error.WriteLine(
+                    "[WARN plugin-hooks] Handler '$FuncName' is a $($Cmd.CommandType), not a Function - skipping")
+                continue
+            }
+            $script:HookCommandCache[$FuncName] = $Cmd
         }
 
         try {
-            & $FuncName -HookContext $Context
+            & $Cmd -HookContext $Context
         }
         catch {
             if ($Phase -eq 'BeforeWrite') {

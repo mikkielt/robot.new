@@ -42,10 +42,8 @@ function Find-SessionInFile {
         else {
             $DMatch = $DateRegex.Match($HeaderText)
             if ($DMatch.Success) {
-                [datetime]$Parsed = [datetime]::MinValue
-                if ([datetime]::TryParseExact($DMatch.Groups[1].Value, 'yyyy-MM-dd',
-                        [System.Globalization.CultureInfo]::InvariantCulture,
-                        [System.Globalization.DateTimeStyles]::None, [ref]$Parsed)) {
+                $Parsed = ConvertTo-SessionDate -DateString $DMatch.Groups[1].Value
+                if ($Parsed) {
                     $IsMatch = $Parsed.Date -eq $TargetDate.Date
                 }
             }

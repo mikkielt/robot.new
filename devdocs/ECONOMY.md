@@ -172,6 +172,7 @@ Monthly supply and transaction trends over a date range.
 | `MaxDate` | datetime | **Mandatory**. End date for timeline. |
 | `Entity` | string | Scope to a specific owner entity. |
 | `Denomination` | string | Scope to a specific denomination. |
+| `ProgressCallback` | scriptblock | Optional callback for CLI progress reporting. Invoked with `(Current, Total, ItemDetail)` on each month iteration, where `ItemDetail` is the `yyyy-MM` month label. |
 | `Quiet` | switch | Suppress warnings to stderr. |
 
 ### 6.2 Output Schema
@@ -191,18 +192,32 @@ Array of monthly data points:
 
 1. Auto-fetch entities and sessions if not provided
 2. Pre-build `$NameIndex` once via `Get-NameIndex` (shared across all months)
-3. Iterate month boundaries from MinDate to MaxDate
-4. For each month:
-   a. Compute `$EffectiveDate` = last day of month (capped at MaxDate)
-   b. `Get-Entity -ActiveOn $EffectiveDate -Quiet` for fresh entity copy
-   c. `Get-EntityState -NameIndex $NameIndex -Sessions $Sessions -ActiveOn $EffectiveDate -Quiet` with pre-built name index
-   d. Build entity lookup → `Get-CurrencyEntitiesFiltered -EntityLookup`
-   e. Apply denomination/entity filters
-   f. `Get-SessionDirectiveEntries` scoped to month boundaries for transfer count
-   g. `New-EconomicSnapshotData` for supply computation
-5. Return array of monthly PSCustomObjects
+3. Compute total month count for progress reporting
+4. Iterate month boundaries from MinDate to MaxDate
+5. For each month:
+   a. Invoke `ProgressCallback` if provided (sends month index, total, `yyyy-MM` label)
+   b. Compute `$EffectiveDate` = last day of month (capped at MaxDate)
+   c. Obtain month entities (see §6.4 for pre-provided vs auto-fetch paths)
+   d. `Get-EntityState -NameIndex $NameIndex -Sessions $Sessions -ActiveOn $EffectiveDate -Quiet` with pre-built name index
+   e. Build entity lookup -> `Get-CurrencyEntitiesFiltered -EntityLookup`
+   f. Apply denomination/entity filters
+   g. `Get-SessionDirectiveEntries` scoped to month boundaries for transfer count
+   h. `New-EconomicSnapshotData` for supply computation
+6. Return array of monthly PSCustomObjects
 
-**Note**: `Get-Entity` is called per-month because `Get-EntityState` mutates its input entities. The `NameIndex` is shared across months since the entity roster does not change within a timeline query. Sessions are passed explicitly to avoid redundant re-parsing each month.
+**Note**: The `NameIndex` is shared across months since the entity roster does not change within a timeline query. Sessions are passed explicitly to avoid redundant re-parsing each month.
+
+### 6.4 Pre-Provided Entities Optimization
+
+When `-Entities` is provided by the caller, the function avoids re-reading entity files from disk on each month iteration. Instead of calling `Get-Entity -ActiveOn` per month (which re-parses `entities.md`), it filters the pre-provided entities in-memory by status:
+
+- For each entity, `Get-LastActiveValue` checks `StatusHistory` at the effective date
+- Entities with `Usunięty` status at the effective date are excluded
+- All other entities are passed to `Get-EntityState -ActiveOn` for temporal tag resolution
+
+This reduces I/O from N file reads (one per month) to a single file read, which is a significant speedup for long date ranges (e.g., 12+ months).
+
+When `-Entities` is not provided, the original per-month `Get-Entity -ActiveOn` path is used for full temporal filtering including entity-level `ActiveOn` scoping.
 
 ---
 

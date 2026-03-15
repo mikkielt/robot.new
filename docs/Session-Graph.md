@@ -100,11 +100,23 @@ Compares 2+ entities: finds sessions they share, sessions exclusive to each, and
 
 Entities ranked by session count with tier breakdown. Filters by entity type and date range. Answers "who are the most active characters/locations/NPCs?"
 
+## Staleness Tracking
+
+When entity data changes — such as a name change, a new alias, or entity removal — the system automatically marks the session graph index as potentially stale. This means that text-based mentions (the lowest confidence tier) may no longer reflect the current entity names.
+
+When the index is stale:
+
+- The CLI displays a warning at the top of the session graph screen, advising the Coordinator to rebuild the index
+- The health dashboard badge for the session graph may show a warning indicator
+- Query results remain available but may include outdated text-mention matches
+
+The staleness flag is cleared automatically when the Coordinator performs a full index rebuild.
+
 ## Verifying Index Integrity
 
 The integrity check validates the index against the current repository state, looking for:
 
-- **Stale name version**: entity names changed since last build (Tier 2 matches may be wrong)
+- **Stale name version**: entity names changed since last build (text-mention matches may be wrong)
 - **Orphaned sessions**: indexed sessions no longer in the repository
 - **Missing sessions**: repository sessions not yet indexed
 - **Empty sessions**: indexed sessions with zero participants
@@ -139,6 +151,7 @@ Additionally, when a session is edited through the system, an eager refresh auto
 | **Entity not found in any session** | Query returns no results | Verify the entity name; try searching with aliases. Check whether sessions exist for this entity |
 | **Older sessions show no weights** | Gen1/Gen2 sessions only have binary (yes/no) participation | This is expected — structured metadata was not available before Gen3 |
 | **Entity appears unexpectedly** | Low-confidence text mention may be a false positive (common name matched in body text) | Filter to high-confidence results only by restricting to the file-placement level |
+| **Staleness warning shown in CLI** | Entity names changed since the last full rebuild; text-mention results may be outdated | Perform a full index rebuild to clear the staleness flag and re-evaluate text mentions against updated entity names |
 | **Index seems stale after adding entities** | New entity names are not matched in old session body text | Rebuild the index fully — the system should detect name set changes automatically, but a manual full rebuild resolves edge cases |
 | **Git history unavailable** | Incremental mode falls back to a full scan automatically | No action needed |
 

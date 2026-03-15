@@ -30,6 +30,7 @@ This document covers the session participation graph subsystem: three-tier entit
 | `Read-MentionCache` | `private/session-graphhelpers.ps1` | Load Tier 2 mention cache from `_mentions.json` |
 | `Write-MentionCache` | `private/session-graphhelpers.ps1` | Persist mention cache |
 | `Get-CachedMentions` | `private/session-graphhelpers.ps1` | Return cached mentions if cache key matches |
+| `Set-SessionGraphStale` | `private/entity-writehelpers.ps1` | Flag Tier 2 graph as stale after entity mutations |
 
 `Set-SessionGraph` is a write command (`SupportsShouldProcess`). `Get-SessionGraph` is read-only.
 
@@ -60,6 +61,9 @@ public/workflow/set-sessiongraph.ps1   Index writer (exported, SupportsShouldPro
 
 public/reporting/get-sessiongraph.ps1  Query API (exported, read-only)
 └── dot-sources: session-graphhelpers.ps1, admin-config.ps1
+
+private/entity-writehelpers.ps1        Cross-cutting staleness marker
+└── Set-SessionGraphStale              Flags Tier 2 as stale after entity mutations
 ```
 
 ### 2.1 Index Store Layout
@@ -467,7 +471,35 @@ The **eager refresh** path (`-EagerOnly`) provides a lighter alternative: it ref
 
 ---
 
-## 15. Edge Cases
+## 15. Cross-Cutting: `Set-SessionGraphStale`
+
+Defined in `private/entity-writehelpers.ps1` (not in `session-graphhelpers.ps1`), this function marks the session graph's Tier 2 data as potentially invalid after entity write operations that could change the name set.
+
+### 15.1 Parameters
+
+| Parameter | Type | Mandatory | Description |
+|---|---|---|---|
+| `Reason` | string | Yes | Human-readable reason for staleness (e.g. entity name change, alias update) |
+| `ResDir` | string | Yes | Path to the `.robot/res/` directory |
+
+### 15.2 Algorithm
+
+1. Guard-loads `Read-SessionGraphMeta` and `Write-SessionGraphMeta` from `session-graphhelpers.ps1` if not already available
+2. Computes the path `$ResDir/session-graph/_meta.json`
+3. If `_meta.json` exists, reads it, sets `Tier2Stale = $true` and `Tier2StaleReason = $Reason`, then writes it back
+4. If `_meta.json` does not exist, does nothing (no graph to mark as stale)
+
+### 15.3 Error Handling
+
+The entire function body is wrapped in `try/catch` with an empty catch block. This is intentional: `Set-SessionGraphStale` is best-effort and must never fail the entity write operation that called it. Entity writes are the primary concern; graph staleness is a secondary signal.
+
+### 15.4 Relationship to `Set-SessionGraph`
+
+When `Set-SessionGraph` runs in full mode (`-Full`), it clears the `Tier2Stale` flag. When running in eager mode (`-EagerOnly`), it does not clear `Tier2Stale` because Tier 2 data is preserved, not recomputed. The staleness flag serves as a signal that a full rebuild is recommended.
+
+---
+
+## 16. Edge Cases
 
 | Scenario | Behavior |
 |---|---|
@@ -485,10 +517,12 @@ The **eager refresh** path (`-EagerOnly`) provides a lighter alternative: it ref
 | EagerOnly with empty index | Only sessions already in index are processed (none if empty) |
 | Mention cache miss during full rebuild | Resolved mentions are computed and stored in cache for next time |
 | Graph entry with unparseable date | Excluded from date-filtered queries |
+| `Set-SessionGraphStale` with missing `_meta.json` | Does nothing (no graph to mark as stale) |
+| `Set-SessionGraphStale` fails | Silently caught; entity write proceeds unaffected |
 
 ---
 
-## 16. Testing
+## 17. Testing
 
 Test file: `tests/set-sessiongraph.Tests.ps1` (31 tests, Pattern B)
 
@@ -514,7 +548,7 @@ Fixture data: in-memory hashtable with 5 sessions (1x Gen1, 1x Gen2, 2x Gen3, 1x
 
 ---
 
-## 17. Related Documents
+## 18. Related Documents
 
 - [SESSIONS.md](SESSIONS.md) -- Session parsing, format generations, `Merge-SessionGroup`
 - [NAME-RESOLUTION.md](NAME-RESOLUTION.md) -- Name index, fuzzy matching, mention extraction

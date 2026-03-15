@@ -98,6 +98,8 @@ The migration is divided into 7 phases (0-6). Not all require involvement from t
 
 **Diagnostic log**: Each migration run produces a diagnostic log file in `.robot/res/`. This log captures every step, warning, and error with timestamps and detailed repair instructions. The log is overwritten on each run and contains results from the last run only. The coordinator can review this file after running the migration to see all issues that were encountered and their suggested fixes.
 
+**State file resilience**: Migration progress is saved after each step. If a migration run is interrupted (e.g., terminal closed, system crash), the Coordinator can resume from where it left off — no progress is lost. A backup of the previous state is kept automatically, so even if the save itself is interrupted, the prior state is recoverable.
+
 ### Phase 0 - Przygotowanie i bootstrap
 
 The coordinator secures the current state before any changes, then generates the entity store from legacy data. This phase combines preparation and bootstrap into a single step (`phase0-setup.ps1`):

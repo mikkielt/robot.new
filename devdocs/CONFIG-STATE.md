@@ -20,6 +20,7 @@ This document covers `private/admin-config.ps1` (configuration resolution, path 
 | `Resolve-ConfigValue` | Priority-chain resolver for a single config key |
 | `Get-AdminTemplate` | Loads and renders template files with placeholder substitution |
 | `Find-DataManifest` | Checks for `.robot/robot-data.psd1` at a fixed path within the repo root |
+| `Test-PathUnderRoot` | Validates that a resolved path is under a given root directory (prevents path traversal) |
 | `Set-DataDirectory` | Overrides or resets the lore repository root (in `public/set-datadirectory.ps1`) |
 
 ### 2.2 Priority Chain (`Resolve-ConfigValue`)
@@ -96,6 +97,24 @@ Paths in the manifest are relative to the manifest file's directory. The module 
 **`Get-ParentRepoRoot`**: Companion function in `public/get-reporoot.ps1`. Walks upward from `Get-RepoRoot` past the submodule `.git` to find the enclosing repository root. No longer used by `Find-DataManifest` (which uses a fixed path), but remains available for callers that need the parent repo boundary.
 
 **`Get-AdminConfig` integration**: When `Find-DataManifest` returns a manifest, `Get-AdminConfig` uses its paths. When no manifest exists, all paths resolve identically to the hardcoded defaults. Zero breaking changes.
+
+**Path traversal protection**: `Get-AdminConfig` validates each manifest-resolved path via `Test-PathUnderRoot` before accepting it. Paths that resolve outside the repository root are skipped with a warning to stderr. This prevents a malicious or misconfigured manifest from directing the module to read/write files outside the repository.
+
+### 2.6 Path Validation (`Test-PathUnderRoot`)
+
+Validates that a resolved path is under a given root directory. Used by `Get-AdminConfig` to prevent path traversal attacks from manifest entries.
+
+| Parameter | Type | Description |
+|---|---|---|
+| `Path` | string | **Mandatory**. The path to validate. |
+| `Root` | string | **Mandatory**. The root directory the path must be under. |
+
+**Algorithm**:
+1. Resolve both `Path` and `Root` to absolute form via `[System.IO.Path]::GetFullPath()`
+2. Ensure `Root` ends with `DirectorySeparatorChar` for correct prefix matching
+3. Return `$Path.StartsWith($Root, OrdinalIgnoreCase)`
+
+Returns `$true` if the path is under the root, `$false` otherwise.
 
 ---
 
@@ -370,6 +389,7 @@ Loaded via `Import-PowerShellDataFile` with error handling. Missing file is not 
 | Multiple files in operation | `New-OperationResult` returns `FilePath` as array |
 | Single file in operation | `New-OperationResult` returns `FilePath` as scalar string |
 | No files in operation | `New-OperationResult` returns `FilePath` as `$null` |
+| Manifest path resolves outside repo root | Skipped with warning to stderr; `Test-PathUnderRoot` returns `$false` |
 | `Set-DataDirectory` with non-existent path | Throws `"Directory not found: '$Path'"` |
 | `Set-DataDirectory -Reset` | Clears override and manifest cache; `Get-RepoRoot` reverts to git traversal |
 

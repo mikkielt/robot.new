@@ -20,26 +20,20 @@
 function Invoke-PUAssignmentWorkflow {
     param([object]$State, [hashtable]$Entry)
 
-    $AccentColor = Get-CLIColor -Role 'Accent'
-    $SuccessColor = Get-CLIColor -Role 'Success'
-    $ErrorColor = Get-CLIColor -Role 'Error'
-    $WarningColor = Get-CLIColor -Role 'Warning'
-    $DisabledColor = Get-CLIColor -Role 'Disabled'
+    $Colors = Initialize-WorkflowScreen -Title 'Przydział miesięczny PU' -NoSeparator
+    $AccentColor   = $Colors.Accent
+    $SuccessColor  = $Colors.Success
+    $ErrorColor    = $Colors.Error
+    $WarningColor  = $Colors.Warning
+    $DisabledColor = $Colors.Disabled
 
     # ── Step 1: Year ──
-    [System.Console]::Clear()
-    Write-CLILine -Text 'Przydział miesięczny PU' -Color $AccentColor
-    Write-Host ''
 
     if ($Entry.PreChecks) {
         Show-InfoBox -Checks $Entry.PreChecks
     }
 
-    $YearStep = [PSCustomObject]@{
-        Name = 'Year'; Label = 'Rok'; StepType = 'number'; Required = $true
-        Source = $null; Options = $null; SubSteps = $null; EntrySource = $null
-        Condition = $null; Transform = $null; Default = [string](Get-Date).Year
-    }
+    $YearStep = New-WizardNumberStep -Name 'Year' -Label 'Rok' -Required -Default ([string](Get-Date).Year)
     $Year = Invoke-WizardStep -Step $YearStep -State $State
     if ($Year -eq '__back__') { return }
 
@@ -50,11 +44,7 @@ function Invoke-PUAssignmentWorkflow {
     Write-CLILine -Text "  Rok: $Year" -Color $DisabledColor
     Write-Host ''
 
-    $MonthStep = [PSCustomObject]@{
-        Name = 'Month'; Label = 'Miesiąc (1-12)'; StepType = 'number'; Required = $true
-        Source = $null; Options = $null; SubSteps = $null; EntrySource = $null
-        Condition = $null; Transform = $null; Default = [string](Get-Date).Month
-    }
+    $MonthStep = New-WizardNumberStep -Name 'Month' -Label 'Miesiąc (1-12)' -Required -Default ([string](Get-Date).Month)
     $Month = Invoke-WizardStep -Step $MonthStep -State $State
     if ($Month -eq '__back__') { return }
 

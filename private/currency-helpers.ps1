@@ -92,11 +92,21 @@ function ConvertFrom-CurrencyBaseUnit {
     }
 }
 
+# Precomputed denomination lookup table — built once at dot-source time, O(1) exact match
+$script:DenomLookup = @{}
+foreach ($D in $script:CurrencyDenominations) {
+    $script:DenomLookup[$D.Name.ToLowerInvariant()] = $D
+    $script:DenomLookup[$D.Short.ToLowerInvariant()] = $D
+    foreach ($Stem in $D.Stems) {
+        $script:DenomLookup[$Stem] = $D
+    }
+}
+
 function Resolve-CurrencyDenomination {
     <#
         .SYNOPSIS
         Resolves a colloquial or partial denomination name to its canonical definition.
-        Uses stem-based matching: kor->Korony, tal->Talary, kog->Kogi.
+        Uses precomputed lookup for O(1) exact match, with stem prefix fallback.
     #>
     param(
         [Parameter(Mandatory)]
@@ -105,23 +115,45 @@ function Resolve-CurrencyDenomination {
 
     $Lower = $Name.Trim().ToLowerInvariant()
 
-    # Exact match on canonical name or short name
-    foreach ($Denom in $script:CurrencyDenominations) {
-        if ($Lower -eq $Denom.Name.ToLowerInvariant() -or $Lower -eq $Denom.Short.ToLowerInvariant()) {
-            return $Denom
-        }
-    }
+    # O(1) exact match on canonical name, short name, or stem
+    $Result = $script:DenomLookup[$Lower]
+    if ($Result) { return $Result }
 
-    # Stem-based match (kor->Korony, tal->Talary, kog->Kogi)
-    foreach ($Denom in $script:CurrencyDenominations) {
-        foreach ($Stem in $Denom.Stems) {
-            if ($Lower.StartsWith($Stem)) {
-                return $Denom
-            }
-        }
+    # Stem prefix fallback (for partial names like "koron" matching "kor" stem)
+    foreach ($Key in $script:DenomLookup.Keys) {
+        if ($Lower.StartsWith($Key)) { return $script:DenomLookup[$Key] }
     }
 
     return $null
+}
+
+function Test-CurrencyOwnerMatch {
+    <#
+        .SYNOPSIS
+        Tests whether a currency item's owner matches a filter. Returns $true if no filter or match.
+    #>
+    param(
+        [string]$EntityOwner,
+        [string]$FilterOwner
+    )
+
+    if (-not $FilterOwner) { return $true }
+    return ($EntityOwner -and
+        [string]::Equals($EntityOwner, $FilterOwner, [System.StringComparison]::OrdinalIgnoreCase))
+}
+
+function Test-CurrencyDenominationMatch {
+    <#
+        .SYNOPSIS
+        Tests whether a denomination name matches a filter. Returns $true if no filter or match.
+    #>
+    param(
+        [string]$DenominationName,
+        [object]$DenomFilter
+    )
+
+    if (-not $DenomFilter) { return $true }
+    return [string]::Equals($DenominationName, $DenomFilter.Name, [System.StringComparison]::OrdinalIgnoreCase)
 }
 
 function Test-IsCurrencyEntity {

@@ -37,6 +37,11 @@ $script:BackBuffer      = $null
 $script:FrontBufferHash = $null
 $script:BackBufferHash  = $null
 
+# Pre-allocated blank char buffer for zero-allocation padding in Render-Line.
+# Covers terminal widths up to 300 columns; wider terminals fall back to string allocation.
+$script:BlankBuffer = [char[]]::new(300)
+for ($i = 0; $i -lt 300; $i++) { $script:BlankBuffer[$i] = ' ' }
+
 # ── New-ScreenBuffer ─────────────────────────────────────────────────────────
 
 function New-ScreenBuffer {
@@ -190,8 +195,12 @@ function Render-Line {
     $Width = $script:ScreenWidth
 
     if ($null -eq $Segments -or $Segments.Count -eq 0) {
-        # Blank line — clear the row
-        [System.Console]::Write(' ' * $Width)
+        # Blank line — clear the row (zero-allocation via pre-allocated char buffer)
+        if ($Width -le 300) {
+            [System.Console]::Out.Write($script:BlankBuffer, 0, $Width)
+        } else {
+            [System.Console]::Write(' ' * $Width)
+        }
         return
     }
 
@@ -211,10 +220,14 @@ function Render-Line {
         $Written += $SegText.Length
     }
 
-    # Pad rest of line with spaces to clear old content
+    # Pad rest of line with spaces to clear old content (zero-allocation path)
     $Pad = $Width - $Written
     if ($Pad -gt 0) {
-        [System.Console]::Write(' ' * $Pad)
+        if ($Pad -le 300) {
+            [System.Console]::Out.Write($script:BlankBuffer, 0, $Pad)
+        } else {
+            [System.Console]::Write(' ' * $Pad)
+        }
     }
 }
 

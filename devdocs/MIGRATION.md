@@ -349,6 +349,8 @@ Low-level webhook sender. POSTs JSON payload (`content`, optional `username`) to
 
 The automated migration is orchestrated by `migration/migrate.ps1` (`Invoke-PhaseByNumber`). Nine phases run sequentially, with state checkpointing in `.robot/res/migration-state.json`. Each phase is idempotent.
 
+**State file resilience** (`migration-state.ps1`): `Save-MigrationState` uses an atomic temp-file swap pattern — writes to `$Path.tmp` first, then creates a `.bak` backup of the current state, then moves the temp file to the target path. This prevents corruption from interrupted writes. `Get-MigrationState` implements backup recovery: if the primary state file is corrupt (JSON parse failure), it attempts to read from `$Path.bak`, restores the backup to the primary path, and returns the recovered state. If both are corrupt, falls back to `New-DefaultMigrationState`. All errors are logged to stderr with Polish-language messages.
+
 ### 9.1 Phase Overview
 
 | Phase | Function | File | Purpose |
@@ -368,7 +370,7 @@ The automated migration is orchestrated by `migration/migrate.ps1` (`Invoke-Phas
 | File | Purpose | Functions |
 |---|---|---|
 | `migrate.ps1` | Entry point and phase dispatcher | `Invoke-PhaseByNumber` |
-| `migration-state.ps1` | State persistence | `Resolve-MigrationStatePath`, `New-DefaultMigrationState`, `ConvertTo-HashtableDeep`, `Get-MigrationState`, `Save-MigrationState`, `Get-PhaseStatus`, `Set-PhaseCompleted`, `Set-PhaseInProgress`, `Update-PhaseChecklist`, `Add-DiagnosticSnapshot` |
+| `migration-state.ps1` | State persistence (atomic writes, backup/recovery) | `Resolve-MigrationStatePath`, `New-DefaultMigrationState`, `ConvertTo-HashtableDeep`, `Get-MigrationState`, `Save-MigrationState`, `Get-PhaseStatus`, `Set-PhaseCompleted`, `Set-PhaseInProgress`, `Update-PhaseChecklist`, `Add-DiagnosticSnapshot` |
 | `migration-shared.ps1` | Shared diagnostics and menu shortcuts | `Test-PhasePredecessor`, `Show-DiagnosticResults`, `Invoke-QuickDiagnostics`, `Invoke-FullReport` |
 | `migration-ui.ps1` | Polish-language UI helpers (22 functions) | `Initialize-MigrationLog`, `Write-MigrationLog`, `Flush-MigrationLog`, `Resolve-MigrationColor`, `Get-PhaseName`, `Write-PhaseHeader`, `Write-Step`, `Write-StepOK`, `Write-StepWarning`, `Write-StepError`, `Write-SectionHeader`, `Write-ChecklistReport`, `Write-ActionRequired`, `Write-CommandHint`, `Write-PhaseSummary`, `Write-TableRow`, `Request-UserChoice`, `Request-YesNo`, `Request-Confirmation`, `Request-StringInput`, `Request-NumericInput`, `Show-ProgressSummary` |
 | `migration-location-helpers.ps1` | Self-contained location name helpers; dot-sourced by Phase 3 | `Get-MapBaseNameIntermediates`, `Get-MapBaseNameDeterministic`, `Get-MapBaseNameCandidates` |
@@ -489,15 +491,17 @@ After format upgrade, narrator verification, and location review, Phase 5 genera
 
 **Export** (`Export-SessionReviewFile`): Calls `Get-Session -ExcludeDirectory $script:MigrationExcludeDirs -IncludeContent -Quiet`, sorts by `Header`, splits `Content` on `[char]10` with `.TrimEnd([char]13)`, builds relative paths from `FilePaths` via `$P.Substring($RepoRoot.Length + 1)`. Writes via `[System.IO.File]::WriteAllLines()` with UTF-8 no BOM.
 
-**Import** (`Import-SessionReviewFile`): Parses the edited review file into session blocks (header + body + source comment). Fetches current state via `Get-Session -IncludeContent`. Classifies changes into Modified (header exists in both, content differs), New (header in review but not source), and Deleted (header in source but not review).
+**Import** (`Import-SessionReviewFile`): Parses the edited review file into session blocks (header + body + source comment). Fetches current state via `Get-Session -IncludeContent`. Classifies changes into Modified (header exists in both, content differs), New (header in review but not source), and Deleted (header in source but not review). Displays a change summary (modified, new, deleted, unchanged counts) and requires `Request-YesNo` confirmation before applying.
 
-File operations are batched: all modifications and deletions are grouped by target file path into a `Dictionary[string, List[object]]`. Each file is read once, all operations are applied in reverse section order (highest `HeaderLineIdx` first to preserve line indices), and the result is written once. This replaces the previous per-operation read-modify-write pattern. Uses `Find-SessionInFile` for line-range lookup and array splicing within the in-memory buffer.
+File operations are batched: all modifications and deletions are grouped by target file path into a `Dictionary[string, List[object]]` (`$FileOps`). Each file is read once via `[System.IO.File]::ReadAllLines()`, all operations are applied in-memory in reverse section order (highest `HeaderLineIdx` first, via `Sort` with descending comparator, to preserve line indices for earlier sections), and the result is written once via `[System.IO.File]::WriteAllLines()`. This replaces the previous per-operation read-modify-write pattern.
+
+**Operation types**: Each op is a hashtable with `Type` (`'Modify'` or `'Delete'`), `Header`, and optionally `NewBody`. `Find-SessionInFile` locates the header's line range in the file. For modifications, the section content between header and section end is replaced with the new body. For deletions, the entire section (header through section end) is removed. Array splicing uses `$FileLines[0..$Match.HeaderLineIdx]` / `$FileLines[$Match.SectionEndIdx..($FileLines.Count - 1)]` to reconstruct the file.
 
 New sessions are written to `.robot/res/review-additions/YYYY-MM-DD-slug.md`. Requires `Request-YesNo` confirmation before applying.
 
 **Step lifecycle**: On first run (checklist `SessionReviewFileGenerated` not set), generates the file. On subsequent runs, presents a `Request-UserChoice` menu: **P** (skip), **Z** (apply edits), **R** (regenerate), **H** (refresh hashes via `Set-SessionHash -Full`). The review step is Step 9; hash refresh is Step 10; graph build is Step 11.
 
-**Entity caching**: Phase 5 lazy-loads the entity roster (`$PhaseEntities`) on first use in the location review step and reuses it for subsequent steps, avoiding redundant `Get-Entity` calls within the phase.
+**Entity caching**: Phase 5 loads the entity roster (`$PhaseEntities`) and player roster (`$PhasePlayers`) once at phase entry and passes them to all subsequent steps (format distribution, upgrade, narrator resolution, location review, session review). This avoids redundant `Get-Entity` / `Get-Player` calls within the phase.
 
 **Checklist**: `SessionReviewFileGenerated`. Not included in the phase completion gate — the review workflow is optional and asynchronous.
 

@@ -72,7 +72,7 @@ function Get-TransactionLedger {
         $ResolvedDenom = Resolve-CurrencyDenomination -Name $Transfer.Denomination
         $DenomName = if ($ResolvedDenom) { $ResolvedDenom.Name } else { $Transfer.Denomination }
 
-        if ($DenomFilter -and -not [string]::Equals($DenomName, $DenomFilter.Name, [System.StringComparison]::OrdinalIgnoreCase)) {
+        if (-not (Test-CurrencyDenominationMatch -DenominationName $DenomName -DenomFilter $DenomFilter)) {
             continue
         }
 

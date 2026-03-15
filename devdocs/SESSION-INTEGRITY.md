@@ -284,6 +284,7 @@ $File specified?
 | `File` | string[] | No | Limit validation to specific file path(s) |
 | `Since` | string | No | Check only files changed since this date |
 | `ExcludeDirectory` | string[] | No | Directories to exclude from scanning |
+| `ProgressCallback` | scriptblock | No | Optional callback for CLI progress reporting (receives `Current`, `Total`, `ItemDetail`) |
 | `Quiet` | switch | No | Suppress warning output to stderr |
 
 File selection logic is identical to `Set-SessionHash` (section 9.2).
@@ -306,11 +307,12 @@ File selection logic is identical to `Set-SessionHash` (section 9.2).
 
 1. Dot-source helpers (same as `Set-SessionHash`)
 2. Resolve config and determine files to check (same file selection logic)
-3. Batch-parse all files via `Get-Markdown`
+3. Batch-parse all files via `Get-Markdown` and index results in a `Dictionary[string, object]` keyed by file path (OrdinalIgnoreCase) for O(1) lookup
 4. For each file:
-   a. Compute relative path -> JSON sidecar path
-   b. **If no hash file exists** (Check 4): record as missing, then still scan for malformed headers (Check 5), future dates (Check 9), and format anomalies (Check 8)
-   c. **If hash file exists**:
+   a. Report progress via `$ProgressCallback` (every 5 files and on the final file, receiving `Current`, `Total`, `ItemDetail` arguments)
+   b. Compute relative path -> JSON sidecar path
+   c. **If no hash file exists** (Check 4): record as missing, then still scan for malformed headers (Check 5), future dates (Check 9), and format anomalies (Check 8)
+   d. **If hash file exists**:
       - Compute current hashes via `Get-FileHeaderHashes`
       - Load stored hashes via `Read-SessionHashFile`
       - Compare: hash mismatch -> Check 1; if modified section contains `@PU:` -> Check 6; if 2+ PU markers -> Check 7

@@ -81,7 +81,7 @@ A summary showing how many files were processed, how many fingerprints were comp
 
 **What you see:**
 
-A diagnostic report with an overall pass/fail status and categorized findings:
+During the check, a progress indicator shows how many files have been processed so far (e.g., "35/120"), with a spinner and elapsed time. When the check completes, a diagnostic report appears with an overall pass/fail status and categorized findings:
 
 ### 1. Modified Sessions
 

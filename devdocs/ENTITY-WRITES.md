@@ -63,6 +63,7 @@ All mutating commands dot-source `private/entity-writehelpers.ps1` (which in tur
 | `Read-EntityFile` | Reads file into `List[string]` with newline detection | `{ Lines, NL }` |
 | `Write-EntityFile` | Writes `List[string]` back to file (UTF-8 no BOM) | - |
 | `Invoke-EnsureEntityFile` | Creates `entities.md` with skeleton sections if missing | - |
+| `Set-SessionGraphStale` | Marks Tier 2 session graph as stale after entity mutations | - |
 
 **`private/entity-migrationhelpers.ps1`**:
 
@@ -144,7 +145,26 @@ High-level orchestrator that ensures the entity exists, creating intermediate st
 ## Mapa
 ```
 
-### 3.9 Module-Level Regex Patterns
+### 3.9 `Set-SessionGraphStale` — Cross-Cutting Graph Invalidation
+
+Entity mutations can invalidate the pre-computed Tier 2 session graph cache (see `private/session-graphhelpers.ps1`). `Set-SessionGraphStale` marks the graph metadata as stale so that the next graph consumer triggers a rebuild.
+
+| Parameter | Type | Description |
+|---|---|---|
+| `Reason` | string | **Mandatory**. Human-readable reason for staleness (e.g., entity name or operation). |
+| `ResDir` | string | **Mandatory**. Path to the `.robot.new` resource directory containing `session-graph/`. |
+
+**Implementation**:
+1. Dot-sources `private/session-graphhelpers.ps1` if `Read-SessionGraphMeta` is not already available
+2. Reads `session-graph/_meta.json` via `Read-SessionGraphMeta`
+3. Sets `Tier2Stale = $true` and `Tier2StaleReason` in the metadata hashtable
+4. Writes updated metadata via `Write-SessionGraphMeta`
+
+**Best-effort**: The entire operation is wrapped in `try/catch` — a failure to mark the graph stale does not abort the entity write. This ensures that graph cache availability is never a prerequisite for entity mutations.
+
+Calling commands (e.g., `Set-Entity`, `Remove-Entity`, currency CRUD) invoke this function after writing entity changes to flag the graph for rebuild.
+
+### 3.10 Module-Level Regex Patterns
 
 Three precompiled regex patterns (`RegexOptions.Compiled`) defined in `private/entity-findhelpers.ps1`:
 - `$SectionHeaderPattern` — matches `## ` section headers
@@ -155,7 +175,7 @@ Two type-mapping hashtables:
 - `$EntityTypeMap` — section header text -> canonical type (e.g. `"grupy"` -> `"Grupa"`, `"postaci (gracze)"` -> `"Postać"`)
 - `$TypeToHeader` — canonical type -> preferred section header text (e.g. `"Grupa"` -> `"Grupa"`)
 
-### 3.10 Operation Context Integration (`private/operation-context.ps1`)
+### 3.11 Operation Context Integration (`private/operation-context.ps1`)
 
 `entity-writehelpers.ps1` dot-sources `private/operation-context.ps1` (non-fatal if missing) and sets a `$script:HasOpCtx` flag. When the operation context is available, write primitives push side-effect records into shared accumulators:
 

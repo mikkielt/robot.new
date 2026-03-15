@@ -81,22 +81,7 @@ function New-Entity {
     if ($PSCmdlet.ShouldProcess($EntitiesFile, "New-Entity: create '$Name' under ## $Type")) {
         Write-EntityFile -Path $Target.FilePath -Lines $Target.Lines -NL $Target.NL
 
-        # Flag Tier 2 as stale — new entity changes the name index
-        try {
-            if (-not (Get-Command 'Read-SessionGraphMeta' -ErrorAction SilentlyContinue)) {
-                . "$script:ModuleRoot/private/session-graphhelpers.ps1"
-            }
-            $GraphDir = [System.IO.Path]::Combine($Config.ResDir, 'session-graph')
-            $MetaPath = [System.IO.Path]::Combine($GraphDir, '_meta.json')
-            if ([System.IO.File]::Exists($MetaPath)) {
-                $GraphMeta = Read-SessionGraphMeta -MetaPath $MetaPath
-                $GraphMeta['Tier2Stale'] = $true
-                $GraphMeta['Tier2StaleReason'] = "Nowa encja '$Name' została utworzona"
-                Write-SessionGraphMeta -MetaPath $MetaPath -Meta $GraphMeta
-            }
-        } catch {
-            # Best-effort; do not fail the entity write
-        }
+        Set-SessionGraphStale -Reason "Nowa encja '$Name' została utworzona" -ResDir $Config.ResDir
     }
 
     $ReturnObj = [PSCustomObject]@{

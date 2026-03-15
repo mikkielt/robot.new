@@ -300,3 +300,30 @@ function Resolve-EntityTarget {
         Created       = $Created
     }
 }
+
+function Set-SessionGraphStale {
+    <#
+        .SYNOPSIS
+        Flags Tier 2 session graph as stale after entity mutations.
+    #>
+    param(
+        [Parameter(Mandatory)] [string]$Reason,
+        [Parameter(Mandatory)] [string]$ResDir
+    )
+
+    try {
+        if (-not (Get-Command 'Read-SessionGraphMeta' -ErrorAction SilentlyContinue)) {
+            . "$script:ModuleRoot/private/session-graphhelpers.ps1"
+        }
+        $GraphDir = [System.IO.Path]::Combine($ResDir, 'session-graph')
+        $MetaPath = [System.IO.Path]::Combine($GraphDir, '_meta.json')
+        if ([System.IO.File]::Exists($MetaPath)) {
+            $GraphMeta = Read-SessionGraphMeta -MetaPath $MetaPath
+            $GraphMeta['Tier2Stale'] = $true
+            $GraphMeta['Tier2StaleReason'] = $Reason
+            Write-SessionGraphMeta -MetaPath $MetaPath -Meta $GraphMeta
+        }
+    } catch {
+        # Best-effort; do not fail the entity write
+    }
+}

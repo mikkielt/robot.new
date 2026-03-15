@@ -78,19 +78,25 @@ $MaxThreads = [Math]::Min($FileCount, [Environment]::ProcessorCount)
 |---|---|---|
 | `$MdLinkPattern` | `[regex]` | `'\[(.+?)\]\((.+?)\)'` - Markdown link capture |
 | `$PlainUrlPattern` | `[regex]` | `'https?:\/\/[^\s\)\]]+'` - Plain URL pattern |
+| `$CodeFencePattern` | `[regex]` | `` '^```' `` - Code fence detection |
+| `$HeaderPattern` | `[regex]` | `'^(#+)\s*(.+)$'` - Header level and text capture |
+| `$ListItemPattern` | `[regex]` | `'^(\s*)(\d+\.\|[-\*\+])\s+(.+)$'` - List item with indent/marker/text capture |
+| `$MarkerNumPattern` | `[regex]` | `'^\d+\.'` - Numbered list marker detection |
 | `$HeaderStack` | `Stack[object]` | Maintains header hierarchy |
 | `$ListStack` | `Stack[object]` | Maintains list item nesting |
 | `$InCodeBlock` | `bool` | Fenced code block toggle |
 
+All six regex patterns are precompiled once at script scope (outside the line-scan loop). This avoids per-line regex compilation overhead, which is significant when parsing thousands of lines across dozens of files.
+
 ### 4.2 Single-Pass Line Scanner
 
-The parser reads all lines via `[System.IO.File]::ReadAllLines()` and processes them in a single pass with 1-based line numbering. The scan handles five concerns simultaneously:
+The parser reads all lines via `[System.IO.File]::ReadAllLines()` and processes them in a single pass with 1-based line numbering. Each line is trimmed on the right only (`TrimEnd()`) to preserve leading whitespace needed for indent detection. The scan handles five concerns simultaneously using precompiled regex patterns:
 
-1. **Code block tracking** - `` ``` `` toggles `$InCodeBlock`; everything inside is opaque
-2. **Header extraction** - Lines starting with `#` (outside code blocks)
+1. **Code block tracking** - `$CodeFencePattern` toggles `$InCodeBlock`; everything inside is opaque
+2. **Header extraction** - `$HeaderPattern` matches lines starting with `#` (outside code blocks)
 3. **Section accumulation** - Content grouped by headers
-4. **List item parsing** - Bullet (`-`, `*`) and numbered (`1.`) items with indent tracking
-5. **Link extraction** - Both Markdown links and plain URLs
+4. **List item parsing** - `$ListItemPattern` captures indent, marker, and text; `$MarkerNumPattern` distinguishes numbered from bullet items
+5. **Link extraction** - `$MdLinkPattern` and `$PlainUrlPattern` extract both Markdown links and plain URLs
 
 ### 4.3 Header Hierarchy (Stack-Based)
 
@@ -199,7 +205,7 @@ Content is accumulated into a `StringBuilder` between headers. When a new header
 
 - **File I/O**: Uses `[System.IO.File]::ReadAllLines()` (not `Get-Content`) for speed
 - **Directory scanning**: Uses `[System.IO.Directory]::GetFiles()` with `SearchOption.AllDirectories`
-- **Regex**: `$MdLinkPattern` and `$PlainUrlPattern` are compiled once at script scope
+- **Regex**: All six patterns (`$MdLinkPattern`, `$PlainUrlPattern`, `$CodeFencePattern`, `$HeaderPattern`, `$ListItemPattern`, `$MarkerNumPattern`) are precompiled once at script scope, avoiding per-line regex compilation overhead
 - **Parser script caching**: The parser script text (`private/parse-markdownfile.ps1`) is read from disk once and cached at `$script:CachedParseFileScriptStr`. Subsequent `Get-Markdown` calls reuse the cached string for both sequential invocation (via `[scriptblock]::Create`) and parallel workers (via `AddScript`), avoiding repeated file I/O.
 - **StringBuilder**: Used for section content accumulation to avoid string concatenation
 - **Parallelism threshold**: 4 files (below this, pool setup overhead exceeds parsing time)

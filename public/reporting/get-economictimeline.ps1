@@ -51,7 +51,8 @@ function Get-EconomicTimeline {
     if ($Quiet) { $script:SuppressWarnings = $true }
     try {
 
-    if (-not $PSBoundParameters.ContainsKey('Entities')) {
+    $EntitiesPreProvided = $PSBoundParameters.ContainsKey('Entities')
+    if (-not $EntitiesPreProvided) {
         $Entities = Get-Entity -Quiet:$Quiet
     }
     if (-not $PSBoundParameters.ContainsKey('Sessions')) {
@@ -76,9 +77,21 @@ function Get-EconomicTimeline {
         $MonthEnd = $Current.AddMonths(1).AddDays(-1)
         $EffectiveDate = if ($MonthEnd -gt $MaxDate) { $MaxDate } else { $MonthEnd }
 
-        # Get-Entity -ActiveOn filters entities by ValidFrom/ValidTo at the data level
-        $MonthEntities = Get-Entity -ActiveOn $EffectiveDate -Quiet
-        if (-not $MonthEntities) { $MonthEntities = @() }
+        if ($EntitiesPreProvided) {
+            # Pre-provided entities: filter in-memory by status (avoids re-parsing
+            # entities.md from disk on each month iteration — 12x I/O reduction).
+            # Get-EntityState -ActiveOn handles temporal tag resolution.
+            $MonthEntities = foreach ($E in $Entities) {
+                $Status = Get-LastActiveValue -History $E.StatusHistory -PropertyName 'Status' -ActiveOn $EffectiveDate
+                if ($Status -eq 'Usunięty') { continue }
+                $E
+            }
+            $MonthEntities = @($MonthEntities)
+        } else {
+            # No pre-provided entities: use Get-Entity -ActiveOn for full temporal filtering
+            $MonthEntities = Get-Entity -ActiveOn $EffectiveDate -Quiet
+            if (-not $MonthEntities) { $MonthEntities = @() }
+        }
 
         $MonthState = @()
         if ($MonthEntities.Count -gt 0) {

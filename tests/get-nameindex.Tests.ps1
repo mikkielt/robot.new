@@ -83,8 +83,8 @@ Describe 'Get-NameIndex' {
         $script:NameIdx.StemIndex.Count | Should -BeGreaterThan 0
     }
 
-    It 'BKTree has a root node with a Key' {
-        $script:NameIdx.BKTree.Key | Should -Not -BeNullOrEmpty
+    It 'BKTree is constructed' {
+        $script:NameIdx.BKTree | Should -Not -BeNullOrEmpty
     }
 
     It 'Player wins over Gracz/Postać entity at same priority' {
@@ -188,8 +188,14 @@ Describe 'Get-NameIndex - unicode names indexing' {
     }
 
     It 'BK-tree includes diacritic names' {
-        $Results = Search-BKTree -Tree $script:UniIdx.BKTree -Query 'Śćiółka Żółwia' -Threshold 0
-        $ResultKeys = $Results | ForEach-Object { $_.Key }
+        $BK = $script:UniIdx.BKTree
+        if ($BK -is [Robot.BKTree]) {
+            $Results = $BK.Search('Śćiółka Żółwia', 0)
+            $ResultKeys = $Results | ForEach-Object { $_.Key }
+        } else {
+            $Results = Search-BKTree -Tree $BK -Query 'Śćiółka Żółwia' -Threshold 0
+            $ResultKeys = $Results | ForEach-Object { $_.Key }
+        }
         $ResultKeys | Should -Contain 'śćiółka żółwia'
     }
 }

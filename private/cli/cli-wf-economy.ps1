@@ -27,11 +27,8 @@ function Invoke-EconomicSnapshotWorkflow {
     Write-Host ''
 
     # Optional denomination filter
-    $DenomStep = [PSCustomObject]@{
-        Name = 'Denomination'; Label = 'Nominał (opcjonalny)'; StepType = 'choice'; Required = $false
-        Source = $null; Options = @('Wszystkie', 'Korony Elanckie', 'Talary Hirońskie', 'Kogi Skeltvorskie')
-        SubSteps = $null; EntrySource = $null; Condition = $null; Transform = $null; Default = 'Wszystkie'
-    }
+    $DenomStep = New-WizardChoiceStep -Name 'Denomination' -Label 'Nominał (opcjonalny)' `
+        -Options @('Wszystkie', 'Korony Elanckie', 'Talary Hirońskie', 'Kogi Skeltvorskie') -Default 'Wszystkie'
     $DenomChoice = Invoke-WizardStep -Step $DenomStep -State $State
     if ($DenomChoice -eq '__back__') { return }
 
@@ -110,19 +107,11 @@ function Invoke-EconomicTimelineWorkflow {
     Write-Host ''
 
     # Date range
-    $MinDateStep = [PSCustomObject]@{
-        Name = 'MinDate'; Label = 'Od daty'; StepType = 'date'; Required = $true
-        Source = $null; Options = $null; SubSteps = $null; EntrySource = $null
-        Condition = $null; Transform = $null; Default = $null
-    }
+    $MinDateStep = New-WizardDateStep -Name 'MinDate' -Label 'Od daty' -Required
     $MinDate = Invoke-WizardStep -Step $MinDateStep -State $State
     if ($MinDate -eq '__back__') { return }
 
-    $MaxDateStep = [PSCustomObject]@{
-        Name = 'MaxDate'; Label = 'Do daty'; StepType = 'date'; Required = $true
-        Source = $null; Options = $null; SubSteps = $null; EntrySource = $null
-        Condition = $null; Transform = $null; Default = $null
-    }
+    $MaxDateStep = New-WizardDateStep -Name 'MaxDate' -Label 'Do daty' -Required
     $MaxDate = Invoke-WizardStep -Step $MaxDateStep -State $State
     if ($MaxDate -eq '__back__') { return }
 

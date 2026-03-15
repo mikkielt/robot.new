@@ -19,6 +19,54 @@ BeforeAll {
     . (Join-Path $script:ModuleRoot 'public' 'get-nameindex.ps1')
     . (Join-Path $script:ModuleRoot 'public' 'resolve' 'resolve-narrator.ps1')
     . (Join-Path $script:ModuleRoot 'public' 'session' 'get-session.ps1')
+
+    # Helper: Build parent→children index from list items (same structure as get-session.ps1)
+    function Build-ChildrenOf {
+        param([object[]]$Items)
+        $Result = @{}
+        foreach ($LI in $Items) {
+            if ($null -ne $LI.ParentListItem) {
+                $ParentId = [System.Runtime.CompilerServices.RuntimeHelpers]::GetHashCode($LI.ParentListItem)
+                if (-not $Result.ContainsKey($ParentId)) {
+                    $Result[$ParentId] = [System.Collections.Generic.List[object]]::new()
+                }
+                $Result[$ParentId].Add($LI)
+            }
+        }
+        return $Result
+    }
+
+    # Helper: Build EntityByGroup index from entities
+    function Build-EntityByGroup {
+        param([object[]]$Entities)
+        $Result = @{}
+        foreach ($E in $Entities) {
+            if (-not $E.GroupHistory -or $E.GroupHistory.Count -eq 0) { continue }
+            foreach ($GH in $E.GroupHistory) {
+                if (-not $Result.ContainsKey($GH.Group)) {
+                    $Result[$GH.Group] = [System.Collections.Generic.List[object]]::new()
+                }
+                $Result[$GH.Group].Add(@{ Entity = $E; History = $GH })
+            }
+        }
+        return $Result
+    }
+
+    # Helper: Build EntityByLocation index from entities
+    function Build-EntityByLocation {
+        param([object[]]$Entities)
+        $Result = @{}
+        foreach ($E in $Entities) {
+            if (-not $E.LocationHistory -or $E.LocationHistory.Count -eq 0) { continue }
+            foreach ($LH in $E.LocationHistory) {
+                if (-not $Result.ContainsKey($LH.Location)) {
+                    $Result[$LH.Location] = [System.Collections.Generic.List[object]]::new()
+                }
+                $Result[$LH.Location].Add(@{ Entity = $E; History = $LH })
+            }
+        }
+        return $Result
+    }
 }
 
 Describe 'ConvertFrom-SessionHeader' {
@@ -405,11 +453,13 @@ Describe 'Get-SessionLocations' {
     }
 
     It 'extracts locations from Gen2 italic format' {
+        $Items = @()
         $Locations = Get-SessionLocations -Format 'Gen2' `
             -FirstNonEmptyLine '*Lokalizacja: Erathia, Steadwick*' `
-            -SectionLists @() `
+            -SectionLists $Items `
             -LocItalicRegex $script:LocItalicRegex `
-            -Index $null
+            -Index $null `
+            -ChildrenOf (Build-ChildrenOf -Items $Items)
         $Locations | Should -Contain 'Erathia'
         $Locations | Should -Contain 'Steadwick'
     }
@@ -422,7 +472,8 @@ Describe 'Get-SessionLocations' {
             -FirstNonEmptyLine '' `
             -SectionLists $SectionLists `
             -LocItalicRegex $script:LocItalicRegex `
-            -Index $null
+            -Index $null `
+            -ChildrenOf (Build-ChildrenOf -Items $SectionLists)
         $Locations | Should -Contain 'Erathia'
     }
 
@@ -435,7 +486,8 @@ Describe 'Get-SessionLocations' {
             -FirstNonEmptyLine '' `
             -SectionLists $SectionLists `
             -LocItalicRegex $script:LocItalicRegex `
-            -Index $null
+            -Index $null `
+            -ChildrenOf (Build-ChildrenOf -Items $SectionLists)
         $Locations | Should -Contain 'Steadwick'
         $Locations | Should -Contain 'Erathia'
     }
@@ -447,17 +499,20 @@ Describe 'Get-SessionLocations' {
             -FirstNonEmptyLine '' `
             -SectionLists $SectionLists `
             -LocItalicRegex $script:LocItalicRegex `
-            -Index $null
+            -Index $null `
+            -ChildrenOf (Build-ChildrenOf -Items $SectionLists)
         $Locations | Should -Contain 'Erathia'
         $Locations | Should -Contain 'Steadwick'
     }
 
     It 'returns empty list for Gen1 format' {
+        $Items = @()
         $Locations = Get-SessionLocations -Format 'Gen1' `
             -FirstNonEmptyLine 'Some text' `
-            -SectionLists @() `
+            -SectionLists $Items `
             -LocItalicRegex $script:LocItalicRegex `
-            -Index $null
+            -Index $null `
+            -ChildrenOf (Build-ChildrenOf -Items $Items)
         $Locations.Count | Should -Be 0
     }
 
@@ -475,7 +530,8 @@ Describe 'Get-SessionLocations' {
             -FirstNonEmptyLine '' `
             -SectionLists $SectionLists `
             -LocItalicRegex $script:LocItalicRegex `
-            -Index $Index
+            -Index $Index `
+            -ChildrenOf (Build-ChildrenOf -Items $SectionLists)
         $Locations | Should -Contain 'Erathia'
     }
 }
@@ -513,10 +569,13 @@ Describe 'Resolve-IntelTargets' {
         $Intel = [System.Collections.Generic.List[object]]::new()
         $Intel.Add([PSCustomObject]@{ RawTarget = 'Xeron'; Message = 'Secret info' })
 
+        $Ents = @($script:EntityXeron, $script:EntityDragon)
         $Result = Resolve-IntelTargets -RawIntel $Intel -SessionDate ([datetime]::new(2024, 6, 15)) `
-            -Entities @($script:EntityXeron, $script:EntityDragon) `
+            -Entities $Ents `
             -Index $script:Index -StemIndex $script:StemIndex `
-            -Players @() -ResolveCache @{}
+            -Players @() -ResolveCache @{} `
+            -EntityByGroup (Build-EntityByGroup -Entities $Ents) `
+            -EntityByLocation (Build-EntityByLocation -Entities $Ents)
 
         $Result.Count | Should -Be 1
         $Result[0].Directive | Should -Be 'Direct'
@@ -528,10 +587,13 @@ Describe 'Resolve-IntelTargets' {
         $Intel = [System.Collections.Generic.List[object]]::new()
         $Intel.Add([PSCustomObject]@{ RawTarget = 'Xeron, Dragon'; Message = 'Multi info' })
 
+        $Ents = @($script:EntityXeron, $script:EntityDragon)
         $Result = Resolve-IntelTargets -RawIntel $Intel -SessionDate ([datetime]::new(2024, 6, 15)) `
-            -Entities @($script:EntityXeron, $script:EntityDragon) `
+            -Entities $Ents `
             -Index $script:Index -StemIndex $script:StemIndex `
-            -Players @() -ResolveCache @{}
+            -Players @() -ResolveCache @{} `
+            -EntityByGroup (Build-EntityByGroup -Entities $Ents) `
+            -EntityByLocation (Build-EntityByLocation -Entities $Ents)
 
         $Result[0].Directive | Should -Be 'Direct'
         $Result[0].Recipients.Count | Should -Be 2
@@ -565,10 +627,13 @@ Describe 'Resolve-IntelTargets' {
         $Intel = [System.Collections.Generic.List[object]]::new()
         $Intel.Add([PSCustomObject]@{ RawTarget = 'Grupa/Gwardia'; Message = 'Guild intel' })
 
+        $Ents = @($Guild, $Member)
         $Result = Resolve-IntelTargets -RawIntel $Intel -SessionDate ([datetime]::new(2024, 6, 15)) `
-            -Entities @($Guild, $Member) `
+            -Entities $Ents `
             -Index $Idx -StemIndex $script:StemIndex `
-            -Players @() -ResolveCache @{}
+            -Players @() -ResolveCache @{} `
+            -EntityByGroup (Build-EntityByGroup -Entities $Ents) `
+            -EntityByLocation (Build-EntityByLocation -Entities $Ents)
 
         $Result[0].Directive | Should -Be 'Grupa'
         $Result[0].TargetName | Should -Be 'Gwardia'
@@ -614,10 +679,13 @@ Describe 'Resolve-IntelTargets' {
         $Intel = [System.Collections.Generic.List[object]]::new()
         $Intel.Add([PSCustomObject]@{ RawTarget = 'Lokacja/Steadwick'; Message = 'Location intel' })
 
+        $Ents = @($CityEntity, $SublocEntity, $ResidentEntity)
         $Result = Resolve-IntelTargets -RawIntel $Intel -SessionDate ([datetime]::new(2024, 6, 15)) `
-            -Entities @($CityEntity, $SublocEntity, $ResidentEntity) `
+            -Entities $Ents `
             -Index $Idx -StemIndex $script:StemIndex `
-            -Players @() -ResolveCache @{}
+            -Players @() -ResolveCache @{} `
+            -EntityByGroup (Build-EntityByGroup -Entities $Ents) `
+            -EntityByLocation (Build-EntityByLocation -Entities $Ents)
 
         $Result[0].Directive | Should -Be 'Lokacja'
         $Result[0].TargetName | Should -Be 'Steadwick'
@@ -634,7 +702,8 @@ Describe 'Resolve-IntelTargets' {
         $Result = Resolve-IntelTargets -RawIntel $Intel -SessionDate ([datetime]::new(2024, 6, 15)) `
             -Entities @() `
             -Index $EmptyIndex -StemIndex $script:StemIndex `
-            -Players @() -ResolveCache @{}
+            -Players @() -ResolveCache @{} `
+            -EntityByGroup @{} -EntityByLocation @{}
 
         $Result[0].Recipients.Count | Should -Be 0
     }
@@ -655,13 +724,15 @@ Describe 'Get-SessionMentions' {
 
     It 'extracts entity mentions from paragraph text' {
         $Content = "Xeron went to the market and bought supplies."
+        $Items = @()
         $Result = Get-SessionMentions -Content $Content `
-            -SectionLists @() `
+            -SectionLists $Items `
             -Format 'Gen3' `
             -FirstNonEmptyLine '' `
             -Index $script:MentionIndex `
             -StemIndex $script:MentionStemIndex `
-            -ResolveCache @{}
+            -ResolveCache @{} `
+            -ChildrenOf (Build-ChildrenOf -Items $Items)
         $Result.Count | Should -Be 1
         $Result[0].Name | Should -Be 'Xeron'
     }
@@ -671,13 +742,15 @@ Describe 'Get-SessionMentions' {
         $PUChild = [PSCustomObject]@{ Indent = 1; Text = 'Xeron: 0.3'; ParentListItem = $PUItem }
 
         $Content = "Some other text without entities."
+        $Items = @($PUItem, $PUChild)
         $Result = Get-SessionMentions -Content $Content `
-            -SectionLists @($PUItem, $PUChild) `
+            -SectionLists $Items `
             -Format 'Gen3' `
             -FirstNonEmptyLine '' `
             -Index $script:MentionIndex `
             -StemIndex $script:MentionStemIndex `
-            -ResolveCache @{}
+            -ResolveCache @{} `
+            -ChildrenOf (Build-ChildrenOf -Items $Items)
 
         # Xeron should NOT appear since it's only in excluded PU list
         $MentionNames = $Result | ForEach-Object { $_.Name }
@@ -691,39 +764,45 @@ Describe 'Get-SessionMentions' {
         $IntelItem = [PSCustomObject]@{ Indent = 0; Text = 'Intel:'; ParentListItem = $null }
 
         $Content = "Body text."
+        $Items = @($LogiItem, $LocItem, $ZmianyItem, $IntelItem)
         $Result = Get-SessionMentions -Content $Content `
-            -SectionLists @($LogiItem, $LocItem, $ZmianyItem, $IntelItem) `
+            -SectionLists $Items `
             -Format 'Gen3' `
             -FirstNonEmptyLine '' `
             -Index $script:MentionIndex `
             -StemIndex $script:MentionStemIndex `
-            -ResolveCache @{}
+            -ResolveCache @{} `
+            -ChildrenOf (Build-ChildrenOf -Items $Items)
         # No entity mentions in body text
         $Result.Count | Should -Be 0
     }
 
     It 'skips Gen2 italic location first line' {
         $Content = "*Lokalizacja: Erathia*`nXeron walked around."
+        $Items = @()
         $Result = Get-SessionMentions -Content $Content `
-            -SectionLists @() `
+            -SectionLists $Items `
             -Format 'Gen2' `
             -FirstNonEmptyLine '*Lokalizacja: Erathia*' `
             -Index $script:MentionIndex `
             -StemIndex $script:MentionStemIndex `
-            -ResolveCache @{}
+            -ResolveCache @{} `
+            -ChildrenOf (Build-ChildrenOf -Items $Items)
         $Result.Count | Should -Be 1
         $Result[0].Name | Should -Be 'Xeron'
     }
 
     It 'extracts mentions from markdown links' {
         $Content = "The hero [Xeron](http://wiki.example.com/Xeron) arrived."
+        $Items = @()
         $Result = Get-SessionMentions -Content $Content `
-            -SectionLists @() `
+            -SectionLists $Items `
             -Format 'Gen3' `
             -FirstNonEmptyLine '' `
             -Index $script:MentionIndex `
             -StemIndex $script:MentionStemIndex `
-            -ResolveCache @{}
+            -ResolveCache @{} `
+            -ChildrenOf (Build-ChildrenOf -Items $Items)
         $Result.Count | Should -Be 1
         $Result[0].Name | Should -Be 'Xeron'
     }
@@ -734,13 +813,15 @@ Describe 'Get-SessionMentions' {
         $PUGrandchild = [PSCustomObject]@{ Indent = 2; Text = 'bonus Xeron'; ParentListItem = $PUChild }
 
         $Content = "No entities here."
+        $Items = @($PUItem, $PUChild, $PUGrandchild)
         $Result = Get-SessionMentions -Content $Content `
-            -SectionLists @($PUItem, $PUChild, $PUGrandchild) `
+            -SectionLists $Items `
             -Format 'Gen3' `
             -FirstNonEmptyLine '' `
             -Index $script:MentionIndex `
             -StemIndex $script:MentionStemIndex `
-            -ResolveCache @{}
+            -ResolveCache @{} `
+            -ChildrenOf (Build-ChildrenOf -Items $Items)
         $MentionNames = $Result | ForEach-Object { $_.Name }
         $MentionNames | Should -Not -Contain 'Xeron'
     }
@@ -750,13 +831,15 @@ Describe 'Get-SessionMentions' {
         $OtherChild = [PSCustomObject]@{ Indent = 1; Text = 'Xeron got a reward'; ParentListItem = $OtherItem }
 
         $Content = "Some body."
+        $Items = @($OtherItem, $OtherChild)
         $Result = Get-SessionMentions -Content $Content `
-            -SectionLists @($OtherItem, $OtherChild) `
+            -SectionLists $Items `
             -Format 'Gen3' `
             -FirstNonEmptyLine '' `
             -Index $script:MentionIndex `
             -StemIndex $script:MentionStemIndex `
-            -ResolveCache @{}
+            -ResolveCache @{} `
+            -ChildrenOf (Build-ChildrenOf -Items $Items)
         $MentionNames = $Result | ForEach-Object { $_.Name }
         $MentionNames | Should -Contain 'Xeron'
     }
@@ -764,26 +847,30 @@ Describe 'Get-SessionMentions' {
     It 'uses resolve cache to speed up repeated lookups' {
         $Cache = @{}
         $Content = "Xeron met Xeron again."
+        $Items = @()
         $Result = Get-SessionMentions -Content $Content `
-            -SectionLists @() `
+            -SectionLists $Items `
             -Format 'Gen3' `
             -FirstNonEmptyLine '' `
             -Index $script:MentionIndex `
             -StemIndex $script:MentionStemIndex `
-            -ResolveCache $Cache
+            -ResolveCache $Cache `
+            -ChildrenOf (Build-ChildrenOf -Items $Items)
         $Result.Count | Should -Be 1
         $Cache.ContainsKey('Xeron') | Should -BeTrue
     }
 
     It 'skips Logi: plain text lines' {
         $Content = "Logi: https://example.com/log`nXeron was present."
+        $Items = @()
         $Result = Get-SessionMentions -Content $Content `
-            -SectionLists @() `
+            -SectionLists $Items `
             -Format 'Gen1' `
             -FirstNonEmptyLine 'Logi: https://example.com/log' `
             -Index $script:MentionIndex `
             -StemIndex $script:MentionStemIndex `
-            -ResolveCache @{}
+            -ResolveCache @{} `
+            -ChildrenOf (Build-ChildrenOf -Items $Items)
         $Result.Count | Should -Be 1
         $Result[0].Name | Should -Be 'Xeron'
     }

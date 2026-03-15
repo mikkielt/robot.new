@@ -132,8 +132,8 @@ function Resolve-Name {
         [Parameter(HelpMessage = "Stem index from Get-NameIndex for O(1) declension lookups")]
         [System.Collections.Generic.Dictionary[string, System.Collections.Generic.List[string]]]$StemIndex,
 
-        [Parameter(HelpMessage = "BK-tree from Get-NameIndex for O(log N) fuzzy matching")]
-        [hashtable]$BKTree,
+        [Parameter(HelpMessage = "BK-tree from Get-NameIndex for O(log N) fuzzy matching (Robot.BKTree or hashtable)")]
+        $BKTree,
 
         [Parameter(HelpMessage = "Skip Stage 3 fuzzy/Levenshtein matching to avoid false positives")]
         [switch]$NoFuzzy
@@ -215,8 +215,23 @@ function Resolve-Name {
         if ($Query.Length -lt 5) { 1 } else { [Math]::Floor($Query.Length / 3) }
     }
 
-    if ($BKTree) {
-        # BK-tree search: O(log N) instead of O(N) linear scan
+    if ($BKTree -is [Robot.BKTree]) {
+        # C# BK-tree search: O(log N) with integrated Levenshtein early-exit
+        $BKResults = $BKTree.Search($Query, $Threshold)
+
+        foreach ($BKResult in $BKResults) {
+            if ($BKResult.Value -lt $BestDistance) {
+                if ($Index.ContainsKey($BKResult.Key)) {
+                    $Entry = $Index[$BKResult.Key]
+                    if (-not $Entry.Ambiguous -and (-not $OwnerType -or $Entry.OwnerType -eq $OwnerType)) {
+                        $BestDistance = $BKResult.Value
+                        $BestOwner   = $Entry.Owner
+                    }
+                }
+            }
+        }
+    } elseif ($BKTree) {
+        # Legacy PowerShell hashtable BK-tree search
         $BKResults = Search-BKTree -Tree $BKTree -Query $Query -Threshold $Threshold
 
         foreach ($BKResult in $BKResults) {
@@ -240,7 +255,7 @@ function Resolve-Name {
             $LenDiff = [Math]::Abs($QueryLength - $TokenKey.Length)
             if ($LenDiff -gt $Threshold) { continue }
 
-            $Distance = Get-LevenshteinDistance -Source $Query -Target $TokenKey
+            $Distance = Get-LevenshteinDistance -Source $Query -Target $TokenKey -MaxDistance $Threshold
 
             if ($Distance -lt $BestDistance) {
                 $Entry = $Index[$TokenKey]

@@ -18,28 +18,21 @@
 function Invoke-CurrencyTransferWorkflow {
     param([object]$State, [hashtable]$Entry)
 
-    $AccentColor  = Get-CLIColor -Role 'Accent'
-    $SuccessColor = Get-CLIColor -Role 'Success'
-    $ErrorColor   = Get-CLIColor -Role 'Error'
-    $InfoColor    = Get-CLIColor -Role 'Info'
+    $Colors = Initialize-WorkflowScreen -Title 'Transfer walutowy'
+    $AccentColor  = $Colors.Accent
+    $SuccessColor = $Colors.Success
+    $ErrorColor   = $Colors.Error
+    $InfoColor    = $Colors.Info
     $Sep = [string][char]0x2500 * 50
 
     # Step 1: Source currency
-    [System.Console]::Clear()
-    Write-CLILine -Text 'Transfer walutowy' -Color $AccentColor
-    Write-Host "  $Sep" -ForegroundColor (Get-CLIColor -Role 'Disabled')
-    Write-Host ''
 
     $Source = Invoke-EngineFuzzySearch -Prompt 'Źródło (waluta do obciążenia)' -Source 'currency' -State $State
     if (-not $Source) { return }
 
     # Step 2: Amount
     Write-Host ''
-    $AmountStep = [PSCustomObject]@{
-        Name = 'Amount'; Label = 'Kwota do przelania'; StepType = 'number'; Required = $true
-        Source = $null; Options = $null; SubSteps = $null; EntrySource = $null
-        Condition = $null; Transform = $null; Default = $null
-    }
+    $AmountStep = New-WizardNumberStep -Name 'Amount' -Label 'Kwota do przelania' -Required
     $Amount = Invoke-WizardStep -Step $AmountStep -State $State
     if ($Amount -eq '__back__' -or -not $Amount) { return }
 

@@ -1,5 +1,6 @@
 BeforeAll {
     . "$PSScriptRoot/TestHelpers.ps1"
+    . (Join-Path $script:ModuleRoot 'private' 'temporal-helpers.ps1')
     . (Join-Path $script:ModuleRoot 'private' 'session-graphhelpers.ps1')
     . (Join-Path $script:ModuleRoot 'private' 'session-hashhelpers.ps1')
     . (Join-Path $script:ModuleRoot 'private' 'admin-config.ps1')

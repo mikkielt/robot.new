@@ -72,14 +72,10 @@ function Get-CurrencyReport {
 
     foreach ($Item in $CurrencyItems) {
         # Denomination filter
-        if ($DenomFilter -and $Item.Denomination.Name -ne $DenomFilter.Name) { continue }
+        if (-not (Test-CurrencyDenominationMatch -DenominationName $Item.Denomination.Name -DenomFilter $DenomFilter)) { continue }
 
         # Owner filter
-        if ($Owner) {
-            if (-not $Item.Owner -or -not [string]::Equals($Item.Owner, $Owner, [System.StringComparison]::OrdinalIgnoreCase)) {
-                continue
-            }
-        }
+        if (-not (Test-CurrencyOwnerMatch -EntityOwner $Item.Owner -FilterOwner $Owner)) { continue }
 
         # Determine owner type
         $OwnerType = if ($Item.Owner) { 'Owner' } elseif ($Item.Location) { 'Location' } else { 'Unowned' }

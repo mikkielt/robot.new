@@ -32,9 +32,20 @@
 # Dot-source shared helpers
 . "$script:ModuleRoot/private/string-helpers.ps1"
 
+# Compiled C# BK-tree with integrated Levenshtein distance (early-exit threshold).
+# Eliminates PowerShell interpretation overhead on the hottest path (16,500+ calls
+# per Get-Session run). Source: lib/BKTree.cs
+if (-not ([System.Management.Automation.PSTypeName]'Robot.BKTree').Type) {
+    $CsPath = [System.IO.Path]::Combine($script:ModuleRoot, 'lib', 'BKTree.cs')
+    if ([System.IO.File]::Exists($CsPath)) {
+        Add-Type -TypeDefinition ([System.IO.File]::ReadAllText($CsPath)) -Language CSharp
+    }
+}
+
+# Legacy PowerShell BK-tree helpers — kept for fallback if Add-Type fails
+# and for backward compatibility with test code.
+
 # Helper: insert a key into a BK-tree node
-# BK-trees partition strings by edit distance, enabling O(log N) Levenshtein lookups.
-# Each node stores a key and children keyed by distance.
 function Add-BKTreeNode {
     param(
         [hashtable]$Node,
@@ -52,8 +63,6 @@ function Add-BKTreeNode {
 }
 
 # Helper: search BK-tree for all keys within a Levenshtein threshold
-# Exploits triangle inequality to prune branches: only children at distance d
-# where |d - queryDistance| <= threshold can contain matches.
 function Search-BKTree {
     param(
         [hashtable]$Tree,
@@ -69,7 +78,7 @@ function Search-BKTree {
 
     while ($Stack.Count -gt 0) {
         $Current  = $Stack.Pop()
-        $Distance = Get-LevenshteinDistance -Source $Query -Target $Current.Key
+        $Distance = Get-LevenshteinDistance -Source $Query -Target $Current.Key -MaxDistance $Threshold
 
         if ($Distance -le $Threshold) {
             $Results.Add([PSCustomObject]@{ Key = $Current.Key; Distance = $Distance })
@@ -271,12 +280,30 @@ function Get-NameIndex {
     }
 
     # Build BK-tree from all index keys for O(log N) fuzzy matching in Resolve-Name Stage 3
+    # Fisher-Yates shuffle prevents degenerate tree shape from sorted insertion order.
+    # Deterministic seed (42) ensures reproducible tree shape across runs.
     $BKTree = $null
     $AllKeys = [string[]]$Index.Keys
     if ($AllKeys.Count -gt 0) {
-        $BKTree = @{ Key = $AllKeys[0]; Children = @{} }
-        for ($k = 1; $k -lt $AllKeys.Count; $k++) {
-            Add-BKTreeNode -Node $BKTree -Key $AllKeys[$k]
+        $Rng = [System.Random]::new(42)
+        for ($k = $AllKeys.Count - 1; $k -gt 0; $k--) {
+            $j = $Rng.Next($k + 1)
+            $Temp = $AllKeys[$k]
+            $AllKeys[$k] = $AllKeys[$j]
+            $AllKeys[$j] = $Temp
+        }
+
+        if (([System.Management.Automation.PSTypeName]'Robot.BKTree').Type) {
+            $BKTree = [Robot.BKTree]::new($AllKeys[0])
+            for ($k = 1; $k -lt $AllKeys.Count; $k++) {
+                [void]$BKTree.Add($AllKeys[$k])
+            }
+        } else {
+            # Fallback: PowerShell hashtable BK-tree
+            $BKTree = @{ Key = $AllKeys[0]; Children = @{} }
+            for ($k = 1; $k -lt $AllKeys.Count; $k++) {
+                Add-BKTreeNode -Node $BKTree -Key $AllKeys[$k]
+            }
         }
     }
 

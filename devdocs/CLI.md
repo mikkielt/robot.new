@@ -6,7 +6,7 @@
 
 ## 1. Scope
 
-This document covers the interactive CLI subsystem: `public/cli/invoke-robotcli.ps1` (entry point), the 19 private modules in `private/cli/` (UI primitives, fuzzy search, context-sensitive help, wizard auto-generation, menu registry, routing, display, workflows, economy workflows, migration integration), the 9 engine files in `private/cli/engine/` (screen management, virtual buffer, input loop, chrome rendering, 6 component types), and the 9 test files in `tests/cli-*.Tests.ps1`.
+This document covers the interactive CLI subsystem: `public/cli/invoke-robotcli.ps1` (entry point), the 19 private modules in `private/cli/` (UI primitives, progress reporting, fuzzy search, context-sensitive help, wizard auto-generation, wizard step factories, menu registry, routing, display, workflows, economy workflows, migration integration), the 9 engine files in `private/cli/engine/` (screen management, virtual buffer, input loop, chrome rendering, 6 component types), and the 10 test files in `tests/cli-*.Tests.ps1`.
 
 **Not covered**: Individual public functions that wizards wrap (e.g., `New-Player`, `Set-Entity`). Migration phase implementations - see migration subsystem docs. Plugin system - see [PLUGINS.md](PLUGINS.md).
 
@@ -19,18 +19,25 @@ Invoke-RobotCLI (public/cli/invoke-robotcli.ps1)
     │
     ├── Layer 1: cli-primitives.ps1       (leaf - no CLI deps)
     │   │   Colors, Write-CLILine, Read-ArrowKey [DEPRECATED]
+    │   │   Progress subsystem: New-ProgressState, Start-ProgressStep,
+    │   │       Update-ProgressStep, Complete-ProgressStep, Complete-ProgressGroup
+    │   │   Workflow setup: Initialize-WorkflowScreen
+    │   │   Legacy [DEPRECATED]: Clear-MenuArea, Show-Banner, Show-Breadcrumb, Show-InfoBox
     │   ├── cli-menus.ps1                 (chain-loaded by cli-primitives.ps1)
     │   │       Show-ArrowMenu [DEPRECATED], Show-ResultTable [DEPRECATED],
     │   │       Show-HelpOverlay [DEPRECATED]
     │   └── engine/*.ps1                  (chain-loaded by cli-primitives.ps1, 9 files)
-    │       ├── cli-engine.ps1            Screen/region management, tier styles
+    │       ├── cli-engine.ps1            Screen/region management, tier styles,
+    │       │                             ANSI helpers (Get-ANSIBold, Get-ANSIDim, Get-ANSIReset)
     │       ├── cli-buffer.ps1            Virtual buffer, diff-based rendering
-    │       ├── cli-input.ps1             Input loop, key routing, filter/command modes
+    │       ├── cli-input.ps1             Input loop, key routing, filter/command modes,
+    │       │                             Reset-Filter, Get-FilterText, Reset-CommandMode
     │       ├── cli-chrome.ps1            TopBar, FilterBar, StatusBar rendering
     │       ├── cli-menulist.ps1          MenuListComponent (arrow-nav + filter + fuzzy)
     │       ├── cli-table.ps1             ResultTableComponent (pagination + responsive columns)
     │       ├── cli-detail.ps1            DetailCardComponent (scrollable key-value card)
-    │       ├── cli-overlays.ps1          HelpOverlayComponent, HealthDashboardComponent
+    │       ├── cli-overlays.ps1          HelpOverlayComponent, HealthDashboardComponent,
+    │       │                             Render-HealthSection, Search-HelpTopics, Get-AutoStepHelp
     │       └── cli-wizard-step.ps1       WizardStepComponent (text/selection/yesno input)
     │
     ├── Layer 2: cli-fuzzy.ps1            (depends on L1)
@@ -46,6 +53,8 @@ Invoke-RobotCLI (public/cli/invoke-robotcli.ps1)
     │   │   $script:CommonParams, Resolve-StepType, Invoke-Wizard
     │   ├── cli-wizard-steps.ps1          (dot-sourced by cli-wizard.ps1)
     │   │       Invoke-EngineLifecycle, Invoke-WizardStep
+    │   │       Step factories: New-WizardTextStep, New-WizardNumberStep,
+    │   │           New-WizardDateStep, New-WizardChoiceStep, New-WizardFuzzyStep
     │   └── cli-wizard-preview.ps1        (dot-sourced by cli-wizard.ps1)
     │           Show-Preview
     │
@@ -54,7 +63,7 @@ Invoke-RobotCLI (public/cli/invoke-robotcli.ps1)
     │
     ├── Layer 5: cli-routing.ps1          (depends on all above)
     │       Get-MenuCategories, Get-MenuItems, Get-RegistryEntry,
-    │       Merge-PluginMenuItems, Refresh-NavState,
+    │       Merge-PluginMenuItems, Refresh-NavState, Refresh-HealthChecks,
     │       Invoke-EngineRender, Invoke-EngineCommand,
     │       Invoke-EngineFuzzySearch, Invoke-EngineDetailCard,
     │       Invoke-MenuAction, Invoke-QueryAction, Show-SubMenu, Show-MainMenu
@@ -72,7 +81,10 @@ Invoke-RobotCLI (public/cli/invoke-robotcli.ps1)
     │   ├── cli-wf-economy.ps1            Economic snapshot, timeline, materialization
     │   ├── cli-wf-pu.ps1                 PU assignment + diagnostics
     │   ├── cli-wf-discord.ps1            Discord PU notification + announcement
-    │   └── cli-wf-reporting.ps1          Intel preview, name search, migration reports
+    │   └── cli-wf-reporting.ps1          Intel preview, name search, log fetch,
+    │                                     log location report, location graph,
+    │                                     session graph, compare participation,
+    │                                     session leaderboard, migration reports
     │
     ├── Layer 6.5: Plugin CLI workflows   (dot-source plugin cli/*.ps1)
     │       Per loaded plugin: dot-source all .ps1 files from plugins/<name>/cli/
@@ -105,16 +117,16 @@ All files are dot-sourced on demand when `Invoke-RobotCLI` is called (not at mod
 
 | File | Lines | Layer | Contents |
 |---|---|---|---|
-| `cli-primitives.ps1` | ~420 | 1 | Color scheme, theme detection, banner, breadcrumb; chain-loads `cli-menus.ps1` and all 9 `engine/*.ps1` files |
+| `cli-primitives.ps1` | ~500 | 1 | Color scheme, theme detection, `Write-CLILine`, progress subsystem (`New-ProgressState`, `Start-ProgressStep`, `Update-ProgressStep`, `Complete-ProgressStep`, `Complete-ProgressGroup`), `Initialize-WorkflowScreen`, banner, breadcrumb; chain-loads `cli-menus.ps1` and all 9 `engine/*.ps1` files |
 | `cli-menus.ps1` | — | 1 | `Show-ArrowMenu`, `Show-ResultTable`, `Show-HelpOverlay` [DEPRECATED] (chain-loaded by `cli-primitives.ps1`) |
 | `cli-fuzzy.ps1` | ~340 | 2 | Fuzzy search candidate generation, filtering; `Show-FuzzySearch` [DEPRECATED] |
 | `cli-display.ps1` | ~210 | 2 | `Show-DetailCard` [DEPRECATED], `Format-DetailValidityRange` [DEPRECATED] |
 | `cli-help.ps1` | ~120 | 2 | Help content dictionary (`$script:HelpContent`), `Show-HelpScreen` [DEPRECATED] |
 | `cli-wizard.ps1` | ~650 | 3 | `$script:CommonParams`, step type resolution, `Invoke-Wizard`; dot-sources `cli-wizard-steps.ps1` and `cli-wizard-preview.ps1` |
-| `cli-wizard-steps.ps1` | — | 3 | `Invoke-EngineLifecycle`, `Invoke-WizardStep` (dot-sourced by `cli-wizard.ps1`) |
+| `cli-wizard-steps.ps1` | ~435 | 3 | `Invoke-EngineLifecycle`, `Invoke-WizardStep`, wizard step factories (`New-WizardTextStep`, `New-WizardNumberStep`, `New-WizardDateStep`, `New-WizardChoiceStep`, `New-WizardFuzzyStep`) (dot-sourced by `cli-wizard.ps1`) |
 | `cli-wizard-preview.ps1` | — | 3 | `Show-Preview` (dot-sourced by `cli-wizard.ps1`) |
 | `cli-registry.ps1` | ~600 | 4 | Menu order array, menu registry (54 entries, pure data) |
-| `cli-routing.ps1` | ~480 | 5 | Menu helpers, plugin menu merge, engine helper functions, action dispatch, query execution, main/sub menu loops, `Refresh-NavState` |
+| `cli-routing.ps1` | ~930 | 5 | Menu helpers (`Get-MenuCategories`, `Get-MenuItems`, `Get-RegistryEntry`), plugin menu merge, engine helper functions, action dispatch, query execution, main/sub menu loops, `Refresh-NavState`, `Refresh-HealthChecks` |
 | `cli-wf-session.ps1` | ~150 | 6 | `Invoke-EditSessionWorkflow`, `Invoke-SessionValidation` |
 | `cli-wf-player.ps1` | ~400 | 6 | `Invoke-NewPlayerWorkflow`, `Invoke-NewCharacterWorkflow`, `Invoke-EditCharacterWorkflow`, `Invoke-CharacterCardWorkflow`, `Show-CharacterCard`, `Show-PlayerCard` |
 | `cli-wf-entity.ps1` | ~480 | 6 | `Invoke-NewEntityWorkflow`, `Invoke-EditEntityWorkflow`, `Invoke-EntityHistoryWorkflow`, `Invoke-EntitySearchWorkflow`; dot-sources `cli-display-entity.ps1` |
@@ -123,7 +135,7 @@ All files are dot-sourced on demand when `Invoke-RobotCLI` is called (not at mod
 | `cli-wf-economy.ps1` | ~240 | 6 | `Invoke-EconomicSnapshotWorkflow`, `Invoke-EconomicTimelineWorkflow`, `Invoke-MaterializationReportWorkflow` |
 | `cli-wf-pu.ps1` | ~340 | 6 | `Invoke-PUAssignmentWorkflow`, `Invoke-PrePUDiagnostics`, `Invoke-PUDiagnosticsDisplay` |
 | `cli-wf-discord.ps1` | ~130 | 6 | `Invoke-DiscordPUNotificationWorkflow`, `Invoke-DiscordAnnouncementWorkflow` |
-| `cli-wf-reporting.ps1` | ~120 | 6 | `Invoke-IntelPreviewWorkflow`, `Invoke-NameSearchWorkflow`, `Invoke-MigrationQuickCheck`, `Invoke-MigrationFullReport` |
+| `cli-wf-reporting.ps1` | ~750 | 6 | `Invoke-IntelPreviewWorkflow`, `Invoke-NameSearchWorkflow`, `Invoke-FetchLogsWorkflow`, `Invoke-LogLocationReportWorkflow`, `Invoke-LocationGraphWorkflow`, `Invoke-CompareParticipationWorkflow`, `Invoke-SessionLeaderboardWorkflow`, `Invoke-SessionGraphWorkflow`, `Invoke-MigrationQuickCheck`, `Invoke-MigrationFullReport` |
 | `cli-wizard-migration.ps1` | ~165 | 7 | `Get-MigrationMenuItems`, `Invoke-MigrationPhaseAction` |
 
 ### 3.3 Entry Point
@@ -135,6 +147,7 @@ All files are dot-sourced on demand when `Invoke-RobotCLI` is called (not at mod
 | File | Describe Blocks |
 |---|---|
 | `cli-primitives.Tests.ps1` | `Get-CLIColor`, `Resolve-CLITheme`, `Banner art` |
+| `cli-progress.Tests.ps1` | `New-ProgressState`, `Start-ProgressStep`, `Update-ProgressStep`, `Complete-ProgressStep`, `Complete-ProgressGroup`, `Full lifecycle integration` |
 | `cli-wizard.Tests.ps1` | `CommonParams HashSet`, `Resolve-StepType` |
 | `cli-fuzzy.Tests.ps1` | `Filter-FuzzyCandidates`, `Get-FuzzySearchCandidates` |
 | `cli-registry.Tests.ps1` | `Menu Registry`, `Get-MenuCategories`, `Get-MenuItems`, `Get-RegistryEntry`, `Merge-PluginMenuItems`, `Migration Phase Registry`, `Migration UI color resolution` |
@@ -203,7 +216,19 @@ On each render cycle:
 
 On PS 7+, Bold and Dim use ANSI escape sequences. On PS 5.1, Bold is simulated via the Accent ConsoleColor and Dim is suppressed.
 
-### 4.5 Component Contract
+### 4.5 ANSI Helpers (`cli-engine.ps1`)
+
+Three helper functions provide ANSI escape sequence access with PS 5.1 fallback:
+
+| Function | PS 7+ Return | PS 5.1 Return | Purpose |
+|---|---|---|---|
+| `Get-ANSIBold` | `\e[1m` | `''` (empty string) | Bold text formatting |
+| `Get-ANSIDim` | `\e[2m` | `''` (empty string) | Dim text formatting |
+| `Get-ANSIReset` | `\e[0m` | `''` (empty string) | Reset all formatting |
+
+Availability is determined by `$script:SupportsANSI` (`$PSVersionTable.PSVersion.Major -ge 7`), checked once at load time.
+
+### 4.6 Component Contract
 
 Components are hashtables with standardized keys:
 
@@ -218,7 +243,7 @@ Components are hashtables with standardized keys:
 
 `HandleKey` returns `$null` for no-op (continue processing), or `@{ Type = 'Return'; Value = $result }` to exit the input loop with a value.
 
-### 4.6 6 Component Types
+### 4.7 6 Component Types
 
 | Component | Constructor | Filterable | TextInput | Returns |
 |---|---|---|---|---|
@@ -229,7 +254,7 @@ Components are hashtables with standardized keys:
 | HealthDashboard | `New-HealthDashboardComponent` | No | No | — (Esc to dismiss) |
 | WizardStep | `New-WizardStepComponent` | No | Yes (text/number/date/decimal) | User input (string/bool) |
 
-### 4.7 Input Routing — 4 Modes
+### 4.8 Input Routing — 4 Modes
 
 `Start-InputLoop` routes keystrokes through `Route-KeyPress` which selects behavior based on the current mode:
 
@@ -240,7 +265,19 @@ Components are hashtables with standardized keys:
 | Command | `/` pressed | Append to command buffer; single-letter `s/r/b/q` execute immediately | Exit command mode | Execute command |
 | TextInput | Component has `TextInputMode = $true` | `TextInput` action to component | `__back__` | Select |
 
-### 4.8 Slash Command Palette
+### 4.8.1 Filter/Command State Helpers (`cli-input.ps1`)
+
+Three helper functions manage the input state machine:
+
+| Function | Parameters | Description |
+|---|---|---|
+| `Reset-Filter` | — | Clears `$script:FilterBuffer` and sets `$script:FilterActive = $false` |
+| `Get-FilterText` | — | Returns the current filter string from `$script:FilterBuffer.ToString()` |
+| `Reset-CommandMode` | — | Clears `$script:CommandBuffer` and sets `$script:CommandMode = $false` |
+
+These are called by `Start-InputLoop` on entry and by `Route-KeyPress` on mode transitions (Escape in command mode, Backspace clearing last character, command execution).
+
+### 4.9 Slash Command Palette
 
 `Invoke-SlashCommand` handles single-letter commands that execute immediately after `/`:
 
@@ -253,7 +290,7 @@ Components are hashtables with standardized keys:
 | `/b` | Navigate back (same as Escape) |
 | `/q` | Quit CLI entirely (returns `__quit__` signal) |
 
-### 4.9 Engine Helper Functions (`cli-routing.ps1`)
+### 4.10 Engine Helper Functions (`cli-routing.ps1`)
 
 These wrap the engine lifecycle for common view patterns:
 
@@ -266,13 +303,13 @@ These wrap the engine lifecycle for common view patterns:
 
 `Invoke-EngineLifecycle` (`cli-wizard-steps.ps1`) is the general-purpose lifecycle wrapper used by all wizard steps and many workflow views (32 call sites).
 
-### 4.10 Filter Prefixes and Typed Filtering
+### 4.11 Filter Prefixes and Typed Filtering
 
 In filter mode, `Split-FilterQuery` parses `prefix:query` syntax. The prefix pattern is a precompiled regex at `$script:FilterPrefixRegex` (Polish-aware character class, `RegexOptions.Compiled`) to avoid per-call regex compilation. The prefix maps to a column name via the registry entry's `FilterPrefixes` hashtable, restricting the filter to a single column.
 
 Example: typing `typ:NPC` in an entity list filters only the Type column for "NPC".
 
-### 4.11 Tier Styles
+### 4.12 Tier Styles
 
 `Get-TierStyle -Tier <1-5>` returns `@{ Color; Bold; Dim }` for visual hierarchy:
 
@@ -286,11 +323,7 @@ Example: typing `typ:NPC` in an entity list filters only the Type column for "NP
 
 ---
 
-## 5. Legacy UI Primitives (`cli-primitives.ps1` + `cli-menus.ps1`)
-
-> **Deprecation notice**: `Show-ArrowMenu`, `Show-ResultTable`, `Show-HelpOverlay`, `Show-DetailCard`, `Show-FuzzySearch`, `Show-HelpScreen`, `Read-ArrowKey`, `Clear-MenuArea`, `Show-Banner`, `Show-Breadcrumb`, `Show-InfoBox` are deprecated. Core CLI paths use engine components (§4). These functions are retained for plugin compatibility (`margoworld`, `nerthusaddon`) and `migration-ui.ps1`. They will be removed in a future version once all external callers are ported.
->
-> `Write-CLILine` and `Get-CLIColor` remain active — they are used between engine lifecycle calls for status messages.
+## 5. UI Primitives (`cli-primitives.ps1` + `cli-menus.ps1`)
 
 ### 5.1 Color Scheme
 
@@ -310,27 +343,180 @@ Example: typing `typ:NPC` in an entity list filters only the Type column for "NP
 
 `Get-CLIColor -Role <string>` returns the appropriate ConsoleColor for the current theme. Falls back to `White` for unknown roles.
 
-### 5.2 Show-ArrowMenu [DEPRECATED] (`cli-menus.ps1`)
+### 5.2 Active Primitives
 
-Input: `-Items` (array of `PSCustomObject` with `ID`, `Label`, `Description`, `RoleTag`, `InfoText`, `Disabled`), optional `-Title`, optional `-ShowBack`, optional `-HelpContent [string[]]`, optional `-HelpTitle [string]`.
+| Function | Parameters | Description |
+|---|---|---|
+| `Write-CLILine` | `-Text [string]`, `-Color [string]`, `-NoNewline [switch]` | Consistent indented `Write-Host` wrapper (prepends 2-space indent). Used between engine lifecycle calls for status messages. |
+| `Initialize-WorkflowScreen` | `-Title [string] (Mandatory)`, `-NoSeparator [switch]` | Clears terminal, renders title in Accent color, optional horizontal separator, blank line. Returns a hashtable of all standard CLI colors (`Accent`, `Disabled`, `Info`, `Warning`, `Success`, `Error`) for caller use. Used by workflow functions to set up a clean screen before non-engine rendering. |
 
-Returns: selected item's `ID` string, or `'__back__'`. Superseded by `New-MenuListComponent` + engine lifecycle.
+### 5.3 Legacy Primitives [DEPRECATED]
 
-### 5.3 Show-ResultTable [DEPRECATED] (`cli-menus.ps1`)
+> **Deprecation notice**: `Show-ArrowMenu`, `Show-ResultTable`, `Show-HelpOverlay`, `Show-DetailCard`, `Show-FuzzySearch`, `Show-HelpScreen`, `Read-ArrowKey`, `Clear-MenuArea`, `Show-Banner`, `Show-Breadcrumb`, `Show-InfoBox` are deprecated. Core CLI paths use engine components (§4). These functions are retained for plugin compatibility (`margoworld`, `nerthusaddon`) and `migration-ui.ps1`. They will be removed in a future version once all external callers are ported.
 
-Input: `-Data` (array), `-Columns` (property names), `-Headers` (display names), optional `-Widths`, optional `-Title`.
-
-Returns: selected row object or `$null`. Superseded by `New-ResultTableComponent` + engine lifecycle.
-
-### 5.4 Read-ArrowKey [DEPRECATED]
-
-Wraps `[Console]::ReadKey($true)` to return a normalized key object. Superseded by `Start-InputLoop`.
+| Function | File | Description |
+|---|---|---|
+| `Show-ArrowMenu` | `cli-menus.ps1` | Arrow-key navigable menu. Superseded by `New-MenuListComponent` + engine lifecycle. |
+| `Show-ResultTable` | `cli-menus.ps1` | Paginated data table. Superseded by `New-ResultTableComponent` + engine lifecycle. |
+| `Show-HelpOverlay` | `cli-menus.ps1` | Box-drawn help overlay with scroll. Superseded by engine `New-HelpOverlayComponent`. |
+| `Show-DetailCard` | `cli-display.ps1` | Generic key-value card for any PSCustomObject. Superseded by `Invoke-EngineDetailCard`. |
+| `Format-DetailValidityRange` | `cli-display.ps1` | Formats temporal range as `YYYY-MM-DD – YYYY-MM-DD`. Used only by `Show-DetailCard`. |
+| `Read-ArrowKey` | `cli-primitives.ps1` | Wraps `[Console]::ReadKey($true)`. Superseded by `Start-InputLoop`. |
+| `Clear-MenuArea` | `cli-primitives.ps1` | Overwrites N lines with spaces at a given row. Superseded by engine buffer. |
+| `Show-Banner` | `cli-primitives.ps1` | Renders ASCII banner art with version. Superseded by engine TopBar chrome. |
+| `Show-Breadcrumb` | `cli-primitives.ps1` | Renders breadcrumb path with health badges. Superseded by engine TopBar chrome. |
+| `Show-InfoBox` | `cli-primitives.ps1` | Renders pre-check info box. Superseded by engine overlay components. |
 
 ---
 
-## 6. Fuzzy Search System (`cli-fuzzy.ps1`)
+## 6. Progress Subsystem (`cli-primitives.ps1`)
 
-### 6.1 Candidate Generation
+### 6.1 Overview
+
+The progress subsystem provides Docker-style step-by-step progress reporting with animated spinners and elapsed time tracking. It renders directly to the terminal via `[Console]::SetCursorPosition` (not through the TUI engine buffer), making it suitable for use in workflows that operate outside the engine lifecycle.
+
+Implemented in `private/cli/cli-primitives.ps1`.
+
+### 6.2 Module-Level Data
+
+| Variable | Type | Description |
+|---|---|---|
+| `$script:SpinnerFrames` | `char[]` (8 elements) | Braille animation frames (U+280B through U+2827), cycled by `Update-ProgressStep` |
+| `$script:SpinnerStatic` | `char` | Static braille indicator (U+283F `⠿`) shown during blocking calls without callbacks |
+
+### 6.3 Functions
+
+#### `New-ProgressState`
+
+Creates a progress tracking state hashtable for a group of steps.
+
+| Parameter | Type | Description |
+|---|---|---|
+| `Title` | `string` (Mandatory) | Group title rendered on the first line |
+| `TotalSteps` | `int` (Mandatory) | Number of steps in this group |
+
+Returns a `hashtable` with keys:
+
+| Key | Type | Description |
+|---|---|---|
+| `Title` | `string` | Group title |
+| `Steps` | `List[hashtable]` | Per-step state entries |
+| `TotalSteps` | `int` | Total step count |
+| `CurrentStep` | `int` | Current step index (starts at 0) |
+| `StartRow` | `int` | Terminal row where the title was rendered |
+| `GroupStart` | `Stopwatch` | Running stopwatch for total group elapsed time |
+| `StepWatch` | `Stopwatch` | Per-step stopwatch (set by `Start-ProgressStep`) |
+| `SpinnerIdx` | `int` | Current animation frame index |
+| `Failed` | `bool` | Set to `$true` if any step completes with `-Failed` |
+
+Side effect: Renders the title line immediately on creation.
+
+#### `Start-ProgressStep`
+
+Begins a named progress step. Increments `CurrentStep`, starts a new `Stopwatch`, resets `SpinnerIdx`, and adds a step entry to `Steps`. Renders `[X/N] ⠿ Label...` at the appropriate row.
+
+| Parameter | Type | Description |
+|---|---|---|
+| `State` | `hashtable` (Mandatory) | Progress state from `New-ProgressState` |
+| `Label` | `string` (Mandatory) | Human-readable step name |
+
+#### `Update-ProgressStep`
+
+Updates the current step's display in-place. Advances the spinner animation by one frame and optionally updates the detail text (e.g., `42/100`). Uses `[Console]::SetCursorPosition` to overwrite the existing line.
+
+| Parameter | Type | Description |
+|---|---|---|
+| `State` | `hashtable` (Mandatory) | Progress state |
+| `Detail` | `string` | Optional detail text shown to the right of the label |
+
+No-op if `Steps` list is empty (guard against calls before `Start-ProgressStep`).
+
+#### `Complete-ProgressStep`
+
+Marks the current step as done. Stops `StepWatch`, records elapsed time, and renders a checkmark (U+2713) or cross (U+2717) symbol.
+
+| Parameter | Type | Description |
+|---|---|---|
+| `State` | `hashtable` (Mandatory) | Progress state |
+| `Detail` | `string` | Optional final detail text |
+| `Failed` | `switch` | If set, marks step as `Error` (cross symbol in Error color) instead of `Done` (checkmark in Success color) and sets `State.Failed = $true` |
+
+Step entry fields updated: `Status` (→ `Done` or `Error`), `Elapsed` (seconds as double), `Detail`.
+
+#### `Complete-ProgressGroup`
+
+Finalizes the entire progress group. Stops `GroupStart` stopwatch and updates the title line with right-aligned total elapsed time. Moves the cursor below the last step with a blank line.
+
+| Parameter | Type | Description |
+|---|---|---|
+| `State` | `hashtable` (Mandatory) | Progress state |
+
+### 6.4 Visual Layout
+
+```
+  Loading data                           2.4s    ← title line (elapsed added by Complete-ProgressGroup)
+  [1/3] ✓ Entities                  247   0.8s   ← completed step (checkmark)
+  [2/3] ⠹ Players...               12/15         ← running step (spinner + detail)
+  [3/3] ✗ Name index        BŁĄD          0.1s   ← failed step (cross)
+```
+
+- Counter format: `[CurrentStep/TotalSteps]`
+- Running steps show the braille spinner and `Label...`
+- Completed steps show `✓`/`✗`, label (no trailing `...`), optional detail, and elapsed time
+- Lines are padded to terminal width to clear previous longer content
+
+### 6.5 Usage Pattern
+
+The progress subsystem is used extensively in workflows and routing functions. Common pattern:
+
+```powershell
+$Progress = New-ProgressState -Title 'Loading data' -TotalSteps 3
+
+Start-ProgressStep -State $Progress -Label 'Entities'
+$Entities = Get-Entity -Quiet
+Complete-ProgressStep -State $Progress -Detail "$($Entities.Count)"
+
+Start-ProgressStep -State $Progress -Label 'Players'
+$Players = Get-Player
+Complete-ProgressStep -State $Progress -Detail "$($Players.Count)"
+
+Start-ProgressStep -State $Progress -Label 'Name index'
+try {
+    $Index = Get-NameIndex -Players $Players -Entities $Entities
+    Complete-ProgressStep -State $Progress -Detail "$($Index.Count) entries"
+} catch {
+    Complete-ProgressStep -State $Progress -Detail 'ERROR' -Failed
+}
+
+Complete-ProgressGroup -State $Progress
+```
+
+For long-running operations with callbacks, the caller passes a closure that calls `Update-ProgressStep`:
+
+```powershell
+$Callback = { param($C,$T,$D); Update-ProgressStep -State $Progress -Detail "$C/$T" }.GetNewClosure()
+$Sessions = Get-Session -ProgressCallback $Callback
+```
+
+### 6.6 Consumers
+
+The progress subsystem is used by:
+
+- `Refresh-NavState` (`cli-routing.ps1`) — 4-step entity/player/name-index/type-index refresh
+- `Refresh-HealthChecks` (`cli-routing.ps1`) — 6-step health check sequence with per-check progress callbacks
+- `Invoke-IntelPreviewWorkflow` (`cli-wf-reporting.ps1`) — session loading
+- `Invoke-FetchLogsWorkflow` (`cli-wf-reporting.ps1`) — session loading + log fetch
+- `Invoke-LogLocationReportWorkflow` (`cli-wf-reporting.ps1`) — session loading + log analysis
+- `Invoke-LocationGraphWorkflow` (`cli-wf-reporting.ps1`) — graph building
+- `Invoke-CompareParticipationWorkflow` (`cli-wf-reporting.ps1`) — participation analysis
+- `Invoke-SessionLeaderboardWorkflow` (`cli-wf-reporting.ps1`) — leaderboard building
+- `Invoke-SessionGraphWorkflow` (`cli-wf-reporting.ps1`) — graph query execution
+
+---
+
+## 7. Fuzzy Search System (`cli-fuzzy.ps1`)
+
+### 7.1 Candidate Generation
 
 `Get-FuzzySearchCandidates -Source <string> -State <NavState>` returns a list of `PSCustomObject` with `Name`, `Type`, `DisplayText`, `Owner` based on the source:
 
@@ -347,7 +533,7 @@ Wraps `[Console]::ReadKey($true)` to return a normalized key object. Superseded 
 
 **Performance**: For `locations`, `groups`, and `npcs` sources, `Get-FuzzySearchCandidates` uses `$State.EntityTypeIndex` (a hashtable of type → entity lists built at CLI startup and on refresh) for O(1) type-filtered access instead of linear-scanning all entities.
 
-### 6.2 Filtering Pipeline
+### 7.2 Filtering Pipeline
 
 `Filter-FuzzyCandidates` applies a 3-stage filter:
 
@@ -363,9 +549,9 @@ The engine-driven fuzzy search (`Invoke-EngineFuzzySearch`) applies stages 1-2 i
 
 ---
 
-## 7. Wizard Auto-Generation (`cli-wizard.ps1`, `cli-wizard-steps.ps1`, `cli-wizard-preview.ps1`)
+## 8. Wizard Auto-Generation (`cli-wizard.ps1`, `cli-wizard-steps.ps1`, `cli-wizard-preview.ps1`)
 
-### 7.1 Step Type Resolution
+### 8.1 Step Type Resolution
 
 `Resolve-StepType -ParamInfo <ParameterMetadata> [-Override <hashtable>]` maps PowerShell parameter metadata to wizard step types:
 
@@ -382,7 +568,7 @@ The engine-driven fuzzy search (`Invoke-EngineFuzzySearch`) applies stages 1-2 i
 
 Overrides can change any auto-detected step type. Override keys: `Type`, `Label`, `Source`, `Options`, `Hidden`, `EntrySource`.
 
-### 7.2 Wizard Orchestration
+### 8.2 Wizard Orchestration
 
 `Invoke-Wizard -RegistryEntry <hashtable> -State <NavState>`:
 
@@ -393,7 +579,7 @@ Overrides can change any auto-detected step type. Override keys: `Type`, `Label`
 5. Calls `Show-Preview` for -WhatIf confirmation
 6. Executes the function with collected parameters
 
-### 7.3 Step Types
+### 8.3 Step Types
 
 | StepType | Input Method | Validation |
 |---|---|---|
@@ -408,7 +594,43 @@ Overrides can change any auto-detected step type. Override keys: `Type`, `Label`
 | `multi-entry` | Fuzzy-pick loop with EntrySource | Builds array |
 | `multi-entry-nested` | Nested entry loop with EntrySource | Builds structured array |
 
-### 7.4 Engine Integration
+### 8.4 Wizard Step Factory Functions (`cli-wizard-steps.ps1`)
+
+Five factory functions create `PSCustomObject` step definitions for use with `Invoke-WizardStep`. They reduce boilerplate when workflow functions need to define inline wizard steps (as opposed to using registry-driven auto-generation).
+
+All factories return a `PSCustomObject` with a standardized set of fields: `Name`, `Label`, `StepType`, `Required`, `Source`, `Options`, `SubSteps`, `EntrySource`, `Condition`, `Transform`, `Default`.
+
+| Factory | Parameters | StepType | Description |
+|---|---|---|---|
+| `New-WizardTextStep` | `-Name (M)`, `-Label (M)`, `-Required`, `-Default` | `text` | Text input step |
+| `New-WizardNumberStep` | `-Name (M)`, `-Label (M)`, `-Required`, `-Default` | `number` | Integer input step |
+| `New-WizardDateStep` | `-Name (M)`, `-Label (M)`, `-Required`, `-Default` | `date` | Date input step (YYYY-MM-DD or YYYY-MM format) |
+| `New-WizardChoiceStep` | `-Name (M)`, `-Label (M)`, `-Options (M)`, `-Required`, `-Default` | `choice` | Selection from options list |
+| `New-WizardFuzzyStep` | `-Name (M)`, `-Label (M)`, `-Source (M)` | `fuzzy` | Fuzzy search step (always required) |
+
+`(M)` = Mandatory parameter.
+
+Example usage in a workflow:
+
+```powershell
+$MinDateStep = New-WizardDateStep -Name 'MinDate' -Label 'Od daty'
+$MinDate = Invoke-WizardStep -Step $MinDateStep -State $State
+if ($MinDate -eq '__back__') { return }
+```
+
+### 8.5 Wizard Preview (`cli-wizard-preview.ps1`)
+
+`Show-Preview` displays a summary of collected wizard parameters via engine `DetailCardComponent`, asks for confirmation via engine `WizardStepComponent` (yesno), and executes the target function on confirmation. After successful execution, the result is displayed as an engine `DetailCardComponent` and `NavState` is refreshed.
+
+| Parameter | Type | Description |
+|---|---|---|
+| `FunctionName` | `string` (Mandatory) | Target function to execute |
+| `Parameters` | `OrderedDictionary` (Mandatory) | Collected wizard parameters |
+| `State` | `object` (Mandatory) | NavState |
+
+Returns `__quit__` on quit signal, `$null` on cancel, or the function's return value on success. Handles `Robot.OperationResult` responses by displaying structured result cards with status, changes, file paths, warnings, and undo hints.
+
+### 8.6 Engine Integration
 
 All step types except `multitext` use `Invoke-EngineLifecycle` to run through the standard engine lifecycle. Text/number/date/decimal steps set `TextInputMode = $true` on the `WizardStepComponent`, routing printable chars to the component instead of the filter system. Validation errors are displayed by setting `ErrorMessage` on the component and retrying.
 
@@ -416,9 +638,9 @@ All step types except `multitext` use `Invoke-EngineLifecycle` to run through th
 
 ---
 
-## 8. Menu Registry (`cli-registry.ps1`)
+## 9. Menu Registry (`cli-registry.ps1`)
 
-### 8.1 Structure
+### 9.1 Structure
 
 `$script:MenuOrder` defines the 7 top-level categories: `Sesje`, `Gracze i Postacie`, `Encje`, `Waluta`, `PU`, `Raporty i Narzędzia`, `Migracja`.
 
@@ -447,7 +669,7 @@ All step types except `multitext` use `Invoke-EngineLifecycle` to run through th
 | `HelpBrief` | No | `[string]` one-line help summary shown in search results and step hints |
 | `HelpFull` | No | `[string[]]` multi-line help content shown in `/h` overlay |
 
-### 8.2 Adding a Menu Item
+### 9.2 Adding a Menu Item
 
 Add a hashtable to `$script:MenuRegistry` in `cli-registry.ps1`:
 
@@ -492,7 +714,7 @@ For Query entries, also add `ColumnPriority` and `FilterPrefixes`:
 }
 ```
 
-### 8.3 Registry Indexes
+### 9.3 Registry Indexes
 
 Two dictionary indexes are built from `$script:MenuRegistry` at load time for O(1) lookups:
 
@@ -505,9 +727,19 @@ Both indexes are updated by `Merge-PluginMenuItems` when plugin items are added.
 
 ---
 
-## 9. Routing & Dispatch (`cli-routing.ps1`)
+## 10. Routing & Dispatch (`cli-routing.ps1`)
 
-### 9.1 Plugin Menu Merge
+### 10.1 Registry Access Helpers
+
+Three helpers provide access to the menu registry data:
+
+| Function | Parameters | Returns | Description |
+|---|---|---|---|
+| `Get-MenuCategories` | — | `string[]` | Returns `$script:MenuOrder` (ordered list of top-level category names) |
+| `Get-MenuItems` | `-Category [string] (M)` | `PSCustomObject[]` | Returns menu items for a category from `$script:MenuRegistryByCategory` index. Each item has `ID`, `Label`, `Description`, `RoleTag`, `InfoText`, `Disabled` properties. |
+| `Get-RegistryEntry` | `-ID [string] (M)` | `hashtable` or `$null` | Finds a registry entry by ID from `$script:MenuRegistryByID` index |
+
+### 10.2 Plugin Menu Merge
 
 `Merge-PluginMenuItems` is called once during CLI startup (Layer 5.5), after routing is loaded. It reads the module-scoped plugin data (`$script:PluginMenuItems`, `$script:PluginMenuCategories`, `$script:PluginHelpContent`) that was populated during `robot.psm1` Phase 2 plugin loading, and merges them into the CLI's live state:
 
@@ -520,7 +752,14 @@ Both indexes are updated by `Merge-PluginMenuItems` when plugin items are added.
    - Invalid items are skipped with a warning to stderr
 3. **Help content** — for existing categories, appends body lines (blank separator + plugin lines); for new categories, adds the full help entry (requires both `Title` and `Body`)
 
-### 9.2 Action Dispatch
+### 10.3 State Refresh Helpers
+
+| Function | Parameters | Description |
+|---|---|---|
+| `Refresh-NavState` | `-State [object] (M)` | Reloads entities, players, name index, and entity type index into NavState using the progress subsystem (4-step sequence). Clears `ResolveCache`. Called by `/r` command and after write operations. |
+| `Refresh-HealthChecks` | `-State [object] (M)` | Runs all 4 health checks (PU, Currency, Integrity, Graph) with shared pre-computed sessions and entity state using the progress subsystem (6-step sequence: sessions, entity state, PU, currency, integrity, graph). Updates `HealthCache` with results, errors, and timestamp. Suppresses non-terminating errors during checks. |
+
+### 10.4 Action Dispatch
 
 `Invoke-MenuAction -ItemID <string> -State <NavState>` looks up the registry entry and dispatches by mode:
 
@@ -532,7 +771,7 @@ Both indexes are updated by `Merge-PluginMenuItems` when plugin items are added.
 
 All three branches propagate `__quit__` if the handler returns it. `Invoke-MenuAction` sets `$script:SuppressWarnings = $true` for the duration of dispatch to prevent stderr output from corrupting the TUI screen buffer, restoring it in a `finally` block.
 
-### 9.3 Query Pipeline
+### 10.5 Query Pipeline
 
 `Invoke-QueryAction` executes:
 
@@ -543,17 +782,24 @@ All three branches propagate `__quit__` if the handler returns it. `Invoke-MenuA
 5. Apply `ColumnResolvers` for computed columns
 6. Loop: `New-ResultTableComponent` → engine lifecycle → select row → `DetailFunction` or `Invoke-EngineDetailCard` → back
 
-### 9.4 Menu Loop
+### 10.6 Menu Loop
 
 `Show-MainMenu` renders top-level categories via `New-MenuListComponent` + engine lifecycle. `Show-SubMenu` renders items within a category the same way. Both support the full command palette (`/h`, `/s`, `/r`, `/b`, `/q`). The Migracja category dynamically prepends migration phase items from `Get-MigrationMenuItems`.
 
-### 9.5 Migration Stubs
+### 10.7 Migration Stubs and Integration
 
-`cli-routing.ps1` defines stub functions `Get-MigrationMenuItems` (returns empty) and `Invoke-MigrationPhaseAction` (shows "not loaded" message). These are overridden by `cli-wizard-migration.ps1` when migration files are available.
+`cli-routing.ps1` defines stub functions `Get-MigrationMenuItems` (returns empty) and `Invoke-MigrationPhaseAction` (shows "not loaded" message). These are overridden by `cli-wizard-migration.ps1` (Layer 7) when migration files are available.
+
+`cli-wizard-migration.ps1` bridges the CLI menu with the migration subsystem:
+
+| Function | Parameters | Description |
+|---|---|---|
+| `Get-MigrationMenuItems` | `-State [object]` | Returns dynamic menu items with status badges from `$script:PhaseRegistry` + `Get-MigrationState`/`Get-PhaseStatus`. Falls back to hardcoded phases 0-6 if no registry. Returns a "not available" disabled item when migration files are missing. |
+| `Invoke-MigrationPhaseAction` | `-PhaseID [string]`, `-State [object]` | Extracts phase number from ID (`migration-phase-N`), looks up the phase function in the registry, renders phase header, and executes the phase function. Clears the engine-rendered screen before switching to console-mode output. |
 
 ---
 
-## 10. Workflow Conventions
+## 11. Workflow Conventions
 
 All workflow functions receive `$State` (NavState) and `$Entry` (registry entry) parameters.
 
@@ -562,10 +808,20 @@ Common patterns:
 - **Diff review**: Fuzzy-pick entity → auto-gen edit wizard → preview → execute
 - **Diagnostic display**: Call test function → `New-ResultTableComponent` → engine lifecycle
 - **Fuzzy-pick → action**: `Invoke-EngineFuzzySearch` → process result → `Invoke-EngineDetailCard`
+- **Progress-driven data load**: `New-ProgressState` → `Start-ProgressStep` per data source → render results
 
 Workflows use `Refresh-NavState -State $State` to reload entities/players/name index after write operations. All workflows propagate `__quit__` from engine calls.
 
-### 10.1 Economy Workflows (`cli-wf-economy.ps1`)
+### 11.1 Entity Display (`cli-display-entity.ps1`)
+
+Two display helpers for entity domain, dot-sourced by `cli-wf-entity.ps1`:
+
+| Function | Parameters | Description |
+|---|---|---|
+| `Format-ValidityRange` | `$ValidFrom`, `$ValidTo` | Formats temporal range as `YYYY-MM-DD – YYYY-MM-DD`, `od YYYY-MM-DD`, or `do YYYY-MM-DD`. Returns `$null` if both inputs are null. |
+| `Show-EntityCard` | `-Entity`, `-State`, `-Row` | Renders a full entity detail card to the console with core fields (Type, Status, Location, Owner, Quantity), `@info` (surfaced as first-class field), Groups, Doors, Contains, Aliases with validity ranges, Overrides/tags, location history, and group history. Supports both direct entity and detail-card `-Row` parameter. |
+
+### 11.2 Economy Workflows (`cli-wf-economy.ps1`)
 
 Three read-only analysis workflows in the `Waluta` category. All require Coordinator (`K`) role. Source: `private/cli/cli-wf-economy.ps1`.
 
@@ -579,9 +835,41 @@ Three read-only analysis workflows in the `Waluta` category. All require Coordin
 
 **Dependencies**: `cli-primitives.ps1` (Layer 1) for `Write-CLILine`/`Get-CLIColor`, `cli-wizard.ps1` (Layer 3) for `Invoke-WizardStep`, `cli-wizard-steps.ps1` for `Invoke-EngineLifecycle`, and the public economy functions (`Get-EconomicSnapshot`, `Get-EconomicTimeline`, `Get-MaterializationReport`, `ConvertFrom-CurrencyBaseUnit`).
 
+### 11.3 Reporting Workflows (`cli-wf-reporting.ps1`)
+
+Ten workflow functions for reporting, diagnostics, and graph analysis. All use the progress subsystem for data loading and wizard step factories for user input. Source: `private/cli/cli-wf-reporting.ps1`.
+
+| Function | Description |
+|---|---|
+| `Invoke-IntelPreviewWorkflow` | Intel targeting matrix: date range filter → session loading with progress → extract Intel entries → `ResultTableComponent` display |
+| `Invoke-NameSearchWorkflow` | Standalone name search: `Invoke-EngineFuzzySearch` for entities → `Show-EntityCard` for result |
+| `Invoke-FetchLogsWorkflow` | Mass log fetch: date range filter → session loading with progress → count URLs → confirmation → `Invoke-SessionLogFetch` with progress → summary display |
+| `Invoke-LogLocationReportWorkflow` | Log location resolution: date filter → session + log loading with progress → `Get-NamedLogLocationReport` → summary stats → `ResultTableComponent` with detail cards for near-matches |
+| `Invoke-LocationGraphWorkflow` | Location graph analysis: date filter → include-movement choice (`New-WizardChoiceStep`) → `Get-LocationGraph` with progress → summary stats → node table via `ResultTableComponent` |
+| `Invoke-CompareParticipationWorkflow` | Participation comparison: collect 2+ entity names via text steps → `Compare-SessionParticipation` with progress → overlap matrix and common sessions display |
+| `Invoke-SessionLeaderboardWorkflow` | Session participation ranking: entity type filter (`New-WizardChoiceStep`) → top-N input (`New-WizardTextStep`) → `Get-SessionGraphLeaderboard` with progress → ranked table with Tier0/Tier1/Tier2 columns |
+| `Invoke-SessionGraphWorkflow` | Session graph queries: mode selection (Sessions/CoParticipants/EntityTimeline/Summary) → entity/session input → `Get-SessionGraph` with progress → mode-specific table or summary display |
+| `Invoke-MigrationQuickCheck` | Migration quick diagnostics: loads `migration-shared.ps1` and calls `Invoke-QuickDiagnostics` |
+| `Invoke-MigrationFullReport` | Migration full report: loads `migration-shared.ps1` and calls `Invoke-FullReport` |
+
+**Common pattern**: All data-heavy workflows use `New-ProgressState` with progress callbacks, `New-Wizard*Step` factories for user input, and display results via `Invoke-EngineLifecycle` with `New-ResultTableComponent`. Error handling uses `Complete-ProgressStep -Failed` on exceptions before displaying the error.
+
+### 11.4 Health Dashboard Overlay (`cli-overlays.ps1`)
+
+`Render-HealthSection` renders a single health check section row in the health dashboard:
+
+| Parameter | Type | Description |
+|---|---|---|
+| `Row` | `int` | Buffer row to render at |
+| `Label` | `string` | Section label (e.g., `PU`, `Waluta`) |
+| `Data` | `object` | Health check result data (or `$null` for "no data") |
+| `CheckFn` | `scriptblock` | `param($D)` — returns warning count from the data object |
+
+Returns the next available row (`$Row + 1`). Renders checkmark (Success color) for 0 warnings, warning icon (Warning color) for >0, or "(brak danych)" for `$null` data.
+
 ---
 
-## 11. NavState Object
+## 12. NavState Object
 
 The `NavState` PSCustomObject is created by `Invoke-RobotCLI` and threaded through all functions:
 
@@ -594,11 +882,11 @@ The `NavState` PSCustomObject is created by `Invoke-RobotCLI` and threaded throu
 | `EntityTypeIndex` | `hashtable` | Entity type → `List[object]` index for O(1) type-filtered lookups |
 | `ResolveCache` | `hashtable` | Memoization cache for `Resolve-Name` calls |
 | `Theme` | `string` | `'Dark'` or `'Light'` |
-| `HealthCache` | `hashtable` | Background health check results (see §11.1) |
+| `HealthCache` | `hashtable` | Background health check results (see §12.1) |
 
-### 11.1 HealthCache
+### 12.1 HealthCache
 
-Populated at CLI startup and refreshed via `/r` command:
+Populated at CLI startup and refreshed via `/r` command or `Refresh-HealthChecks`:
 
 | Key | Value | Source |
 |---|---|---|
@@ -608,17 +896,18 @@ Populated at CLI startup and refreshed via `/r` command:
 | `Graph` | Test result or `$null` | `Test-SessionGraphIntegrity -Quiet` |
 | `CheckedAt` | `[datetime]` | Timestamp of last check |
 | `Errors` | `[array]` | Exceptions captured during health checks |
+| `Skipped` | `[bool]` | `$true` when health checks were bypassed via `-NoHealthCheck` |
 
-Results are rendered as badges in the TopBar by `Render-TopBar` and shown in detail by `New-HealthDashboardComponent` (via `/s`).
+Results are rendered as badges in the TopBar by `Render-TopBar` and shown in detail by `New-HealthDashboardComponent` (via `/s`). When `Skipped` is `$true`, the dashboard shows a notice and allows the user to trigger checks via Enter.
 
 ---
 
-## 12. Testing
+## 13. Testing
 
 Run all CLI tests:
 
 ```powershell
-Invoke-Pester tests/cli-primitives.Tests.ps1, tests/cli-wizard.Tests.ps1, tests/cli-fuzzy.Tests.ps1, tests/cli-registry.Tests.ps1, tests/cli-help.Tests.ps1, tests/cli-engine.Tests.ps1, tests/cli-buffer.Tests.ps1, tests/cli-input.Tests.ps1, tests/cli-components.Tests.ps1
+Invoke-Pester tests/cli-primitives.Tests.ps1, tests/cli-progress.Tests.ps1, tests/cli-wizard.Tests.ps1, tests/cli-fuzzy.Tests.ps1, tests/cli-registry.Tests.ps1, tests/cli-help.Tests.ps1, tests/cli-engine.Tests.ps1, tests/cli-buffer.Tests.ps1, tests/cli-input.Tests.ps1, tests/cli-components.Tests.ps1
 ```
 
 | Test File | Tests | Coverage |
@@ -628,19 +917,20 @@ Invoke-Pester tests/cli-primitives.Tests.ps1, tests/cli-wizard.Tests.ps1, tests/
 | `cli-input.Tests.ps1` | 53 | `New-InputAction`, `Route-KeyPress` (all 4 modes), `Split-FilterQuery`, `Reset-Filter`, `Invoke-SlashCommand` |
 | `cli-components.Tests.ps1` | 118 | `New-MenuListComponent`, `New-ResultTableComponent`, `New-DetailCardComponent`, `New-WizardStepComponent`, `New-HelpOverlayComponent`, `Invoke-MenuFilter`, `Invoke-TableFilter`, `Resolve-VisibleColumns`, `Format-DetailValue`, `Search-HelpTopics` |
 | `cli-registry.Tests.ps1` | 40 | `Menu Registry` integrity, `Get-MenuCategories`, `Get-MenuItems`, `Get-RegistryEntry`, `Merge-PluginMenuItems`, `Migration Phase Registry` |
+| `cli-progress.Tests.ps1` | 26 | `New-ProgressState`, `Start-ProgressStep`, `Update-ProgressStep`, `Complete-ProgressStep`, `Complete-ProgressGroup`, full lifecycle integration |
 | `cli-primitives.Tests.ps1` | 16 | `Get-CLIColor`, `Resolve-CLITheme`, banner art |
 | `cli-fuzzy.Tests.ps1` | 16 | `Filter-FuzzyCandidates`, `Get-FuzzySearchCandidates` |
 | `cli-wizard.Tests.ps1` | 13 | `CommonParams HashSet`, `Resolve-StepType` |
 | `cli-help.Tests.ps1` | 6 | Help content completeness, key matching |
-| **Total** | **319** | |
+| **Total** | **345** | |
 
-Tests cover pure logic functions only. Interactive UI functions (`Start-InputLoop`, component `Render` scriptblocks, etc.) are not tested as they require a live terminal with `[Console]::ReadKey`. Engine component constructors, filter logic, segment construction, input routing, and column resolution are fully covered.
+Tests cover pure logic functions only. Interactive UI functions (`Start-InputLoop`, component `Render` scriptblocks, etc.) are not tested as they require a live terminal with `[Console]::ReadKey`. Engine component constructors, filter logic, segment construction, input routing, and column resolution are fully covered. Progress subsystem tests validate the data layer only — terminal rendering (`Write-Host`, `[Console]::SetCursorPosition`) is mocked.
 
 Migration phase tests are conditionally skipped when migration files are not available in the test environment.
 
 ---
 
-## 13. Edge Cases
+## 14. Edge Cases
 
 | Scenario | Behavior |
 |---|---|
@@ -648,6 +938,7 @@ Migration phase tests are conditionally skipped when migration files are not ava
 | Terminal resized during input loop | `Test-TerminalResized` detects change; `Resize-Screen` rebuilds regions; `Initialize-Buffers` creates fresh buffers; `Render-FullBuffer` forces complete redraw |
 | Paste sequence detected | `Test-PasteSequence` checks for <20ms between keystrokes; Enter keys during paste are ignored to prevent accidental selection |
 | PS 5.1 Bold rendering | Bold segments with default/Info/White color are promoted to Accent color; Dim is suppressed entirely |
+| PS 5.1 ANSI helpers | `Get-ANSIBold`, `Get-ANSIDim`, `Get-ANSIReset` return empty strings (no escape sequences) |
 | `__quit__` in wizard context | Treated as `__back__` (returns to previous step or cancels wizard) to prevent accidental exit |
 | `__quit__` in menu context | Bubbles up through `Show-SubMenu` and `Show-MainMenu` to exit CLI entirely |
 | Slash command error | Caught silently; logged via `Add-OperationWarning` if available; never corrupts TUI output |
@@ -655,10 +946,15 @@ Migration phase tests are conditionally skipped when migration files are not ava
 | Responsive column overflow | `Resolve-VisibleColumns` removes priority 3 columns first, then priority 2; priority 1 columns are always shown |
 | Stage 3 fuzzy triggers during typing | `Invoke-FuzzyDebounce` waits 300ms of keystroke silence before triggering; aborts if any key becomes available |
 | ISE or non-interactive terminal | `[Console]::KeyAvailable` check throws; `Invoke-RobotCLI` rethrows with Polish-language message |
+| Progress step completed without prior Update | Works correctly — `Complete-ProgressStep` does not depend on `Update-ProgressStep` having been called |
+| Progress step fails | `Complete-ProgressStep -Failed` marks step as Error; subsequent steps can still proceed. `State.Failed` is set to `$true` but does not prevent further step execution |
+| Empty progress Steps list | `Update-ProgressStep` and `Complete-ProgressStep` are no-ops when `Steps.Count -eq 0` (guard against calls before `Start-ProgressStep`) |
+| Health checks skipped | `HealthCache.Skipped = $true`; dashboard shows "pominieto" notice; user can trigger checks via Enter in dashboard |
+| Migration files missing | `Get-MigrationMenuItems` returns disabled "not available" item; `Invoke-MigrationPhaseAction` shows error and waits for keypress |
 
 ---
 
-## 14. Related Documents
+## 15. Related Documents
 
 - [PLUGINS.md](PLUGINS.md) - Plugin system (same hook/registry pattern)
 - [ENTITY-WRITES.md](ENTITY-WRITES.md) - Entity write operations wrapped by CLI wizards

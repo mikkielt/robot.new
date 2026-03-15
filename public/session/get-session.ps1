@@ -64,17 +64,17 @@ function ConvertFrom-SessionHeader {
     if ($PSBoundParameters.ContainsKey('ParsedDate')) {
         $Parsed = $ParsedDate
     } else {
-        [datetime]$Parsed = [datetime]::MinValue
-        if (-not [datetime]::TryParseExact($DateStr, "yyyy-MM-dd", [System.Globalization.CultureInfo]::InvariantCulture, [System.Globalization.DateTimeStyles]::None, [ref]$Parsed)) {
+        $Parsed = ConvertTo-SessionDate -DateString $DateStr
+        if ($null -eq $Parsed) {
             return $null
         }
     }
 
     $DateEnd = $null
     if ($EndDayStr) {
-        [datetime]$EndParsed = [datetime]::MinValue
         $EndStr = $DateStr.Substring(0, 8) + $EndDayStr
-        if ([datetime]::TryParseExact($EndStr, "yyyy-MM-dd", [System.Globalization.CultureInfo]::InvariantCulture, [System.Globalization.DateTimeStyles]::None, [ref]$EndParsed)) {
+        $EndParsed = ConvertTo-SessionDate -DateString $EndStr
+        if ($EndParsed) {
             $DateEnd = $EndParsed
         }
     }
@@ -477,8 +477,8 @@ function Get-Session {
 
                 # Parse and cache the date for reuse by ConvertFrom-SessionHeader
                 $DStr = $DMatch.Groups[1].Value
-                [datetime]$DParsed = [datetime]::MinValue
-                if ([datetime]::TryParseExact($DStr, "yyyy-MM-dd", [System.Globalization.CultureInfo]::InvariantCulture, [System.Globalization.DateTimeStyles]::None, [ref]$DParsed)) {
+                $DParsed = ConvertTo-SessionDate -DateString $DStr
+                if ($DParsed) {
                     $CachedDateParsed[$i] = $DParsed
                     if (-not $HasCandidateSession -and $DParsed -ge $MinDate -and $DParsed -le $MaxDate) {
                         $HasCandidateSession = $true
@@ -537,8 +537,8 @@ function Get-Session {
                 }
             }
             if ($DateOverrideStr) {
-                [datetime]$DOParsed = [datetime]::MinValue
-                if ([datetime]::TryParseExact($DateOverrideStr, "yyyy-MM-dd", [System.Globalization.CultureInfo]::InvariantCulture, [System.Globalization.DateTimeStyles]::None, [ref]$DOParsed)) {
+                $DOParsed = ConvertTo-SessionDate -DateString $DateOverrideStr
+                if ($DOParsed) {
                     if ($null -eq $DateInfo) {
                         $DateInfo = @{
                             Date      = $DOParsed

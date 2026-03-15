@@ -25,16 +25,13 @@
 function Invoke-NewEntityWorkflow {
     param([object]$State, [hashtable]$Entry)
 
-    $AccentColor   = Get-CLIColor -Role 'Accent'
-    $DisabledColor = Get-CLIColor -Role 'Disabled'
-    $InfoColor     = Get-CLIColor -Role 'Info'
+    $Colors = Initialize-WorkflowScreen -Title 'Kreator nowej encji'
+    $AccentColor   = $Colors.Accent
+    $DisabledColor = $Colors.Disabled
+    $InfoColor     = $Colors.Info
     $Sep = [string][char]0x2500 * 50
 
     # Step 1: Entity type
-    [System.Console]::Clear()
-    Write-CLILine -Text 'Kreator nowej encji' -Color $AccentColor
-    Write-Host "  $Sep" -ForegroundColor $DisabledColor
-    Write-Host ''
     $TypeComponent = New-WizardStepComponent -Label 'Typ encji' `
         -StepNumber 0 -TotalSteps 0 -StepType 'selection' `
         -Options @('NPC', 'Grupa', 'Lokacja', 'Przedmiot')
@@ -50,11 +47,7 @@ function Invoke-NewEntityWorkflow {
     Write-Host $Type
     Write-Host ''
 
-    $NameStep = [PSCustomObject]@{
-        Name = 'Name'; Label = 'Nazwa encji'; StepType = 'text'; Required = $true
-        Source = $null; Options = $null; SubSteps = $null; EntrySource = $null
-        Condition = $null; Transform = $null; Default = $null
-    }
+    $NameStep = New-WizardTextStep -Name 'Name' -Label 'Nazwa encji' -Required
     $Name = Invoke-WizardStep -Step $NameStep -State $State
     if ($Name -eq '__back__' -or -not $Name) { return }
 
@@ -90,34 +83,18 @@ function Invoke-NewEntityWorkflow {
 
         $TagName = if ($TagChoice -match '^@(.+)$') { $Matches[1] } else { $TagChoice }
         if ($TagChoice -eq 'Inny tag (wpisz)') {
-            $CustomTagStep = [PSCustomObject]@{
-                Name = 'Tag'; Label = 'Nazwa tagu'; StepType = 'text'; Required = $true
-                Source = $null; Options = $null; SubSteps = $null; EntrySource = $null
-                Condition = $null; Transform = $null; Default = $null
-            }
+            $CustomTagStep = New-WizardTextStep -Name 'Tag' -Label 'Nazwa tagu' -Required
             $TagName = Invoke-WizardStep -Step $CustomTagStep -State $State
             if (-not $TagName -or $TagName -eq '__back__') { continue }
         }
 
         # Tag value - use fuzzy for lokacja/grupa, text for others
         $ValueStep = if ($TagName -ieq 'lokacja') {
-            [PSCustomObject]@{
-                Name = 'Value'; Label = "Wartość @$TagName"; StepType = 'fuzzy'; Required = $true
-                Source = 'locations'; Options = $null; SubSteps = $null; EntrySource = $null
-                Condition = $null; Transform = $null; Default = $null
-            }
+            New-WizardFuzzyStep -Name 'Value' -Label "Wartość @$TagName" -Source 'locations'
         } elseif ($TagName -ieq 'grupa') {
-            [PSCustomObject]@{
-                Name = 'Value'; Label = "Wartość @$TagName"; StepType = 'fuzzy'; Required = $true
-                Source = 'groups'; Options = $null; SubSteps = $null; EntrySource = $null
-                Condition = $null; Transform = $null; Default = $null
-            }
+            New-WizardFuzzyStep -Name 'Value' -Label "Wartość @$TagName" -Source 'groups'
         } else {
-            [PSCustomObject]@{
-                Name = 'Value'; Label = "Wartość @$TagName"; StepType = 'text'; Required = $true
-                Source = $null; Options = $null; SubSteps = $null; EntrySource = $null
-                Condition = $null; Transform = $null; Default = $null
-            }
+            New-WizardTextStep -Name 'Value' -Label "Wartość @$TagName" -Required
         }
 
         # Redraw before value input - prevents screen overflow when fuzzy search follows arrow menu
@@ -161,15 +138,11 @@ function Invoke-NewEntityWorkflow {
 function Invoke-EditEntityWorkflow {
     param([object]$State, [hashtable]$Entry)
 
-    $AccentColor   = Get-CLIColor -Role 'Accent'
-    $DisabledColor = Get-CLIColor -Role 'Disabled'
-    $InfoColor     = Get-CLIColor -Role 'Info'
+    $Colors = Initialize-WorkflowScreen -Title 'Edycja encji'
+    $AccentColor   = $Colors.Accent
+    $DisabledColor = $Colors.Disabled
+    $InfoColor     = $Colors.Info
     $Sep = [string][char]0x2500 * 50
-
-    [System.Console]::Clear()
-    Write-CLILine -Text 'Edycja encji' -Color $AccentColor
-    Write-Host "  $Sep" -ForegroundColor $DisabledColor
-    Write-Host ''
 
     # Pick entity
     $Entity = Invoke-EngineFuzzySearch -Prompt 'Wybierz encję' -Source 'entities' -State $State
@@ -219,34 +192,18 @@ function Invoke-EditEntityWorkflow {
 
         $TagName = if ($TagChoice -match '^@(.+)$') { $Matches[1] } else { $TagChoice }
         if ($TagChoice -eq 'Inny tag (wpisz)') {
-            $CustomStep = [PSCustomObject]@{
-                Name = 'Tag'; Label = 'Nazwa tagu'; StepType = 'text'; Required = $true
-                Source = $null; Options = $null; SubSteps = $null; EntrySource = $null
-                Condition = $null; Transform = $null; Default = $null
-            }
+            $CustomStep = New-WizardTextStep -Name 'Tag' -Label 'Nazwa tagu' -Required
             $TagName = Invoke-WizardStep -Step $CustomStep -State $State
             if (-not $TagName -or $TagName -eq '__back__') { continue }
         }
 
         # Tag value - use fuzzy for lokacja/grupa, text for others
         $ValueStep = if ($TagName -ieq 'lokacja') {
-            [PSCustomObject]@{
-                Name = 'Value'; Label = "Wartość @$TagName"; StepType = 'fuzzy'; Required = $true
-                Source = 'locations'; Options = $null; SubSteps = $null; EntrySource = $null
-                Condition = $null; Transform = $null; Default = $null
-            }
+            New-WizardFuzzyStep -Name 'Value' -Label "Wartość @$TagName" -Source 'locations'
         } elseif ($TagName -ieq 'grupa') {
-            [PSCustomObject]@{
-                Name = 'Value'; Label = "Wartość @$TagName"; StepType = 'fuzzy'; Required = $true
-                Source = 'groups'; Options = $null; SubSteps = $null; EntrySource = $null
-                Condition = $null; Transform = $null; Default = $null
-            }
+            New-WizardFuzzyStep -Name 'Value' -Label "Wartość @$TagName" -Source 'groups'
         } else {
-            [PSCustomObject]@{
-                Name = 'Value'; Label = "Wartość @$TagName"; StepType = 'text'; Required = $true
-                Source = $null; Options = $null; SubSteps = $null; EntrySource = $null
-                Condition = $null; Transform = $null; Default = $null
-            }
+            New-WizardTextStep -Name 'Value' -Label "Wartość @$TagName" -Required
         }
 
         # Redraw before value input - prevents screen overflow when fuzzy search follows arrow menu

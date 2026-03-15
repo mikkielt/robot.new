@@ -89,22 +89,73 @@ Detection order (per-section heuristic):
 | `IncludeMentions` | switch | Extract entity mentions from body text |
 | `IncludeLogs` | switch | Fetch and parse session logs (attaches `LogData` property) |
 | `IncludeFailed` | switch | Include sessions with broken date headers |
+| `Entities` | object[] | Pre-fetched entity list from `Get-Entity` (avoids redundant fetch) |
+| `Players` | object[] | Pre-fetched player list from `Get-Player` (avoids redundant fetch) |
+| `NameIndex` | hashtable | Pre-built name index from `Get-NameIndex` (avoids redundant BK-tree rebuild) |
+| `ProgressCallback` | scriptblock | Optional callback for CLI progress reporting (receives `Current`, `Total`, `ItemDetail`) |
 | `Quiet` | switch | Suppress warning output to stderr |
 
 ### 4.2 Dependency Pre-Fetching
 
-`Get-Session` batch-loads all dependencies upfront:
+`Get-Session` batch-loads all dependencies upfront, but accepts pre-fetched instances via `-Entities`, `-Players`, and `-NameIndex` parameters to avoid redundant computation when the caller already has them:
 
 ```powershell
-$Entities = Get-Entity
-$Players  = Get-Player -Entities $Entities
-$Index    = Get-NameIndex -Players $Players -Entities $Entities
-$Docs     = Get-Markdown -File $FilesToProcess  # or -Directory
+$Entities = Get-Entity                                    # or from -Entities parameter
+$Players  = Get-Player -Entities $Entities                # or from -Players parameter
+$Index    = Get-NameIndex -Players $Players -Entities $Entities  # or from -NameIndex parameter
+$Docs     = Get-Markdown -File $FilesToProcess            # or -Directory
 ```
+
+### 4.2.1 Pre-Built Entity Indices for Intel Resolution
+
+After loading entities, `Get-Session` pre-builds two hashtable indices for O(1) Intel target lookup, replacing the previous O(E) linear scans per directive:
+
+```powershell
+$EntityByGroup    = @{}   # GroupName -> List[{ Entity, History }]
+$EntityByLocation = @{}   # LocationName -> List[{ Entity, History }]
+```
+
+Each entity's `GroupHistory` and `LocationHistory` collections are iterated once to populate these indices. `Resolve-IntelTargets` receives them as mandatory `-EntityByGroup` and `-EntityByLocation` parameters (see section 6.1).
+
+### 4.2.2 Per-Section Parent-Children Index
+
+For each session section, `Get-Session` builds a `$SectionChildrenOf` hashtable mapping parent list item identity hashes to their child list items:
+
+```powershell
+$SectionChildrenOf = @{}
+foreach ($LI in $Section.Lists) {
+    if ($null -ne $LI.ParentListItem) {
+        $ParentId = [System.Runtime.CompilerServices.RuntimeHelpers]::GetHashCode($LI.ParentListItem)
+        $SectionChildrenOf[$ParentId] = List[object]  # children
+    }
+}
+```
+
+This index is built once per section and shared by `Get-SessionLocations`, `Get-SessionListMetadata`, and `Get-SessionMentions` via their `-ChildrenOf` parameter, replacing O(L) inner scans with O(1) hashtable lookups.
+
+### 4.2.3 Progress Reporting
+
+When a `-ProgressCallback` scriptblock is provided, `Get-Session` invokes it during the file processing loop. The callback is called every 5 files and on the final file, receiving `(Current, Total, ItemDetail)` arguments. This integrates with the CLI progress UI.
+
+### 4.2.4 Date Caching in Pre-Filter Pass
+
+`Get-Session` performs a single combined pass over `$SessionSections` that pre-filters, caches date regex matches, and builds the parseable sections list. This merges what was previously two separate passes:
+
+1. Date regex matches are cached in `$CachedDateMatches` (Dictionary keyed by section index)
+2. Parsed dates are cached in `$CachedDateParsed` for reuse by `ConvertFrom-SessionHeader`
+3. A `$HasCandidateSession` flag enables early file skip when no sections fall within the date range
+4. `$ParseableIndices` (HashSet) tracks which sections have valid dates for narrator result alignment
 
 ### 4.3 Date Parsing (`ConvertFrom-SessionHeader`)
 
-Parses `### YYYY-MM-DD` headers via `[datetime]::TryParseExact` with format `"yyyy-MM-dd"`.
+| Parameter | Type | Mandatory | Description |
+|---|---|---|---|
+| `Header` | string | Yes | Raw header text |
+| `DateRegex` | regex | Yes | Precompiled date extraction pattern |
+| `Match` | object | No | Pre-matched regex result to avoid redundant matching |
+| `ParsedDate` | datetime | No | Pre-parsed date to avoid redundant `TryParseExact` |
+
+Parses `### YYYY-MM-DD` headers via `ConvertTo-SessionDate`. Accepts optional `-Match` and `-ParsedDate` parameters to reuse values cached during the pre-filter pass (see section 4.2.4), avoiding redundant regex matching and date parsing.
 
 Supports date ranges: `2022-12-21/22` -> `Date = Dec 21`, `DateEnd = Dec 22`. The `/DD` suffix must be same month/year.
 
@@ -126,6 +177,9 @@ Strips the date portion (10 characters for `yyyy-MM-dd`, plus `/DD` suffix lengt
 | `SectionLists` | object | Yes | Parsed list items from the Markdown section |
 | `LocItalicRegex` | regex | Yes | Precompiled Gen2 italic location pattern |
 | `Index` | Dictionary[string, object] | No | Name index for entity resolution |
+| `ChildrenOf` | hashtable | Yes | Pre-built parent-to-children index (see section 4.2.2) |
+
+Children of each root list item are resolved via `$ChildrenOf[$ParentId]` using identity hash keys, providing O(1) lookup instead of O(L) inner scans.
 
 Three strategies, tried in order:
 
@@ -146,6 +200,9 @@ Location values may contain `->` separators indicating movement routes (e.g., `S
 | `SectionLists` | object | Yes | Parsed list items from the Markdown section |
 | `PURegex` | regex | Yes | Precompiled `Character: Value` pattern |
 | `UrlRegex` | regex | Yes | Precompiled URL extraction pattern |
+| `ChildrenOf` | hashtable | Yes | Pre-built parent-to-children index (see section 4.2.2) |
+
+Children and grandchildren of each list item are resolved via `$ChildrenOf[$ListItemId]` using identity hash keys, providing O(1) lookup. This is used for PU children, Logi children, Zmiany entity children and their tag grandchildren, Intel children, Narrator children, and Data children.
 
 Parses structured list items for Gen3/Gen4 sessions. Leading `@` is stripped via:
 
@@ -213,8 +270,10 @@ Sessions with identical headers across multiple files represent the same session
 
 ### 5.1 Grouping
 
+Sessions are grouped using an O(1) `Dictionary[string, List[session]]` keyed by exact Header text with `StringComparer.Ordinal`:
+
 ```powershell
-Dictionary[string, List[session]] grouped by exact Header text (Ordinal comparison)
+$SessionsByHeader = [Dictionary[string, List[object]]]::new([StringComparer]::Ordinal)
 ```
 
 ### 5.2 Primary Selection
@@ -249,14 +308,18 @@ Merged sessions carry `IsMerged = $true`, `DuplicateCount`, and `FilePaths[]`.
 | `StemIndex` | Dictionary[string, List[string]] | Yes | Stem index for declension matching |
 | `Players` | object[] | Yes | All players from `Get-Player` |
 | `ResolveCache` | hashtable | Yes | Shared resolution cache |
+| `EntityByGroup` | hashtable | Yes | Pre-built group membership index: `GroupName -> List[{ Entity, History }]` (see section 4.2.1) |
+| `EntityByLocation` | hashtable | Yes | Pre-built location index: `LocationName -> List[{ Entity, History }]` (see section 4.2.1) |
 
 ### 6.2 Targeting Directives
 
 | Directive | Syntax | Fan-out strategy |
 |---|---|---|
-| `Grupa/` | `Grupa/OrgName` | Target org + all entities with `@grupa` membership matching at session date |
-| `Lokacja/` | `Lokacja/LocName` | BFS through location tree via `@lokacja` + non-location entities within the tree |
+| `Grupa/` | `Grupa/OrgName` | Target org + all entities with `@grupa` membership matching at session date (via pre-built `$EntityByGroup` index) |
+| `Lokacja/` | `Lokacja/LocName` | BFS through location tree via `@lokacja` (via pre-built `$EntityByLocation` index) + non-location entities within the tree |
 | Direct | `Name` or `Name1, Name2` | Comma-split, resolved individually |
+
+The `Grupa/` directive builds a `HashSet` of all known names for the resolved group (including aliases via `.Names`), then iterates `$EntityByGroup` entries for each name to find temporally active members. The `Lokacja/` directive uses a BFS `Queue` seeded with the resolved location name, expanding through `$EntityByLocation` to discover child locations and non-location entities within the tree.
 
 ### 6.3 Resolution Stages
 
@@ -299,17 +362,19 @@ Priority chain:
 | `Index` | Dictionary[string, object] | Yes | Name index |
 | `StemIndex` | Dictionary[string, List[string]] | Yes | Stem index for declension matching |
 | `ResolveCache` | hashtable | Yes | Shared resolution cache |
+| `ChildrenOf` | hashtable | Yes | Pre-built parent-to-children index (see section 4.2.2) |
+| `ContentLines` | string[] | No | Pre-split content lines (avoids redundant `Split` when caller already has them) |
 
 ### 7.2 Five-Phase Pipeline
 
 Enabled via `-IncludeMentions` switch.
 
-1. **Exclude metadata list items** recursively — builds a `HashSet[int]` of excluded list item identity hashes. Root items matching `narrator`, `pu`, `logi`, `lokalizacj*`, `lokacj*`, `zmiany`, `intel`, or `data` tags are excluded. Multi-pass propagation marks all descendants.
+1. **Exclude metadata list items** recursively — builds a `HashSet[int]` of excluded list item identity hashes. Root items matching `narrator`, `pu`, `logi`, `lokalizacj*`, `lokacj*`, `zmiany`, `intel`, or `data` tags are excluded. Single-pass DFS propagation via the shared `$ChildrenOf` index marks all descendants using a stack.
 2. **Collect scannable text** (dual-source):
    - Source A: Non-excluded list item `.Text` values
    - Source B: Paragraph (non-list) content lines, excluding list-like lines, Gen2 italic locations, and `Logi:` plain-text lines
 3. **Tokenize** via Markdown link extraction, formatting strip (`**`, `*`, `__`, `_`), and punctuation-split. Minimum token length: 3 characters.
-4. **Resolve** each token via stages 1/2/2b (no fuzzy matching — `-NoFuzzy` flag)
+4. **Resolve** unique tokens via stages 1/2/2b (no fuzzy matching — `-NoFuzzy` flag). Tokens are deduplicated into a `HashSet[string]` (OrdinalIgnoreCase) before resolution to avoid redundant `Resolve-Name` calls. Typical session: ~150 tokens but only ~50 unique, saving ~3x function call overhead.
 5. **Deduplicate** into `Dictionary[string, object]` keyed by entity name (OrdinalIgnoreCase), build output objects
 
 ---
@@ -393,8 +458,9 @@ Derives the session format generation from the decomposition result:
 | `Tag` | string | Yes | Canonical key from `Split-SessionSection` (e.g. `locations`, `pu`) |
 | `Lines` | string[] | Yes | Raw block lines (root + children) |
 | `NL` | string | Yes | Newline string for output |
+| `LogDirectory` | string | No | Directory for log URL localization (when provided, log URLs with locally cached files are replaced with `res/logs/` paths via `Resolve-LogUrlToLocalPath`) |
 
-Maps canonical keys to Gen4 tag names: `narrator`->`Narrator`, `data`->`Data`, `locations`->`Lokacje`, `logs`->`Logi`, `pu`->`PU`, `changes`->`Zmiany`, `intel`->`Intel`. Detects indent base from first meaningful child and normalizes to 4-space multiples. Inline CSV values on root lines are expanded to nested 4-space indented children.
+Maps canonical keys to Gen4 tag names: `narrator`->`Narrator`, `data`->`Data`, `locations`->`Lokacje`, `logs`->`Logi`, `pu`->`PU`, `changes`->`Zmiany`, `intel`->`Intel`. Detects indent base from first meaningful child and normalizes to 4-space multiples. Inline CSV values on root lines are expanded to nested 4-space indented children. When `$Tag -eq 'logs'` and `$LogDirectory` is provided, each child URL is passed through `Resolve-LogUrlToLocalPath` to replace URLs with local paths when the cached file exists.
 
 #### `ConvertFrom-ItalicLocation`
 
@@ -411,8 +477,18 @@ Extracts locations from `*Lokalizacj[ae]?:\s*(.+?)\*` regex, comma-splits, and d
 |---|---|---|---|
 | `Lines` | string[] | Yes | Gen1/2 plain text log lines (e.g. `Logi: https://...`) |
 | `NL` | string | Yes | Newline string for output |
+| `LogDirectory` | string | No | Directory for log URL localization (same semantics as `ConvertTo-Gen4FromRawBlock`) |
 
-Extracts URLs via `(https?://\S+)` regex and delegates to `ConvertTo-Gen4MetadataBlock -Tag 'Logi'`. Returns `$null` if no URLs extracted.
+Extracts URLs via `(https?://\S+)` regex, passes each through `Resolve-LogUrlToLocalPath` when `$LogDirectory` is provided, and delegates to `ConvertTo-Gen4MetadataBlock -Tag 'Logi'`. Returns `$null` if no URLs extracted.
+
+#### `Resolve-LogUrlToLocalPath`
+
+| Parameter | Type | Mandatory | Description |
+|---|---|---|---|
+| `Url` | string | Yes | Log URL to resolve |
+| `LogDirectory` | string | No | Directory containing locally cached log files |
+
+Returns the original URL unchanged if `$LogDirectory` is empty or the URL does not start with `http`. Otherwise normalizes the URL via `Normalize-LogUrl`, converts to a filename via `ConvertTo-LogFileName`, checks if the file exists in `$LogDirectory`, and returns `res/logs/$FileName` if found. Used during format upgrade to localize log URLs that have been downloaded by migration Phase 4.
 
 ---
 
@@ -579,14 +655,35 @@ Returns `$null` if items are empty/null - caller must check before including in 
 
 ## 12. Precompiled Regex Patterns
 
+### 12.1 Session Parse Helpers (`session-parsehelpers.ps1`)
+
+| Variable | Scope | Pattern | Purpose |
+|---|---|---|---|
+| `$PUSectionPattern` | `$script:` | `^\s*[-\*]\s+@?[Pp][Uu]\s*:` | PU section header (for diagnostics, shared with `Test-SessionIntegrity`) |
+
+### 12.2 Get-Session (`get-session.ps1`, local to function)
+
 | Variable | Pattern | Purpose |
 |---|---|---|
-| `$DateRegex` | `yyyy-MM-dd` with optional `/DD` | Session header date extraction |
-| `$LocItalicRegex` | `*Lokalizacja:...*` | Gen2 italic location detection |
-| `$PURegex` | `Character: decimal` | PU entry parsing |
-| `$UrlRegex` | `https?://...` | URL extraction |
-| `$LogiLineRegex` | `Logi: <url>` | Gen1/2 plain text log detection |
-| `$PUSectionPattern` | `^\s*[-\*]\s+@?[Pp][Uu]\s*:` | PU section header (for diagnostics) |
+| `$DateRegex` | `$script:SessionDatePattern` (from `temporal-helpers.ps1`) | Session header date extraction |
+| `$LocItalicRegex` | `\*Lokalizacj[ae]?:\s*(.+?)\*` | Gen2 italic location detection |
+| `$PURegex` | `^(.+?):\s*([\d,\.]+)` | PU entry parsing |
+| `$UrlRegex` | `(https?://\S+)` | URL extraction |
+| `$LogiLineRegex` | `^Logi:\s*(https?://\S+)` | Gen1/2 plain text log detection |
+
+### 12.3 Intel/Mention Helpers (`session-intelhelpers.ps1`)
+
+| Variable | Scope | Pattern | Purpose |
+|---|---|---|---|
+| `$MentionListLineRegex` | `$script:` | `^\s*(\d+\.\|[-\*\+])\s+` | Detect list-item lines for Source B exclusion |
+| `$MentionLogiPlainRegex` | `$script:` | `^Logi:\s*https?://` | Detect plain-text Logi lines for Source B exclusion |
+| `$MentionMdLinkRegex` | `$script:` | `\[(.+?)\]\(.+?\)` | Extract Markdown link display text for tokenization |
+| `$MentionPunctuationRegex` | `$script:` | Punctuation character class | Split tokens on punctuation boundaries |
+
+### 12.4 Diagnostics (from other files, shared via module scope)
+
+| Variable | Pattern | Purpose |
+|---|---|---|
 | `$PULikePattern` | `^\s+[-\*]\s+(.+?):\s*([\d,\.]+)\s*$` | PU-like child line (for diagnostics) |
 
 ---

@@ -390,24 +390,11 @@ function Get-Entity {
                     }
                     '@koordynaty' {
                         $Parsed = ConvertFrom-ValidityString -InputText $Value
-                        # Parse "X, Y" coordinate pair (tile units)
-                        $CoordParts = $Parsed.Text.Split(',')
-                        $CoordX = $null
-                        $CoordY = $null
-                        if ($CoordParts.Length -ge 2) {
-                            $XStr = $CoordParts[0].Trim()
-                            $YStr = $CoordParts[1].Trim()
-                            [int]$ParsedX = 0
-                            [int]$ParsedY = 0
-                            if ([int]::TryParse($XStr, [ref]$ParsedX) -and [int]::TryParse($YStr, [ref]$ParsedY)) {
-                                $CoordX = $ParsedX
-                                $CoordY = $ParsedY
-                            }
-                        }
-                        if ($null -ne $CoordX) {
+                        $Coord = ConvertFrom-CoordinateString -Text $Parsed.Text
+                        if ($Coord) {
                             $CoordinateHistory.Add([PSCustomObject]@{
-                                X         = $CoordX
-                                Y         = $CoordY
+                                X         = $Coord.X
+                                Y         = $Coord.Y
                                 ValidFrom = $Parsed.ValidFrom
                                 ValidTo   = $Parsed.ValidTo
                                 Season    = $Parsed.Season

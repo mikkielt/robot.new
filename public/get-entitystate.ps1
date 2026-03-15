@@ -284,32 +284,23 @@ function Get-EntityState {
                         })
                         [void]$TargetEntity.Names.Add($Parsed.Text)
                     }
+                    '@slug' {
+                        [void]$TargetEntity.Names.Add($Parsed.Text)
+                    }
                     '@koordynaty' {
                         if (-not $TargetEntity.CoordinateHistory) {
                             $TargetEntity.CoordinateHistory = [System.Collections.Generic.List[object]]::new()
                         }
-                        $CoordParts = $Parsed.Text.Split(',')
-                        $CoordX = $null
-                        $CoordY = $null
-                        if ($CoordParts.Length -ge 2) {
-                            $XStr = $CoordParts[0].Trim()
-                            $YStr = $CoordParts[1].Trim()
-                            [int]$ParsedX = 0
-                            [int]$ParsedY = 0
-                            if ([int]::TryParse($XStr, [ref]$ParsedX) -and [int]::TryParse($YStr, [ref]$ParsedY)) {
-                                $CoordX = $ParsedX
-                                $CoordY = $ParsedY
-                            }
-                        }
-                        if ($null -ne $CoordX) {
+                        $Coord = ConvertFrom-CoordinateString -Text $Parsed.Text
+                        if ($Coord) {
                             $TargetEntity.CoordinateHistory.Add([PSCustomObject]@{
-                                X         = $CoordX
-                                Y         = $CoordY
+                                X         = $Coord.X
+                                Y         = $Coord.Y
                                 ValidFrom = $Parsed.ValidFrom
                                 ValidTo   = $Parsed.ValidTo
                                 Season    = $Parsed.Season
                             })
-                            $TargetEntity.Coordinates = @{ X = $CoordX; Y = $CoordY }
+                            $TargetEntity.Coordinates = @{ X = $Coord.X; Y = $Coord.Y }
                         }
                     }
                     default {
@@ -377,13 +368,27 @@ function Get-EntityState {
                 # Find source currency entity
                 $SourceEntity = Find-CurrencyEntity -Entities $Entities -Denomination $Transfer.Denomination -OwnerName $ResolvedSourceName -CurrencyLookup $CurrencyLookup
                 if (-not $SourceEntity) {
-                    Write-RobotWarning "[WARN Get-EntityState] No currency entity for '$($ResolvedSourceName)' ($($ResolvedDenom.Name)) in @Transfer in session '$($Session.Header)' - assuming 0 balance"
+                    Write-RobotWarning "[WARN Get-EntityState] No currency entity for '$($ResolvedSourceName)' ($($ResolvedDenom.Name)) in @Transfer in session '$($Session.Header)'"
                 }
 
                 # Find destination currency entity
                 $DestEntity = Find-CurrencyEntity -Entities $Entities -Denomination $Transfer.Denomination -OwnerName $ResolvedDestName -CurrencyLookup $CurrencyLookup
                 if (-not $DestEntity) {
-                    Write-RobotWarning "[WARN Get-EntityState] No currency entity for '$($ResolvedDestName)' ($($ResolvedDenom.Name)) in @Transfer in session '$($Session.Header)' - assuming 0 balance"
+                    Write-RobotWarning "[WARN Get-EntityState] No currency entity for '$($ResolvedDestName)' ($($ResolvedDenom.Name)) in @Transfer in session '$($Session.Header)'"
+                }
+
+                # Skip entire transfer if either side is missing — no partial application
+                if (-not $SourceEntity -or -not $DestEntity) {
+                    $ErrMsg = "Unresolved @Transfer in session '$($Session.Header)': " +
+                              "Source='$ResolvedSourceName' Dest='$ResolvedDestName' ($($ResolvedDenom.Name))"
+                    $AffectedEntity = if ($SourceEntity) { $SourceEntity } elseif ($DestEntity) { $DestEntity } else { $null }
+                    if ($AffectedEntity) {
+                        if (-not $AffectedEntity.PSObject.Properties['UnresolvedTransfers']) {
+                            $AffectedEntity | Add-Member -NotePropertyName 'UnresolvedTransfers' -NotePropertyValue ([System.Collections.Generic.List[string]]::new())
+                        }
+                        [void]$AffectedEntity.UnresolvedTransfers.Add($ErrMsg)
+                    }
+                    continue
                 }
 
                 # Apply -N to source

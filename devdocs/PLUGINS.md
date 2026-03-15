@@ -252,6 +252,8 @@ Invoke-PluginHook -Operation 'Write-EntityFile' -Phase 'BeforeWrite' -Context @{
 
 **Fast path**: When no handlers are registered for a hook point, `Invoke-PluginHook` returns immediately with zero overhead. The hook registry is a `Dictionary[string, List[handler]]` - a missing key means no work.
 
+**Cached command lookup**: Handler function names are resolved via `Get-Command` on first invocation and cached in `$script:HookCommandCache` (keyed by function name). Subsequent invocations of the same handler skip the `Get-Command` call entirely. Failed lookups are cached as `[DBNull]::Value` to avoid repeated resolution attempts for missing handlers. The cache also validates that the command is a user-defined `Function` (not a `Cmdlet`, `Alias`, or `Application`) before caching.
+
 **Priority ordering**: Handlers execute in ascending priority order (lower number = earlier). Default priority is `100`. Handlers from different plugins at the same priority execute in plugin load order.
 
 **Error handling by phase**:
@@ -768,7 +770,8 @@ The parent module tracks a specific commit of each plugin submodule. Bumping req
 | Missing dependency (`DependsOn`) | Warns to stderr with missing plugin name. Dependent plugin skipped; independent plugins still load. |
 | Circular dependency | Warns to stderr with cycle participant names. Cycled plugins skipped; non-cycled plugins still load. |
 | Function name collision | Warns to stderr with conflicting function name and plugin name. Conflicting function skipped; other functions in the plugin still load. |
-| Hook handler function not found | Warns to stderr at invocation time. Hook skipped; subsequent hooks still run. |
+| Hook handler function not found | Warns to stderr at invocation time. Cached as `[DBNull]::Value` to skip on future invocations. Subsequent hooks still run. |
+| Hook handler is not a Function (Cmdlet/Alias/Application) | Warns to stderr. Cached as `[DBNull]::Value`. Hook skipped; subsequent hooks still run. |
 | Missing required config (no value resolved) | Warns to stderr with config key name and plugin name. Plugin loads but config key is `$null`. |
 | No RBAC config (`Roles`/`RoleScopes` absent) | `Test-PluginScope` returns `$true` for all scopes. Fully permissive. |
 | Menu item missing `ID`, `Label`, or `Menu` | Warns to stderr with plugin name. Item skipped; other items still merge. |
