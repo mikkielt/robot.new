@@ -37,12 +37,13 @@ function New-ResultTableComponent {
         [hashtable]$FilterPrefixes
     )
 
-    # Default widths
+    # Default column width of 20 chars — fits most entity names and short values
     if (-not $Widths -or $Widths.Count -eq 0) {
         $Widths = @(20) * $Headers.Count
     }
 
-    # Pre-build lowercase search index: one concatenated string per row for O(1)-column filter
+    # Pre-build lowercase search index so filtering searches one string per row
+    # instead of iterating columns — significant speedup for tables with 500+ rows
     $SearchIndex = [string[]]::new($Data.Count)
     for ($SI = 0; $SI -lt $Data.Count; $SI++) {
         $SB = [System.Text.StringBuilder]::new()
@@ -93,7 +94,8 @@ function New-ResultTableComponent {
             $Headers = $ComponentRef.Headers
             $Widths = $ComponentRef.Widths
 
-            # Responsive columns: cached per screen width (only recomputed on resize)
+            # Responsive columns are cached per screen width to avoid recalculating
+            # priority-based column hiding on every render cycle
             if ($ComponentRef._VisColsWidth -ne $script:ScreenWidth) {
                 $ComponentRef._VisColsCache = Resolve-VisibleColumns -Columns $Columns -Headers $Headers `
                     -Widths $Widths -ColumnPriority $ComponentRef.ColumnPriority `
@@ -273,7 +275,7 @@ function Invoke-TableFilter {
         return
     }
 
-    # Use pre-built lowercase search index for O(1)-column matching per row
+    # Use pre-built search index for single-string matching instead of per-column iteration
     for ($RI = 0; $RI -lt $AllData.Count; $RI++) {
         if ($Index -and $RI -lt $Index.Count) {
             if ($Index[$RI].IndexOf($Query) -ge 0) {
@@ -320,12 +322,13 @@ function Resolve-VisibleColumns {
         })
     }
 
-    # Start with all columns, remove lowest priority first when too wide
+    # Start with all columns, then progressively hide low-priority ones
+    # (priority 3 first, then 2) until total width fits the terminal
     $Visible = [System.Collections.Generic.List[object]]::new()
     foreach ($C in $AllCols) { [void]$Visible.Add($C) }
 
     # Calculate total used width
-    $UsedWidth = 4  # indent + pointer
+    $UsedWidth = 4  # 2 chars indent + 2 chars pointer ("▸ " or "  ")
     foreach ($C in $Visible) { $UsedWidth += $C.Width }
 
     # Remove priority 3, then 2 if still too wide

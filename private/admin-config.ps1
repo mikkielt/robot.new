@@ -7,11 +7,16 @@
     admin commands via dot-sourcing. Not auto-loaded by robot.psm1
     (non-Verb-Noun filename).
 
-    Contains:
+    Helpers:
     - Resolve-ConfigValue:   priority-chain resolution for a single config key
+    - Test-PathUnderRoot:    validates a resolved path stays within the repository root (prevents traversal)
     - Find-DataManifest:     checks for .robot/robot-data.psd1 at a fixed path within the repo root
     - Get-AdminConfig:       resolves config values from parameter/env/config file/manifest
     - Get-AdminTemplate:     loads and renders template files with variable substitution
+
+    Module-level data:
+    - $script:CachedManifest:    session-scoped cache for the parsed data manifest hashtable
+    - $script:CachedManifestDir: directory path corresponding to the cached manifest
 
     Config resolution priority:
     1. Explicit parameter value (caller passes directly)

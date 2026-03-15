@@ -16,8 +16,15 @@
     of all step types except multitext (which uses inline ReadKey collection).
 
     Helpers:
-    - Invoke-EngineLifecycle: runs a component through engine lifecycle
+    - Invoke-EngineLifecycle:  runs a component through engine lifecycle
     - Invoke-WizardStep:       dispatches by StepType using engine components
+
+    Factory functions (reduce boilerplate in workflow files):
+    - New-WizardTextStep:      creates a text-input step definition
+    - New-WizardNumberStep:    creates an integer-input step definition
+    - New-WizardDateStep:      creates a date-input step definition (YYYY-MM-DD)
+    - New-WizardChoiceStep:    creates a selection step from option list
+    - New-WizardFuzzyStep:     creates a fuzzy-search step bound to a source
 #>
 
 # ── Engine lifecycle helper ──────────────────────────────────────────────────
@@ -207,8 +214,9 @@ function Invoke-WizardStep {
         }
 
         'multitext' {
-            # Kept as inline ReadKey loop — only used by 1 registry entry
-            # and the multi-line collection pattern doesn't fit WizardStepComponent
+            # Inline ReadKey loop instead of engine component because multi-line
+            # collection with per-line echo doesn't fit WizardStepComponent's
+            # single-value-return model. Used by SpecialItems, Triggers, etc.
             $AccentColor = Get-CLIColor -Role 'Accent'
             $DisabledColor = Get-CLIColor -Role 'Disabled'
             $ErrorColor = Get-CLIColor -Role 'Error'

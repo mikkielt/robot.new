@@ -82,7 +82,8 @@ function Invoke-PlayerCharacterPUAssignment {
 
     $Config = Get-AdminConfig
 
-    # Determine date range
+    # Year/Month takes priority; otherwise default to a 2-month lookback
+    # because sessions are sometimes documented with a delay
     if ($Year -and $Month) {
         $MinDate = [datetime]::new($Year, $Month, 1)
         $MaxDate = $MinDate.AddMonths(1).AddDays(-1)
@@ -101,7 +102,7 @@ function Invoke-PlayerCharacterPUAssignment {
     $MinDateStr = $MinDate.ToString('yyyy-MM-dd')
     $MaxDateStr = $MaxDate.ToString('yyyy-MM-dd')
 
-    # Git optimization: identify files changed in the date range
+    # Narrow Get-Session's file scope via git history to avoid full-repo scan
     $ChangedFiles = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
 
     try {
@@ -120,7 +121,7 @@ function Invoke-PlayerCharacterPUAssignment {
         Write-RobotWarning "[WARN Invoke-PlayerCharacterPUAssignment] Git optimization failed, falling back to full scan: $_"
     }
 
-    # Get sessions in date range
+    # Use git-scoped files when available, otherwise full directory scan as fallback
     $Sessions = if ($ChangedFiles.Count -gt 0) {
         $SessionResults = [System.Collections.Generic.List[object]]::new()
         foreach ($FilePath in $ChangedFiles) {
@@ -142,7 +143,7 @@ function Invoke-PlayerCharacterPUAssignment {
         Get-Session -MinDate $MinDate -MaxDate $MaxDate -ExcludeDirectory $ExcludeDirectory
     }
 
-    # Filter to sessions with PU entries
+    # Only sessions with PU entries are relevant for assignment
     $SessionsWithPU = [System.Collections.Generic.List[object]]::new()
     foreach ($Session in $Sessions) {
         if ($Session.PU -and $Session.PU.Count -gt 0) {
@@ -155,7 +156,7 @@ function Invoke-PlayerCharacterPUAssignment {
         return @()
     }
 
-    # Exclude already-processed sessions via state file
+    # Prevent double-awarding: pu-sessions.md tracks which headers have been processed
     $PUSessionsPath = [System.IO.Path]::Combine($Config.ResDir, 'pu-sessions.md')
     $ProcessedHeaders = Get-AdminHistoryEntries -Path $PUSessionsPath
 
@@ -176,7 +177,7 @@ function Invoke-PlayerCharacterPUAssignment {
         return @()
     }
 
-    # Collect all PU entries grouped by character name
+    # Group by character for per-character PU calculation (sum sessions, apply cap)
     $PUByCharacter = [System.Collections.Generic.Dictionary[string, System.Collections.Generic.List[object]]]::new(
         [System.StringComparer]::OrdinalIgnoreCase
     )
@@ -195,10 +196,8 @@ function Invoke-PlayerCharacterPUAssignment {
         }
     }
 
-    # Resolve characters via Get-PlayerCharacter
+    # Build character lookup including aliases for fail-early name verification
     $AllCharacters = Get-PlayerCharacter
-
-    # Build character lookup (case-insensitive, including aliases)
     $CharacterLookup = [System.Collections.Generic.Dictionary[string, object]]::new([System.StringComparer]::OrdinalIgnoreCase)
     foreach ($Char in $AllCharacters) {
         if (-not $CharacterLookup.ContainsKey($Char.Name)) {
@@ -213,7 +212,7 @@ function Invoke-PlayerCharacterPUAssignment {
         }
     }
 
-    # Fail-early: verify ALL character names resolve before any computation
+    # All names must resolve before any writes — partial assignments corrupt state
     $UnresolvedCharacters = [System.Collections.Generic.List[object]]::new()
     foreach ($Entry in $PUByCharacter.GetEnumerator()) {
         $CharName = $Entry.Key
@@ -237,7 +236,7 @@ function Invoke-PlayerCharacterPUAssignment {
         $PSCmdlet.ThrowTerminatingError($ErrorRecord)
     }
 
-    # Compute PU assignment for each character
+    # Apply the PU algorithm per character: base + overflow pool, capped at 5/month
     $AssignmentResults = [System.Collections.Generic.List[object]]::new()
 
     foreach ($Entry in $PUByCharacter.GetEnumerator()) {
@@ -257,7 +256,7 @@ function Invoke-PlayerCharacterPUAssignment {
             if (-not $Matched) { continue }
         }
 
-        # Sum session PU values for this character
+        # Sum raw session PU before cap and overflow logic
         $SessionPUSum = [decimal]0
         foreach ($PUItem in $PUEntries) {
             if ($null -ne $PUItem.Value) {
@@ -291,7 +290,7 @@ function Invoke-PlayerCharacterPUAssignment {
         $NewPUSum = [math]::Round($CurrentPUSum + $GrantedPU, 2)
         $NewPUTaken = [math]::Round($CurrentPUTaken + $GrantedPU, 2)
 
-        # Build notification message from templates
+        # Compose player notification from templates (base + optional overflow/remaining parts)
         $MsgVars = @{
             CharacterName = $Character.Name
             PlayerName    = $Character.PlayerName

@@ -30,12 +30,12 @@ function Send-DiscordMessage {
         [string]$Username
     )
 
-    # Validate webhook URL format
+    # Guard against non-Discord URLs to prevent accidental data leaks
     if ($Webhook -notlike "https://discord.com/api/webhooks/*") {
         throw "Invalid webhook URL format. Must match 'https://discord.com/api/webhooks/*'. Got: $Webhook"
     }
 
-    # Build JSON payload
+    # Discord webhook API expects JSON with 'content' and optional 'username'
     $Payload = [ordered]@{
         content = $Message
     }
@@ -43,7 +43,7 @@ function Send-DiscordMessage {
         $Payload['username'] = $Username
     }
 
-    # Serialize to JSON using .NET
+    # Pre-encode to bytes for ByteArrayContent (avoids double-encoding)
     $JsonBytes = [System.Text.Encoding]::UTF8.GetBytes(
         ($Payload | ConvertTo-Json -Depth 4 -Compress)
     )
@@ -57,7 +57,7 @@ function Send-DiscordMessage {
         }
     }
 
-    # Send via .NET HttpClient
+    # Use .NET HttpClient directly — no Invoke-WebRequest dependency
     $Client = $null
     $Content = $null
     $Response = $null

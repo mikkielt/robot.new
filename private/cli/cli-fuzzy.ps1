@@ -186,7 +186,9 @@ function Filter-FuzzyCandidates {
         }
     }
 
-    # Stage 3: Resolve-Name (declension + fuzzy) for queries >= 3 chars
+    # Stage 3: Resolve-Name uses declension stemming + BK-tree edit distance.
+    # Only triggered for queries >= 3 chars (shorter queries produce too many
+    # false positives) and when prefix/contains found fewer than 3 matches.
     if ($Query.Length -ge 3 -and $Results.Count -lt 3 -and $State.NameIndex) {
         $Resolved = Resolve-Name -Query $Query `
             -Index $State.NameIndex.Index `
@@ -229,7 +231,8 @@ function Show-FuzzySearch {
     $AccentColor   = Get-CLIColor -Role 'Accent'
     $DisabledColor = Get-CLIColor -Role 'Disabled'
 
-    # Return all matching candidates (not capped at viewport size) so scrolling works
+    # Fetch all candidates (MaxResults=500) rather than viewport-size cap
+    # so arrow key scrolling works across the full result set.
     $Filtered = Filter-FuzzyCandidates -Query '' -Candidates $AllCandidates -State $State -MaxResults 500
 
     $StartRow = [System.Console]::CursorTop

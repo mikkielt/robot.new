@@ -8,7 +8,7 @@
     New-Entity, etc.) via dot-sourcing. Not auto-loaded by robot.psm1
     (non-Verb-Noun filename).
 
-    Contains:
+    Helpers:
     - Clear-OperationContext:   resets all three accumulators
     - Add-OperationChange:     pushes a property change record
     - Add-OperationWarning:    pushes a warning record with severity

@@ -7,14 +7,14 @@
     and other admin commands via dot-sourcing. Not auto-loaded by robot.psm1
     (non-Verb-Noun filename).
 
-    Contains:
+    Helpers:
     - Get-AdminHistoryEntries: reads processed session headers from a state file
     - Add-AdminHistoryEntry:  appends new entries with timestamp to a state file
 
     Module-level data:
-    - $HistoryEntryPattern:           indented history entry line "    - ### ..."
-    - $MultiSpacePattern:             whitespace collapse pattern
-    - $AdminHistoryTimestampPattern:  timestamp lines "- YYYY-MM-dd HH:mm (timezone):"
+    - $script:HistoryEntryPattern:           indented history entry line "    - ### ..."
+    - $script:MultiSpacePattern:             whitespace collapse pattern
+    - $script:AdminHistoryTimestampPattern:  timestamp lines "- YYYY-MM-dd HH:mm (timezone):"
 
     State files (`.robot/res/*.md`) use an append-only format:
 

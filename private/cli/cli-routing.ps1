@@ -202,8 +202,8 @@ function Invoke-MenuAction {
         return
     }
 
-    # Suppress warnings during CLI dispatch to prevent stderr output from
-    # corrupting the interactive menu display (overlay/redraw issue).
+    # Suppress module-level Write-RobotWarning calls during CLI dispatch
+    # because stderr output corrupts the TUI's cursor-positioned rendering.
     $script:SuppressWarnings = $true
     try {
 
@@ -292,10 +292,11 @@ function Invoke-QueryAction {
         }
     }
 
-    # Apply smart defaults for date-based queries
+    # Default MinDate to 3 months ago to keep query results manageable.
+    # Without a date floor, some queries (e.g. Get-Session) would process
+    # the entire campaign history on every invocation.
     $Cmd = Get-Command $FunctionName -ErrorAction SilentlyContinue
     if ($Cmd -and $Cmd.Parameters.ContainsKey('MinDate') -and -not $FilterParams.ContainsKey('MinDate')) {
-        # Default: last 3 months
         $FilterParams['MinDate'] = (Get-Date).AddMonths(-3)
     }
 
@@ -359,7 +360,10 @@ function Invoke-QueryAction {
             $QueryResult = $TransformedData.ToArray()
         }
 
-        # Build identity→index map once for O(1) detail card lookups
+        # Map reference identity hash → array index for O(1) detail card lookups.
+        # The table component returns the transformed row object; this map lets us
+        # find the corresponding original (pre-transform) row by reference identity
+        # without linear scan on every Enter press.
         $IdMap = [System.Collections.Generic.Dictionary[int,int]]::new($QueryResult.Count)
         for ($I = 0; $I -lt $QueryResult.Count; $I++) {
             $IdMap[[System.Runtime.CompilerServices.RuntimeHelpers]::GetHashCode($QueryResult[$I])] = $I
@@ -552,7 +556,8 @@ function Invoke-EngineFuzzySearch {
         })
     }
 
-    # FuzzyCallback: runs Resolve-Name on remaining items for stage 3
+    # FuzzyCallback: runs Resolve-Name (declension + BK-tree) on items
+    # not already matched by prefix/contains stages in the engine filter.
     $FuzzyCB = {
         param([string]$Query, [object[]]$Remaining)
 
@@ -869,7 +874,7 @@ function Refresh-HealthChecks {
     $Progress = New-ProgressState -Title 'Sprawdzanie stanu systemu' -TotalSteps 6
 
     # Suppress non-terminating errors during health checks — internal calls
-    # would otherwise corrupt the CLI display.
+    # emit warnings/errors that would corrupt the TUI cursor positioning.
     $PrevEAP = $ErrorActionPreference
     $ErrorActionPreference = 'SilentlyContinue'
 

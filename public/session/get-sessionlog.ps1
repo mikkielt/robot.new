@@ -86,13 +86,14 @@ function Get-SessionLog {
     end {
         if ($CollectedSessions.Count -eq 0) { return }
 
-        # Resolve log directory
+        # Default to ResDir/logs so callers don't need to know the config structure
         if (-not $LogDirectory) {
             $Config = Get-AdminConfig
             $LogDirectory = [System.IO.Path]::Combine($Config.ResDir, 'logs')
         }
 
-        # Collect all unique URLs and local paths across all sessions
+        # Separate HTTP URLs from local paths so we can batch-fetch remote ones
+        # while reading local files directly (no HTTP overhead)
         $AllUrls = [System.Collections.Generic.List[string]]::new()
         $LocalPaths = [System.Collections.Generic.Dictionary[string,string]]::new(
             [System.StringComparer]::OrdinalIgnoreCase)
@@ -114,7 +115,7 @@ function Get-SessionLog {
             }
         }
 
-        # Batch fetch URLs (deduplicates internally, respects cache, throttles HTTP)
+        # Batch fetch deduplicates URLs so shared logs across sessions are downloaded once
         $FetchedContent = @{}
         if ($AllUrls.Count -gt 0) {
             if ($SkipFetch) {
@@ -135,12 +136,12 @@ function Get-SessionLog {
             }
         }
 
-        # Merge local path content into fetched content
+        # Unify local and remote content into one lookup for uniform processing below
         foreach ($Entry in $LocalPaths.GetEnumerator()) {
             $FetchedContent[$Entry.Key] = $Entry.Value
         }
 
-        # Process each session
+        # Build structured log objects with speaker/channel aggregation and optional name resolution
         $Results = [System.Collections.Generic.List[PSCustomObject]]::new()
 
         foreach ($S in $CollectedSessions) {
@@ -156,14 +157,13 @@ function Get-SessionLog {
 
                 if ($null -eq $Content -or $Content.Length -eq 0) { continue }
 
-                # Parse content
                 $Parsed = ConvertFrom-LogContent -Content $Content
 
-                # Build speaker aggregation
+                # Aggregate speaker line indices for participation analysis
                 $SpeakerMap = [System.Collections.Generic.Dictionary[string, System.Collections.Generic.List[int]]]::new(
                     [System.StringComparer]::OrdinalIgnoreCase)
 
-                # Build channel aggregation
+                # Aggregate channel line indices (ChatLog format only)
                 $ChannelMap = [System.Collections.Generic.Dictionary[string, System.Collections.Generic.List[int]]]::new(
                     [System.StringComparer]::OrdinalIgnoreCase)
 
@@ -183,7 +183,7 @@ function Get-SessionLog {
                     }
                 }
 
-                # Build Speakers array with optional resolution
+                # Map raw speaker names to canonical entity names via the 4-stage resolution pipeline
                 $Speakers = [System.Collections.Generic.List[PSCustomObject]]::new()
                 foreach ($Entry in $SpeakerMap.GetEnumerator()) {
                     $Resolved = $null
@@ -211,7 +211,7 @@ function Get-SessionLog {
                     })
                 }
 
-                # Build Channels array (ChatLog only)
+                # Channels are only meaningful in ChatLog format (Prose has no channel concept)
                 $Channels = $null
                 if ($Parsed.Format -eq 'ChatLog' -and $ChannelMap.Count -gt 0) {
                     $Channels = [System.Collections.Generic.List[PSCustomObject]]::new()
@@ -225,7 +225,7 @@ function Get-SessionLog {
                     $Channels = [PSCustomObject[]]$Channels.ToArray()
                 }
 
-                # Resolve location segments if Index provided
+                # Resolve location headers against entity registry for cross-referencing
                 $LocationSegments = $Parsed.LocationSegments
                 if ($null -ne $Index -and $null -ne $LocationSegments) {
                     for ($i = 0; $i -lt $LocationSegments.Count; $i++) {

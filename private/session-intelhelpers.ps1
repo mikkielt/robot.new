@@ -349,7 +349,7 @@ function Get-SessionMentions {
         # Extract markdown link display text
         foreach ($Match in $MdLinkRegex.Matches($Text)) {
             $LinkText = $Match.Groups[1].Value.Trim()
-            if ($LinkText.Length -ge 3) {
+            if ($LinkText.Length -ge 3) {  # 3 chars: shortest plausible entity name
                 $CandidateTokens.Add($LinkText)
             }
         }
@@ -364,7 +364,7 @@ function Get-SessionMentions {
         )
 
         foreach ($Word in $Words) {
-            if ($Word.Length -ge 3) {
+            if ($Word.Length -ge 3) {  # 3 chars: shortest plausible entity name
                 $CandidateTokens.Add($Word)
             }
         }

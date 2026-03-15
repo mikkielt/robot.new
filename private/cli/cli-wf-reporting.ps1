@@ -8,14 +8,16 @@
     by the CLI menu registry (Mode = 'Workflow'). Dot-sourced on demand.
 
     Workflows:
-    - Invoke-IntelPreviewWorkflow:        Intel targeting matrix (read-only)
-    - Invoke-NameSearchWorkflow:          standalone name search via fuzzy picker
-    - Invoke-FetchLogsWorkflow:           mass log fetch with CDN-safe throttling
-    - Invoke-LogLocationReportWorkflow:   log location resolution analysis
-    - Invoke-LocationGraphWorkflow:       location connection graph analysis
-    - Invoke-SessionGraphWorkflow:        session participation graph queries
-    - Invoke-MigrationQuickCheck:         migration quick diagnostics
-    - Invoke-MigrationFullReport:         migration full report
+    - Invoke-IntelPreviewWorkflow:           Intel targeting matrix (read-only)
+    - Invoke-NameSearchWorkflow:             standalone name search via fuzzy picker
+    - Invoke-FetchLogsWorkflow:              mass log fetch with CDN-safe throttling
+    - Invoke-LogLocationReportWorkflow:      log location resolution analysis
+    - Invoke-LocationGraphWorkflow:          location connection graph analysis
+    - Invoke-SessionGraphWorkflow:           session participation graph queries
+    - Invoke-CompareParticipationWorkflow:   cross-entity session overlap analysis
+    - Invoke-SessionLeaderboardWorkflow:     session participation ranking table
+    - Invoke-MigrationQuickCheck:            migration quick diagnostics
+    - Invoke-MigrationFullReport:            migration full report
 
     Dependencies: cli-primitives.ps1, cli-fuzzy.ps1, cli-wizard.ps1, cli-wf-entity.ps1
 #>
@@ -598,7 +600,8 @@ function Invoke-SessionGraphWorkflow {
     Write-CLILine -Text 'Graf sesji' -Color $AccentColor
     Write-Host ''
 
-    # Tier 2 staleness warning
+    # Warn if the session graph's Tier 2 (text-based) index is stale,
+    # meaning entity changes occurred since the last full rebuild.
     try {
         if (-not (Get-Command 'Read-SessionGraphMeta' -ErrorAction SilentlyContinue)) {
             . "$script:ModuleRoot/private/session-graphhelpers.ps1"
@@ -629,6 +632,7 @@ function Invoke-SessionGraphWorkflow {
     $ModeChoice = Invoke-WizardStep -Step $ModeStep -State $State
     if ($ModeChoice -eq '__back__') { return }
 
+    # Map Polish menu labels to Get-SessionGraph -Mode parameter values
     $ModeMap = @{
         'Sesje encji'        = 'Sessions'
         'Współuczestnicy'    = 'CoParticipants'

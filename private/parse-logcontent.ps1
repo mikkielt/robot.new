@@ -10,9 +10,11 @@
     Prose format: narrative text with Speaker: text lines, no timestamps
 
     Helpers:
-    - Get-LogFormat: detects ChatLog vs Prose by scanning for timestamp patterns
+    - Get-LogFormat: detects ChatLog vs Prose by scanning first ~30 non-empty lines
+      for [HH:MM] timestamps; 2+ matches = ChatLog, otherwise Prose
     - ConvertFrom-ChatLogContent: parses timestamped chat lines, location headers, continuations
-    - ConvertFrom-ProseContent: parses narrative lines with Speaker: text pattern
+    - ConvertFrom-ProseContent: parses narrative lines with Speaker: text pattern;
+      uses heuristic for location headers (<=60 chars, after empty line, no Speaker: match)
     - ConvertFrom-LogContent: dispatcher that auto-detects format and routes to parser
 
     Module-level data:
@@ -54,14 +56,6 @@ $script:FormatDetectPattern = [regex]::new(
 # ── Functions ─────────────────────────────────────────────────────────────────
 
 function Get-LogFormat {
-    <#
-        .SYNOPSIS
-        Detects whether log content is ChatLog or Prose format.
-
-        .DESCRIPTION
-        Scans the first ~30 non-empty lines. If 2+ match the [HH:MM] timestamp
-        pattern, returns 'ChatLog'. Otherwise returns 'Prose'.
-    #>
     [CmdletBinding()] param(
         [Parameter(Mandatory, HelpMessage = "Raw log content string")]
         [string]$Content
@@ -77,11 +71,11 @@ function Get-LogFormat {
 
         if ($script:FormatDetectPattern.IsMatch($Trimmed)) {
             $TimestampCount++
-            if ($TimestampCount -ge 2) { return 'ChatLog' }
+            if ($TimestampCount -ge 2) { return 'ChatLog' }  # 2 timestamps suffice to confirm ChatLog format
         }
 
         $ScannedCount++
-        if ($ScannedCount -ge 30) { break }
+        if ($ScannedCount -ge 30) { break }  # 30 lines: enough to detect format without scanning entire file
     }
 
     return 'Prose'
@@ -89,20 +83,6 @@ function Get-LogFormat {
 
 
 function ConvertFrom-ChatLogContent {
-    <#
-        .SYNOPSIS
-        Parses ChatLog-format content into structured lines and location segments.
-
-        .DESCRIPTION
-        Processes content line by line, detecting:
-        - Location headers: non-empty lines that don't start with [HH:MM]
-          and aren't continuation text from a preceding timestamp line
-        - Chat lines: [HH:MM] [Channel] Speaker: text (or narration without speaker)
-        - Continuation lines: text following a [HH:MM] [Channel] line that had no
-          inline content (joined to that chat line)
-
-        Returns PSCustomObject with Format, Lines[], LocationSegments[].
-    #>
     [CmdletBinding()] param(
         [Parameter(Mandatory, HelpMessage = "Raw ChatLog content string")]
         [string]$Content
@@ -273,19 +253,6 @@ function ConvertFrom-ChatLogContent {
 
 
 function ConvertFrom-ProseContent {
-    <#
-        .SYNOPSIS
-        Parses Prose-format content into structured lines and location segments.
-
-        .DESCRIPTION
-        Prose logs have no timestamps. Lines are parsed as either:
-        - Location headers: standalone heading-like lines (short, no colon pattern)
-        - Dialogue/narration: "Speaker: text" or plain narration text
-
-        Heuristic for location headers: a line that is <=60 chars, does not contain
-        a colon followed by text (not a Speaker: pattern), and appears after an
-        empty line or at the start of content.
-    #>
     [CmdletBinding()] param(
         [Parameter(Mandatory, HelpMessage = "Raw Prose content string")]
         [string]$Content
@@ -310,14 +277,14 @@ function ConvertFrom-ProseContent {
         # Heuristic: location header = short line after empty line, no Speaker: pattern
         $IsSpeaker = $script:SpeakerPattern.IsMatch($Trimmed) -or $script:SpeakerOnlyPattern.IsMatch($Trimmed)
 
-        if ($PreviousWasEmpty -and -not $IsSpeaker -and $Trimmed.Length -le 60) {
+        if ($PreviousWasEmpty -and -not $IsSpeaker -and $Trimmed.Length -le 60) {  # 60 chars: longest observed location name in the lore repository
             # Location header
             $CurrentSegmentIndex++
             $LocationSegments.Add([PSCustomObject]@{
                 Index     = $CurrentSegmentIndex
                 Raw       = $Trimmed
                 StartLine = $ParsedLines.Count
-                EndLine   = -1
+                EndLine   = -1   # Updated after parsing completes
             })
             $PreviousWasEmpty = $false
             continue
@@ -371,15 +338,6 @@ function ConvertFrom-ProseContent {
 
 
 function ConvertFrom-LogContent {
-    <#
-        .SYNOPSIS
-        Parses raw log content, auto-detecting the format.
-
-        .DESCRIPTION
-        Calls Get-LogFormat to detect ChatLog vs Prose, then dispatches to the
-        appropriate converter function. Returns the same cross-referenced structure
-        regardless of format.
-    #>
     [CmdletBinding()] param(
         [Parameter(Mandatory, HelpMessage = "Raw log content string to parse")]
         [string]$Content

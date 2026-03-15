@@ -3,17 +3,27 @@
     Shared economic analysis helpers for snapshot and timeline reporting.
 
     .DESCRIPTION
-    Contains New-EconomicSnapshotData which computes supply breakdown, Gini
-    coefficient, top holders, and transaction volume from enriched currency items.
-    Dot-sourced by Get-EconomicSnapshot and Get-EconomicTimeline.
+    Dot-sourced by Get-EconomicSnapshot and Get-EconomicTimeline to provide
+    the core analysis computation that both commands share.
+
+    Helpers:
+    - New-EconomicSnapshotData: builds economic snapshot from enriched currency items and transfers
+
+    Processing pipeline:
+    1. Iterates enriched currency items to compute per-denomination supply totals,
+       per-owner wealth (in Kogi base units), and Physical/Virtual/Unknown category splits.
+    2. Ranks owners by total wealth and extracts top-N holders.
+    3. Computes the Gini coefficient from positive-wealth holders using the
+       standard formula: G = (2 * SUM(i * w[i])) / (n * SUM(w)) - (n+1)/n.
+       A value of 0 = perfect equality, 1 = one holder owns everything.
+    4. Sums transfer entries to produce transaction count and total value in Kogi.
+
+    The Physical/Virtual distinction tracks whether currency is backed by actual
+    Margonem game items (Postac owner) or exists only in the campaign ledger
+    (NPC/Grupa/Gracz owners).
 #>
 
 function New-EconomicSnapshotData {
-    <#
-        .SYNOPSIS
-        Builds economic snapshot data from enriched currency items and transfer entries.
-        Returns a hashtable with supply breakdown, Gini, top holders, and transaction stats.
-    #>
     param(
         [AllowEmptyCollection()]
         [AllowNull()]
@@ -102,7 +112,8 @@ function New-EconomicSnapshotData {
         })
     }
 
-    # Gini coefficient
+    # Wealth inequality measure — requires sorted positive-wealth values only,
+    # zero-wealth holders skipped to avoid skewing the distribution
     # G = (2 * Σ(i * w[i])) / (n * Σ(w)) - (n+1)/n
     $GiniCoefficient = 0.0
     $PositiveWealth = [System.Collections.Generic.List[int]]::new()
@@ -123,7 +134,7 @@ function New-EconomicSnapshotData {
         }
     }
 
-    # Transaction volume
+    # Transaction metrics from @Transfer directives — converted to Kogi for cross-denomination totalling
     $TransactionVolume = 0
     $TransactionValueKogi = 0
     if ($TransferEntries) {

@@ -6,9 +6,9 @@
     Non-exported helper functions consumed by New-Session and Set-Session via
     dot-sourcing. Not auto-loaded by robot.psm1 (non-Verb-Noun filename).
 
-    Contains:
+    Helpers:
     - ConvertTo-Gen4MetadataBlock: renders a single Gen4 @-prefixed metadata block
-    - ConvertTo-SessionMetadata: renders all metadata blocks in canonical order
+    - ConvertTo-SessionMetadata:   renders all metadata blocks in canonical order
 #>
 
 # Helper: renders a single Gen4 @-prefixed metadata block as a multi-line markdown string.

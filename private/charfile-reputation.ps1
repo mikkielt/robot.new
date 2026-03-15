@@ -9,9 +9,12 @@
 
     Split from charfile-helpers.ps1 — dot-sourced by that file.
 
-    Contains:
+    Helpers:
     - Read-ReputationTier:         parses a single reputation tier (Positive/Neutral/Negative)
     - Format-ReputationSection:    renders three-tier reputation structure as markdown lines
+
+    Module-level data:
+    - $script:ReputationTierPattern: matches "- Pozytywna:", "- Neutralna:", "- Negatywna:" tier bullets
 #>
 
 # Reputation tier bullets: "- Pozytywna:", "- Neutralna:", "- Negatywna:"

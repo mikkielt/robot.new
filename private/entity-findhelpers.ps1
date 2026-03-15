@@ -8,18 +8,17 @@
     primitives for entity files. Consumed by entity-writehelpers.ps1
     (via dot-source) and transitively by all entity CRUD commands.
 
-    Contains:
+    Helpers:
     - Find-EntitySection:  locates ## Type section boundaries in file lines
     - Find-EntityBullet:   locates * EntityName bullet and its children range
-    - Find-EntityTag:      locates - @tag: line within an entity's children
+    - Find-EntityTag:      locates - @tag: line within an entity's children (returns last match for update semantics)
 
-    Also defines script-scope precompiled regex patterns and type-mapping
-    hashtables used by both find and write helpers:
-    - $script:SectionHeaderPattern
-    - $script:EntityBulletPattern
-    - $script:TagPattern
-    - $script:EntityTypeMap
-    - $script:TypeToHeader
+    Module-level data:
+    - $script:SectionHeaderPattern: matches "## SectionName" headers
+    - $script:EntityBulletPattern:  matches "* EntityName" top-level bullets
+    - $script:TagPattern:           matches indented "- @tag: value" lines
+    - $script:EntityTypeMap:        Polish section header -> canonical entity type normalization
+    - $script:TypeToHeader:         reverse map: canonical type -> preferred section header text
 
     All functions operate on raw line arrays (same approach as Set-Session).
     Parse boundaries by scanning lines, return hashtables with index ranges.

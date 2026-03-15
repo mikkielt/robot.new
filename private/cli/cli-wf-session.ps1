@@ -10,6 +10,14 @@
     - Invoke-EditSessionWorkflow: diff review pattern for session edits
     - Invoke-SessionValidation:   session name/date validation with name resolution
 
+    Design:
+    - Edit workflow delegates to Invoke-Wizard with Set-Session overrides
+      that hide internal parameters and type-hint the user-facing ones.
+    - Validation iterates all sessions in the date range and attempts
+      Resolve-Name on every PU character name and Changes entity name.
+      Unresolvable names are reported per-session with cross/warning marks.
+      This catches typos before they cause PU assignment failures.
+
     Dependencies: cli-primitives.ps1, cli-wizard.ps1, cli-display.ps1
 #>
 

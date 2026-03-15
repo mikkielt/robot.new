@@ -61,12 +61,12 @@ function New-Player {
         $EntitiesFile = $Config.EntitiesFile
     }
 
-    # Validate webhook URL format
+    # Discord webhook format is validated early to fail before any file writes
     if ($PRFWebhook -and $PRFWebhook -notlike "https://discord.com/api/webhooks/*") {
         throw "Invalid webhook URL format. Must match 'https://discord.com/api/webhooks/*'. Got: $PRFWebhook"
     }
 
-    # Check that the player does not already exist
+    # Fail-early: duplicate player names would corrupt the entity index
     $EntitiesFilePath = Invoke-EnsureEntityFile -Path $EntitiesFile
     $File = Read-EntityFile -Path $EntitiesFilePath
     $Section = Find-EntitySection -Lines $File.Lines.ToArray() -EntityType 'Gracz'
@@ -77,7 +77,6 @@ function New-Player {
         }
     }
 
-    # Build initial tags
     $InitialTags = [ordered]@{}
 
     if (-not [string]::IsNullOrWhiteSpace($MargonemID)) {
@@ -100,14 +99,14 @@ function New-Player {
         }
     }
 
-    # Create player entity
     $PlayerTarget = Resolve-EntityTarget -FilePath $EntitiesFile -EntityType 'Gracz' -EntityName $Name -InitialTags $InitialTags
 
     if ($PSCmdlet.ShouldProcess($EntitiesFile, "New-Player: create player entry '$Name'")) {
         Write-EntityFile -Path $PlayerTarget.FilePath -Lines $PlayerTarget.Lines -NL $PlayerTarget.NL
     }
 
-    # Optionally create first character
+    # Delegate to New-PlayerCharacter so character creation reuses its
+    # template rendering, PU computation, and charfile generation
     $CharacterResult = $null
     if (-not [string]::IsNullOrWhiteSpace($CharacterName)) {
         $CharParams = @{
@@ -131,7 +130,6 @@ function New-Player {
         $CharacterResult = New-PlayerCharacter @CharParams
     }
 
-    # Return summary object
     $ReturnObj = [PSCustomObject]@{
         PlayerName    = $Name
         MargonemID    = $MargonemID

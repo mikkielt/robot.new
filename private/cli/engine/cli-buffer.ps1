@@ -13,21 +13,28 @@
 
     Helpers:
     - New-ScreenBuffer:    creates empty buffer of N rows
+    - Initialize-Buffers:  allocates front/back buffers and hash arrays from ScreenHeight
     - Clear-BufferRegion:  clears lines in a specific region
-    - Set-BufferLine:      writes segments to a specific row
+    - Set-BufferLine:      writes segments to a specific row, updates hash array
     - Compare-BufferLine:  compares two lines segment-by-segment
     - Render-BufferDiff:   diffs old vs new buffer, re-renders changed rows
+    - Render-FullBuffer:   forces full re-render (used after terminal resize)
     - Render-Line:         outputs a single line's segments to the terminal
     - Render-Segment:      outputs a single segment (ANSI on PS7, Write-Host on PS5.1)
     - Snapshot-Region:     copies region lines for overlay save/restore
     - Restore-Region:      restores region from snapshot
+    - New-Segment:         creates a segment hashtable with Text/Color/Bold/Dim
+    - New-PaddedLine:      builds a segment array padded to terminal width
 
     Each line in the buffer is an array of segment hashtables. A null or
     empty array means "blank line" (filled with spaces on render).
 
     Module-level data:
-    - $script:FrontBuffer: currently displayed frame
-    - $script:BackBuffer:  frame being assembled for next render
+    - $script:FrontBuffer:     currently displayed frame
+    - $script:BackBuffer:      frame being assembled for next render
+    - $script:FrontBufferHash: per-row XOR hash of front buffer (fast diff path)
+    - $script:BackBufferHash:  per-row XOR hash of back buffer (fast diff path)
+    - $script:BlankBuffer:     pre-allocated char[300] of spaces for zero-allocation padding
 #>
 
 # ── Module-level data ────────────────────────────────────────────────────────
@@ -91,16 +98,17 @@ function Set-BufferLine {
     if ($Row -ge 0 -and $Row -lt $Buffer.Count) {
         $Buffer[$Row] = $Segments
 
-        # Update parallel hash array for fast diff comparison.
-        # Uses pure XOR (no multiply/shift) to stay within [int] range.
+        # Update parallel hash array so Render-BufferDiff can skip unchanged rows
+        # without segment-by-segment comparison. Uses pure XOR (no multiply/shift)
+        # to stay within [int] range and avoid overflow on PS 5.1.
         if ($null -ne $script:BackBufferHash -and $Row -lt $script:BackBufferHash.Count) {
             [int]$Hash = $Segments.Count
             foreach ($Seg in $Segments) {
                 if ($null -ne $Seg -and $Seg.Text) {
                     $Hash = $Hash -bxor $Seg.Text.GetHashCode()
                     if ($Seg.Color) { $Hash = $Hash -bxor $Seg.Color.GetHashCode() }
-                    if ($Seg.Bold)  { $Hash = $Hash -bxor 0x1A2B3C4D }
-                    if ($Seg.Dim)   { $Hash = $Hash -bxor 0x5E6F7A8B }
+                    if ($Seg.Bold)  { $Hash = $Hash -bxor 0x1A2B3C4D }  # arbitrary sentinel — differentiates bold from non-bold segments
+                    if ($Seg.Dim)   { $Hash = $Hash -bxor 0x5E6F7A8B }  # arbitrary sentinel — differentiates dim from non-dim segments
                 }
             }
             $script:BackBufferHash[$Row] = $Hash
@@ -165,8 +173,9 @@ function Render-Segment {
             [System.Console]::Write("$Prefix$Text$Suffix")
         }
     } else {
-        # PS 5.1: Write-Host with color only (no bold/dim)
-        # Simulate bold by promoting to Accent color when color is default/Info
+        # PS 5.1 lacks ANSI support — use Write-Host with color only.
+        # Simulate bold by promoting to Accent color, giving selected items
+        # visual distinction even without true bold weight.
         $RenderColor = $Color
         $InfoColor = Get-CLIColor -Role 'Info'
         if ($Bold -and (-not $Color -or $Color -eq 'White' -or $Color -eq $InfoColor)) {

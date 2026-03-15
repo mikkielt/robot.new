@@ -15,6 +15,14 @@
     - Invoke-EntityHistoryWorkflow:  fuzzy-pick then history timeline
     - Invoke-EntitySearchWorkflow:   fuzzy search then detail card
 
+    Design:
+    - New/Edit entity workflows use an interactive tag loop: the user
+      repeatedly picks a tag name from a common set (or types a custom one),
+      enters a value (with fuzzy search for @lokacja/@grupa), and the
+      accumulated tags are passed to New-Entity / Set-Entity via Show-Preview.
+    - The screen is fully redrawn before each fuzzy search step to prevent
+      cursor overflow when the search viewport follows an arrow menu.
+
     Dependencies: cli-primitives.ps1, cli-fuzzy.ps1, cli-wizard.ps1, cli-display-entity.ps1
 #>
 

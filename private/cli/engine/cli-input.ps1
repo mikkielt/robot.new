@@ -8,13 +8,16 @@
     filter, navigation), and manages the render cycle.
 
     Helpers:
-    - Start-InputLoop:       main loop — reads keys, routes, renders
-    - Route-KeyPress:        decides action based on key + current mode
-    - Update-Filter:         appends/removes characters from filter buffer
-    - Split-FilterQuery:     parses "type:query" prefix syntax
+    - Start-InputLoop:       main loop — reads keys, routes, renders, handles resize
+    - Route-KeyPress:        decides action based on key + current mode (filter/command/text/normal)
+    - New-InputAction:       creates an action hashtable with Type and optional Value
+    - Reset-Filter:          clears filter buffer and deactivates filter mode
+    - Get-FilterText:        returns current filter buffer as string
+    - Split-FilterQuery:     parses "type:query" prefix syntax for typed filtering
+    - Reset-CommandMode:     clears command buffer and exits command palette
     - Invoke-SlashCommand:   executes /h, /s, /r, /b, /q palette commands
-    - Test-PasteSequence:    detects rapid keystroke sequences (< 20ms)
-    - Invoke-FuzzyDebounce:  waits 300ms then triggers stage 3 fuzzy search
+    - Test-PasteSequence:    detects rapid keystroke sequences (< 20ms gap)
+    - Invoke-FuzzyDebounce:  waits 300ms of keystroke silence then triggers stage 3 fuzzy search
 
     Module-level data:
     - $script:FilterBuffer:       current filter text (StringBuilder)
@@ -25,6 +28,7 @@
     - $script:FilterHintPending:  $true for one render cycle after first filter activation
     - $script:LastKeyTimestamp:   for paste detection
     - $script:FuzzyDebounceMs:    300ms delay before stage-3 fuzzy triggers
+    - $script:FilterPrefixRegex:  precompiled regex for Polish-aware "prefix:query" parsing
 
     Key routing table:
         Key             Filter empty       Filter active       Command mode (/)   TextInputMode
@@ -48,7 +52,8 @@ $script:CommandBuffer     = [System.Text.StringBuilder]::new()
 $script:FilterHintShown   = $false
 $script:FilterHintPending = $false
 $script:LastKeyTimestamp   = [datetime]::MinValue
-$script:FuzzyDebounceMs   = 300
+$script:FuzzyDebounceMs   = 300   # ms of keystroke silence before triggering expensive stage-3 fuzzy/BK-tree search
+# Matches "polishword:rest" — Unicode ranges cover Polish diacritics (ąćęłńóśźżĄĆĘŁŃÓŚŹŻ)
 $script:FilterPrefixRegex = [regex]::new('^([a-zA-Z\u0105\u0107\u0119\u0142\u0144\u00F3\u015B\u017A\u017C\u0104\u0106\u0118\u0141\u0143\u00D3\u015A\u0179\u017B]+):(.*)$', [System.Text.RegularExpressions.RegexOptions]::Compiled)
 
 # ── Action Types ─────────────────────────────────────────────────────────────
@@ -70,7 +75,7 @@ function New-InputAction {
 function Test-PasteSequence {
     param([datetime]$Now)
     $Elapsed = ($Now - $script:LastKeyTimestamp).TotalMilliseconds
-    return ($Elapsed -lt 20)
+    return ($Elapsed -lt 20)  # 20ms threshold — human keystrokes are 50-200ms apart; pasted text arrives < 5ms
 }
 
 # ── Filter Management ────────────────────────────────────────────────────────
@@ -155,7 +160,8 @@ function Route-KeyPress {
                 if ([char]::IsLetterOrDigit($KeyChar) -or $KeyChar -eq ' ') {
                     [void]$script:CommandBuffer.Append($KeyChar)
 
-                    # Single-letter commands execute immediately (not h — has sub-commands)
+                    # Single-letter commands (s/r/b/q) execute immediately without Enter;
+                    # 'h' is excluded because it has sub-commands (/h search, /hh extended)
                     $CmdText = $script:CommandBuffer.ToString().Trim()
                     if ($CmdText.Length -eq 1 -and $CmdText -match '^[sSrRbBqQ]$') {
                         Reset-CommandMode
@@ -486,7 +492,8 @@ function Start-InputLoop {
                 }
                 catch {
                     Reset-CommandMode
-                    # Silent log — stderr output corrupts the TUI screen buffer
+                    # Log to operation context instead of stderr — stderr output
+                    # corrupts the TUI screen buffer by interleaving with ANSI positioning
                     if (Get-Command 'Add-OperationWarning' -ErrorAction SilentlyContinue) {
                         Add-OperationWarning -Message "Blad polecenia: $_" -Severity 'Warn'
                     }

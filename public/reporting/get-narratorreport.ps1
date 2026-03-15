@@ -3,16 +3,20 @@
     Reports all narrator names found across recorded sessions.
 
     .DESCRIPTION
-    This file contains Get-NarratorReport.
+    Scans all sessions for narrator data and produces a structured report
+    for guiding manual creation of narrator normalization entries and
+    player aliases.
 
-    Dot-sources string-helpers.ps1 for Get-LevenshteinDistance and
-    migration/narrator-normalization.ps1 for Import-NarratorMappings.
+    Processing pipeline:
+    1. Extract raw narrator text from session headers (third comma-separated segment)
+    2. Normalize and group by case-insensitive key, pick canonical spelling
+    3. Levenshtein near-duplicate detection (O(n^2) with length-difference pruning)
+    4. Cross-reference against existing narrator mappings from
+       migration/narrator-normalization.ps1 (Import-NarratorMappings)
+    5. Conflict detection: CaseVariant, NearDuplicate
+    6. Optional UnresolvedOnly filter (Confidence = None)
 
-    Scans all sessions for narrator data, normalizes and groups by
-    raw text, detects fuzzy near-duplicates, checks against existing
-    normalization mappings, and flags unresolved narrators.
-    Designed to guide manual creation of narrator normalization entries
-    and player aliases.
+    Dot-sources string-helpers.ps1 for Get-LevenshteinDistance.
 #>
 
 # Dot-source shared helpers

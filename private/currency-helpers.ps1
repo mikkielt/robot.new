@@ -6,16 +6,21 @@
     Non-exported helper functions dot-sourced by currency commands (Get-CurrencyReport,
     Test-CurrencyReconciliation) and Get-EntityState (@Transfer expansion).
 
-    Contains:
-    - $CurrencyDenominations:          canonical denomination definitions with exchange rates
+    Helpers:
     - ConvertTo-CurrencyBaseUnit:      convert any denomination amount to Kogi (base unit)
     - ConvertFrom-CurrencyBaseUnit:    convert Kogi amount to highest-denomination breakdown
     - Resolve-CurrencyDenomination:    resolve colloquial/stem denomination name to canonical
+    - Test-CurrencyOwnerMatch:         test whether a currency item's owner matches a filter
+    - Test-CurrencyDenominationMatch:  test whether a denomination name matches a filter
     - Test-IsCurrencyEntity:           check if an entity is a currency entity
-    - Build-CurrencyEntityLookup:      pre-build denomination+owner -> entity hashtable
+    - Build-CurrencyEntityLookup:      pre-build denomination+owner -> entity hashtable for O(1) lookups
     - Find-CurrencyEntity:             find a currency entity by denomination and owner
     - Resolve-CurrencyOwnerType:       classify owner as Physical/Virtual/Unknown by entity type
     - Get-CurrencyEntitiesFiltered:    identify, filter by status, and enrich currency entities
+
+    Module-level data:
+    - $script:CurrencyDenominations:   canonical denomination definitions with exchange rates (Korony/Talary/Kogi)
+    - $script:DenomLookup:             precomputed hashtable mapping all name variants to denomination objects
 #>
 
 # Canonical denomination definitions
@@ -45,10 +50,6 @@ $script:CurrencyDenominations = @(
 )
 
 function ConvertTo-CurrencyBaseUnit {
-    <#
-        .SYNOPSIS
-        Converts a denomination amount to Kogi (base unit) for comparison.
-    #>
     param(
         [Parameter(Mandatory)]
         [int]$Amount,
@@ -66,11 +67,6 @@ function ConvertTo-CurrencyBaseUnit {
 }
 
 function ConvertFrom-CurrencyBaseUnit {
-    <#
-        .SYNOPSIS
-        Converts a Kogi (base unit) amount to a denomination breakdown.
-        Returns hashtable with Korony, Talary, Kogi keys.
-    #>
     param(
         [Parameter(Mandatory)]
         [int]$Amount
@@ -103,11 +99,6 @@ foreach ($D in $script:CurrencyDenominations) {
 }
 
 function Resolve-CurrencyDenomination {
-    <#
-        .SYNOPSIS
-        Resolves a colloquial or partial denomination name to its canonical definition.
-        Uses precomputed lookup for O(1) exact match, with stem prefix fallback.
-    #>
     param(
         [Parameter(Mandatory)]
         [string]$Name
@@ -128,10 +119,6 @@ function Resolve-CurrencyDenomination {
 }
 
 function Test-CurrencyOwnerMatch {
-    <#
-        .SYNOPSIS
-        Tests whether a currency item's owner matches a filter. Returns $true if no filter or match.
-    #>
     param(
         [string]$EntityOwner,
         [string]$FilterOwner
@@ -143,10 +130,6 @@ function Test-CurrencyOwnerMatch {
 }
 
 function Test-CurrencyDenominationMatch {
-    <#
-        .SYNOPSIS
-        Tests whether a denomination name matches a filter. Returns $true if no filter or match.
-    #>
     param(
         [string]$DenominationName,
         [object]$DenomFilter
@@ -157,11 +140,6 @@ function Test-CurrencyDenominationMatch {
 }
 
 function Test-IsCurrencyEntity {
-    <#
-        .SYNOPSIS
-        Checks if an entity is a currency entity by examining its GenericNames
-        for canonical denomination names.
-    #>
     param(
         [Parameter(Mandatory)]
         [object]$Entity
@@ -257,11 +235,6 @@ function Find-CurrencyEntity {
 }
 
 function Resolve-CurrencyOwnerType {
-    <#
-        .SYNOPSIS
-        Classifies a currency owner as Physical, Virtual, or Unknown based on the
-        owner entity's type. Postać = Physical (actual Margonem items), NPC/Grupa/Gracz = Virtual.
-    #>
     param(
         [Parameter(Mandatory)]
         [string]$OwnerName,
@@ -287,12 +260,6 @@ function Resolve-CurrencyOwnerType {
 }
 
 function Get-CurrencyEntitiesFiltered {
-    <#
-        .SYNOPSIS
-        Identifies currency entities from a collection and returns enriched objects
-        with resolved denomination, parsed quantity, and extracted properties.
-        When EntityLookup is provided, output includes OwnerCategory classification.
-    #>
     param(
         [Parameter(Mandatory)]
         [AllowEmptyCollection()]

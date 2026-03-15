@@ -6,14 +6,17 @@
     Centralizes the session fetching and directive iteration boilerplate shared by
     Get-ChangeLog, Get-NotificationLog, and Get-TransactionLedger. Reduces ~50 lines
     of duplicated session-fetch + date-filter + sub-collection-extract logic per caller.
+
+    Helpers:
+    - Get-SessionsForReport:        fetches sessions on demand, passing through
+                                     MinDate/MaxDate to Get-Session; returns pre-supplied
+                                     sessions unchanged when provided
+    - Get-SessionDirectiveEntries:   iterates sessions with date filtering and extracts
+                                     named directive items into a List of @{ Session; Directive }
+                                     hashtables for callers to project into typed output
 #>
 
 function Get-SessionsForReport {
-    <#
-        .SYNOPSIS
-        Fetch sessions on demand, passing through MinDate/MaxDate to Get-Session.
-    #>
-
     param(
         [object[]]$Sessions,
         # Untyped to avoid null-to-value-type coercion when callers pass unbound [datetime]
@@ -37,15 +40,6 @@ function Get-SessionsForReport {
 }
 
 function Get-SessionDirectiveEntries {
-    <#
-        .SYNOPSIS
-        Iterate sessions with date filtering and extract named directive items.
-
-        .DESCRIPTION
-        Returns a List of @{ Session = @{ Date; Title; Narrator }; Directive = <item> }
-        hashtables. Callers project these into their own PSCustomObject shapes.
-    #>
-
     param(
         [Parameter(Mandatory)]
         [object[]]$Sessions,

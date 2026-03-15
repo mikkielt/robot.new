@@ -108,7 +108,7 @@ function Split-SessionSection {
     $CurrentBlockType  = $null     # 'meta' | 'preserved'
     $CurrentTag        = $null
     $CurrentLines      = $null
-    $CodeFence         = [string]::new([char]96, 3)  # three backticks
+    $CodeFence         = [string]::new([char]96, 3)  # char 96 = backtick; constructs "```"
 
     foreach ($Line in $Lines) {
         # Code fence toggle

@@ -3,16 +3,17 @@
     Queries the persistent session participation graph index.
 
     .DESCRIPTION
-    This file contains Get-SessionGraph.
-
     Read-only query API over the index built by Set-SessionGraph. Loads
     _index.json and applies filters (entity name, type, date range, tier)
     to produce four output modes:
 
-    - Sessions:       for an entity → all sessions with participation details
-    - CoParticipants: for an entity → all co-participating entities with counts
-    - EntityTimeline: for a session header → all participants
+    - Sessions:       for an entity, all sessions with participation details
+    - CoParticipants: for an entity, all co-participating entities ranked by shared count
+    - EntityTimeline: for a session header, all participants with tier/source metadata
     - Summary:        global stats with tier coverage breakdown by format generation
+
+    Sessions and CoParticipants modes require -EntityName. EntityTimeline
+    requires -SessionHeader. Summary operates on the full filtered set.
 
     Returns empty array @() with a warning if the index does not exist.
 #>

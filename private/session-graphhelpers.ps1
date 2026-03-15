@@ -54,7 +54,7 @@ function Get-FilePathInvolvement {
 
     # Rule 1: Postaci/Gracze/*.md → Player character
     if ($P.StartsWith('Postaci/Gracze/', [System.StringComparison]::OrdinalIgnoreCase) -and
-        $P.IndexOf('/', 15) -eq -1) {
+        $P.IndexOf('/', 15) -eq -1) {  # 15 = length of 'Postaci/Gracze/' — ensures no subdirectory
         $Name = [System.IO.Path]::GetFileNameWithoutExtension($P)
         return [PSCustomObject]@{
             Category = 'Player'
@@ -94,7 +94,7 @@ function Get-FilePathInvolvement {
     # Rule 4: Wątki/*.md → Thread (graph-only classification)
     if ($P.StartsWith('Wątki/', [System.StringComparison]::OrdinalIgnoreCase) -and
         $P.EndsWith('.md', [System.StringComparison]::OrdinalIgnoreCase) -and
-        $P.IndexOf('/', 6) -eq -1) {
+        $P.IndexOf('/', 6) -eq -1) {  # 6 = length of 'Wątki/' — ensures no subdirectory
         $Name = [System.IO.Path]::GetFileNameWithoutExtension($P)
         return [PSCustomObject]@{
             Category = 'Thread'

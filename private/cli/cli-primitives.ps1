@@ -386,7 +386,7 @@ function Show-Banner {
         Write-Host $Line -ForegroundColor $AccentColor
     }
 
-    # Version aligned to the right of the banner
+    # Right-align version string to match the banner ASCII art width
     $VersionPadded = $VersionStr.PadLeft(38)
     Write-Host $VersionPadded -ForegroundColor (Get-CLIColor -Role 'Disabled')
     Write-Host ''

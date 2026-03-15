@@ -11,11 +11,14 @@
     URLs that permanently fail, preventing redundant retries on subsequent runs.
 
     Helpers:
-    - Normalize-LogUrl: converts Pastebin URLs to /raw/ variant, normalizes protocol
-    - ConvertTo-LogFileName: URL to filesystem-safe filename (strip protocol, remove non-alphanumeric)
-    - Get-LogHttpClient: lazily-initialized shared HttpClient with 30s timeout
-    - Invoke-LogFetch: single URL fetch with disk cache read-through
-    - Invoke-LogBatchFetch: sequential batch fetch with deduplication and CDN throttle
+    - Normalize-LogUrl:      converts Pastebin URLs to /raw/ variant, normalizes http to https
+    - ConvertTo-LogFileName: URL to filesystem-safe filename (strip protocol, remove non-alphanumeric;
+                             e.g. "https://pastebin.com/raw/wqhtQ5Wq" -> "pastebincomrawwqhtQ5Wq")
+    - Get-LogHttpClient:     lazily-initialized shared HttpClient with 30s timeout
+    - Invoke-LogFetch:       single URL fetch with disk cache read-through; returns raw text
+                             or $null if a .failed marker exists (unless -RetryFailed is set)
+    - Invoke-LogBatchFetch:  sequential batch fetch with deduplication and CDN throttle;
+                             returns hashtable mapping normalized URLs to content ($null on failure)
 
     Module-level data:
     - $script:PastebinUrlPattern: compiled regex for non-raw pastebin URLs
@@ -54,10 +57,6 @@ function Get-LogHttpClient {
 # ── Functions ─────────────────────────────────────────────────────────────────
 
 function Normalize-LogUrl {
-    <#
-        .SYNOPSIS
-        Normalizes a log URL, converting Pastebin URLs to their /raw/ variant.
-    #>
     [CmdletBinding()] param(
         [Parameter(Mandatory, HelpMessage = "Raw or normalized URL to normalize")]
         [string]$Url
@@ -87,15 +86,6 @@ function Normalize-LogUrl {
 
 
 function ConvertTo-LogFileName {
-    <#
-        .SYNOPSIS
-        Converts a normalized URL to a filesystem-safe filename.
-
-        .DESCRIPTION
-        Strips the protocol prefix and replaces all non-alphanumeric characters with
-        empty string, producing a compact human-readable filename.
-        Example: https://pastebin.com/raw/wqhtQ5Wq → pastebincomrawwqhtQ5Wq
-    #>
     [CmdletBinding()] param(
         [Parameter(Mandatory, HelpMessage = "Normalized URL to convert to filename")]
         [string]$NormalizedUrl
@@ -117,16 +107,6 @@ function ConvertTo-LogFileName {
 
 
 function Invoke-LogFetch {
-    <#
-        .SYNOPSIS
-        Fetches a single log URL, using local file cache in the log directory.
-
-        .DESCRIPTION
-        Returns the raw text content. If the file already exists in LogDirectory,
-        reads from disk. If a .failed marker exists and -RetryFailed is not set,
-        returns $null. Otherwise fetches via HTTP and writes to disk on success.
-        Caller is responsible for writing .failed markers on permanent failure.
-    #>
     [CmdletBinding()] param(
         [Parameter(Mandatory, HelpMessage = "URL to fetch")]
         [string]$Url,
@@ -190,18 +170,6 @@ function Invoke-LogFetch {
 
 
 function Invoke-LogBatchFetch {
-    <#
-        .SYNOPSIS
-        Fetches multiple log URLs sequentially with CDN-safe throttling.
-
-        .DESCRIPTION
-        Accepts an array of URLs, deduplicates and normalizes them, then fetches
-        each sequentially. Already-cached files are read instantly (no delay).
-        HTTP requests are spaced by DelayMs to avoid CDN rate limiting.
-
-        Returns a hashtable mapping normalized URLs to their text content.
-        URLs that fail are mapped to $null.
-    #>
     [CmdletBinding()] param(
         [Parameter(Mandatory, HelpMessage = "Array of URLs to fetch")]
         [string[]]$Urls,

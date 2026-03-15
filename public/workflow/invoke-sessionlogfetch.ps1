@@ -76,7 +76,7 @@ function Invoke-SessionLogFetch {
     }
 
     end {
-        # If no sessions provided via pipeline, fetch them
+        # Allow standalone invocation without piping Get-Session output
         if ($CollectedSessions.Count -eq 0) {
             $GetParams = @{}
             if ($PSBoundParameters.ContainsKey('MinDate')) { $GetParams['MinDate'] = $MinDate }
@@ -85,13 +85,13 @@ function Invoke-SessionLogFetch {
                 [PSObject[]]@(Get-Session @GetParams))
         }
 
-        # Resolve log directory
+        # Default to ResDir/logs so callers don't need to know the config structure
         if (-not $LogDirectory) {
             $Config = Get-AdminConfig
             $LogDirectory = [System.IO.Path]::Combine($Config.ResDir, 'logs')
         }
 
-        # Collect and deduplicate all log URLs
+        # Deduplicate: sessions often share logs (e.g. cross-posted in multiple files)
         $UrlSet = [System.Collections.Generic.HashSet[string]]::new(
             [System.StringComparer]::OrdinalIgnoreCase)
         $UniqueUrls = [System.Collections.Generic.List[string]]::new()
@@ -119,7 +119,7 @@ function Invoke-SessionLogFetch {
             }
         }
 
-        # Partition into cached, failed/skipped, and pending
+        # Triage URLs to avoid re-fetching cached content or retrying permanent failures
         $Cached = 0
         $Skipped = 0
         $Pending = [System.Collections.Generic.List[string]]::new()
@@ -141,7 +141,7 @@ function Invoke-SessionLogFetch {
 
         [System.Console]::Out.WriteLine("Znaleziono $Total URL logów (pobrane: $Cached, wcześniej nieudane: $Skipped, do pobrania: $($Pending.Count))")
 
-        # WhatIf: report what would be fetched
+        # ShouldProcess gate: dry-run returns counts without HTTP requests
         if (-not $PSCmdlet.ShouldProcess(
             "$($Pending.Count) log URLs",
             "Fetch from web and save to '$LogDirectory'")) {
@@ -155,12 +155,12 @@ function Invoke-SessionLogFetch {
             }
         }
 
-        # Ensure directory exists
+        # Create log directory on first use (res/logs/ is not in the repo template)
         if (-not [System.IO.Directory]::Exists($LogDirectory)) {
             [void][System.IO.Directory]::CreateDirectory($LogDirectory)
         }
 
-        # Fetch pending URLs with throttling and retry
+        # Sequential fetch with throttle delay to respect CDN rate limits
         $Client = Get-LogHttpClient
         $FetchedCount = 0
         $FailedCount = 0
@@ -247,7 +247,7 @@ function Invoke-SessionLogFetch {
                 [System.IO.File]::WriteAllText($FailedPath, $FailedContent)
             }
 
-            # Throttle between HTTP requests
+            # Respect CDN rate limits between requests
             if ($DelayMs -gt 0 -and $Current -lt $Pending.Count) {
                 [System.Threading.Thread]::Sleep($DelayMs)
             }

@@ -8,12 +8,19 @@
     region-aware — components only write within their allocated rows.
 
     Helpers:
-    - Initialize-Screen:  check min dimensions, calculate regions, clear, render chrome
-    - Get-Region:         lookup region object by name
-    - Resize-Screen:      recalculate all region boundaries from current terminal size
-    - Test-MinimumSize:   returns $true if terminal meets minimum 60x15
-    - Get-TierStyle:      returns Color/Bold/Dim for a visual hierarchy tier (1-5)
-    - New-TierSegment:    creates a segment styled for a given tier
+    - Initialize-Screen:    check min dimensions, calculate regions, clear, hide cursor
+    - Build-Regions:        calculates region boundaries from current terminal dimensions
+    - Get-Region:           lookup region object by name
+    - Get-RegionHeight:     returns EndRow - StartRow for a named region
+    - Resize-Screen:        recalculate all region boundaries on terminal size change
+    - Test-MinimumSize:     returns $true if terminal meets minimum 60x15
+    - Test-TerminalResized: returns $true if terminal size differs from cached dimensions
+    - Restore-Cursor:       re-shows cursor on engine teardown
+    - Get-ANSIBold:         returns ANSI bold escape (PS 7+) or empty string
+    - Get-ANSIDim:          returns ANSI dim escape (PS 7+) or empty string
+    - Get-ANSIReset:        returns ANSI reset escape (PS 7+) or empty string
+    - Get-TierStyle:        returns Color/Bold/Dim for a visual hierarchy tier (1-5)
+    - New-TierSegment:      creates a segment styled for a given tier
 
     Module-level data:
     - $script:SupportsANSI:  $true on PS 7+ (enables bold/dim via escape sequences)
@@ -142,7 +149,8 @@ function Initialize-Screen {
 
     Build-Regions
 
-    # Hide cursor for cleaner rendering
+    # Hide cursor to prevent flicker during ANSI-positioned writes;
+    # restored by Restore-Cursor on engine teardown
     try { [System.Console]::CursorVisible = $false } catch {}
 
     [System.Console]::Clear()
@@ -170,7 +178,9 @@ function Resize-Screen {
         return $false
     }
 
-    # Full clear on resize — one-time cost, then re-render from buffer
+    # Full clear on resize — row positions shift when height changes,
+    # so diff-based rendering can't recover; one-time cost followed by
+    # full re-render via Render-FullBuffer
     [System.Console]::Clear()
 
     return $true
@@ -193,12 +203,13 @@ function Restore-Cursor {
 
 # ── Tier Style Helpers ──────────────────────────────────────────────────────
 
-# Returns Color/Bold/Dim hashtable for the given visual hierarchy tier
-# Tier 1 (Active Focus):  Accent color, Bold, ▸ pointer
-# Tier 2 (Actionable):    Info color (White/DarkBlue)
+# 5-tier visual hierarchy ensures consistent emphasis across all components.
+# Higher tiers draw attention; lower tiers recede into the background.
+# Tier 1 (Active Focus):  Accent color, Bold — selected item with ▸ pointer
+# Tier 2 (Actionable):    Info color (White/DarkBlue) — clickable items
 # Tier 3 (Contextual):    Disabled color (DarkGray/Gray) — hints, labels
-# Tier 4 (Structural):    Disabled color + Dim — separators ─, borders
-# Tier 5 (Chrome):        Disabled color — persistent bars
+# Tier 4 (Structural):    Disabled color + Dim — separators ─, box borders
+# Tier 5 (Chrome):        Disabled color — persistent status/filter bars
 function Get-TierStyle {
     param([Parameter(Mandatory)] [int]$Tier)
     switch ($Tier) {

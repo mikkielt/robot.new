@@ -8,7 +8,7 @@
     (phase0-setup.ps1) to generate the initial entities.md file from
     Gracze.md player data.
 
-    Contains:
+    Helpers:
     - ConvertTo-EntitiesFromPlayers: reads Get-Player output and generates
       entity entries for all players and their characters in entities.md format.
 

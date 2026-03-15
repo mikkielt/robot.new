@@ -66,7 +66,7 @@ function Set-SessionHash {
     $HashDir = [System.IO.Path]::Combine($Config.ResDir, 'session-hashes')
     $MetaPath = [System.IO.Path]::Combine($HashDir, '_meta.json')
 
-    # Determine which files to process
+    # Three modes: explicit file list, full repo scan, or incremental via git changelog
     $FilesToProcess = [System.Collections.Generic.List[string]]::new()
 
     if ($File) {
@@ -148,7 +148,7 @@ function Set-SessionHash {
         }
     }
 
-    # Batch-parse all files
+    # Batch parse leverages Get-Markdown's RunspacePool parallelism
     $MarkdownResults = @(Get-Markdown -File @($FilesToProcess))
 
     $TotalHashes = 0
@@ -162,11 +162,11 @@ function Set-SessionHash {
         $RelPath = Get-RelativeHashPath -FilePath $MdResult.FilePath -RepoRoot $RepoRoot
         $JsonPath = [System.IO.Path]::Combine($HashDir, "$RelPath.json")
 
-        # Compute current hashes
+        # Compare against stored hashes to count actual changes for reporting
         $CurrentHashes = Get-FileHeaderHashes -MarkdownResult $MdResult
         $TotalHashes += $CurrentHashes.Count
 
-        # Load existing hashes to count updates vs new
+        # Diff against stored hashes for the updated/new counters in the report
         $StoredHashes = Read-SessionHashFile -JsonPath $JsonPath
         foreach ($Key in $CurrentHashes.Keys) {
             if ($StoredHashes.ContainsKey($Key)) {
@@ -178,15 +178,15 @@ function Set-SessionHash {
             }
         }
 
-        # Write updated hashes
+        # Persist even if no diff — ensures sidecar mirrors the current file state
         if ($PSCmdlet.ShouldProcess($RelPath, 'Update session hashes')) {
             Write-SessionHashFile -JsonPath $JsonPath -Hashes $CurrentHashes
             $FilesWritten++
         }
     }
 
-    # Update metadata
-    # Use non-ISO format to prevent ConvertFrom-Json from auto-converting to DateTime
+    # Non-ISO date format ("yyyy-MM-dd HH:mm:ss") prevents ConvertFrom-Json
+    # from auto-converting to DateTime, which would break string comparisons
     $Now = [datetime]::Now.ToString('yyyy-MM-dd HH:mm:ss')
     $Meta = Read-SessionHashMeta -MetaPath $MetaPath
     if ($Full) {

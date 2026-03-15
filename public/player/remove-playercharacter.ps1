@@ -50,7 +50,8 @@ function Remove-PlayerCharacter {
         $ValidFrom = (Get-Date).ToString('yyyy-MM')
     }
 
-    # Resolve entity target (creates entry if missing, with @należy_do)
+    # If the character has no entity entry yet, create one so the @status
+    # tag has a place to live (the bullet must exist before tags can be set)
     $InitialTags = [ordered]@{
         'należy_do' = $PlayerName
     }

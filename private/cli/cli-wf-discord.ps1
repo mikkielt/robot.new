@@ -10,6 +10,13 @@
     - Invoke-DiscordPUNotificationWorkflow: re-send PU notification for a player
     - Invoke-DiscordAnnouncementWorkflow:   structured announcement via webhook
 
+    Design:
+    - PU notification is a stub — requires integration with the PU assignment
+      log to reconstruct per-player notification content.
+    - Announcement workflow collects webhook URL, title, and body in separate
+      steps, formats as Markdown bold title + body, then sends via
+      Send-DiscordMessage after yesno confirmation.
+
     Dependencies: cli-primitives.ps1, cli-fuzzy.ps1, cli-wizard.ps1
 #>
 

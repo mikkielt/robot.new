@@ -11,9 +11,17 @@
     Split out from cli-wizard.ps1 for maintainability. Dot-sourced by
     cli-wizard.ps1 at load time.
 
-    After successful execution, the result is displayed as an engine
-    DetailCardComponent and NavState is refreshed so that subsequent CLI
-    screens reflect the new data.
+    Helpers:
+    - Show-Preview: parameter review card, yesno confirmation, and execution
+
+    Design:
+    - After successful execution, the result is displayed as an engine
+      DetailCardComponent and NavState is refreshed so that subsequent CLI
+      screens reflect the new data.
+    - OperationResult objects (PSTypeName 'Robot.OperationResult') are
+      destructured into a human-readable summary with action label, change
+      diff, file path, warnings, and undo hint.
+    - On error, an error detail card is shown instead of crashing the CLI.
 #>
 
 # ── Show-Preview ─────────────────────────────────────────────────────────────

@@ -12,6 +12,15 @@
     - Invoke-PrePUDiagnostics:      composite PU diagnostics with name suggestions
     - Invoke-PUDiagnosticsDisplay:  formatted PU diagnostic report
 
+    Design:
+    - Assignment workflow is a 6-step pipeline: (1) year, (2) month,
+      (3) session integrity pre-check with abort/continue, (4) dry-run
+      via -WhatIf, (5) flag selection for sub-operations (Discord, log,
+      currency reconciliation), (6) final confirmation + execute.
+    - Pre-PU diagnostics augments Test-PlayerCharacterPUAssignment results
+      with Resolve-Name suggestions for unresolved character names, helping
+      the coordinator fix typos before the actual assignment run.
+
     Dependencies: cli-primitives.ps1, cli-wizard.ps1, cli-display.ps1
 #>
 
@@ -155,6 +164,8 @@ function Invoke-PUAssignmentWorkflow {
     [void][System.Console]::ReadKey($true)
 
     # ── Step 5: Flags ──
+    # Each flag controls a sub-operation of the PU assignment pipeline.
+    # All default to true; the user can toggle each individually.
     $Flags = [ordered]@{
         'UpdatePlayerCharacters' = $true
         'SendToDiscord'          = $true

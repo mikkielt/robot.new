@@ -13,6 +13,8 @@
     - Get-NestedBulletText:       collects text from child bullets that pass temporal filtering
     - Get-LastActiveValue:        returns the last active entry from a history list
     - Get-AllActiveValues:        returns all active entries from a history list as string[]
+    - ConvertTo-SessionDate:      parses yyyy-MM-dd string into [datetime] or $null
+    - ConvertFrom-CoordinateString: parses "X, Y" coordinate pair into @{ X; Y } or $null
 
     Module-level data:
     - $ValidityPattern:      precompiled regex for parsing validity range syntax
@@ -114,7 +116,7 @@ function ConvertFrom-ValidityString {
 
     $DateMatch = $script:DateRangePattern.Match($ParenContent)
     if ($DateMatch.Success) {
-        # Date range only (existing behavior)
+        # Date range without season constraint
         $ValidFrom = Resolve-PartialDate -DateStr $DateMatch.Groups[1].Value.Trim() -IsEnd $false
         $ValidTo   = Resolve-PartialDate -DateStr $DateMatch.Groups[2].Value.Trim() -IsEnd $true
         return @{
@@ -125,7 +127,7 @@ function ConvertFrom-ValidityString {
         }
     }
 
-    # Not temporal - restore parenthetical as literal text (backward compat)
+    # Not temporal — parenthetical is part of the entity name (e.g. "Rada (Ithan)")
     return @{
         Text      = "$Name ($ParenContent)"
         ValidFrom = $null
@@ -299,10 +301,6 @@ function Get-AllActiveValues {
 }
 
 function ConvertTo-SessionDate {
-    <#
-        .SYNOPSIS
-        Parses a yyyy-MM-dd date string. Returns [datetime] on success, $null on failure.
-    #>
     param([Parameter(Mandatory)] [string]$DateString)
 
     [datetime]$Parsed = [datetime]::MinValue
@@ -316,10 +314,6 @@ function ConvertTo-SessionDate {
 }
 
 function ConvertFrom-CoordinateString {
-    <#
-        .SYNOPSIS
-        Parses "X, Y" coordinate pair. Returns @{ X = [int]; Y = [int] } or $null.
-    #>
     param([Parameter(Mandatory)] [string]$Text)
 
     $Parts = $Text.Split(',')

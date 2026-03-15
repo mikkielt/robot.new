@@ -29,7 +29,8 @@ function New-DetailCardComponent {
         [string]$Title
     )
 
-    # Extract displayable properties (skip PS internals, Path, CN)
+    # Extract displayable properties — skip PS-prefixed internals (e.g., PSComputerName)
+    # and infrastructure properties (Path, CN) that aren't meaningful in the card view
     $Props = [System.Collections.Generic.List[object]]::new()
     foreach ($Prop in $Data.PSObject.Properties) {
         if ($Prop.Name.StartsWith('PS') -and $Prop.Name -ne 'PSTypeName') { continue }
@@ -159,7 +160,8 @@ function Format-DetailValue {
     if ($Value -is [bool]) { return $(if ($Value) { 'Tak' } else { 'Nie' }) }
     if ($Value -is [datetime]) { return $Value.ToString('yyyy-MM-dd') }
 
-    # HashSet[string] — inline for ≤3, bullet list for more
+    # HashSet[string] — inline comma-separated for ≤3 items to save vertical space;
+    # bullet list for larger sets to maintain readability
     if ($Value -is [System.Collections.Generic.HashSet[string]]) {
         $AsList = @($Value)
         if ($AsList.Count -eq 0) { return '(brak)' }
@@ -200,7 +202,7 @@ function Format-DetailValue {
             $SkipNames = [System.Collections.Generic.HashSet[string]]::new(
                 [string[]]@('ValidFrom','ValidTo','Path','CN'),
                 [System.StringComparer]::Ordinal)
-            $ShowCount = [Math]::Min($Value.Count, 8)
+            $ShowCount = [Math]::Min($Value.Count, 8)  # cap at 8 to keep card readable; overflow shows "... i N wiecej"
             for ($I = 0; $I -lt $ShowCount; $I++) {
                 $V = $Value[$I]
                 $VF = if ($V.ValidFrom) { try { ([datetime]$V.ValidFrom).ToString('yyyy-MM-dd') } catch { [string]$V.ValidFrom } } else { '' }
@@ -238,7 +240,7 @@ function Format-DetailValue {
                 $Obj = $Value[$I]
                 $Parts = [System.Collections.Generic.List[string]]::new()
                 foreach ($SP in $Obj.PSObject.Properties) {
-                    if ($Parts.Count -ge 3) { break }
+                    if ($Parts.Count -ge 3) { break }  # limit to 3 properties per line for readability
                     if ($null -eq $SP.Value) { continue }
                     if ($SP.Name -eq 'Path' -or $SP.Name -eq 'CN') { continue }
                     $SVal = if ($SP.Value -is [bool]) { if ($SP.Value) { 'Tak' } else { 'Nie' } }

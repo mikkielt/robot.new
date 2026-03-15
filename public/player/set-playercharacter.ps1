@@ -115,9 +115,8 @@ function Set-PlayerCharacter {
         $EntitiesFile = $Config.EntitiesFile
     }
 
-    # Target 1: entities.md
-
-    # Derive missing PU values using the same rule as Complete-PUData
+    # Derive the complementary PU value so callers can provide either
+    # SUMA or ZDOBYTE alone (mirrors Complete-PUData in get-player.ps1)
     $DerivedPUStart = $PUStart
     $DerivedPUSum = $PUSum
     $DerivedPUTaken = $PUTaken
@@ -129,19 +128,17 @@ function Set-PlayerCharacter {
         $DerivedPUSum = [math]::Round($DerivedPUStart + $DerivedPUTaken, 2)
     }
 
-    # Build initial tags for new entity creation
+    # @należy_do links the character to its player in the entity graph
     $InitialTags = [ordered]@{
         'należy_do' = $PlayerName
     }
 
-    # Resolve entity target (creates file/section/bullet as needed)
     $Target = Resolve-EntityTarget -FilePath $EntitiesFile -EntityType 'Postać' -EntityName $CharacterName -InitialTags $InitialTags
     $Lines = $Target.Lines
 
-    # Set requested tags
     $ChildEnd = $Target.ChildrenEnd
 
-    # Ensure @należy_do exists even for pre-existing entries
+    # Pre-existing entries from before the ownership model may lack @należy_do
     if ($Target.Created -eq $false) {
         $OwnerTag = Find-EntityTag -Lines $Lines.ToArray() -ChildrenStart $Target.ChildrenStart -ChildrenEnd $ChildEnd -TagName 'należy_do'
         if (-not $OwnerTag) {
@@ -172,7 +169,7 @@ function Set-PlayerCharacter {
     if ($Aliases) {
         foreach ($Alias in $Aliases) {
             if (-not [string]::IsNullOrWhiteSpace($Alias)) {
-                # Check if alias already exists
+                # Aliases use append-with-dedup semantics
                 $ExistingAlias = $null
                 for ($i = $Target.ChildrenStart; $i -lt $ChildEnd; $i++) {
                     $AliasMatch = $script:TagPattern.Match($Lines[$i])
@@ -200,16 +197,17 @@ function Set-PlayerCharacter {
         $ChildEnd = Set-EntityTag -Lines $Lines -ChildrenStart $Target.ChildrenStart -ChildrenEnd $ChildEnd -TagName 'plik' -Value $FilePath
     }
 
-    # Write entities.md with ShouldProcess
     if ($PSCmdlet.ShouldProcess($Target.FilePath, "Set-PlayerCharacter: update '$CharacterName' entity (owner: $PlayerName)")) {
         Write-EntityFile -Path $Target.FilePath -Lines $Lines -NL $Target.NL
     }
 
-    # Auto-create Przedmiot entities for unknown items
+    # Przedmiot entities enable item tracking in the entity graph;
+    # auto-creating them avoids a separate manual registration step
     if ($SpecialItems) {
         foreach ($ItemName in $SpecialItems) {
             if ([string]::IsNullOrWhiteSpace($ItemName)) { continue }
-            # Check if item already exists as a Przedmiot entity
+            # Re-read the file each iteration because previous writes may
+            # have shifted line indices within the same entities.md
             $EntFile = Read-EntityFile -Path $Target.FilePath
             $ItemSection = Find-EntitySection -Lines $EntFile.Lines.ToArray() -EntityType 'Przedmiot'
             $ItemExists = $false
@@ -228,8 +226,8 @@ function Set-PlayerCharacter {
         }
     }
 
-    # Target 2: Character file (Postaci/Gracze/<Name>.md)
-
+    # Character file properties are written separately from entity tags because
+    # they live in a different file (Postaci/Gracze/<Name>.md)
     $HasCharFileChanges = (
         $PSBoundParameters.ContainsKey('CharacterSheet') -or
         $PSBoundParameters.ContainsKey('RestrictedTopics') -or
@@ -242,7 +240,8 @@ function Set-PlayerCharacter {
     )
 
     if ($HasCharFileChanges) {
-        # Resolve character file path
+        # Character file path comes from the entity's @plik tag (via Get-PlayerCharacter)
+        # or falls back to the conventional Postaci/Gracze/ directory
         if (-not $CharacterFile) {
             $Character = Get-PlayerCharacter -PlayerName $PlayerName -CharacterName $CharacterName
             if ($Character -and $Character.Path) {
@@ -288,7 +287,8 @@ function Set-PlayerCharacter {
         if ($PSBoundParameters.ContainsKey('ReputationPositive') -or
             $PSBoundParameters.ContainsKey('ReputationNeutral') -or
             $PSBoundParameters.ContainsKey('ReputationNegative')) {
-            # Partial update: read existing reputation for unspecified tiers
+            # Unspecified tiers keep their current values so callers can update
+            # a single tier (e.g. Positive) without wiping the others
             $ExistingRep = (Read-CharacterFile -Path $CharacterFile).Reputation
             $EffPos = if ($PSBoundParameters.ContainsKey('ReputationPositive')) { $ReputationPositive } else { $ExistingRep.Positive }
             $EffNeu = if ($PSBoundParameters.ContainsKey('ReputationNeutral'))  { $ReputationNeutral }  else { $ExistingRep.Neutral }
@@ -306,7 +306,6 @@ function Set-PlayerCharacter {
             Write-CharacterFileSection -Lines $CharLines -SectionName 'Dodatkowe informacje' -NewContent $Content
         }
 
-        # Write character file with ShouldProcess
         if ($PSCmdlet.ShouldProcess($CharacterFile, "Set-PlayerCharacter: update character file '$CharacterName'")) {
             $CharContent = [string]::Join($CharData.NL, $CharLines)
             Write-CharacterFile -Path $CharacterFile -Content $CharContent

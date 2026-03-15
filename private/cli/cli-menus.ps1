@@ -194,7 +194,9 @@ function Show-ArrowMenu {
     }
     $MaxLabelWidth = [Math]::Min($MaxLabelWidth + 4, [System.Console]::WindowWidth - 20)
 
-    # Pre-extend terminal buffer to prevent scroll during rendering
+    # Pre-extend terminal buffer with empty lines so that Write-Host during
+    # rendering never triggers an automatic scroll that would shift our
+    # absolute row coordinates.
     $MaxInfoLines = 0
     foreach ($Item in $Items) {
         if ($Item.InfoText) {
@@ -421,7 +423,9 @@ function Show-ResultTable {
         }
     }
 
-    # Pre-extend terminal buffer to prevent scroll during rendering
+    # Pre-extend terminal buffer with empty lines so that Write-Host during
+    # rendering never triggers an automatic scroll that would shift our
+    # absolute row coordinates.
     $TitleLines = if ($Title) { 2 } else { 0 }
     $MaxTableHeight = $TitleLines + 2 + $PageSize + 3
     for ($Pre = 0; $Pre -lt $MaxTableHeight; $Pre++) {

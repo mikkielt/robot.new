@@ -6,8 +6,23 @@
     .DESCRIPTION
     Defines the 9 regex patterns used to strip floor, room, direction,
     difficulty, and named-subarea suffixes from Margonem game-map names.
-    Also provides Get-MapBaseName which progressively strips trailing words
-    to produce candidate base names for entity resolution.
+    Helpers:
+    - Get-MapBaseName: progressively strips trailing words from a map name,
+      returning candidate base names ordered longest-to-shortest for entity
+      resolution. Cleans trailing separators (-, en-dash, em-dash). Returns
+      empty array for single-word names.
+
+    Module-level data:
+    - $script:LocDifficultyPattern:    strips "(poziom: ...)" difficulty parenthetical
+    - $script:LocFloorPattern:         strips "p.N" floor suffix
+    - $script:LocRoomSuffixPattern:    strips "s.N" room suffix
+    - $script:LocSalaPattern:          strips "- sala N" numbered room
+    - $script:LocNamedSalaPattern:     strips "- Sala ..." named room
+    - $script:LocDirectionPattern:     strips "- północ/południe/..." cardinal direction
+    - $script:LocPietroPattern:        strips "- piętro N" floor
+    - $script:LocPiwnicaPattern:       strips "- piwnica p.N" basement
+    - $script:LocNamedSubareaPattern:  strips "- ..." generic named subarea (broadest, applied last)
+    - $script:RE_Difficulty:           backward-compatible alias for $script:LocDifficultyPattern
 
     Maps use naming conventions like:
         "Piekielna Grota p.3 - sala 2"
@@ -63,22 +78,6 @@ $script:LocNamedSubareaPattern = [regex]::new(
 $script:RE_Difficulty = $script:LocDifficultyPattern
 
 function Get-MapBaseName {
-    <#
-        .SYNOPSIS
-        Strip game-map suffixes from a location name, producing resolution candidates.
-
-        .DESCRIPTION
-        Progressively removes trailing words (split by whitespace) from the input name.
-        Returns an array of candidate base names, from longest to shortest.
-        Trailing separators (-, –, —) are cleaned from each candidate.
-        Returns empty array if the name is a single word (cannot be stripped further).
-
-        .PARAMETER Name
-        The raw game-map location name (e.g. "Piekielna Grota p.3 - sala 2").
-
-        .OUTPUTS
-        [string[]] Candidate base names, ordered from longest (least stripped) to shortest.
-    #>
     param(
         [Parameter(Mandatory)]
         [string]$Name

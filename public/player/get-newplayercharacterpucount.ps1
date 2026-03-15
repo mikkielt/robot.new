@@ -41,7 +41,6 @@ function Get-NewPlayerCharacterPUCount {
         $Players = Get-Player
     }
 
-    # Find the target player (case-insensitive)
     $TargetPlayer = $null
     foreach ($Player in $Players) {
         if ([string]::Equals($Player.Name, $PlayerName, [System.StringComparison]::OrdinalIgnoreCase)) {
@@ -54,7 +53,7 @@ function Get-NewPlayerCharacterPUCount {
         throw "Player '$PlayerName' not found."
     }
 
-    # Build entity status lookup if entities are available
+    # Without entity data, deleted characters cannot be excluded from the sum
     $EntityStatusLookup = $null
     if ($Entities) {
         $EntityStatusLookup = [System.Collections.Generic.Dictionary[string, string]]::new([System.StringComparer]::OrdinalIgnoreCase)
@@ -65,13 +64,13 @@ function Get-NewPlayerCharacterPUCount {
         }
     }
 
-    # Filter to characters with PUStart > 0, excluding Usunięty
+    # Only characters that actually started play (PUStart > 0) contribute;
+    # deleted characters would inflate the average unfairly
     $PUTakenSum = [decimal]0
     $IncludedCount = 0
     $ExcludedCharacters = [System.Collections.Generic.List[string]]::new()
 
     foreach ($Character in $TargetPlayer.Characters) {
-        # Skip removed characters (Usunięty) when entity data is available
         if ($EntityStatusLookup -and $EntityStatusLookup.ContainsKey($Character.Name)) {
             if ($EntityStatusLookup[$Character.Name] -eq 'Usunięty') {
                 $ExcludedCharacters.Add($Character.Name)
@@ -89,7 +88,8 @@ function Get-NewPlayerCharacterPUCount {
         }
     }
 
-    # Formula: Floor((Sum(PUTaken) / 2) + 20)
+    # Legacy formula: half the earned PU plus 20-point base ensures new
+    # characters start competitively without matching veteran power
     $Result = [math]::Floor(($PUTakenSum / 2) + 20)
 
     return [PSCustomObject]@{

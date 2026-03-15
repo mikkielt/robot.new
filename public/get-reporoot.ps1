@@ -3,9 +3,20 @@
     Locates the root directory of the lore repository that contains this module.
 
     .DESCRIPTION
-    Traverses the directory tree upward from the module's parent directory, looking for
-    a .git subdirectory. Returns the first ancestor that contains one. Throws if no
-    repository is found before reaching the filesystem root.
+    This file contains Get-RepoRoot and Get-ParentRepoRoot.
+
+    Helpers:
+    - Get-ParentRepoRoot: locates the parent repository root when this module is a
+      Git submodule, walking past the submodule boundary to the enclosing repo.
+      Used by manifest discovery (Find-DataManifest).
+
+    Module-level data:
+    - $DataDirectoryOverride: when set by Set-DataDirectory, Get-RepoRoot returns
+      this path instead of performing git traversal.
+
+    Get-RepoRoot traverses the directory tree upward from the module's parent directory,
+    looking for a .git subdirectory. Returns the first ancestor that contains one. Throws
+    if no repository is found before reaching the filesystem root.
 
     Starts from the module's own location (via $script:ModuleRoot set by robot.psm1)
     rather than the process working directory. This guarantees the result is always the
@@ -13,14 +24,6 @@
     .git entry is a file, not a directory.
 
     Used by every other function in the module to resolve repo-relative paths.
-
-    Also contains Get-ParentRepoRoot which locates the parent repository root when
-    the module lives inside a Git submodule. Walks past the submodule boundary to find
-    the enclosing repository. Used by manifest discovery (Find-DataManifest).
-
-    Module-level data:
-    - $DataDirectoryOverride: when set by Set-DataDirectory, Get-RepoRoot returns
-      this path instead of performing git traversal.
 #>
 
 function Get-RepoRoot {

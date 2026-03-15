@@ -3,15 +3,27 @@
     Builds a unified location graph from entity registry, session metadata, and session logs.
 
     .DESCRIPTION
-    This file contains Get-LocationGraph.
+    Merges six edge sources into a single node+edge graph:
+    - Containment edges from @lokacja parent-child chains (entity registry)
+    - Door edges from @drzwi bidirectional connections (entity registry)
+    - Route edges from session metadata separators (-> and - patterns)
+    - InferredHierarchy edges from slash-path parent detection
+    - Movement edges from consecutive log LocationSegments (structurally walkable)
+    - Teleport edges from consecutive log LocationSegments (no structural path)
 
-    Merges four edge sources:
-    - Containment edges from @lokacja chains (entity registry)
-    - Door edges from @drzwi connections (entity registry)
-    - Route edges from session metadata -> separators (Get-NamedLocationReport)
-    - Transition edges from consecutive log LocationSegments (Get-NamedLogLocationReport)
+    Processing pipeline:
+    1. Load entities and sessions, build case-insensitive entity lookup
+    2. Extract Containment and Door edges from entity registry
+    3. Build adjacency sets from structural edges for walkability classification
+    4. Extract Route and InferredHierarchy edges from Get-NamedLocationReport
+    5. Optionally extract Movement/Teleport edges from session log transitions
+    6. Build node objects from all edge endpoints, enriched with entity metadata
+    7. Detect stale edges where source/target coordinates changed after edge creation
 
-    Produces a node+edge graph with coordinates and staleness detection.
+    Inline scriptblocks:
+    - $AddEdge: merges duplicate edges by incrementing weight and expanding source list
+    - $EnsureAdj: lazily initializes adjacency HashSets in the adjacency dictionary
+    - $IsWalkable: checks structural reachability within distance 2 (neighbor-of-neighbor)
 #>
 
 function Get-LocationGraph {

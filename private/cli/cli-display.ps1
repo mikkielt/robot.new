@@ -163,7 +163,7 @@ function Show-DetailCard {
                 [void]$LineBuffer.Add([PSCustomObject]@{
                     Segments = @( @{ Text = "  $PropName ($($PropVal.Count))"; Color = $InfoColor } )
                 })
-                $ShowCount = [Math]::Min($PropVal.Count, 8)
+                $ShowCount = [Math]::Min($PropVal.Count, 8)  # cap complex object lists to keep card readable
                 for ($I = 0; $I -lt $ShowCount; $I++) {
                     $Obj = $PropVal[$I]
 
@@ -258,6 +258,7 @@ function Show-DetailCard {
     [void]$LineBuffer.Add([PSCustomObject]@{ Segments = @( @{ Text = "  $Sep"; Color = $DisabledColor } ) })
 
     # ── Phase 2: Render with optional scrolling ─────────────────────────────
+    # Reserve 3 lines for top padding, footer hint, and cursor positioning
     $ViewportHeight = [System.Console]::WindowHeight - 3
 
     if ($LineBuffer.Count -le $ViewportHeight) {

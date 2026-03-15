@@ -7,11 +7,18 @@
     Set-PlayerCharacter, and New-PlayerCharacter via dot-sourcing. Not auto-loaded
     by robot.psm1 (non-Verb-Noun filename).
 
-    Contains:
+    Helpers:
     - Find-CharacterSection:       locates **Header:** section boundaries in character file lines
     - Read-CharacterFile:          parses an entire character file into a structured object
     - Write-CharacterFileSection:  replaces content of a single bold-header section in-place
     - Write-CharacterFile:         writes character file to disk (UTF-8 no BOM) with plugin hooks
+
+    Module-level data:
+    - $script:HasOpCtx:               whether operation-context helpers are available
+    - $script:CharSectionPattern:     bold-header sections (**Header:** with optional inline content)
+    - $script:SessionHeaderPattern_CF: session headers in character files (### YYYY-MM-DD, ...)
+    - $script:LocationDetailPattern:  parenthetical or colon-delimited detail after location name
+    - $script:SectionNameToProperty:  Polish section name -> English property name mapping
 
     Reputation helpers (Read-ReputationTier, Format-ReputationSection) are in
     charfile-reputation.ps1, dot-sourced below.

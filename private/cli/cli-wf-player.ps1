@@ -11,8 +11,19 @@
     - Invoke-NewCharacterWorkflow:    new character + optional starting currency
     - Invoke-EditCharacterWorkflow:   diff review pattern for character edits
     - Invoke-CharacterCardWorkflow:   formatted character card view
-    - Show-CharacterCard:             renders character detail card
-    - Show-PlayerCard:                renders player detail card
+
+    Display helpers:
+    - Show-CharacterCard:             renders character detail card (PU, aliases, info)
+    - Show-PlayerCard:                renders player detail card (characters, triggers)
+
+    Design:
+    - New-Player and New-Character workflows chain together: creating a
+      player can optionally inline-create a first character, and creating
+      a character can optionally inline-create starting currency entries.
+      Each stage re-uses Invoke-Wizard with override hashtables that hide
+      irrelevant parameters.
+    - Show-CharacterCard and Show-PlayerCard accept a $Row parameter for
+      compatibility with the engine detail card callback pattern.
 
     Dependencies: cli-primitives.ps1, cli-fuzzy.ps1, cli-wizard.ps1
 #>

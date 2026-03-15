@@ -66,17 +66,17 @@ function Write-RobotInfo {
 
 # ── PHASE 1: Core Function Loading ──────────────────────────────────────────
 
-# Discover all .ps1 files using .NET I/O - avoid Get-ChildItem for performance
-# Use AllDirectories so function files living in subfolders are found as well.
+# .NET I/O avoids Get-ChildItem overhead (~3x faster on large trees).
+# AllDirectories finds files in subfolders (public/session/, public/workflow/, etc.).
 $FunctionFiles = [System.IO.Directory]::GetFiles($ModuleRoot, '*.ps1', [System.IO.SearchOption]::AllDirectories)
 
-# Verb-Noun pattern regex for exported functions (case-insensitive)
+# Only Verb-Noun files are auto-loaded; helpers are dot-sourced on demand by the functions that need them
 $VerbNounPattern = [regex]::new('^(Get|Set|New|Remove|Resolve|Test|Invoke|Send|Export)-\w+$', [System.Text.RegularExpressions.RegexOptions]::IgnoreCase)
 
 $ExportedFunctions = [System.Collections.Generic.HashSet[string]]::new(
     [System.StringComparer]::OrdinalIgnoreCase)
 
-# Path fragment used to detect files inside plugins/ (platform-aware)
+# Plugin files are loaded in Phase 2 with dependency ordering; skip them here
 $PluginsDirSep = [System.IO.Path]::DirectorySeparatorChar + 'plugins' + [System.IO.Path]::DirectorySeparatorChar
 
 foreach ($FilePath in $FunctionFiles) {
@@ -89,18 +89,18 @@ foreach ($FilePath in $FunctionFiles) {
     $RelPath = $FilePath.Substring($ModuleRoot.Length)
     if ($RelPath.Contains($PluginsDirSep) -or $RelPath.Contains('/plugins/')) { continue }
 
-    # Derive function name from filename - avoids expensive Get-ChildItem Function: diffing
+    # Derive function name directly from filename (cheaper than Get-ChildItem Function: diff)
     $FuncName = [System.IO.Path]::GetFileNameWithoutExtension($FilePath)
 
-    # Only dot-source files whose name matches the Verb-Noun convention;
-    # other .ps1 files (e.g. helper scripts) are loaded on demand, not at import.
+    # Non-Verb-Noun files (parse-markdownfile.ps1, etc.) are loaded on demand
+    # by the functions that need them, keeping module import time minimal.
     if (-not $VerbNounPattern.IsMatch($FuncName)) { continue }
 
     try {
         . "$FilePath"
     }
     catch {
-        [System.Console]::Error.WriteLine("Failed to load function file '$FileName': $_")
+        [System.Console]::Error.WriteLine("[WARN robot.psm1] Failed to load function file '$FileName': $_")
         continue
     }
 
@@ -132,7 +132,7 @@ if ([System.IO.Directory]::Exists($PluginsDir)) {
         . $PluginHooksPath
     }
 
-    # Read core module version for compatibility checks
+    # VERSION file gates plugin loading via MinCoreVersion in manifests
     $CoreVersion = $null
     $VersionPath = [System.IO.Path]::Combine($ModuleRoot, 'VERSION')
     if ([System.IO.File]::Exists($VersionPath)) {
@@ -156,14 +156,14 @@ if ([System.IO.Directory]::Exists($PluginsDir)) {
             continue
         }
 
-        # Validate required fields
+        # Name + Version are mandatory per plugin contract
         if (-not $Manifest.Name -or -not $Manifest.Version) {
             [System.Console]::Error.WriteLine(
                 "[WARN robot.psm1] Plugin at '$PluginDir' missing Name or Version - skipped")
             continue
         }
 
-        # Version gate: check MinCoreVersion against module version
+        # Reject plugins that require a newer core than what's running
         if ($Manifest.MinCoreVersion -and $CoreVersion) {
             if ([version]$Manifest.MinCoreVersion -gt [version]$CoreVersion) {
                 [System.Console]::Error.WriteLine(
@@ -199,7 +199,7 @@ if ([System.IO.Directory]::Exists($PluginsDir)) {
             $script:PluginConfigs[$PluginName] = $PluginConfig
         }
 
-        # Discover and dot-source Verb-Noun .ps1 files from plugin's public/
+        # Load plugin functions using the same Verb-Noun convention as core
         $PluginPublicDir = [System.IO.Path]::Combine($PluginDir, 'public')
         if ([System.IO.Directory]::Exists($PluginPublicDir)) {
             $PluginFiles = [System.IO.Directory]::GetFiles(
@@ -209,7 +209,7 @@ if ([System.IO.Directory]::Exists($PluginsDir)) {
                 $FuncName = [System.IO.Path]::GetFileNameWithoutExtension($FilePath)
                 if (-not $VerbNounPattern.IsMatch($FuncName)) { continue }
 
-                # Collision detection
+                # Prevent plugins from shadowing core functions
                 if ($ExportedFunctions.Contains($FuncName)) {
                     [System.Console]::Error.WriteLine(
                         "[WARN robot.psm1] Plugin '$PluginName' function '$FuncName'" +
@@ -230,7 +230,7 @@ if ([System.IO.Directory]::Exists($PluginsDir)) {
             }
         }
 
-        # Register hooks
+        # Wire up plugin hooks into the "Operation:Phase" registry for Invoke-PluginHook
         if ($Manifest.Hooks) {
             foreach ($HookDef in $Manifest.Hooks) {
                 $HookKey = "$($HookDef.Operation):$($HookDef.Phase)"
@@ -245,7 +245,7 @@ if ([System.IO.Directory]::Exists($PluginsDir)) {
             }
         }
 
-        # Register CLI menu items
+        # Collect menu entries for Phase 2c merge into CLI navigation
         if ($Manifest.MenuItems) {
             foreach ($MenuItem in $Manifest.MenuItems) {
                 $MenuItem['_PluginName'] = $PluginName
@@ -253,7 +253,7 @@ if ([System.IO.Directory]::Exists($PluginsDir)) {
             }
         }
 
-        # Register CLI menu categories
+        # New categories appear as top-level menu groups in the CLI
         if ($Manifest.MenuCategories) {
             foreach ($Cat in $Manifest.MenuCategories) {
                 if (-not $script:PluginMenuCategories.Contains($Cat)) {
@@ -262,7 +262,7 @@ if ([System.IO.Directory]::Exists($PluginsDir)) {
             }
         }
 
-        # Collect CLI help content
+        # Plugin help entries are merged into the CLI help system by category
         if ($Manifest.HelpContent) {
             foreach ($HelpKey in $Manifest.HelpContent.Keys) {
                 if (-not $script:PluginHelpContent.ContainsKey($HelpKey)) {
@@ -279,7 +279,7 @@ if ([System.IO.Directory]::Exists($PluginsDir)) {
         Write-Verbose "Loaded plugin: $PluginName v$($Manifest.Version)"
     }
 
-    # Sort all hook lists by priority (lower = first)
+    # Lower priority values execute first (e.g. validation before logging)
     foreach ($HookKey in @($script:HookRegistry.Keys)) {
         $Handlers = $script:HookRegistry[$HookKey]
         $Sorted = $Handlers | Sort-Object { $_.Priority }

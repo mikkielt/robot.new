@@ -82,7 +82,8 @@ function New-PlayerCharacter {
         $EntitiesFile = $Config.EntitiesFile
     }
 
-    # Determine initial PU
+    # PU start determines the character's skill-point budget at creation;
+    # if not explicitly provided, compute from existing characters' earned PU
     $PUStartValue = if ($null -ne $InitialPUStart) {
         $InitialPUStart
     } else {
@@ -98,7 +99,7 @@ function New-PlayerCharacter {
 
     $PUStartStr = $PUStartValue.ToString('G', [System.Globalization.CultureInfo]::InvariantCulture)
 
-    # Check if character already exists
+    # Fail-early: duplicate character names would break name resolution
     $EntitiesFilePath = Invoke-EnsureEntityFile -Path $EntitiesFile
     $File = Read-EntityFile -Path $EntitiesFilePath
     $Section = Find-EntitySection -Lines $File.Lines.ToArray() -EntityType 'Postać'
@@ -109,7 +110,7 @@ function New-PlayerCharacter {
         }
     }
 
-    # Ensure player entry exists under ## Gracz
+    # Player entry must exist before the character can reference it via @należy_do
     $PlayerTarget = Resolve-EntityTarget -FilePath $EntitiesFile -EntityType 'Gracz' -EntityName $PlayerName
 
     if ($PSCmdlet.ShouldProcess($EntitiesFile, "New-PlayerCharacter: create player entry '$PlayerName' (if new)")) {
@@ -118,8 +119,8 @@ function New-PlayerCharacter {
         }
     }
 
-    # Create character entry under ## Postać
-    # Load default tags from player-entry.md.template
+    # Template provides default tags (@należy_do, @plik, @pu_startowe);
+    # ConvertFrom-EntityTemplate parses the rendered result into tag pairs
     $RelCharPath = if ($PSBoundParameters.ContainsKey('FilePath') -and -not [string]::IsNullOrWhiteSpace($FilePath)) {
         $FilePath
     } else {
@@ -141,7 +142,8 @@ function New-PlayerCharacter {
         Write-EntityFile -Path $CharTarget.FilePath -Lines $CharTarget.Lines -NL $CharTarget.NL
     }
 
-    # Create character file in Postaci/Gracze/
+    # The character file holds baseline properties (condition, reputation, items)
+    # that Get-PlayerCharacter -IncludeState merges with entity overrides
     if (-not $NoCharacterFile) {
         $CharFilePath = [System.IO.Path]::Combine($Config.CharactersDir, "$CharacterName.md")
 
@@ -168,7 +170,8 @@ function New-PlayerCharacter {
         }
     }
 
-    # Apply initial character file property values if specified
+    # Apply initial properties to the character file so it ships pre-populated
+    # rather than requiring a follow-up Set-PlayerCharacter call
     if (-not $NoCharacterFile -and $CharFilePath -and [System.IO.File]::Exists($CharFilePath)) {
         $HasInitialProps = (
             $PSBoundParameters.ContainsKey('Condition') -or
@@ -223,7 +226,6 @@ function New-PlayerCharacter {
         }
     }
 
-    # Return summary object
     $ReturnObj = [PSCustomObject]@{
         PlayerName    = $PlayerName
         CharacterName = $CharacterName

@@ -10,6 +10,13 @@
     - Invoke-CurrencyTransferWorkflow:       full transfer wizard (source -> amount -> destination)
     - Invoke-CurrencyReconciliationDisplay:  formatted currency reconciliation results
 
+    Design:
+    - Transfer workflow executes two Set-CurrencyEntity calls (debit + credit)
+      in sequence. If the credit fails after the debit succeeds, the transfer
+      is left in an inconsistent state — manual reconciliation is needed.
+    - Reconciliation display delegates to Test-CurrencyReconciliation and
+      formats the structured result (warnings, supply summary) for console.
+
     Dependencies: cli-primitives.ps1, cli-fuzzy.ps1, cli-wizard.ps1, cli-display.ps1
 #>
 

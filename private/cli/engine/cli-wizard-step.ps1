@@ -38,7 +38,8 @@ function New-WizardStepComponent {
         [switch]$Required
     )
 
-    # Text input types need TextInputMode so printable chars route to component
+    # Text input types set TextInputMode so Route-KeyPress sends printable chars
+    # as TextInput actions instead of starting filter mode
     $IsTextType = $StepType -notin @('selection', 'yesno')
 
     $Component = @{
@@ -82,12 +83,13 @@ function New-WizardStepComponent {
             $BorderBL = [char]0x2514
             $BorderBR = [char]0x2518
 
-            $BoxLeft = 3
-            $BoxInnerWidth = [Math]::Min(($script:ScreenWidth - 10), 60)
-            $BoxInnerWidth = [Math]::Max($BoxInnerWidth, 20)
+            $BoxLeft = 3   # left margin for visual centering
+            $BoxInnerWidth = [Math]::Min(($script:ScreenWidth - 10), 60)  # cap at 60 — wizard inputs are shorter than help overlays
+            $BoxInnerWidth = [Math]::Max($BoxInnerWidth, 20)  # floor to prevent collapsed boxes
             $BoxWidth = $BoxInnerWidth + 4
 
-            # Step counter (hidden when both are 0, e.g. filter inputs)
+            # Step counter — hidden when both are 0 to support standalone inputs
+            # (e.g., filter dialogs) that don't belong to a multi-step wizard
             if ($ComponentRef.StepNumber -gt 0 -and $ComponentRef.TotalSteps -gt 0) {
                 $StepLabel = "Krok $($ComponentRef.StepNumber)/$($ComponentRef.TotalSteps)"
                 Set-BufferLine -Buffer $script:BackBuffer -Row $Row -Segments @(

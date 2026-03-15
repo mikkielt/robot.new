@@ -6,8 +6,9 @@
     .DESCRIPTION
     This file contains Get-Player and its helper:
 
-    Helper:
+    Helpers:
     - Complete-PUData: derives missing PU SUMA/ZDOBYTE from the complementary value
+      when only one of the pair is present (SUMA = STARTOWE + ZDOBYTE, or inverse)
 
     Get-Player reads the Gracze.md file and extracts structured information for each player
     listed under the "## Lista" section:
@@ -21,11 +22,14 @@
     players (or create new player stubs). This allows the entity registry to extend player
     data without modifying Gracze.md directly - useful for aliases, PU values, triggers,
     and additional character metadata.
+
+    The two-phase approach (Gracze.md parse + entity overlay) preserves backward
+    compatibility with the legacy player database while enabling new players and
+    characters to be registered entirely through entities.md.
 #>
 
-# Helper: derive PU SUMA/ZDOBYTE when partial data is provided
-# If SUMA is given but ZDOBYTE is not, derive ZDOBYTE = SUMA - STARTOWE.
-# If ZDOBYTE is given but SUMA is not, derive SUMA = STARTOWE + ZDOBYTE.
+# Gracze.md and entity overrides often carry only one of SUMA/ZDOBYTE;
+# derive the missing half so downstream consumers always see both.
 function Complete-PUData {
     param([object]$Character)
 
@@ -65,11 +69,11 @@ function Get-Player {
     $Players = [System.Collections.Generic.List[object]]::new()
     $Markdown = Get-Markdown -File $File
 
-    # Only process sections under "## Lista" that are level-3 headers (one per player)
+    # Gracze.md uses "## Lista" > "### PlayerName" structure; other H2 sections
+    # (e.g. "## Archiwum") are intentionally excluded
     foreach ($Section in $Markdown.Sections.Where({ $_.Header.Level -eq 3 -and $_.Header.ParentHeader.Text -eq "Lista" })) {
         $PlayerName = $Section.Header.Text
 
-        # If Name filter is specified, skip players that don't match
         if ($Name -and $Name -notcontains $PlayerName) {
             continue
         }
@@ -89,7 +93,6 @@ function Get-Player {
             }
         }
 
-        # Extract player-level metadata from root children in a single scan
         $MargonemId = $null
         $PRFWebhook = $null
         $Triggers = @()
@@ -114,7 +117,8 @@ function Get-Player {
             }
         }
 
-        # Character entries are direct children of "Postaci:" containing [Name](Path)
+        # Characters are nested under the "Postaci:" list item as [Name](Path) links;
+        # bold (**) markers indicate the currently active character
         $Characters = [System.Collections.Generic.List[object]]::new()
         if ($PostaciEntry) {
             $PostaciId = [System.Runtime.CompilerServices.RuntimeHelpers]::GetHashCode($PostaciEntry)
@@ -123,16 +127,13 @@ function Get-Player {
             foreach ($CharacterListItem in $PostaciChildren) {
                 if ($CharacterListItem.Text -notmatch '\[.+\]\(.+\)') { continue }
 
-                # Strip bold markers (**) before extracting name and path
                 $CleanText = $CharacterListItem.Text.Replace("**", "")
 
                 $CharacterName = [regex]::Match($CleanText, '\[(.+?)\]').Groups[1].Value
                 $CharacterPath = [regex]::Match($CleanText, '\((.+?)\)').Groups[1].Value
 
-                # Determine if this is the active (bolded) character
                 $IsActive = $CharacterListItem.Text.StartsWith("**")
 
-                # Look up children of this character via ChildrenOf (O(1) lookup)
                 $CharId = [System.Runtime.CompilerServices.RuntimeHelpers]::GetHashCode($CharacterListItem)
                 $CharChildren = if ($ChildrenOf.ContainsKey($CharId)) { $ChildrenOf[$CharId] } else { @() }
 
@@ -195,7 +196,8 @@ function Get-Player {
             }
         }
 
-        # Build a consolidated name index for lookup: player name + all character names + all aliases
+        # Name resolution (Resolve-Name) needs a flat set of all names that
+        # identify this player, including character names and aliases
         $Names = [System.Collections.Generic.List[string]]::new()
         $Names.Add($PlayerName)
         foreach ($Character in $Characters) {
@@ -205,7 +207,7 @@ function Get-Player {
             }
         }
 
-        # Deduplicate via HashSet and cast to array
+        # HashSet provides O(1) Contains() for name resolution lookups
         $Names = [System.Collections.Generic.HashSet[string]]::new($Names, [System.StringComparer]::OrdinalIgnoreCase)
 
         $Player = [PSCustomObject]@{
@@ -220,24 +222,23 @@ function Get-Player {
         $Players.Add($Player)
     }
 
-    # Inject overrides from entities.md
+    # Phase 2: overlay entity data onto Gracze.md-parsed players so that
+    # new players/characters registered only in entities.md also appear
     if (-not $Entities) {
         $Entities = Get-Entity
     }
-    # We only care about entities that are explicitly Players or Player Characters
+    # TypeHistory check catches entities reclassified away from Gracz/Postać
     $OverrideEntities = $Entities.Where({
         $_.Type -in @('Gracz', 'Postać') -or
         $_.TypeHistory.Where({ $_.Type -in @('Gracz', 'Postać') }).Count -gt 0
     })
 
     foreach ($Entity in $OverrideEntities) {
-        # Determine the target player name
+        # Characters reference their player via @należy_do (Owner); Gracz entities
+        # are their own player. Orphaned characters without either are skipped.
         $TargetPlayerName = if ($Entity.Owner) { $Entity.Owner } elseif ($Entity.Type -eq 'Gracz') { $Entity.Name } else { $null }
-        
-        # If no explicit owner/player name, it's an orphaned character override, skip or log
         if (-not $TargetPlayerName) { continue }
 
-        # Find the player in our roster (case-insensitive)
         $TargetPlayer = $null
         foreach ($ExistingPlayer in $Players) {
             if ([string]::Equals($ExistingPlayer.Name, $TargetPlayerName, [System.StringComparison]::OrdinalIgnoreCase)) {
@@ -246,7 +247,8 @@ function Get-Player {
             }
         }
 
-        # If it's a completely new player (e.g. Vanda Vanissa), create a stub
+        # Entity-only players (not in Gracze.md) get a minimal stub so
+        # downstream code can treat all players uniformly
         $IsNewPlayer = $null -eq $TargetPlayer
         if ($IsNewPlayer) {
             $TargetPlayer = [PSCustomObject]@{
@@ -261,9 +263,8 @@ function Get-Player {
             $Players.Add($TargetPlayer)
         }
 
-        # Apply Player-level Overrides (if the entity IS the player, or provides player overrides)
+        # Gracz entities carry player-level metadata; Postać entities carry character data
         if ($Entity.Type -eq 'Gracz') {
-            # Add all aliases of the player to the index
             foreach ($Alias in $Entity.Aliases.Text) { [void]$TargetPlayer.Names.Add($Alias) }
 
             if ($Entity.Overrides.ContainsKey("margonemid")) {
@@ -279,8 +280,7 @@ function Get-Player {
             continue # Done with player-level overrides
         }
 
-        # Apply Character-level Overrides (if the entity IS a character/NPC owned by the player)
-        # Find or create character stub
+        # Character-level: match by name or create a stub for entity-only characters
         $TargetChar = $null
         foreach ($ExistingChar in $TargetPlayer.Characters) {
             if ([string]::Equals($ExistingChar.Name, $Entity.Name, [System.StringComparison]::OrdinalIgnoreCase)) {
@@ -305,14 +305,15 @@ function Get-Player {
             $TargetPlayer.Characters.Add($TargetChar)
         }
 
-        # Add character aliases to the player's lookup index and character list
+        # Aliases must propagate to both the character and the player's Names
+        # set so name resolution can find the character through either path
         [void]$TargetPlayer.Names.Add($Entity.Name)
         foreach ($Alias in $Entity.Aliases.Text) {
             if (-not $TargetChar.Aliases.Contains($Alias)) { $TargetChar.Aliases.Add($Alias) }
             [void]$TargetPlayer.Names.Add($Alias)
         }
 
-        # Apply character properties
+        # Entity overrides win for PU values; @plik only fills in if Gracze.md had none
         if ($Entity.FilePath -and [string]::IsNullOrWhiteSpace($TargetChar.Path)) {
             $TargetChar.Path = $Entity.FilePath
         }

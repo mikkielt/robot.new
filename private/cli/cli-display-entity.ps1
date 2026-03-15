@@ -10,6 +10,14 @@
     - Format-ValidityRange: formats temporal range as "YYYY-MM-DD – YYYY-MM-DD"
     - Show-EntityCard:      renders entity detail card with tags and history
 
+    Design:
+    - Show-EntityCard renders all entity fields in a fixed vertical layout:
+      core fields, info override, groups, doors, contains, aliases (with
+      temporal ranges), custom @tags, location history (capped at 5), and
+      group history (capped at 5). Waits for Escape before returning.
+    - Used by entity browse and search workflows for quick entity inspection
+      without the full engine lifecycle overhead.
+
     Dependencies: cli-primitives.ps1
 #>
 
@@ -132,7 +140,7 @@ function Show-EntityCard {
     if ($Entity.LocationHistory -and $Entity.LocationHistory.Count -gt 0) {
         Write-Host ''
         Write-CLILine -Text "Historia lokalizacji ($($Entity.LocationHistory.Count))" -Color $InfoColor
-        $ShowMax = [Math]::Min($Entity.LocationHistory.Count, 5)
+        $ShowMax = [Math]::Min($Entity.LocationHistory.Count, 5)  # cap at 5 to keep card readable
         for ($I = 0; $I -lt $ShowMax; $I++) {
             $H = $Entity.LocationHistory[$I]
             $Loc = if ($H.Location) { $H.Location } else { '?' }

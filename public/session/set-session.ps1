@@ -81,8 +81,8 @@ function Set-Session {
     process {
         if ($script:HasOpCtx) { Clear-OperationContext }
 
-        # Resolve targets
-
+        # Pipeline sessions provide the exact header and all file copies;
+        # explicit mode requires scanning a single file by date.
         if ($PSCmdlet.ParameterSetName -eq 'Pipeline') {
             $TargetHeader = $Session.Header
             $TargetFiles = if ($Session.FilePaths) {
@@ -102,7 +102,7 @@ function Set-Session {
             $TargetFiles = @($FullPath)
         }
 
-        # Merge parameters (individual > Properties > null)
+        # Priority chain: explicit param > Properties hashtable > null (leave unchanged)
 
         $EffLocations = if ($PSBoundParameters.ContainsKey('Locations')) { $Locations }
                         elseif ($Properties -and $Properties.ContainsKey('Locations')) { $Properties.Locations }
@@ -136,7 +136,7 @@ function Set-Session {
                            elseif ($Properties -and $Properties.ContainsKey('DateOverride')) { $Properties.DateOverride }
                            else { $null }
 
-        # Check if any changes requested
+        # Guard: fail early if caller didn't actually specify any modifications
         $HasChanges = ($null -ne $EffLocations) -or ($null -ne $EffPU) -or ($null -ne $EffLogs) -or
                       ($null -ne $EffChanges) -or ($null -ne $EffIntel) -or ($null -ne $EffContent) -or
                       ($null -ne $EffNarrator) -or ($null -ne $EffDateOverride) -or $UpgradeFormat
@@ -147,7 +147,7 @@ function Set-Session {
 
         $UTF8NoBOM = [System.Text.UTF8Encoding]::new($false)
 
-        # Resolve log directory for URL localization during format upgrade
+        # Log directory needed to convert remote URLs to local paths during format upgrade
         $LogDir = $null
         if ($UpgradeFormat) {
             try {
@@ -156,7 +156,8 @@ function Set-Session {
             } catch { }
         }
 
-        # Metadata config: canonical key, Gen4 tag name, possible original keys in Split output
+        # Unified config table drives the upgrade/preserve/replace logic per metadata block.
+        # OrigKeys lists all aliases a block may have in older formats (e.g. 'logs-plain' for Gen2).
         $MetaConfig = @(
             @{ Key = 'narrator';  Gen4Tag = 'Narrator'; OrigKeys = @('narrator');                      Effective = $EffNarrator }
             @{ Key = 'data';      Gen4Tag = 'Data';     OrigKeys = @('data');                          Effective = if ($EffDateOverride) { @($EffDateOverride) } else { $null } }
@@ -167,7 +168,7 @@ function Set-Session {
             @{ Key = 'intel';     Gen4Tag = 'Intel';     OrigKeys = @('intel');                         Effective = $EffIntel }
         )
 
-        # Lazy-loaded narrator mappings for UpgradeFormat injection
+        # Loaded only once on first UpgradeFormat write, then reused across files
         $NarratorMappings = $null
 
         # Process each file
@@ -201,12 +202,12 @@ function Set-Session {
 
                 $Match = $Found[0]
 
-                # Extract section lines (between header line and next header/EOF)
+                # Isolate the session's lines for decomposition into body/meta/preserved blocks
                 $SecStart = $Match.SectionStartIdx
                 $SecEnd   = $Match.SectionEndIdx - 1
                 $SectionLines = if ($SecStart -le $SecEnd) { $FileLines[$SecStart..$SecEnd] } else { @() }
 
-                # Decompose section
+                # Split into body text, metadata blocks, and preserved blocks (Efekty/Objaśnienia)
                 $Split = Split-SessionSection -Lines $SectionLines
 
                 # Format safety guard: require -UpgradeFormat when modifying metadata on pre-Gen4 sessions
@@ -287,7 +288,7 @@ function Set-Session {
                     if ($BlockText) { $MetaOutput.Add($BlockText) }
                 }
 
-                # Body lines (trim leading/trailing blanks)
+                # Trim leading/trailing blanks so reassembly spacing is controlled below
                 $Body = if ($null -ne $EffContent) {
                     $EffContent
                 } else {
@@ -301,7 +302,7 @@ function Set-Session {
                     if ($BLines.Count -gt 0) { $BLines -join $NL } else { '' }
                 }
 
-                # Preserved blocks
+                # Non-metadata blocks (Objaśnienia, Efekty) are kept verbatim
                 $PreservedText = ''
                 if ($Split.PreservedBlocks.Count -gt 0) {
                     $PBParts = [System.Collections.Generic.List[string]]::new()
@@ -311,7 +312,7 @@ function Set-Session {
                     $PreservedText = $PBParts -join $NL
                 }
 
-                # Assemble new section
+                # Reassemble with consistent spacing: body → metadata → preserved
                 $NewSectionSB = [System.Text.StringBuilder]::new(1024)
 
                 $MetaStr = if ($MetaOutput.Count -gt 0) { $MetaOutput -join $NL } else { '' }
@@ -338,7 +339,7 @@ function Set-Session {
 
                 [void]$NewSectionSB.Append($NL)
 
-                # Reconstruct file
+                # Splice new section back into the original file lines
 
                 $NewLines = [System.Collections.Generic.List[string]]::new($FileLines.Count)
 
@@ -361,7 +362,7 @@ function Set-Session {
 
                 $NewFileContent = $NewLines -join $NL
 
-                # Write with ShouldProcess
+                # Gate all I/O behind ShouldProcess for -WhatIf/-Confirm support
 
                 if ($PSCmdlet.ShouldProcess($FilePath, "Set-Session: modify session '$($Match.HeaderText)'")) {
                     $HasHooks = Get-Command 'Invoke-PluginHook' -ErrorAction SilentlyContinue

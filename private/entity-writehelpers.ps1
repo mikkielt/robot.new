@@ -8,7 +8,7 @@
     and New-PlayerCharacter via dot-sourcing. Not auto-loaded by robot.psm1
     (non-Verb-Noun filename).
 
-    Contains:
+    Helpers:
     - Set-EntityTag:                  adds or updates a @tag: value under an entity
     - New-EntityBullet:               creates a new * EntityName entry with optional tags
     - ConvertFrom-EntityTemplate:     parses a rendered entity template into name + tags
@@ -16,6 +16,10 @@
     - Write-EntityFile:               writes updated lines to file (UTF-8 no BOM)
     - Read-EntityFile:                reads entity file into lines and detects newline style
     - Resolve-EntityTarget:           ensures entity exists, creating section/bullet as needed
+    - Set-SessionGraphStale:          flags Tier 2 session graph as stale after entity mutations
+
+    Module-level data:
+    - $script:HasOpCtx: whether operation-context helpers (Add-OperationChange etc.) are available
 
     Find helpers (Find-EntitySection, Find-EntityBullet, Find-EntityTag) and
     script-scope patterns/maps are in entity-findhelpers.ps1 (dot-sourced below).
@@ -302,10 +306,6 @@ function Resolve-EntityTarget {
 }
 
 function Set-SessionGraphStale {
-    <#
-        .SYNOPSIS
-        Flags Tier 2 session graph as stale after entity mutations.
-    #>
     param(
         [Parameter(Mandatory)] [string]$Reason,
         [Parameter(Mandatory)] [string]$ResDir

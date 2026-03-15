@@ -3,14 +3,23 @@
     Reports all location names found across recorded sessions.
 
     .DESCRIPTION
-    This file contains Get-NamedLocationReport.
+    Scans all sessions for location references and produces a structured
+    report for guiding manual creation of Lokacja entities.
+
+    Processing pipeline:
+    1. Extract raw location strings from session metadata (@Lokalizacje)
+    2. Split route separators (-> and - patterns) into individual locations
+       and record route edges between consecutive segments
+    3. Parse slash paths (Parent/Child) into atomic segments with hierarchy
+    4. Normalize and group by case-insensitive key, pick canonical spelling
+    5. Levenshtein fuzzy matching (O(n^2) with length-difference pruning)
+    6. Optional file/line reference scanning (IncludeReferences)
+    7. Three-stage entity resolution: exact index, Resolve-Name with Lokacja
+       filter, Resolve-Name without type filter (catches mis-typed entities)
+    8. Conflict detection: CaseVariant, TrailingArtifact, AmbiguousStandalone,
+       InconsistentHierarchy, NearDuplicate
 
     Dot-sources string-helpers.ps1 for Get-LevenshteinDistance.
-
-    Scans all sessions for location references, normalizes and groups them,
-    detects hierarchy from slash-separated paths, finds fuzzy near-duplicates,
-    resolves against the named entity registry, and flags potential conflicts.
-    Designed to guide manual creation of Lokacja entities.
 #>
 
 # Dot-source shared helpers

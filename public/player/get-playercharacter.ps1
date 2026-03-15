@@ -3,14 +3,28 @@
     Typed projection from Get-Player - flattens player data into per-character rows.
 
     .DESCRIPTION
-    This file contains Get-PlayerCharacter which wraps Get-Player and produces
-    one output object per character, each carrying a PlayerName backreference
-    to its parent player. Supports filtering by player name and character name
-    (case-insensitive). Pass-through -Entities avoids redundant entity parsing.
+    This file contains Get-PlayerCharacter and its helpers:
 
-    When -IncludeState is set, parses each character's file and merges three
-    layers of data (character file, entities.md overrides, session @zmiany)
-    into enriched output properties (Condition, Reputation, SpecialItems, etc.).
+    Helpers:
+    - Merge-ScalarProperty: resolves a single-value property across three layers
+      (character file baseline, entities.md overrides, session @zmiany) using
+      temporal validity ranges; last-dated wins
+    - Merge-MultiValuedProperty: same three-layer merge for list properties,
+      returning all currently-active values
+    - Merge-ReputationTier: three-layer merge for reputation entries, preserving
+      Detail metadata from the character file where possible
+
+    Get-PlayerCharacter wraps Get-Player and produces one output object per
+    character, each carrying a PlayerName backreference to its parent player.
+    Supports filtering by player name and character name (case-insensitive).
+    Pass-through -Entities avoids redundant entity parsing.
+
+    When -IncludeState is set, the function pre-fetches Get-EntityState and
+    parses each character's file, then applies the three-layer merge pattern
+    (character file baseline, entity overrides, session @zmiany) to produce
+    enriched output properties (Condition, Reputation, SpecialItems, etc.).
+    The merge helpers use ConvertFrom-ValidityString and Get-LastActiveValue /
+    Get-AllActiveValues from temporal-helpers.ps1 for date-range resolution.
 #>
 
 function Get-PlayerCharacter {
@@ -181,9 +195,8 @@ function Get-PlayerCharacter {
     return $Results
 }
 
-# Helper: merge a scalar property across three layers
-# Character file value is undated baseline. Entity overrides (already merged
-# with session @zmiany) may carry temporal ranges. Last-dated wins.
+# Scalar properties (e.g. Condition) need temporal resolution because entity
+# overrides can supersede the character-file baseline within a date range.
 function Merge-ScalarProperty {
     param(
         [AllowNull()][string]$CharFileValue,
@@ -216,8 +229,8 @@ function Merge-ScalarProperty {
     return Get-LastActiveValue -History $History -PropertyName 'Value' -ActiveOn $ActiveOn
 }
 
-# Helper: merge a multi-valued property across three layers
-# Character file values are undated baseline. Entity overrides augment.
+# Multi-valued properties (e.g. SpecialItems) accumulate across layers
+# rather than replacing, so all active entries are returned.
 function Merge-MultiValuedProperty {
     param(
         [AllowNull()][string[]]$CharFileValues,
@@ -252,8 +265,8 @@ function Merge-MultiValuedProperty {
     return Get-AllActiveValues -History $History -PropertyName 'Value' -ActiveOn $ActiveOn
 }
 
-# Helper: merge a reputation tier across three layers
-# Character file tier entries are undated baseline. Entity overrides augment.
+# Reputation tiers carry Location+Detail pairs; entity overrides only provide
+# Location, so we preserve Detail from the character file when possible.
 function Merge-ReputationTier {
     param(
         [AllowNull()][object[]]$CharFileTier,

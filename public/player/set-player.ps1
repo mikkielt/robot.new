@@ -63,17 +63,17 @@ function Set-Player {
         $EntitiesFile = $Config.EntitiesFile
     }
 
-    # Validate webhook URL format
+    # Fail-early before any file I/O to avoid partial writes
     if ($PRFWebhook -and $PRFWebhook -notlike "https://discord.com/api/webhooks/*") {
         throw "Invalid webhook URL format. Must match 'https://discord.com/api/webhooks/*'. Got: $PRFWebhook"
     }
 
-    # Resolve entity target (creates file/section/bullet as needed)
+    # Resolve-EntityTarget creates the ## Gracz section and bullet if absent,
+    # so Set-Player doubles as an upsert for entity-only players
     $Target = Resolve-EntityTarget -FilePath $EntitiesFile -EntityType 'Gracz' -EntityName $Name
     $Lines = $Target.Lines
     $ChildEnd = $Target.ChildrenEnd
 
-    # Set requested tags
     if ($PSBoundParameters.ContainsKey('MargonemID')) {
         $ChildEnd = Set-EntityTag -Lines $Lines -ChildrenStart $Target.ChildrenStart -ChildrenEnd $ChildEnd -TagName 'margonemid' -Value $MargonemID
     }
@@ -83,7 +83,8 @@ function Set-Player {
     }
 
     if ($PSBoundParameters.ContainsKey('Triggers')) {
-        # Remove all existing @trigger lines first
+        # Triggers use replace-all semantics (not append) because the full
+        # set is always provided as a unit; remove existing before inserting
         $LinesToRemove = [System.Collections.Generic.List[int]]::new()
         for ($i = $Target.ChildrenStart; $i -lt $ChildEnd; $i++) {
             $TagMatch = $script:TagPattern.Match($Lines[$i])
@@ -92,13 +93,11 @@ function Set-Player {
             }
         }
 
-        # Remove in reverse order to preserve indices
         for ($k = $LinesToRemove.Count - 1; $k -ge 0; $k--) {
             $Lines.RemoveAt($LinesToRemove[$k])
             $ChildEnd--
         }
 
-        # Add new triggers
         if ($Triggers) {
             foreach ($Trigger in $Triggers) {
                 if (-not [string]::IsNullOrWhiteSpace($Trigger)) {
@@ -112,7 +111,7 @@ function Set-Player {
     if ($Aliases) {
         foreach ($Alias in $Aliases) {
             if (-not [string]::IsNullOrWhiteSpace($Alias)) {
-                # Check if alias already exists (case-insensitive dedup)
+                # Aliases use append-with-dedup semantics unlike triggers
                 $ExistingAlias = $null
                 for ($i = $Target.ChildrenStart; $i -lt $ChildEnd; $i++) {
                     $AliasMatch = $script:TagPattern.Match($Lines[$i])
@@ -136,7 +135,6 @@ function Set-Player {
         $ChildEnd = Set-EntityTag -Lines $Lines -ChildrenStart $Target.ChildrenStart -ChildrenEnd $ChildEnd -TagName 'status' -Value "$Status ($DateStr`:)"
     }
 
-    # Write with ShouldProcess
     if ($PSCmdlet.ShouldProcess($Target.FilePath, "Set-Player: update '$Name'")) {
         Write-EntityFile -Path $Target.FilePath -Lines $Lines -NL $Target.NL
 

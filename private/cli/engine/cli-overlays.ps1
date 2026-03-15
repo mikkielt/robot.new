@@ -91,12 +91,12 @@ function New-HelpOverlayComponent {
             $BorderBL = [char]0x2514
             $BorderBR = [char]0x2518
 
-            $BoxLeft = 3
-            $BoxInnerWidth = [Math]::Min(($script:ScreenWidth - 10), 70)
-            $BoxInnerWidth = [Math]::Max($BoxInnerWidth, 20)
+            $BoxLeft = 3   # left margin for visual centering
+            $BoxInnerWidth = [Math]::Min(($script:ScreenWidth - 10), 70)  # cap at 70 chars for readability
+            $BoxInnerWidth = [Math]::Max($BoxInnerWidth, 20)  # floor to prevent collapsed boxes
             $BoxWidth = $BoxInnerWidth + 4
 
-            $VisibleLines = $ContentHeight - 4  # top border + bottom border + footer + margin
+            $VisibleLines = $ContentHeight - 4  # subtract: top border, bottom border, footer line, margin
             $VisibleLines = [Math]::Max($VisibleLines, 1)
 
             $MaxOffset = [Math]::Max(0, $Content.Count - $VisibleLines)

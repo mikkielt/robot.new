@@ -46,9 +46,8 @@ function Resolve-PluginLoadOrder {
         foreach ($Dep in $Deps) {
             if (-not $ByName.ContainsKey($Dep)) {
                 [System.Console]::Error.WriteLine(
-                    "[WARN robot.psm1] Plugin '$Name' depends on missing plugin '$Dep' - skipped")
-                # Mark with sentinel to skip later
-                $InDegree[$Name] = -1
+                    "[WARN Resolve-PluginLoadOrder] Plugin '$Name' depends on missing plugin '$Dep' - skipped")
+                $InDegree[$Name] = -1  # sentinel: -1 excludes from topological sort
                 continue
             }
 
@@ -90,7 +89,7 @@ function Resolve-PluginLoadOrder {
     foreach ($Name in $InDegree.Keys) {
         if ($InDegree[$Name] -gt 0) {
             [System.Console]::Error.WriteLine(
-                "[WARN robot.psm1] Plugin '$Name' has unresolved dependencies (possible cycle) - skipped")
+                "[WARN Resolve-PluginLoadOrder] Plugin '$Name' has unresolved dependencies (possible cycle) - skipped")
         }
     }
 
@@ -161,7 +160,7 @@ function Resolve-PluginConfig {
         # 5. Required check
         if (-not $Value -and $Def.Required) {
             [System.Console]::Error.WriteLine(
-                "[WARN robot.psm1] Plugin '$PluginName' config key '$Key' is required but not set." +
+                "[WARN Resolve-PluginConfig] Plugin '$PluginName' config key '$Key' is required but not set." +
                 " Set env var '$($Def.EnvVar)' or add '$Key' to $PluginLocalPath")
         }
 

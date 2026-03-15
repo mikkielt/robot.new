@@ -183,7 +183,7 @@ function Get-SessionListMetadata {
         $LowerText = $ItemText.ToLowerInvariant()
         $MatchText = if ($LowerText.StartsWith('@')) { $LowerText.Substring(1) } else { $LowerText }
 
-        # O(1) children lookup replaces O(L) inner scans
+        # Pre-built parent-to-children hashtable avoids scanning the full list per item
         $ListItemId = [System.Runtime.CompilerServices.RuntimeHelpers]::GetHashCode($ListItem)
         $Children = if ($ChildrenOf.ContainsKey($ListItemId)) { $ChildrenOf[$ListItemId] } else { $null }
 
@@ -235,7 +235,7 @@ function Get-SessionListMetadata {
                     $EntityName = $EntityItem.Text.Trim()
                     $Tags = [System.Collections.Generic.List[object]]::new()
 
-                    # O(1) grandchildren lookup replaces O(L) inner scan
+                    # Pre-built parent-to-children hashtable avoids scanning the full list per tag
                     $EntityItemId = [System.Runtime.CompilerServices.RuntimeHelpers]::GetHashCode($EntityItem)
                     $TagChildren = if ($ChildrenOf.ContainsKey($EntityItemId)) { $ChildrenOf[$EntityItemId] } else { $null }
 

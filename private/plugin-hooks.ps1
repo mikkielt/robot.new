@@ -64,14 +64,14 @@ function Invoke-PluginHook {
             if (-not $Cmd) {
                 $script:HookCommandCache[$FuncName] = [DBNull]::Value
                 [System.Console]::Error.WriteLine(
-                    "[WARN plugin-hooks] Handler '$FuncName' from plugin '$($Handler.Plugin)' not found - skipping")
+                    "[WARN Invoke-PluginHook] Handler '$FuncName' from plugin '$($Handler.Plugin)' not found - skipping")
                 continue
             }
             # Safety: handler must be a user-defined Function, not a Cmdlet/Alias/Application
             if ($Cmd.CommandType -ne 'Function') {
                 $script:HookCommandCache[$FuncName] = [DBNull]::Value
                 [System.Console]::Error.WriteLine(
-                    "[WARN plugin-hooks] Handler '$FuncName' is a $($Cmd.CommandType), not a Function - skipping")
+                    "[WARN Invoke-PluginHook] Handler '$FuncName' is a $($Cmd.CommandType), not a Function - skipping")
                 continue
             }
             $script:HookCommandCache[$FuncName] = $Cmd
@@ -87,7 +87,7 @@ function Invoke-PluginHook {
             }
             # AfterWrite/AfterCreate hooks log errors but don't abort
             [System.Console]::Error.WriteLine(
-                "[WARN plugin-hooks] Hook '$FuncName' from plugin '$($Handler.Plugin)' failed: $_")
+                "[WARN Invoke-PluginHook] Hook '$FuncName' from plugin '$($Handler.Plugin)' failed: $_")
         }
     }
 }

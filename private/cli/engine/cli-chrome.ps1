@@ -23,9 +23,10 @@
 
 # ── Match Highlighting ──────────────────────────────────────────────────────
 
-# Splits text into highlighted segments based on match info from filter
-# Stages 1-2 (prefix/contains): inline bold Accent on matched characters
-# Stage 3 (fuzzy/declension): ≈ symbol prefix, no inline highlighting
+# Splits text into highlighted segments based on match info from filter.
+# Stages 1-2 (prefix/contains): bold Accent on the matched character range.
+# Stage 3 (fuzzy/declension): ≈ prefix instead of inline highlighting because
+# fuzzy matches don't have contiguous character positions to highlight.
 function Split-HighlightSegments {
     param(
         [Parameter(Mandatory)] [string]$Text,

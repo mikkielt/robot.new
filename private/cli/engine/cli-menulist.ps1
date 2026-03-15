@@ -44,7 +44,8 @@ function New-MenuListComponent {
         }
     }
 
-    # Pre-compute max label width (labels don't change during session)
+    # Pre-compute max label width to align description columns consistently;
+    # recalculated on filter since the visible item set changes
     $PreMaxLabel = 0
     foreach ($Item in $Items) {
         $LLen = $Item.Label.Length
@@ -115,7 +116,8 @@ function New-MenuListComponent {
 
                 $LabelColor = if ($IsDisabled) { $DisabledColor } elseif ($IsSelected) { $AccentColor } else { $null }
 
-                # Match highlighting when filter is active (not for selected or disabled items)
+                # Apply match highlighting only on non-selected, non-disabled items —
+                # selected items use full Accent color, disabled items stay grayed out
                 $MI = if ($ComponentRef.MatchInfoList -and $I -lt $ComponentRef.MatchInfoList.Count) { $ComponentRef.MatchInfoList[$I] } else { $null }
                 if ($MI -and -not $IsDisabled -and -not $IsSelected) {
                     $HighlightSegs = Split-HighlightSegments -Text $Item.Label -NormalColor $LabelColor -HighlightColor $AccentColor -MatchInfo $MI

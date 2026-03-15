@@ -3,16 +3,20 @@
     Reports location resolution quality from parsed session log content.
 
     .DESCRIPTION
-    This file contains Get-NamedLogLocationReport.
-
     Accepts output from Get-SessionLog (via pipeline or direct input) and
     analyzes how well log location headers resolve against the entity registry.
 
     For each location segment found in logs:
     - Attempts resolution via Resolve-Name (all 4 stages: exact, declension,
       stem alternation, fuzzy/Levenshtein)
+    - Falls back to map suffix stripping via Get-MapBaseName (e.g. "Taverna p.2"
+      becomes "Taverna") and retries resolution
     - Compares against the source session's @Lokalizacje metadata
-    - Flags unresolved locations and provides near-match candidates
+    - Computes near-match candidates for unresolved locations using Levenshtein
+      distance with length-adaptive thresholds
+
+    Also builds transition edges from consecutive location segments within each
+    log, filtering out self-transitions for use by Get-LocationGraph.
 
     Dot-sources string-helpers.ps1 for Get-LevenshteinDistance and
     location-helpers.ps1 for Get-MapBaseName (map suffix stripping).

@@ -11,6 +11,14 @@
     - Invoke-EconomicTimelineWorkflow:         monthly economic trends
     - Invoke-MaterializationReportWorkflow:    physical vs virtual currency analysis
 
+    Design:
+    - All three workflows follow the same pattern: optional wizard filters,
+      progress indicator, core function call, and engine table display.
+    - Snapshot and materialization show inline summary stats before the
+      interactive table. Timeline shows a month-by-month table directly.
+    - All amounts are normalized to Kogi base units for cross-denomination
+      comparison (ConvertFrom-CurrencyBaseUnit for display).
+
     Dependencies: cli-primitives.ps1, cli-wizard.ps1
 #>
 

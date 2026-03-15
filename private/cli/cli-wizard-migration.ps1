@@ -16,6 +16,16 @@
     - Get-MigrationMenuItems:        returns dynamic menu items with status badges
     - Invoke-MigrationPhaseAction:   dispatches a phase by registry ID
 
+    Design:
+    - Both functions override stubs defined in cli-routing.ps1. This allows
+      the CLI to operate without migration files present — the stubs return
+      empty/no-op results, and this file replaces them only when loaded.
+    - Phase menu items include status symbols from $script:StatusDisplay
+      (checkmark, spinner, warning) so the user sees progress at a glance.
+    - Migration phases use console-mode output (not the TUI engine), so
+      Invoke-MigrationPhaseAction calls Console.Clear() before dispatching
+      to avoid rendering artifacts from the engine's cursor-positioned buffer.
+
     Dependencies: cli-primitives.ps1, cli-routing.ps1 (overrides stubs)
 #>
 
