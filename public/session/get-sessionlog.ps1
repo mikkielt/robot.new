@@ -32,6 +32,10 @@
     Name resolution is optional — when -Index is provided, speakers and
     location headers are resolved against the entity registry. Without it,
     only Raw speaker names and unresolved location segments are returned.
+
+    LocationSegment handling detects the compiled C# path (Robot.LogParser)
+    for direct property assignment on C# class instances vs Add-Member on
+    PSCustomObject for the PowerShell fallback path.
 #>
 
 . "$script:ModuleRoot/private/log-fetchhelpers.ps1"
@@ -218,9 +222,12 @@ function Get-SessionLog {
                     $Channels = [PSCustomObject[]]$Channels.ToArray()
                 }
 
-                # Resolve location segment headers against entity registry
+                # Resolve location segment headers against entity registry.
+                # LocationSegment is a C# class with Resolved/Stage fields when on the
+                # compiled path; PSCustomObject with Add-Member on the PS fallback path.
                 $LocationSegments = $Parsed.LocationSegments
                 if ($null -ne $Index -and $null -ne $LocationSegments) {
+                    $IsCompiledPath = ([System.Management.Automation.PSTypeName]'Robot.LogParser').Type
                     for ($i = 0; $i -lt $LocationSegments.Count; $i++) {
                         $Seg = $LocationSegments[$i]
                         $ResolveParams = @{ Query = $Seg.Raw }
@@ -229,12 +236,19 @@ function Get-SessionLog {
                         if ($Index.ContainsKey('BKTree'))    { $ResolveParams['BKTree']    = $Index['BKTree'] }
                         if ($null -ne $Cache) { $ResolveParams['Cache'] = $Cache }
                         $ResolveResult = Resolve-Name @ResolveParams
-                        if ($null -ne $ResolveResult) {
-                            $Seg | Add-Member -NotePropertyName 'Resolved' -NotePropertyValue $ResolveResult.Name -Force
-                            $Seg | Add-Member -NotePropertyName 'Stage' -NotePropertyValue $ResolveResult.Stage -Force
+                        if ($IsCompiledPath) {
+                            # C# class: direct field assignment (no boxing issues)
+                            $Seg.Resolved = if ($null -ne $ResolveResult) { $ResolveResult.Name } else { $null }
+                            $Seg.Stage    = if ($null -ne $ResolveResult) { $ResolveResult.Stage } else { $null }
                         } else {
-                            $Seg | Add-Member -NotePropertyName 'Resolved' -NotePropertyValue $null -Force
-                            $Seg | Add-Member -NotePropertyName 'Stage' -NotePropertyValue $null -Force
+                            # PS fallback: PSCustomObject needs Add-Member
+                            if ($null -ne $ResolveResult) {
+                                $Seg | Add-Member -NotePropertyName 'Resolved' -NotePropertyValue $ResolveResult.Name -Force
+                                $Seg | Add-Member -NotePropertyName 'Stage' -NotePropertyValue $ResolveResult.Stage -Force
+                            } else {
+                                $Seg | Add-Member -NotePropertyName 'Resolved' -NotePropertyValue $null -Force
+                                $Seg | Add-Member -NotePropertyName 'Stage' -NotePropertyValue $null -Force
+                            }
                         }
                     }
                 }

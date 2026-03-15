@@ -24,6 +24,9 @@
     entities.md so they can be resolved.
 #>
 
+# C# types: Robot.NarratorResult, Robot.Narrator (lib/NarratorResult.cs)
+# Compiled centrally in robot.psm1 at module import time.
+
 function Resolve-NarratorCandidate {
     param(
         [string]$Query,
@@ -35,7 +38,7 @@ function Resolve-NarratorCandidate {
     if ($Index.ContainsKey($Query)) {
         $Entry = $Index[$Query]
         if (-not $Entry.Ambiguous -and $Entry.OwnerType -eq 'Player') {
-            return [PSCustomObject]@{ Player = $Entry.Owner; Confidence = 'High' }
+            return [Robot.Narrator]::new($Entry.Owner.Name, $Entry.Owner, 'High')
         }
     }
 
@@ -43,7 +46,7 @@ function Resolve-NarratorCandidate {
     # match is approximate — callers may want to flag it for review
     $Player = Resolve-Name -Query $Query -Index $Index -StemIndex $StemIndex -BKTree $BKTree -OwnerType "Player"
     if ($Player) {
-        return [PSCustomObject]@{ Player = $Player; Confidence = 'Medium' }
+        return [Robot.Narrator]::new($Player.Name, $Player, 'Medium')
     }
 
     return $null
@@ -75,7 +78,7 @@ function Resolve-Narrator {
     $Results = [System.Collections.Generic.List[object]]::new()
 
     # Many sessions share the same narrator, so caching by raw text avoids
-    # redundant resolution. Shared cross-file caches save ~200s on large repos.
+    # redundant resolution. Shared cross-file caches amortize across batch calls.
     if (-not $NarratorCache) {
         $NarratorCache = [System.Collections.Generic.Dictionary[string, object]]::new([System.StringComparer]::OrdinalIgnoreCase)
     }
@@ -93,12 +96,7 @@ function Resolve-Narrator {
         }
 
         if ([string]::IsNullOrWhiteSpace($RawNarrator)) {
-            $Results.Add([PSCustomObject]@{
-                Narrators  = @()
-                IsCouncil  = $false
-                Confidence = "None"
-                RawText    = $null
-            })
+            $Results.Add([Robot.NarratorResult]::new(@(), $false, 'None', $null))
             continue
         }
 
@@ -109,12 +107,7 @@ function Resolve-Narrator {
 
         # "Rada" is a reserved keyword for council sessions with no individual narrator
         if ($RawNarrator.Trim().ToLowerInvariant() -eq "rada") {
-            $CachedResult = [PSCustomObject]@{
-                Narrators  = @()
-                IsCouncil  = $true
-                Confidence = "High"
-                RawText    = $RawNarrator
-            }
+            $CachedResult = [Robot.NarratorResult]::new(@(), $true, 'High', $RawNarrator)
             $NarratorCache[$RawNarrator] = $CachedResult
             $Results.Add($CachedResult)
             continue
@@ -124,16 +117,12 @@ function Resolve-Narrator {
         # expensive and only needed when the single match fails
         $SingleMatch = Resolve-NarratorCandidate -Query $RawNarrator -Index $Index -StemIndex $StemIndex -BKTree $BKTree
         if ($SingleMatch) {
-            $CachedResult = [PSCustomObject]@{
-                Narrators  = @([PSCustomObject]@{
-                    Name       = $SingleMatch.Player.Name
-                    Player     = $SingleMatch.Player
-                    Confidence = $SingleMatch.Confidence
-                })
-                IsCouncil  = $false
-                Confidence = $SingleMatch.Confidence
-                RawText    = $RawNarrator
-            }
+            $CachedResult = [Robot.NarratorResult]::new(
+                @($SingleMatch),
+                $false,
+                $SingleMatch.Confidence,
+                $RawNarrator
+            )
             $NarratorCache[$RawNarrator] = $CachedResult
             $Results.Add($CachedResult)
             continue
@@ -143,7 +132,7 @@ function Resolve-Narrator {
         # or parenthetical attribution ("autorstwo: Rada")
         if ($RawNarrator -match ' i | oraz | \+ |\(') {
             $Parts = $RawNarrator -split ' i | oraz | \+ |\(|\)'
-            $Narrators = [System.Collections.Generic.List[object]]::new()
+            $NarratorList = [System.Collections.Generic.List[object]]::new()
             $HasCouncil = $false
 
             foreach ($Part in $Parts) {
@@ -160,40 +149,26 @@ function Resolve-Narrator {
 
                 $PartMatch = Resolve-NarratorCandidate -Query $CleanPart -Index $Index -StemIndex $StemIndex -BKTree $BKTree
                 if ($PartMatch) {
-                    $Narrators.Add([PSCustomObject]@{
-                        Name       = $PartMatch.Player.Name
-                        Player     = $PartMatch.Player
-                        Confidence = $PartMatch.Confidence
-                    })
+                    $NarratorList.Add($PartMatch)
                 }
             }
 
-            if ($Narrators.Count -gt 0 -or $HasCouncil) {
+            if ($NarratorList.Count -gt 0 -or $HasCouncil) {
                 # Confidence floor: overall confidence degrades to the lowest individual
                 # confidence to reflect that any approximate match reduces trust
                 $OverallConfidence = "High"
-                foreach ($N in $Narrators) {
+                foreach ($N in $NarratorList) {
                     if ($N.Confidence -ne "High") { $OverallConfidence = $N.Confidence }
                 }
 
-                $CachedResult = [PSCustomObject]@{
-                    Narrators  = @($Narrators)
-                    IsCouncil  = $HasCouncil
-                    Confidence = $OverallConfidence
-                    RawText    = $RawNarrator
-                }
+                $CachedResult = [Robot.NarratorResult]::new(@($NarratorList), $HasCouncil, $OverallConfidence, $RawNarrator)
                 $NarratorCache[$RawNarrator] = $CachedResult
                 $Results.Add($CachedResult)
                 continue
             }
         }
 
-        $UnresolvedResult = [PSCustomObject]@{
-            Narrators  = @()
-            IsCouncil  = $false
-            Confidence = "None"
-            RawText    = $RawNarrator
-        }
+        $UnresolvedResult = [Robot.NarratorResult]::new(@(), $false, 'None', $RawNarrator)
         $NarratorCache[$RawNarrator] = $UnresolvedResult
         $Results.Add($UnresolvedResult)
     }

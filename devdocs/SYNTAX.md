@@ -195,6 +195,10 @@ Current types:
 | `lib/LogParser.cs` | `Robot.LogParser` | Compiled ChatLog/Prose log content parser with format detection and location segment extraction |
 | `lib/SessionTagParser.cs` | `Robot.SessionTagParser` | Compiled session tag dispatcher for Get-SessionListMetadata; prefix-based 8-way dispatch with flat array I/O |
 | `lib/MarkdownScanner.cs` | `Robot.MarkdownScanner` | Compiled Markdown line scanner for parse-markdownfile.ps1; single-pass with index-based parent tracking |
+| `lib/TemporalEntry.cs` | `Robot.TemporalEntry`, `Robot.CoordinateTemporalEntry` | Temporal value containers replacing 23 PSCustomObject sites in entity parsing |
+| `lib/EntityModel.cs` | `Robot.Entity` | Central 27-property entity domain model replacing PSCustomObject in get-entity.ps1 |
+| `lib/SessionMetadata.cs` | `Robot.SessionPU`, `Robot.SessionChange`, `Robot.SessionTag`, `Robot.SessionIntel`, `Robot.SessionTransfer` | Session metadata types replacing 11 PSCustomObject sites in session-parsehelpers.ps1 |
+| `lib/NarratorResult.cs` | `Robot.NarratorResult`, `Robot.Narrator` | Narrator resolution result types replacing 9+ PSCustomObject sites in resolve-narrator.ps1 and get-session.ps1 |
 
 ### Output Suppression
 

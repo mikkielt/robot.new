@@ -26,13 +26,13 @@ BeforeAll {
         '(https?://[^\s\)\]]+)',
         [System.Text.RegularExpressions.RegexOptions]::Compiled)
 
-    # Helper: build ChildrenOf hashtable from flat list items using RuntimeHelpers
+    # Helper: build ChildrenOf hashtable from flat list items using ParentIndex
     function Build-ChildrenOf {
         param([object[]]$ListItems)
         $ChildrenOf = @{}
         foreach ($LI in $ListItems) {
-            if ($null -eq $LI.ParentListItem) { continue }
-            $ParentId = [System.Runtime.CompilerServices.RuntimeHelpers]::GetHashCode($LI.ParentListItem)
+            if ($LI.ParentIndex -lt 0) { continue }
+            $ParentId = $LI.ParentIndex
             if (-not $ChildrenOf.ContainsKey($ParentId)) {
                 $ChildrenOf[$ParentId] = [System.Collections.Generic.List[object]]::new()
             }
@@ -41,19 +41,21 @@ BeforeAll {
         return $ChildrenOf
     }
 
-    # Helper: create list item objects with parent references
+    # Helper: create list item objects with parent/local index
     function New-ListItem {
         param(
             [string]$Text,
             [int]$Indent = 0,
-            [object]$Parent = $null
+            [int]$ParentIndex = -1,
+            [int]$LocalIndex = 0
         )
         return [PSCustomObject]@{
-            Type           = 'Bullet'
-            Text           = $Text
-            Indent         = $Indent
-            ParentListItem = $Parent
-            SectionHeader  = $null
+            Type          = 'Bullet'
+            Text          = $Text
+            Indent        = $Indent
+            ParentIndex   = $ParentIndex
+            LocalIndex    = $LocalIndex
+            SectionHeader = $null
         }
     }
 }
@@ -100,9 +102,9 @@ Describe 'Get-SessionListMetadata' {
 
     Context 'PU branch' {
         It 'extracts PU with European decimal (comma)' {
-            $PUParent = New-ListItem -Text '@PU:'
-            $PUChild1 = New-ListItem -Text 'Xeron Demonlord: 0,5' -Indent 2 -Parent $PUParent
-            $PUChild2 = New-ListItem -Text 'Kyrre: 0,3' -Indent 2 -Parent $PUParent
+            $PUParent = New-ListItem -Text '@PU:' -LocalIndex 0
+            $PUChild1 = New-ListItem -Text 'Xeron Demonlord: 0,5' -Indent 2 -ParentIndex 0 -LocalIndex 1
+            $PUChild2 = New-ListItem -Text 'Kyrre: 0,3' -Indent 2 -ParentIndex 0 -LocalIndex 2
             $AllItems = @($PUParent, $PUChild1, $PUChild2)
             $ChildrenOf = Build-ChildrenOf -ListItems $AllItems
 
@@ -116,8 +118,8 @@ Describe 'Get-SessionListMetadata' {
         }
 
         It 'extracts PU with dot decimal' {
-            $PUParent = New-ListItem -Text 'PU:'
-            $PUChild = New-ListItem -Text 'Dracon: 0.8' -Indent 2 -Parent $PUParent
+            $PUParent = New-ListItem -Text 'PU:' -LocalIndex 0
+            $PUChild = New-ListItem -Text 'Dracon: 0.8' -Indent 2 -ParentIndex 0 -LocalIndex 1
             $AllItems = @($PUParent, $PUChild)
             $ChildrenOf = Build-ChildrenOf -ListItems $AllItems
 
@@ -129,8 +131,8 @@ Describe 'Get-SessionListMetadata' {
         }
 
         It 'handles invalid PU value (returns null Value)' {
-            $PUParent = New-ListItem -Text '@PU:'
-            $PUChild = New-ListItem -Text 'BadChar: abc' -Indent 2 -Parent $PUParent
+            $PUParent = New-ListItem -Text '@PU:' -LocalIndex 0
+            $PUChild = New-ListItem -Text 'BadChar: abc' -Indent 2 -ParentIndex 0 -LocalIndex 1
             $AllItems = @($PUParent, $PUChild)
             $ChildrenOf = Build-ChildrenOf -ListItems $AllItems
 
@@ -141,7 +143,7 @@ Describe 'Get-SessionListMetadata' {
         }
 
         It 'ignores PU parent with no children' {
-            $PUParent = New-ListItem -Text '@PU:'
+            $PUParent = New-ListItem -Text '@PU:' -LocalIndex 0
             $AllItems = @($PUParent)
             $ChildrenOf = Build-ChildrenOf -ListItems $AllItems
 
@@ -151,8 +153,8 @@ Describe 'Get-SessionListMetadata' {
         }
 
         It 'handles PU with space separator (PU :)' {
-            $PUParent = New-ListItem -Text '@PU :'
-            $PUChild = New-ListItem -Text 'Gelu: 1' -Indent 2 -Parent $PUParent
+            $PUParent = New-ListItem -Text '@PU :' -LocalIndex 0
+            $PUChild = New-ListItem -Text 'Gelu: 1' -Indent 2 -ParentIndex 0 -LocalIndex 1
             $AllItems = @($PUParent, $PUChild)
             $ChildrenOf = Build-ChildrenOf -ListItems $AllItems
 
@@ -164,9 +166,9 @@ Describe 'Get-SessionListMetadata' {
 
     Context 'Logi branch' {
         It 'extracts log URLs from children' {
-            $LogParent = New-ListItem -Text '@Logi:'
-            $LogChild1 = New-ListItem -Text 'https://example.com/log1' -Indent 2 -Parent $LogParent
-            $LogChild2 = New-ListItem -Text 'https://example.com/log2' -Indent 2 -Parent $LogParent
+            $LogParent = New-ListItem -Text '@Logi:' -LocalIndex 0
+            $LogChild1 = New-ListItem -Text 'https://example.com/log1' -Indent 2 -ParentIndex 0 -LocalIndex 1
+            $LogChild2 = New-ListItem -Text 'https://example.com/log2' -Indent 2 -ParentIndex 0 -LocalIndex 2
             $AllItems = @($LogParent, $LogChild1, $LogChild2)
             $ChildrenOf = Build-ChildrenOf -ListItems $AllItems
 
@@ -178,7 +180,7 @@ Describe 'Get-SessionListMetadata' {
         }
 
         It 'extracts inline log URL' {
-            $LogItem = New-ListItem -Text 'Logi: https://example.com/inline-log'
+            $LogItem = New-ListItem -Text 'Logi: https://example.com/inline-log' -LocalIndex 0
             $AllItems = @($LogItem)
             $ChildrenOf = Build-ChildrenOf -ListItems $AllItems
 
@@ -189,8 +191,8 @@ Describe 'Get-SessionListMetadata' {
         }
 
         It 'deduplicates inline URL already in children' {
-            $LogParent = New-ListItem -Text '@Logi: https://example.com/dupe'
-            $LogChild = New-ListItem -Text 'https://example.com/dupe' -Indent 2 -Parent $LogParent
+            $LogParent = New-ListItem -Text '@Logi: https://example.com/dupe' -LocalIndex 0
+            $LogChild = New-ListItem -Text 'https://example.com/dupe' -Indent 2 -ParentIndex 0 -LocalIndex 1
             $AllItems = @($LogParent, $LogChild)
             $ChildrenOf = Build-ChildrenOf -ListItems $AllItems
 
@@ -200,8 +202,8 @@ Describe 'Get-SessionListMetadata' {
         }
 
         It 'extracts local file paths (res/logs/)' {
-            $LogParent = New-ListItem -Text '@Logi:'
-            $LogChild = New-ListItem -Text 'res/logs/2025-03-01-sesja.html' -Indent 2 -Parent $LogParent
+            $LogParent = New-ListItem -Text '@Logi:' -LocalIndex 0
+            $LogChild = New-ListItem -Text 'res/logs/2025-03-01-sesja.html' -Indent 2 -ParentIndex 0 -LocalIndex 1
             $AllItems = @($LogParent, $LogChild)
             $ChildrenOf = Build-ChildrenOf -ListItems $AllItems
 
@@ -214,10 +216,10 @@ Describe 'Get-SessionListMetadata' {
 
     Context 'Zmiany branch' {
         It 'extracts entity changes with nested tags' {
-            $ZmianyParent = New-ListItem -Text '@Zmiany:'
-            $Entity1 = New-ListItem -Text 'Kupiec Orrin' -Indent 2 -Parent $ZmianyParent
-            $Tag1 = New-ListItem -Text '@lokacja: Erathia (2025-03:)' -Indent 4 -Parent $Entity1
-            $Tag2 = New-ListItem -Text '@status: Aktywny (2025-03:)' -Indent 4 -Parent $Entity1
+            $ZmianyParent = New-ListItem -Text '@Zmiany:' -LocalIndex 0
+            $Entity1 = New-ListItem -Text 'Kupiec Orrin' -Indent 2 -ParentIndex 0 -LocalIndex 1
+            $Tag1 = New-ListItem -Text '@lokacja: Erathia (2025-03:)' -Indent 4 -ParentIndex 1 -LocalIndex 2
+            $Tag2 = New-ListItem -Text '@status: Aktywny (2025-03:)' -Indent 4 -ParentIndex 1 -LocalIndex 3
             $AllItems = @($ZmianyParent, $Entity1, $Tag1, $Tag2)
             $ChildrenOf = Build-ChildrenOf -ListItems $AllItems
 
@@ -231,11 +233,11 @@ Describe 'Get-SessionListMetadata' {
         }
 
         It 'handles multiple entities in Zmiany' {
-            $ZmianyParent = New-ListItem -Text 'Zmiany:'
-            $Entity1 = New-ListItem -Text 'Entity A' -Indent 2 -Parent $ZmianyParent
-            $Tag1 = New-ListItem -Text '@lokacja: Place (2025-01:)' -Indent 4 -Parent $Entity1
-            $Entity2 = New-ListItem -Text 'Entity B' -Indent 2 -Parent $ZmianyParent
-            $Tag2 = New-ListItem -Text '@status: Nieaktywny (2025-01:)' -Indent 4 -Parent $Entity2
+            $ZmianyParent = New-ListItem -Text 'Zmiany:' -LocalIndex 0
+            $Entity1 = New-ListItem -Text 'Entity A' -Indent 2 -ParentIndex 0 -LocalIndex 1
+            $Tag1 = New-ListItem -Text '@lokacja: Place (2025-01:)' -Indent 4 -ParentIndex 1 -LocalIndex 2
+            $Entity2 = New-ListItem -Text 'Entity B' -Indent 2 -ParentIndex 0 -LocalIndex 3
+            $Tag2 = New-ListItem -Text '@status: Nieaktywny (2025-01:)' -Indent 4 -ParentIndex 3 -LocalIndex 4
             $AllItems = @($ZmianyParent, $Entity1, $Tag1, $Entity2, $Tag2)
             $ChildrenOf = Build-ChildrenOf -ListItems $AllItems
 
@@ -247,10 +249,10 @@ Describe 'Get-SessionListMetadata' {
         }
 
         It 'skips tags without @ prefix' {
-            $ZmianyParent = New-ListItem -Text '@Zmiany:'
-            $Entity = New-ListItem -Text 'SomeEntity' -Indent 2 -Parent $ZmianyParent
-            $Tag1 = New-ListItem -Text '@lokacja: Place' -Indent 4 -Parent $Entity
-            $Tag2 = New-ListItem -Text 'not a tag: value' -Indent 4 -Parent $Entity
+            $ZmianyParent = New-ListItem -Text '@Zmiany:' -LocalIndex 0
+            $Entity = New-ListItem -Text 'SomeEntity' -Indent 2 -ParentIndex 0 -LocalIndex 1
+            $Tag1 = New-ListItem -Text '@lokacja: Place' -Indent 4 -ParentIndex 1 -LocalIndex 2
+            $Tag2 = New-ListItem -Text 'not a tag: value' -Indent 4 -ParentIndex 1 -LocalIndex 3
             $AllItems = @($ZmianyParent, $Entity, $Tag1, $Tag2)
             $ChildrenOf = Build-ChildrenOf -ListItems $AllItems
 
@@ -260,9 +262,9 @@ Describe 'Get-SessionListMetadata' {
         }
 
         It 'skips tags without colon' {
-            $ZmianyParent = New-ListItem -Text '@Zmiany:'
-            $Entity = New-ListItem -Text 'SomeEntity' -Indent 2 -Parent $ZmianyParent
-            $Tag = New-ListItem -Text '@justATag' -Indent 4 -Parent $Entity
+            $ZmianyParent = New-ListItem -Text '@Zmiany:' -LocalIndex 0
+            $Entity = New-ListItem -Text 'SomeEntity' -Indent 2 -ParentIndex 0 -LocalIndex 1
+            $Tag = New-ListItem -Text '@justATag' -Indent 4 -ParentIndex 1 -LocalIndex 2
             $AllItems = @($ZmianyParent, $Entity, $Tag)
             $ChildrenOf = Build-ChildrenOf -ListItems $AllItems
 
@@ -272,9 +274,9 @@ Describe 'Get-SessionListMetadata' {
         }
 
         It 'matches Zmiany without colon (bare keyword)' {
-            $ZmianyParent = New-ListItem -Text 'Zmiany'
-            $Entity = New-ListItem -Text 'TestEntity' -Indent 2 -Parent $ZmianyParent
-            $Tag = New-ListItem -Text '@lokacja: TestPlace' -Indent 4 -Parent $Entity
+            $ZmianyParent = New-ListItem -Text 'Zmiany' -LocalIndex 0
+            $Entity = New-ListItem -Text 'TestEntity' -Indent 2 -ParentIndex 0 -LocalIndex 1
+            $Tag = New-ListItem -Text '@lokacja: TestPlace' -Indent 4 -ParentIndex 1 -LocalIndex 2
             $AllItems = @($ZmianyParent, $Entity, $Tag)
             $ChildrenOf = Build-ChildrenOf -ListItems $AllItems
 
@@ -286,9 +288,9 @@ Describe 'Get-SessionListMetadata' {
 
     Context 'Intel branch' {
         It 'extracts Intel entries with target and message' {
-            $IntelParent = New-ListItem -Text '@Intel:'
-            $Intel1 = New-ListItem -Text 'Grupa/Kupcy: Orrin wrócił z towarem' -Indent 2 -Parent $IntelParent
-            $Intel2 = New-ListItem -Text 'Xeron Demonlord: Znalazł artefakt' -Indent 2 -Parent $IntelParent
+            $IntelParent = New-ListItem -Text '@Intel:' -LocalIndex 0
+            $Intel1 = New-ListItem -Text 'Grupa/Kupcy: Orrin wrócił z towarem' -Indent 2 -ParentIndex 0 -LocalIndex 1
+            $Intel2 = New-ListItem -Text 'Xeron Demonlord: Znalazł artefakt' -Indent 2 -ParentIndex 0 -LocalIndex 2
             $AllItems = @($IntelParent, $Intel1, $Intel2)
             $ChildrenOf = Build-ChildrenOf -ListItems $AllItems
 
@@ -301,10 +303,10 @@ Describe 'Get-SessionListMetadata' {
         }
 
         It 'skips Intel entries with empty target or message' {
-            $IntelParent = New-ListItem -Text '@Intel:'
-            $Intel1 = New-ListItem -Text ': Empty target' -Indent 2 -Parent $IntelParent
-            $Intel2 = New-ListItem -Text 'Target: ' -Indent 2 -Parent $IntelParent
-            $Intel3 = New-ListItem -Text 'NoColonHere' -Indent 2 -Parent $IntelParent
+            $IntelParent = New-ListItem -Text '@Intel:' -LocalIndex 0
+            $Intel1 = New-ListItem -Text ': Empty target' -Indent 2 -ParentIndex 0 -LocalIndex 1
+            $Intel2 = New-ListItem -Text 'Target: ' -Indent 2 -ParentIndex 0 -LocalIndex 2
+            $Intel3 = New-ListItem -Text 'NoColonHere' -Indent 2 -ParentIndex 0 -LocalIndex 3
             $AllItems = @($IntelParent, $Intel1, $Intel2, $Intel3)
             $ChildrenOf = Build-ChildrenOf -ListItems $AllItems
 
@@ -314,8 +316,8 @@ Describe 'Get-SessionListMetadata' {
         }
 
         It 'matches Intel with space separator' {
-            $IntelParent = New-ListItem -Text 'Intel :'
-            $Intel = New-ListItem -Text 'Target: Message here' -Indent 2 -Parent $IntelParent
+            $IntelParent = New-ListItem -Text 'Intel :' -LocalIndex 0
+            $Intel = New-ListItem -Text 'Target: Message here' -Indent 2 -ParentIndex 0 -LocalIndex 1
             $AllItems = @($IntelParent, $Intel)
             $ChildrenOf = Build-ChildrenOf -ListItems $AllItems
 
@@ -327,9 +329,9 @@ Describe 'Get-SessionListMetadata' {
 
     Context 'Narrator branch' {
         It 'extracts narrator override names' {
-            $NarrParent = New-ListItem -Text '@Narrator:'
-            $Narr1 = New-ListItem -Text 'Solmyr' -Indent 2 -Parent $NarrParent
-            $Narr2 = New-ListItem -Text 'Dracon' -Indent 2 -Parent $NarrParent
+            $NarrParent = New-ListItem -Text '@Narrator:' -LocalIndex 0
+            $Narr1 = New-ListItem -Text 'Solmyr' -Indent 2 -ParentIndex 0 -LocalIndex 1
+            $Narr2 = New-ListItem -Text 'Dracon' -Indent 2 -ParentIndex 0 -LocalIndex 2
             $AllItems = @($NarrParent, $Narr1, $Narr2)
             $ChildrenOf = Build-ChildrenOf -ListItems $AllItems
 
@@ -341,9 +343,9 @@ Describe 'Get-SessionListMetadata' {
         }
 
         It 'skips empty narrator names' {
-            $NarrParent = New-ListItem -Text '@Narrator:'
-            $Narr1 = New-ListItem -Text '   ' -Indent 2 -Parent $NarrParent
-            $Narr2 = New-ListItem -Text 'Solmyr' -Indent 2 -Parent $NarrParent
+            $NarrParent = New-ListItem -Text '@Narrator:' -LocalIndex 0
+            $Narr1 = New-ListItem -Text '   ' -Indent 2 -ParentIndex 0 -LocalIndex 1
+            $Narr2 = New-ListItem -Text 'Solmyr' -Indent 2 -ParentIndex 0 -LocalIndex 2
             $AllItems = @($NarrParent, $Narr1, $Narr2)
             $ChildrenOf = Build-ChildrenOf -ListItems $AllItems
 
@@ -356,7 +358,7 @@ Describe 'Get-SessionListMetadata' {
 
     Context 'Data branch' {
         It 'extracts inline date override' {
-            $DataItem = New-ListItem -Text '@Data: 2024-07-14'
+            $DataItem = New-ListItem -Text '@Data: 2024-07-14' -LocalIndex 0
             $AllItems = @($DataItem)
             $ChildrenOf = Build-ChildrenOf -ListItems $AllItems
 
@@ -366,8 +368,8 @@ Describe 'Get-SessionListMetadata' {
         }
 
         It 'extracts child date override when inline is empty' {
-            $DataParent = New-ListItem -Text '@Data:'
-            $DataChild = New-ListItem -Text '2024-08-20' -Indent 2 -Parent $DataParent
+            $DataParent = New-ListItem -Text '@Data:' -LocalIndex 0
+            $DataChild = New-ListItem -Text '2024-08-20' -Indent 2 -ParentIndex 0 -LocalIndex 1
             $AllItems = @($DataParent, $DataChild)
             $ChildrenOf = Build-ChildrenOf -ListItems $AllItems
 
@@ -377,8 +379,8 @@ Describe 'Get-SessionListMetadata' {
         }
 
         It 'prefers inline over children' {
-            $DataParent = New-ListItem -Text '@Data: 2024-07-14'
-            $DataChild = New-ListItem -Text '2024-08-20' -Indent 2 -Parent $DataParent
+            $DataParent = New-ListItem -Text '@Data: 2024-07-14' -LocalIndex 0
+            $DataChild = New-ListItem -Text '2024-08-20' -Indent 2 -ParentIndex 0 -LocalIndex 1
             $AllItems = @($DataParent, $DataChild)
             $ChildrenOf = Build-ChildrenOf -ListItems $AllItems
 
@@ -388,9 +390,9 @@ Describe 'Get-SessionListMetadata' {
         }
 
         It 'skips empty child lines in date override' {
-            $DataParent = New-ListItem -Text '@Data:'
-            $DataChild1 = New-ListItem -Text '   ' -Indent 2 -Parent $DataParent
-            $DataChild2 = New-ListItem -Text '2024-09-01' -Indent 2 -Parent $DataParent
+            $DataParent = New-ListItem -Text '@Data:' -LocalIndex 0
+            $DataChild1 = New-ListItem -Text '   ' -Indent 2 -ParentIndex 0 -LocalIndex 1
+            $DataChild2 = New-ListItem -Text '2024-09-01' -Indent 2 -ParentIndex 0 -LocalIndex 2
             $AllItems = @($DataParent, $DataChild1, $DataChild2)
             $ChildrenOf = Build-ChildrenOf -ListItems $AllItems
 
@@ -400,7 +402,7 @@ Describe 'Get-SessionListMetadata' {
         }
 
         It 'returns null DateOverride when not present' {
-            $OtherItem = New-ListItem -Text 'Some unrelated item'
+            $OtherItem = New-ListItem -Text 'Some unrelated item' -LocalIndex 0
             $AllItems = @($OtherItem)
             $ChildrenOf = Build-ChildrenOf -ListItems $AllItems
 
@@ -412,7 +414,7 @@ Describe 'Get-SessionListMetadata' {
 
     Context 'Transfer branch' {
         It 'extracts transfer with amount, denomination, source and destination' {
-            $TransferItem = New-ListItem -Text '@Transfer: 20 koron, Dawca -> Odbiorca'
+            $TransferItem = New-ListItem -Text '@Transfer: 20 koron, Dawca -> Odbiorca' -LocalIndex 0
             $AllItems = @($TransferItem)
             $ChildrenOf = Build-ChildrenOf -ListItems $AllItems
 
@@ -426,9 +428,9 @@ Describe 'Get-SessionListMetadata' {
         }
 
         It 'extracts multiple transfers' {
-            $T1 = New-ListItem -Text '@Transfer: 20 koron, Dawca -> Odbiorca'
-            $T2 = New-ListItem -Text '@Transfer: 15 koron, Dawca -> Trzeci'
-            $T3 = New-ListItem -Text '@Transfer: 5 koron, Odbiorca -> Trzeci'
+            $T1 = New-ListItem -Text '@Transfer: 20 koron, Dawca -> Odbiorca' -LocalIndex 0
+            $T2 = New-ListItem -Text '@Transfer: 15 koron, Dawca -> Trzeci' -LocalIndex 1
+            $T3 = New-ListItem -Text '@Transfer: 5 koron, Odbiorca -> Trzeci' -LocalIndex 2
             $AllItems = @($T1, $T2, $T3)
             $ChildrenOf = Build-ChildrenOf -ListItems $AllItems
 
@@ -438,7 +440,7 @@ Describe 'Get-SessionListMetadata' {
         }
 
         It 'rejects transfer with invalid amount' {
-            $TransferItem = New-ListItem -Text '@Transfer: abc koron, Dawca -> Odbiorca'
+            $TransferItem = New-ListItem -Text '@Transfer: abc koron, Dawca -> Odbiorca' -LocalIndex 0
             $AllItems = @($TransferItem)
             $ChildrenOf = Build-ChildrenOf -ListItems $AllItems
 
@@ -448,7 +450,7 @@ Describe 'Get-SessionListMetadata' {
         }
 
         It 'rejects transfer with zero amount' {
-            $TransferItem = New-ListItem -Text '@Transfer: 0 koron, Dawca -> Odbiorca'
+            $TransferItem = New-ListItem -Text '@Transfer: 0 koron, Dawca -> Odbiorca' -LocalIndex 0
             $AllItems = @($TransferItem)
             $ChildrenOf = Build-ChildrenOf -ListItems $AllItems
 
@@ -458,7 +460,7 @@ Describe 'Get-SessionListMetadata' {
         }
 
         It 'rejects transfer without arrow' {
-            $TransferItem = New-ListItem -Text '@Transfer: 20 koron, Dawca do Odbiorca'
+            $TransferItem = New-ListItem -Text '@Transfer: 20 koron, Dawca do Odbiorca' -LocalIndex 0
             $AllItems = @($TransferItem)
             $ChildrenOf = Build-ChildrenOf -ListItems $AllItems
 
@@ -468,8 +470,8 @@ Describe 'Get-SessionListMetadata' {
         }
 
         It 'rejects transfer with empty source or destination' {
-            $T1 = New-ListItem -Text '@Transfer: 20 koron,  -> Odbiorca'
-            $T2 = New-ListItem -Text '@Transfer: 20 koron, Dawca ->  '
+            $T1 = New-ListItem -Text '@Transfer: 20 koron,  -> Odbiorca' -LocalIndex 0
+            $T2 = New-ListItem -Text '@Transfer: 20 koron, Dawca ->  ' -LocalIndex 1
             $AllItems = @($T1, $T2)
             $ChildrenOf = Build-ChildrenOf -ListItems $AllItems
 
@@ -481,19 +483,19 @@ Describe 'Get-SessionListMetadata' {
 
     Context 'combined metadata' {
         It 'extracts all metadata types from a single section' {
-            $PUParent = New-ListItem -Text '@PU:'
-            $PUChild = New-ListItem -Text 'Xeron: 0,5' -Indent 2 -Parent $PUParent
-            $LogParent = New-ListItem -Text '@Logi:'
-            $LogChild = New-ListItem -Text 'https://example.com/log1' -Indent 2 -Parent $LogParent
-            $ZmianyParent = New-ListItem -Text '@Zmiany:'
-            $Entity = New-ListItem -Text 'Kupiec' -Indent 2 -Parent $ZmianyParent
-            $Tag = New-ListItem -Text '@lokacja: Erathia' -Indent 4 -Parent $Entity
-            $IntelParent = New-ListItem -Text '@Intel:'
-            $Intel = New-ListItem -Text 'Target: Message' -Indent 2 -Parent $IntelParent
-            $NarrParent = New-ListItem -Text '@Narrator:'
-            $Narr = New-ListItem -Text 'Solmyr' -Indent 2 -Parent $NarrParent
-            $Data = New-ListItem -Text '@Data: 2025-01-01'
-            $Transfer = New-ListItem -Text '@Transfer: 10 koron, A -> B'
+            $PUParent = New-ListItem -Text '@PU:' -LocalIndex 0
+            $PUChild = New-ListItem -Text 'Xeron: 0,5' -Indent 2 -ParentIndex 0 -LocalIndex 1
+            $LogParent = New-ListItem -Text '@Logi:' -LocalIndex 2
+            $LogChild = New-ListItem -Text 'https://example.com/log1' -Indent 2 -ParentIndex 2 -LocalIndex 3
+            $ZmianyParent = New-ListItem -Text '@Zmiany:' -LocalIndex 4
+            $Entity = New-ListItem -Text 'Kupiec' -Indent 2 -ParentIndex 4 -LocalIndex 5
+            $Tag = New-ListItem -Text '@lokacja: Erathia' -Indent 4 -ParentIndex 5 -LocalIndex 6
+            $IntelParent = New-ListItem -Text '@Intel:' -LocalIndex 7
+            $Intel = New-ListItem -Text 'Target: Message' -Indent 2 -ParentIndex 7 -LocalIndex 8
+            $NarrParent = New-ListItem -Text '@Narrator:' -LocalIndex 9
+            $Narr = New-ListItem -Text 'Solmyr' -Indent 2 -ParentIndex 9 -LocalIndex 10
+            $Data = New-ListItem -Text '@Data: 2025-01-01' -LocalIndex 11
+            $Transfer = New-ListItem -Text '@Transfer: 10 koron, A -> B' -LocalIndex 12
 
             $AllItems = @($PUParent, $PUChild, $LogParent, $LogChild, $ZmianyParent, $Entity, $Tag,
                           $IntelParent, $Intel, $NarrParent, $Narr, $Data, $Transfer)
@@ -511,7 +513,7 @@ Describe 'Get-SessionListMetadata' {
         }
 
         It 'returns empty collections when no metadata tags present' {
-            $Item = New-ListItem -Text 'Some unrelated list item'
+            $Item = New-ListItem -Text 'Some unrelated list item' -LocalIndex 0
             $AllItems = @($Item)
             $ChildrenOf = Build-ChildrenOf -ListItems $AllItems
 
@@ -529,8 +531,8 @@ Describe 'Get-SessionListMetadata' {
 
     Context 'Gen3 vs Gen4 tag prefix' {
         It 'handles Gen3 tags without @ prefix' {
-            $PUParent = New-ListItem -Text 'PU:'
-            $PUChild = New-ListItem -Text 'Hero: 1' -Indent 2 -Parent $PUParent
+            $PUParent = New-ListItem -Text 'PU:' -LocalIndex 0
+            $PUChild = New-ListItem -Text 'Hero: 1' -Indent 2 -ParentIndex 0 -LocalIndex 1
             $AllItems = @($PUParent, $PUChild)
             $ChildrenOf = Build-ChildrenOf -ListItems $AllItems
 
@@ -540,8 +542,8 @@ Describe 'Get-SessionListMetadata' {
         }
 
         It 'handles Gen4 tags with @ prefix' {
-            $PUParent = New-ListItem -Text '@PU:'
-            $PUChild = New-ListItem -Text 'Hero: 1' -Indent 2 -Parent $PUParent
+            $PUParent = New-ListItem -Text '@PU:' -LocalIndex 0
+            $PUChild = New-ListItem -Text 'Hero: 1' -Indent 2 -ParentIndex 0 -LocalIndex 1
             $AllItems = @($PUParent, $PUChild)
             $ChildrenOf = Build-ChildrenOf -ListItems $AllItems
 

@@ -23,15 +23,8 @@
     (NPC/Grupa/Gracz owners).
 #>
 
-# Compiled C# economic analyzer for Gini coefficient and top-holder extraction.
-# Eliminates scriptblock comparers and PowerShell accumulation loops.
-# Source: lib/EconomicAnalyzer.cs
-if (-not ([System.Management.Automation.PSTypeName]'Robot.EconomicAnalyzer').Type) {
-    $CsPath = [System.IO.Path]::Combine($script:ModuleRoot, 'lib', 'EconomicAnalyzer.cs')
-    if ([System.IO.File]::Exists($CsPath)) {
-        Add-Type -TypeDefinition ([System.IO.File]::ReadAllText($CsPath)) -Language CSharp
-    }
-}
+# C# type: Robot.EconomicAnalyzer (lib/EconomicAnalyzer.cs) — compiled centrally in robot.psm1.
+# Gini coefficient and top-holder extraction without scriptblock comparers.
 
 function New-EconomicSnapshotData {
     param(

@@ -68,10 +68,10 @@ After block https://example.com/visible2
             $Result.Lists.Count | Should -Be 2
             $Result.Lists[0].Text | Should -Be 'Top item'
             $Result.Lists[0].Indent | Should -Be 0
-            $Result.Lists[0].ParentListItem | Should -BeNullOrEmpty
+            $Result.Lists[0].ParentIndex | Should -Be -1
             $Result.Lists[1].Text | Should -Be 'Child item'
             $Result.Lists[1].Indent | Should -Be 2
-            $Result.Lists[1].ParentListItem.Text | Should -Be 'Top item'
+            $Result.Lists[1].ParentIndex | Should -Be 0
 
             $LinkUrls = @($Result.Links | ForEach-Object { $_.Url })
             $LinkUrls | Should -Contain 'https://example.com/md'

@@ -44,25 +44,8 @@
     available, with SHA256.Create() as a fallback.
 #>
 
-# Compiled C# content hasher with ArrayPool<byte> zero-allocation inner loop.
-# Replaces per-call SHA256.Create(), regex whitespace strip, and multi-step
-# hex formatting with a single-pass C# implementation. Source: lib/ContentHasher.cs
-if (-not ([System.Management.Automation.PSTypeName]'Robot.ContentHasher').Type) {
-    $CsPath = [System.IO.Path]::Combine($script:ModuleRoot, 'lib', 'ContentHasher.cs')
-    if ([System.IO.File]::Exists($CsPath)) {
-        Add-Type -TypeDefinition ([System.IO.File]::ReadAllText($CsPath)) -Language CSharp
-    }
-}
-
-# Compiled C# JSON helper using System.Text.Json for fast serialization/deserialization.
-# Replaces ConvertTo-Json/ConvertFrom-Json in hash sidecar and metadata files.
-# Source: lib/JsonHelper.cs
-if (-not ([System.Management.Automation.PSTypeName]'Robot.JsonHelper').Type) {
-    $CsPath = [System.IO.Path]::Combine($script:ModuleRoot, 'lib', 'JsonHelper.cs')
-    if ([System.IO.File]::Exists($CsPath)) {
-        Add-Type -TypeDefinition ([System.IO.File]::ReadAllText($CsPath)) -Language CSharp
-    }
-}
+# C# types: Robot.ContentHasher (lib/ContentHasher.cs), Robot.JsonHelper (lib/JsonHelper.cs)
+# Compiled centrally in robot.psm1 at module import time.
 
 # Precompiled whitespace stripping pattern
 $script:WSPattern = [regex]::new('\s+', [System.Text.RegularExpressions.RegexOptions]::Compiled)

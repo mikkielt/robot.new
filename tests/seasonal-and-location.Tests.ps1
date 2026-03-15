@@ -172,7 +172,7 @@ Describe 'Get-Entity - @nazwa_nerthus' {
         $Tunele = $script:Entities | Where-Object { $_.Name -eq 'Tunele Nighonu' }
         $Tunele | Should -Not -BeNullOrEmpty
         $Tunele.NerthusNameHistory.Count | Should -Be 1
-        $Tunele.NerthusNameHistory[0].NerthusName | Should -Be 'Kryjówka Craga Hacka'
+        $Tunele.NerthusNameHistory[0].Value | Should -Be 'Kryjówka Craga Hacka'
     }
 
     It 'sets active NerthusName scalar property' {

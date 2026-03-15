@@ -349,15 +349,16 @@ Describe 'Invoke-SlashCommand' {
 Describe 'Test-PasteSequence' {
 
     It 'returns true for rapid keystrokes (< 20ms)' {
-        $script:LastKeyTimestamp = [datetime]::Now
-        Start-Sleep -Milliseconds 5
-        $Result = Test-PasteSequence -Now ([datetime]::Now)
+        $BaseTime = [datetime]::new(2024, 6, 15, 12, 0, 0)
+        $script:LastKeyTimestamp = $BaseTime
+        $Result = Test-PasteSequence -Now $BaseTime.AddMilliseconds(5)
         $Result | Should -BeTrue
     }
 
     It 'returns false for slow keystrokes (> 20ms)' {
-        $script:LastKeyTimestamp = [datetime]::Now.AddMilliseconds(-100)
-        $Result = Test-PasteSequence -Now ([datetime]::Now)
+        $BaseTime = [datetime]::new(2024, 6, 15, 12, 0, 0)
+        $script:LastKeyTimestamp = $BaseTime
+        $Result = Test-PasteSequence -Now $BaseTime.AddMilliseconds(100)
         $Result | Should -BeFalse
     }
 }

@@ -8,8 +8,8 @@
 
     Merged history arrays:
     - LocationHistory (@lokacja), StatusHistory (@status),
-      GroupHistory (@grupa), OwnerHistory (@nale¿y_do),
-      TypeHistory (@typ), DoorHistory (@drzwi), QuantityHistory (@ilo¶æ)
+      GroupHistory (@grupa), OwnerHistory (@należy_do),
+      TypeHistory (@typ), DoorHistory (@drzwi), QuantityHistory (@ilość)
 
     Processing pipeline:
     1. Fetch entities via Get-EntityState if not pre-provided
@@ -21,8 +21,8 @@
        ValidFrom represent initial/default state from entity declaration)
 
     The HistoryMappings table maps each history array to its display
-    name (Polish) and the property containing the value. This allows
-    uniform iteration without per-array special-casing.
+    name (Polish) and the .Value property from Robot.TemporalEntry objects.
+    This allows uniform iteration without per-array special-casing.
 
     The sort uses a .NET Comparison delegate for in-place List.Sort().
     Null dates sort before all dated entries, representing the entity's
@@ -98,13 +98,13 @@ function Get-EntityHistory {
 
     # Map each history array to its Polish display label and the property holding the value
     $HistoryMappings = @(
-        @{ Array = 'LocationHistory'; Display = 'Lokacja';     Prop = 'Location'  }
-        @{ Array = 'StatusHistory';   Display = 'Status';      Prop = 'Status'    }
-        @{ Array = 'GroupHistory';    Display = 'Grupa';       Prop = 'Group'     }
-        @{ Array = 'OwnerHistory';   Display = 'Właściciel';  Prop = 'OwnerName' }
-        @{ Array = 'TypeHistory';    Display = 'Typ';         Prop = 'Type'      }
-        @{ Array = 'DoorHistory';    Display = 'Drzwi';       Prop = 'Location'  }
-        @{ Array = 'QuantityHistory'; Display = 'Ilość';      Prop = 'Quantity'  }
+        @{ Array = 'LocationHistory'; Display = 'Lokacja';     Prop = 'Value' }
+        @{ Array = 'StatusHistory';   Display = 'Status';      Prop = 'Value' }
+        @{ Array = 'GroupHistory';    Display = 'Grupa';       Prop = 'Value' }
+        @{ Array = 'OwnerHistory';   Display = 'Właściciel';  Prop = 'Value' }
+        @{ Array = 'TypeHistory';    Display = 'Typ';         Prop = 'Value' }
+        @{ Array = 'DoorHistory';    Display = 'Drzwi';       Prop = 'Value' }
+        @{ Array = 'QuantityHistory'; Display = 'Ilość';      Prop = 'Value' }
     )
 
     foreach ($Mapping in $HistoryMappings) {

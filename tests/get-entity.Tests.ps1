@@ -119,30 +119,30 @@ Describe 'Test-TemporalActivity' {
 Describe 'Get-LastActiveValue' {
     It 'returns last active entry property' {
         $History = [System.Collections.Generic.List[object]]::new()
-        $History.Add([PSCustomObject]@{ Location = 'A'; ValidFrom = $null; ValidTo = $null })
-        $History.Add([PSCustomObject]@{ Location = 'B'; ValidFrom = $null; ValidTo = $null })
-        Get-LastActiveValue -History $History -PropertyName 'Location' -ActiveOn $null | Should -Be 'B'
+        $History.Add([Robot.TemporalEntry]::new('A', $null, $null, $null))
+        $History.Add([Robot.TemporalEntry]::new('B', $null, $null, $null))
+        Get-LastActiveValue -History $History -PropertyName 'Value' -ActiveOn $null | Should -Be 'B'
     }
 
     It 'filters by ActiveOn date' {
         $History = [System.Collections.Generic.List[object]]::new()
-        $History.Add([PSCustomObject]@{ Location = 'Old'; ValidFrom = $null; ValidTo = [datetime]::new(2024, 6, 30) })
-        $History.Add([PSCustomObject]@{ Location = 'New'; ValidFrom = [datetime]::new(2025, 1, 1); ValidTo = $null })
-        Get-LastActiveValue -History $History -PropertyName 'Location' -ActiveOn ([datetime]::new(2024, 3, 1)) | Should -Be 'Old'
+        $History.Add([Robot.TemporalEntry]::new('Old', $null, ([datetime]::new(2024, 6, 30)), $null))
+        $History.Add([Robot.TemporalEntry]::new('New', ([datetime]::new(2025, 1, 1)), $null, $null))
+        Get-LastActiveValue -History $History -PropertyName 'Value' -ActiveOn ([datetime]::new(2024, 3, 1)) | Should -Be 'Old'
     }
 
     It 'returns $null for empty history' {
         $History = [System.Collections.Generic.List[object]]::new()
-        Get-LastActiveValue -History $History -PropertyName 'Location' -ActiveOn $null | Should -BeNullOrEmpty
+        Get-LastActiveValue -History $History -PropertyName 'Value' -ActiveOn $null | Should -BeNullOrEmpty
     }
 }
 
 Describe 'Get-AllActiveValues' {
     It 'returns all active entries as string array' {
         $History = [System.Collections.Generic.List[object]]::new()
-        $History.Add([PSCustomObject]@{ Group = 'GroupA'; ValidFrom = $null; ValidTo = $null })
-        $History.Add([PSCustomObject]@{ Group = 'GroupB'; ValidFrom = $null; ValidTo = $null })
-        $Result = Get-AllActiveValues -History $History -PropertyName 'Group' -ActiveOn $null
+        $History.Add([Robot.TemporalEntry]::new('GroupA', $null, $null, $null))
+        $History.Add([Robot.TemporalEntry]::new('GroupB', $null, $null, $null))
+        $Result = Get-AllActiveValues -History $History -PropertyName 'Value' -ActiveOn $null
         $Result.Count | Should -Be 2
         $Result | Should -Contain 'GroupA'
         $Result | Should -Contain 'GroupB'
@@ -150,7 +150,7 @@ Describe 'Get-AllActiveValues' {
 
     It 'returns empty array for empty history' {
         $History = [System.Collections.Generic.List[object]]::new()
-        $Result = Get-AllActiveValues -History $History -PropertyName 'Group' -ActiveOn $null
+        $Result = Get-AllActiveValues -History $History -PropertyName 'Value' -ActiveOn $null
         $Result.Count | Should -Be 0
     }
 }
@@ -324,7 +324,7 @@ Describe 'Get-Entity' {
     It 'populates FilePathHistory from @plik tag' {
         $Xeron = $script:Entities | Where-Object { $_.Name -eq 'Xeron Demonlord' }
         $Xeron.FilePathHistory.Count | Should -Be 1
-        $Xeron.FilePathHistory[0].FilePath | Should -Be 'Postaci/Gracze/Xeron Demonlord.md'
+        $Xeron.FilePathHistory[0].Value | Should -Be 'Postaci/Gracze/Xeron Demonlord.md'
     }
 
     It 'initializes FilePath as null when no @plik tag present' {
@@ -336,8 +336,8 @@ Describe 'Get-Entity' {
 
 Describe 'Get-NestedBulletText' {
     BeforeAll {
-        $script:BulletParent = [PSCustomObject]@{ Text = 'Parent' }
-        $script:ParentId = [System.Runtime.CompilerServices.RuntimeHelpers]::GetHashCode($script:BulletParent)
+        $script:BulletParent = [PSCustomObject]@{ Text = 'Parent'; LocalIndex = 0 }
+        $script:ParentId = $script:BulletParent.LocalIndex
     }
 
     It 'returns null when parent has no children' {
@@ -435,7 +435,7 @@ Describe 'Resolve-EntityCN' {
             Doors           = [System.Collections.Generic.List[object]]::new()
         }
         [void]$Orphan.Names.Add('TestOrphan')
-        $Orphan.LocationHistory.Add([PSCustomObject]@{ Location = 'UnknownParent'; ValidFrom = $null; ValidTo = $null })
+        $Orphan.LocationHistory.Add([Robot.TemporalEntry]::new('UnknownParent', $null, $null, $null))
         $Visited = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
         $Result = Resolve-EntityCN -Entity $Orphan -Visited $Visited -EntityByName $script:EntityByName -ActiveOn $null -CNCache @{}
         $Result | Should -Be 'Lokacja/UnknownParent/TestOrphan'
@@ -459,13 +459,13 @@ Describe 'Get-Entity @drzwi and @typ parsing' {
     It 'parses @drzwi into DoorHistory' {
         $Room = $script:Entities | Where-Object { $_.Name -eq 'Komnata Prób' }
         $Room.DoorHistory.Count | Should -BeGreaterThan 0
-        $Room.DoorHistory[0].Location | Should -Be 'Wielka Sala'
+        $Room.DoorHistory[0].Value | Should -Be 'Wielka Sala'
     }
 
     It 'parses @typ into TypeHistory' {
         $Room = $script:Entities | Where-Object { $_.Name -eq 'Komnata Prób' }
         $Room.TypeHistory.Count | Should -BeGreaterThan 0
-        $Room.TypeHistory[0].Type | Should -Be 'Loch'
+        $Room.TypeHistory[0].Value | Should -Be 'Loch'
     }
 }
 
@@ -594,13 +594,13 @@ Describe 'Get-Entity - many groups' {
 
     It 'includes expired group in history' {
         $E = $script:Entities | Where-Object { $_.Name -eq 'NPC z Wieloma Grupami' }
-        $Groups = $E.GroupHistory | ForEach-Object { $_.Group }
+        $Groups = $E.GroupHistory | ForEach-Object { $_.Value }
         $Groups | Should -Contain 'Gildia Wojowników'
     }
 
     It 'includes all active groups' {
         $E = $script:Entities | Where-Object { $_.Name -eq 'NPC z Wieloma Grupami' }
-        $Groups = $E.GroupHistory | ForEach-Object { $_.Group }
+        $Groups = $E.GroupHistory | ForEach-Object { $_.Value }
         $Groups | Should -Contain 'Zakon Gryfów'
         $Groups | Should -Contain 'Rada Starszych'
         $Groups | Should -Contain 'Straż Nocna'

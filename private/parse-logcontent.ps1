@@ -23,9 +23,9 @@
 
     ConvertFrom-LogContent is the primary entry point. It first attempts
     the compiled C# path (Robot.LogParser) which pre-compiles all regex
-    patterns and uses struct-based output to avoid per-line PowerShell
-    object allocation. Falls back to PowerShell helpers when the C# type
-    is unavailable.
+    patterns and returns C# objects directly — LogLine structs and
+    LocationSegment class instances. Falls back to PowerShell helpers
+    when the C# type is unavailable.
 
     Helpers:
     - Get-LogFormat: detects ChatLog vs Prose by scanning first ~30 non-empty lines
@@ -43,14 +43,8 @@
     - $script:FormatDetectPattern: compiled regex for format detection
 #>
 
-# Compiled C# log parser with precompiled regex and struct-based output.
-# Replaces per-line PowerShell regex marshaling. Source: lib/LogParser.cs
-if (-not ([System.Management.Automation.PSTypeName]'Robot.LogParser').Type) {
-    $CsPath = [System.IO.Path]::Combine($script:ModuleRoot, 'lib', 'LogParser.cs')
-    if ([System.IO.File]::Exists($CsPath)) {
-        Add-Type -TypeDefinition ([System.IO.File]::ReadAllText($CsPath)) -Language CSharp
-    }
-}
+# C# type: Robot.LogParser (lib/LogParser.cs) — compiled centrally in robot.psm1.
+# Precompiled regex, LogLine structs, LocationSegment classes.
 
 # ── Precompiled Regex ─────────────────────────────────────────────────────────
 
@@ -370,36 +364,17 @@ function ConvertFrom-LogContent {
         [string]$Content
     )
 
-    # C# path: compiled regex + struct output, then convert to PSCustomObject
+    # C# path: return C# objects directly — LogLine struct fields and
+    # LocationSegment class properties are accessible by name in PowerShell.
+    # LocationSegment is a class (not struct) so Get-SessionLog can set
+    # .Resolved/.Stage via direct property assignment without boxing issues.
     if (([System.Management.Automation.PSTypeName]'Robot.LogParser').Type) {
         $CsResult = [Robot.LogParser]::Parse($Content)
 
-        $ParsedLines = [System.Collections.Generic.List[PSCustomObject]]::new($CsResult.Lines.Length)
-        foreach ($L in $CsResult.Lines) {
-            $ParsedLines.Add([PSCustomObject]@{
-                Index   = $L.Index
-                Time    = $L.Time
-                Channel = $L.Channel
-                Speaker = $L.Speaker
-                Text    = $L.Text
-                Segment = $L.Segment
-            })
-        }
-
-        $LocSegments = [System.Collections.Generic.List[PSCustomObject]]::new($CsResult.LocationSegments.Length)
-        foreach ($S in $CsResult.LocationSegments) {
-            $LocSegments.Add([PSCustomObject]@{
-                Index     = $S.Index
-                Raw       = $S.Raw
-                StartLine = $S.StartLine
-                EndLine   = $S.EndLine
-            })
-        }
-
         return [PSCustomObject]@{
             Format           = $CsResult.Format
-            Lines            = [PSCustomObject[]]$ParsedLines.ToArray()
-            LocationSegments = [PSCustomObject[]]$LocSegments.ToArray()
+            Lines            = $CsResult.Lines
+            LocationSegments = $CsResult.LocationSegments
         }
     }
 

@@ -23,6 +23,10 @@
     data without modifying Gracze.md directly - useful for aliases, PU values, triggers,
     and additional character metadata.
 
+    Parent-child list item relationships use ParentIndex/LocalIndex integer keying
+    with a pre-built ChildrenOf hashtable for O(1) lookups when traversing player
+    sections, character entries, and their metadata bullets.
+
     The two-phase approach (Gracze.md parse + entity overlay) preserves backward
     compatibility with the legacy player database while enabling new players and
     characters to be registered entirely through entities.md.
@@ -78,18 +82,18 @@ function Get-Player {
             continue
         }
 
-        # Build parent->children lookup in one pass (avoids O(n²) repeated .Where() filtering)
+        # Build parent->children lookup in one pass (avoids O(n²) repeated .Where() filtering).
+        # Keyed by section-local ParentIndex; lookup via item's LocalIndex.
         $ChildrenOf = @{}
         $RootChildren = [System.Collections.Generic.List[object]]::new()
         foreach ($LI in $Section.Lists) {
-            if ($null -eq $LI.ParentListItem) {
+            if ($LI.ParentIndex -lt 0) {
                 $RootChildren.Add($LI)
             } else {
-                $ParentId = [System.Runtime.CompilerServices.RuntimeHelpers]::GetHashCode($LI.ParentListItem)
-                if (-not $ChildrenOf.ContainsKey($ParentId)) {
-                    $ChildrenOf[$ParentId] = [System.Collections.Generic.List[object]]::new()
+                if (-not $ChildrenOf.ContainsKey($LI.ParentIndex)) {
+                    $ChildrenOf[$LI.ParentIndex] = [System.Collections.Generic.List[object]]::new()
                 }
-                $ChildrenOf[$ParentId].Add($LI)
+                $ChildrenOf[$LI.ParentIndex].Add($LI)
             }
         }
 
@@ -121,8 +125,7 @@ function Get-Player {
         # bold (**) markers indicate the currently active character
         $Characters = [System.Collections.Generic.List[object]]::new()
         if ($PostaciEntry) {
-            $PostaciId = [System.Runtime.CompilerServices.RuntimeHelpers]::GetHashCode($PostaciEntry)
-            $PostaciChildren = if ($ChildrenOf.ContainsKey($PostaciId)) { $ChildrenOf[$PostaciId] } else { @() }
+            $PostaciChildren = if ($ChildrenOf.ContainsKey($PostaciEntry.LocalIndex)) { $ChildrenOf[$PostaciEntry.LocalIndex] } else { @() }
 
             foreach ($CharacterListItem in $PostaciChildren) {
                 if ($CharacterListItem.Text -notmatch '\[.+\]\(.+\)') { continue }
@@ -134,8 +137,7 @@ function Get-Player {
 
                 $IsActive = $CharacterListItem.Text.StartsWith("**")
 
-                $CharId = [System.Runtime.CompilerServices.RuntimeHelpers]::GetHashCode($CharacterListItem)
-                $CharChildren = if ($ChildrenOf.ContainsKey($CharId)) { $ChildrenOf[$CharId] } else { @() }
+                $CharChildren = if ($ChildrenOf.ContainsKey($CharacterListItem.LocalIndex)) { $ChildrenOf[$CharacterListItem.LocalIndex] } else { @() }
 
                 $Aliases = @()
                 $PUEntry = $null
@@ -234,7 +236,7 @@ function Get-Player {
     # TypeHistory check catches entities reclassified away from Gracz/Postać
     $OverrideEntities = $Entities.Where({
         $_.Type -in @('Gracz', 'Postać') -or
-        $_.TypeHistory.Where({ $_.Type -in @('Gracz', 'Postać') }).Count -gt 0
+        $_.TypeHistory.Where({ $_.Value -in @('Gracz', 'Postać') }).Count -gt 0
     })
 
     foreach ($Entity in $OverrideEntities) {

@@ -5,11 +5,9 @@ using System.Text.RegularExpressions;
 namespace Robot {
     /// Compiled log content parser for ChatLog and Prose session log formats.
     ///
-    /// Compiled C# replaces per-line PowerShell regex marshaling where each line
-    /// crossed the .NET interop boundary 3-5 times (TimestampRx, ChannelRx,
-    /// SpeakerRx, plus PSCustomObject construction). The C# version keeps all
-    /// regex matching in native code and returns struct arrays, reducing parse
-    /// time from ~120ms to ~8ms for a typical 2,000-line log file.
+    /// Keeps all regex matching in native code with struct array output,
+    /// avoiding per-line .NET interop crossings (3-5 regex operations per line).
+    /// Typical parse time: ~8ms for a 2,000-line log file.
     ///
     /// Two format parsers:
     /// - ChatLog: [HH:MM] timestamped lines with optional [Channel] tags.
@@ -23,10 +21,13 @@ namespace Robot {
     /// Format detection scans the first ~30 non-empty lines; 2+ timestamp matches
     /// selects ChatLog, otherwise Prose.
     ///
-    /// Output uses struct arrays (LogLine[], LocationSegment[]) to minimize GC
-    /// pressure. ParseResult is a class to allow null fields.
+    /// Output uses struct arrays (LogLine[]) and class arrays (LocationSegment[])
+    /// to minimize GC pressure. ParseResult is a class to allow null fields.
+    /// LocationSegment is a class (not struct) because PowerShell consumers
+    /// set Resolved/Stage properties after name resolution in Get-SessionLog;
+    /// value-type boxing would lose mutations on array elements.
     ///
-    /// Consumers: Parse-LogContent (parse-logcontent.ps1)
+    /// Consumers: Parse-LogContent (parse-logcontent.ps1), Get-SessionLog (get-sessionlog.ps1)
     public sealed class LogParser {
         // ── Output types ────────────────────────────────────────────
 
@@ -45,11 +46,13 @@ namespace Robot {
             public int Segment;
         }
 
-        public struct LocationSegment {
+        public sealed class LocationSegment {
             public int Index;
             public string Raw;
             public int StartLine;
             public int EndLine;
+            public string Resolved;  // Set by Get-SessionLog after name resolution
+            public string Stage;     // Set by Get-SessionLog after name resolution
         }
 
         // ── Precompiled patterns (match parse-logcontent.ps1 exactly) ─
@@ -346,13 +349,11 @@ namespace Robot {
 
         private static void ComputeEndLines(List<LocationSegment> segments, int lineCount) {
             for (int i = 0; i < segments.Count; i++) {
-                var seg = segments[i];
                 if (i < segments.Count - 1) {
-                    seg.EndLine = segments[i + 1].StartLine - 1;
+                    segments[i].EndLine = segments[i + 1].StartLine - 1;
                 } else {
-                    seg.EndLine = lineCount - 1;
+                    segments[i].EndLine = lineCount - 1;
                 }
-                segments[i] = seg;
             }
         }
     }

@@ -26,8 +26,8 @@ BeforeAll {
         param([object[]]$Items)
         $Result = @{}
         foreach ($LI in $Items) {
-            if ($null -ne $LI.ParentListItem) {
-                $ParentId = [System.Runtime.CompilerServices.RuntimeHelpers]::GetHashCode($LI.ParentListItem)
+            if ($LI.ParentIndex -ge 0) {
+                $ParentId = $LI.ParentIndex
                 if (-not $Result.ContainsKey($ParentId)) {
                     $Result[$ParentId] = [System.Collections.Generic.List[object]]::new()
                 }
@@ -42,12 +42,14 @@ BeforeAll {
         param(
             [string]$Text,
             [int]$Indent = 0,
-            [object]$Parent = $null
+            [int]$ParentIndex = -1,
+            [int]$LocalIndex = 0
         )
         return [PSCustomObject]@{
-            Text           = $Text
-            Indent         = $Indent
-            ParentListItem = $Parent
+            Text        = $Text
+            Indent      = $Indent
+            ParentIndex = $ParentIndex
+            LocalIndex  = $LocalIndex
         }
     }
 }
@@ -58,8 +60,8 @@ Describe 'Get-SessionListMetadata' {
     Context 'local file paths in Logi block' {
         BeforeAll {
             # Simulate: "- Logi:\n    - res/logs/pastebincomrawABC123"
-            $LogiParent = New-MockListItem -Text 'Logi:' -Indent 0
-            $LogChild   = New-MockListItem -Text 'res/logs/pastebincomrawABC123' -Indent 1 -Parent $LogiParent
+            $LogiParent = New-MockListItem -Text 'Logi:' -Indent 0 -LocalIndex 0
+            $LogChild   = New-MockListItem -Text 'res/logs/pastebincomrawABC123' -Indent 1 -ParentIndex 0 -LocalIndex 1
 
             $Items = @($LogiParent, $LogChild)
             $script:Result = Get-SessionListMetadata `
@@ -77,8 +79,8 @@ Describe 'Get-SessionListMetadata' {
 
     Context 'HTTPS URLs in Logi block' {
         BeforeAll {
-            $LogiParent = New-MockListItem -Text 'Logi:' -Indent 0
-            $LogChild   = New-MockListItem -Text 'https://pastebin.com/raw/XYZ789' -Indent 1 -Parent $LogiParent
+            $LogiParent = New-MockListItem -Text 'Logi:' -Indent 0 -LocalIndex 0
+            $LogChild   = New-MockListItem -Text 'https://pastebin.com/raw/XYZ789' -Indent 1 -ParentIndex 0 -LocalIndex 1
 
             $Items = @($LogiParent, $LogChild)
             $script:Result = Get-SessionListMetadata `
@@ -96,10 +98,10 @@ Describe 'Get-SessionListMetadata' {
 
     Context 'mixed entries (URLs and local paths)' {
         BeforeAll {
-            $LogiParent = New-MockListItem -Text 'Logi:' -Indent 0
-            $LogUrl     = New-MockListItem -Text 'https://pastebin.com/raw/AAA111' -Indent 1 -Parent $LogiParent
-            $LogLocal   = New-MockListItem -Text 'res/logs/pastebincomrawBBB222' -Indent 1 -Parent $LogiParent
-            $LogUrl2    = New-MockListItem -Text 'https://example.com/log-xyz' -Indent 1 -Parent $LogiParent
+            $LogiParent = New-MockListItem -Text 'Logi:' -Indent 0 -LocalIndex 0
+            $LogUrl     = New-MockListItem -Text 'https://pastebin.com/raw/AAA111' -Indent 1 -ParentIndex 0 -LocalIndex 1
+            $LogLocal   = New-MockListItem -Text 'res/logs/pastebincomrawBBB222' -Indent 1 -ParentIndex 0 -LocalIndex 2
+            $LogUrl2    = New-MockListItem -Text 'https://example.com/log-xyz' -Indent 1 -ParentIndex 0 -LocalIndex 3
 
             $Items = @($LogiParent, $LogUrl, $LogLocal, $LogUrl2)
             $script:Result = Get-SessionListMetadata `
@@ -126,9 +128,9 @@ Describe 'Get-SessionListMetadata' {
     Context 'Gen4 @Logi tag prefix' {
         BeforeAll {
             # Gen4 uses "@Logi:" prefix which is stripped via $MatchText
-            $LogiParent = New-MockListItem -Text '@Logi:' -Indent 0
-            $LogLocal   = New-MockListItem -Text 'res/logs/pastebincomrawGEN4' -Indent 1 -Parent $LogiParent
-            $LogUrl     = New-MockListItem -Text 'https://pastebin.com/raw/GEN4URL' -Indent 1 -Parent $LogiParent
+            $LogiParent = New-MockListItem -Text '@Logi:' -Indent 0 -LocalIndex 0
+            $LogLocal   = New-MockListItem -Text 'res/logs/pastebincomrawGEN4' -Indent 1 -ParentIndex 0 -LocalIndex 1
+            $LogUrl     = New-MockListItem -Text 'https://pastebin.com/raw/GEN4URL' -Indent 1 -ParentIndex 0 -LocalIndex 2
 
             $Items = @($LogiParent, $LogLocal, $LogUrl)
             $script:Result = Get-SessionListMetadata `
@@ -150,8 +152,8 @@ Describe 'Get-SessionListMetadata' {
     Context 'no log entries' {
         BeforeAll {
             # Session with PU only, no Logi block
-            $PUParent = New-MockListItem -Text 'PU:' -Indent 0
-            $PUChild  = New-MockListItem -Text 'Xeron: 0,3' -Indent 1 -Parent $PUParent
+            $PUParent = New-MockListItem -Text 'PU:' -Indent 0 -LocalIndex 0
+            $PUChild  = New-MockListItem -Text 'Xeron: 0,3' -Indent 1 -ParentIndex 0 -LocalIndex 1
 
             $Items = @($PUParent, $PUChild)
             $script:Result = Get-SessionListMetadata `
@@ -169,9 +171,9 @@ Describe 'Get-SessionListMetadata' {
     Context 'non-matching child items are ignored' {
         BeforeAll {
             # Text that does not match URL regex and does not start with res/logs/
-            $LogiParent = New-MockListItem -Text 'Logi:' -Indent 0
-            $LogJunk    = New-MockListItem -Text 'brak logów z tej sesji' -Indent 1 -Parent $LogiParent
-            $LogUrl     = New-MockListItem -Text 'https://pastebin.com/raw/VALID01' -Indent 1 -Parent $LogiParent
+            $LogiParent = New-MockListItem -Text 'Logi:' -Indent 0 -LocalIndex 0
+            $LogJunk    = New-MockListItem -Text 'brak logów z tej sesji' -Indent 1 -ParentIndex 0 -LocalIndex 1
+            $LogUrl     = New-MockListItem -Text 'https://pastebin.com/raw/VALID01' -Indent 1 -ParentIndex 0 -LocalIndex 2
 
             $Items = @($LogiParent, $LogJunk, $LogUrl)
             $script:Result = Get-SessionListMetadata `
@@ -190,7 +192,7 @@ Describe 'Get-SessionListMetadata' {
     Context 'inline URL in Logi header' {
         BeforeAll {
             # "- Logi: https://example.com/inline-log" (Gen2/Gen3 inline pattern)
-            $LogiInline = New-MockListItem -Text 'Logi: https://example.com/inline-log' -Indent 0
+            $LogiInline = New-MockListItem -Text 'Logi: https://example.com/inline-log' -Indent 0 -LocalIndex 0
 
             $Items = @($LogiInline)
             $script:Result = Get-SessionListMetadata `
@@ -208,10 +210,10 @@ Describe 'Get-SessionListMetadata' {
 
     Context 'multiple local paths only' {
         BeforeAll {
-            $LogiParent = New-MockListItem -Text 'Logi:' -Indent 0
-            $LogLocal1  = New-MockListItem -Text 'res/logs/pastebincomrawFILE1' -Indent 1 -Parent $LogiParent
-            $LogLocal2  = New-MockListItem -Text 'res/logs/pastebincomrawFILE2' -Indent 1 -Parent $LogiParent
-            $LogLocal3  = New-MockListItem -Text 'res/logs/examplecomlogABC' -Indent 1 -Parent $LogiParent
+            $LogiParent = New-MockListItem -Text 'Logi:' -Indent 0 -LocalIndex 0
+            $LogLocal1  = New-MockListItem -Text 'res/logs/pastebincomrawFILE1' -Indent 1 -ParentIndex 0 -LocalIndex 1
+            $LogLocal2  = New-MockListItem -Text 'res/logs/pastebincomrawFILE2' -Indent 1 -ParentIndex 0 -LocalIndex 2
+            $LogLocal3  = New-MockListItem -Text 'res/logs/examplecomlogABC' -Indent 1 -ParentIndex 0 -LocalIndex 3
 
             $Items = @($LogiParent, $LogLocal1, $LogLocal2, $LogLocal3)
             $script:Result = Get-SessionListMetadata `

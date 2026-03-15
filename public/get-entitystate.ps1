@@ -32,19 +32,13 @@
     When Resolve-Name returns a Player object (due to Player/Gracz dedup in the name
     index), the result is mapped back to the corresponding entity via shared names.
 
-    Preamble: loads Robot.TemporalSorter (lib/TemporalSorter.cs) — compiled C#
-    temporal sort comparer that replaces PowerShell scriptblock comparers invoked
-    O(n log n) times per sort across 9 history lists per entity.
+    Uses Robot.TemporalSorter (lib/TemporalSorter.cs, compiled centrally in
+    robot.psm1) — compiled C# temporal sort comparer invoked O(n log n) times
+    per sort across 9 history lists per entity.
 #>
 
-# Compiled C# comparer eliminates scriptblock overhead on sort-heavy post-merge pass
-if (-not ([System.Management.Automation.PSTypeName]'Robot.TemporalSorter').Type) {
-    $CsPath = [System.IO.Path]::Combine($script:ModuleRoot, 'lib', 'TemporalSorter.cs')
-    if ([System.IO.File]::Exists($CsPath)) {
-        $SMAPath = [System.Management.Automation.PSObject].Assembly.Location
-        Add-Type -TypeDefinition ([System.IO.File]::ReadAllText($CsPath)) -Language CSharp -ReferencedAssemblies $SMAPath
-    }
-}
+# C# types: Robot.TemporalEntry, Robot.Entity, Robot.TemporalSorter
+# Compiled centrally in robot.psm1 at module import time.
 
 function Get-EntityState {
     <#
@@ -175,52 +169,22 @@ function Get-EntityState {
 
                 switch ($TagEntry.Tag) {
                     '@lokacja' {
-                        $TargetEntity.LocationHistory.Add([PSCustomObject]@{
-                            Location  = $Parsed.Text
-                            ValidFrom = $Parsed.ValidFrom
-                            ValidTo   = $Parsed.ValidTo
-                            Season    = $Parsed.Season
-                        })
+                        $TargetEntity.LocationHistory.Add([Robot.TemporalEntry]::new($Parsed.Text, $Parsed.ValidFrom, $Parsed.ValidTo, $Parsed.Season))
                     }
                     '@drzwi' {
-                        $TargetEntity.DoorHistory.Add([PSCustomObject]@{
-                            Location  = $Parsed.Text
-                            ValidFrom = $Parsed.ValidFrom
-                            ValidTo   = $Parsed.ValidTo
-                            Season    = $Parsed.Season
-                        })
+                        $TargetEntity.DoorHistory.Add([Robot.TemporalEntry]::new($Parsed.Text, $Parsed.ValidFrom, $Parsed.ValidTo, $Parsed.Season))
                     }
                     '@typ' {
-                        $TargetEntity.TypeHistory.Add([PSCustomObject]@{
-                            Type      = $Parsed.Text
-                            ValidFrom = $Parsed.ValidFrom
-                            ValidTo   = $Parsed.ValidTo
-                            Season    = $Parsed.Season
-                        })
+                        $TargetEntity.TypeHistory.Add([Robot.TemporalEntry]::new($Parsed.Text, $Parsed.ValidFrom, $Parsed.ValidTo, $Parsed.Season))
                     }
                     '@należy_do' {
-                        $TargetEntity.OwnerHistory.Add([PSCustomObject]@{
-                            OwnerName = $Parsed.Text
-                            ValidFrom = $Parsed.ValidFrom
-                            ValidTo   = $Parsed.ValidTo
-                            Season    = $Parsed.Season
-                        })
+                        $TargetEntity.OwnerHistory.Add([Robot.TemporalEntry]::new($Parsed.Text, $Parsed.ValidFrom, $Parsed.ValidTo, $Parsed.Season))
                     }
                     '@grupa' {
-                        $TargetEntity.GroupHistory.Add([PSCustomObject]@{
-                            Group     = $Parsed.Text
-                            ValidFrom = $Parsed.ValidFrom
-                            ValidTo   = $Parsed.ValidTo
-                            Season    = $Parsed.Season
-                        })
+                        $TargetEntity.GroupHistory.Add([Robot.TemporalEntry]::new($Parsed.Text, $Parsed.ValidFrom, $Parsed.ValidTo, $Parsed.Season))
                     }
                     '@alias' {
-                        $TargetEntity.Aliases.Add([PSCustomObject]@{
-                            Text      = $Parsed.Text
-                            ValidFrom = $Parsed.ValidFrom
-                            ValidTo   = $Parsed.ValidTo
-                            Season    = $Parsed.Season
-                        })
+                        $TargetEntity.Aliases.Add([Robot.TemporalEntry]::new($Parsed.Text, $Parsed.ValidFrom, $Parsed.ValidTo, $Parsed.Season))
                         [void]$TargetEntity.Names.Add($Parsed.Text)
                     }
                     '@zawiera' {
@@ -230,12 +194,7 @@ function Get-EntityState {
                         if (-not $TargetEntity.StatusHistory) {
                             $TargetEntity.StatusHistory = [System.Collections.Generic.List[object]]::new()
                         }
-                        $TargetEntity.StatusHistory.Add([PSCustomObject]@{
-                            Status    = $Parsed.Text
-                            ValidFrom = $Parsed.ValidFrom
-                            ValidTo   = $Parsed.ValidTo
-                            Season    = $Parsed.Season
-                        })
+                        $TargetEntity.StatusHistory.Add([Robot.TemporalEntry]::new($Parsed.Text, $Parsed.ValidFrom, $Parsed.ValidTo, $Parsed.Season))
                     }
                     '@ilość' {
                         if (-not $TargetEntity.QuantityHistory) {
@@ -246,18 +205,13 @@ function Get-EntityState {
                         if ($QtyText -match '^[+-]\d+$') {
                             $Delta = [int]$QtyText
                             $CurrentQty = 0
-                            $LastQty = Get-LastActiveValue -History $TargetEntity.QuantityHistory -PropertyName 'Quantity' -ActiveOn $Parsed.ValidFrom
+                            $LastQty = Get-LastActiveValue -History $TargetEntity.QuantityHistory -PropertyName 'Value' -ActiveOn $Parsed.ValidFrom
                             if ($LastQty -and $LastQty -match '^\d+$') {
                                 $CurrentQty = [int]$LastQty
                             }
                             $QtyText = [string]($CurrentQty + $Delta)
                         }
-                        $TargetEntity.QuantityHistory.Add([PSCustomObject]@{
-                            Quantity  = $QtyText
-                            ValidFrom = $Parsed.ValidFrom
-                            ValidTo   = $Parsed.ValidTo
-                            Season    = $Parsed.Season
-                        })
+                        $TargetEntity.QuantityHistory.Add([Robot.TemporalEntry]::new($QtyText, $Parsed.ValidFrom, $Parsed.ValidTo, $Parsed.Season))
                     }
                     '@generyczne_nazwy' {
                         if (-not $TargetEntity.GenericNames) {
@@ -275,23 +229,13 @@ function Get-EntityState {
                         if (-not $TargetEntity.FilePathHistory) {
                             $TargetEntity.FilePathHistory = [System.Collections.Generic.List[object]]::new()
                         }
-                        $TargetEntity.FilePathHistory.Add([PSCustomObject]@{
-                            FilePath  = $Parsed.Text
-                            ValidFrom = $Parsed.ValidFrom
-                            ValidTo   = $Parsed.ValidTo
-                            Season    = $Parsed.Season
-                        })
+                        $TargetEntity.FilePathHistory.Add([Robot.TemporalEntry]::new($Parsed.Text, $Parsed.ValidFrom, $Parsed.ValidTo, $Parsed.Season))
                     }
                     '@nazwa_nerthus' {
                         if (-not $TargetEntity.NerthusNameHistory) {
                             $TargetEntity.NerthusNameHistory = [System.Collections.Generic.List[object]]::new()
                         }
-                        $TargetEntity.NerthusNameHistory.Add([PSCustomObject]@{
-                            NerthusName = $Parsed.Text
-                            ValidFrom   = $Parsed.ValidFrom
-                            ValidTo     = $Parsed.ValidTo
-                            Season      = $Parsed.Season
-                        })
+                        $TargetEntity.NerthusNameHistory.Add([Robot.TemporalEntry]::new($Parsed.Text, $Parsed.ValidFrom, $Parsed.ValidTo, $Parsed.Season))
                         [void]$TargetEntity.Names.Add($Parsed.Text)
                     }
                     '@slug' {
@@ -303,13 +247,7 @@ function Get-EntityState {
                         }
                         $Coord = ConvertFrom-CoordinateString -Text $Parsed.Text
                         if ($Coord) {
-                            $TargetEntity.CoordinateHistory.Add([PSCustomObject]@{
-                                X         = $Coord.X
-                                Y         = $Coord.Y
-                                ValidFrom = $Parsed.ValidFrom
-                                ValidTo   = $Parsed.ValidTo
-                                Season    = $Parsed.Season
-                            })
+                            $TargetEntity.CoordinateHistory.Add([Robot.CoordinateTemporalEntry]::new($Coord.X, $Coord.Y, $Parsed.ValidFrom, $Parsed.ValidTo, $Parsed.Season))
                             $TargetEntity.Coordinates = @{ X = $Coord.X; Y = $Coord.Y }
                         }
                     }
@@ -391,8 +329,8 @@ function Get-EntityState {
                               "Source='$ResolvedSourceName' Dest='$ResolvedDestName' ($($ResolvedDenom.Name))"
                     $AffectedEntity = if ($SourceEntity) { $SourceEntity } elseif ($DestEntity) { $DestEntity } else { $null }
                     if ($AffectedEntity) {
-                        if (-not $AffectedEntity.PSObject.Properties['UnresolvedTransfers']) {
-                            $AffectedEntity | Add-Member -NotePropertyName 'UnresolvedTransfers' -NotePropertyValue ([System.Collections.Generic.List[string]]::new())
+                        if (-not $AffectedEntity.UnresolvedTransfers) {
+                            $AffectedEntity.UnresolvedTransfers = [System.Collections.Generic.List[string]]::new()
                         }
                         [void]$AffectedEntity.UnresolvedTransfers.Add($ErrMsg)
                     }
@@ -405,16 +343,12 @@ function Get-EntityState {
                         $SourceEntity.QuantityHistory = [System.Collections.Generic.List[object]]::new()
                     }
                     $CurrentSrcQty = 0
-                    $LastSrcQty = Get-LastActiveValue -History $SourceEntity.QuantityHistory -PropertyName 'Quantity' -ActiveOn $Session.Date
+                    $LastSrcQty = Get-LastActiveValue -History $SourceEntity.QuantityHistory -PropertyName 'Value' -ActiveOn $Session.Date
                     [int]$ParsedSrcQty = 0
                     if ($LastSrcQty -and [int]::TryParse($LastSrcQty, [ref]$ParsedSrcQty)) {
                         $CurrentSrcQty = $ParsedSrcQty
                     }
-                    $SourceEntity.QuantityHistory.Add([PSCustomObject]@{
-                        Quantity  = [string]($CurrentSrcQty - $Transfer.Amount)
-                        ValidFrom = $Session.Date
-                        ValidTo   = $null
-                    })
+                    $SourceEntity.QuantityHistory.Add([Robot.TemporalEntry]::new([string]($CurrentSrcQty - $Transfer.Amount), $Session.Date, $null, $null))
                     [void]$ModifiedEntities.Add($SourceEntity.Name)
                 }
 
@@ -424,16 +358,12 @@ function Get-EntityState {
                         $DestEntity.QuantityHistory = [System.Collections.Generic.List[object]]::new()
                     }
                     $CurrentDstQty = 0
-                    $LastDstQty = Get-LastActiveValue -History $DestEntity.QuantityHistory -PropertyName 'Quantity' -ActiveOn $Session.Date
+                    $LastDstQty = Get-LastActiveValue -History $DestEntity.QuantityHistory -PropertyName 'Value' -ActiveOn $Session.Date
                     [int]$ParsedDstQty = 0
                     if ($LastDstQty -and [int]::TryParse($LastDstQty, [ref]$ParsedDstQty)) {
                         $CurrentDstQty = $ParsedDstQty
                     }
-                    $DestEntity.QuantityHistory.Add([PSCustomObject]@{
-                        Quantity  = [string]($CurrentDstQty + $Transfer.Amount)
-                        ValidFrom = $Session.Date
-                        ValidTo   = $null
-                    })
+                    $DestEntity.QuantityHistory.Add([Robot.TemporalEntry]::new([string]($CurrentDstQty + $Transfer.Amount), $Session.Date, $null, $null))
                     [void]$ModifiedEntities.Add($DestEntity.Name)
                 }
             }
@@ -442,7 +372,7 @@ function Get-EntityState {
 
     # Sorting by ValidFrom ensures Get-LastActiveValue picks the most recent entry
     # regardless of source (entity file vs session). $null ValidFrom sorts first
-    # (always-active entries). C# comparer eliminates scriptblock invocation overhead.
+    # (always-active entries). C# comparer handles the sort via compiled code.
     $DateComparer = if (([System.Management.Automation.PSTypeName]'Robot.TemporalSorter').Type) {
         [Robot.TemporalSorter]::CreateComparer('ValidFrom')
     } else {
@@ -470,31 +400,31 @@ function Get-EntityState {
         if ($Entity.NerthusNameHistory -and $Entity.NerthusNameHistory.Count -gt 0) { $Entity.NerthusNameHistory.Sort($DateComparer) }
 
         # Recompute active scalars from merged + sorted histories
-        $Entity.Location = Get-LastActiveValue -History $Entity.LocationHistory -PropertyName 'Location'  -ActiveOn $ActiveOn
-        $Entity.Doors    = Get-AllActiveValues -History $Entity.DoorHistory     -PropertyName 'Location'  -ActiveOn $ActiveOn
-        $Entity.Owner    = Get-LastActiveValue -History $Entity.OwnerHistory    -PropertyName 'OwnerName' -ActiveOn $ActiveOn
-        $Entity.Groups   = Get-AllActiveValues -History $Entity.GroupHistory    -PropertyName 'Group'     -ActiveOn $ActiveOn
+        $Entity.Location = Get-LastActiveValue -History $Entity.LocationHistory -PropertyName 'Value' -ActiveOn $ActiveOn
+        $Entity.Doors    = Get-AllActiveValues -History $Entity.DoorHistory     -PropertyName 'Value' -ActiveOn $ActiveOn
+        $Entity.Owner    = Get-LastActiveValue -History $Entity.OwnerHistory    -PropertyName 'Value' -ActiveOn $ActiveOn
+        $Entity.Groups   = Get-AllActiveValues -History $Entity.GroupHistory    -PropertyName 'Value' -ActiveOn $ActiveOn
 
-        $MergedType = Get-LastActiveValue -History $Entity.TypeHistory -PropertyName 'Type' -ActiveOn $ActiveOn
+        $MergedType = Get-LastActiveValue -History $Entity.TypeHistory -PropertyName 'Value' -ActiveOn $ActiveOn
         if ($MergedType) { $Entity.Type = $MergedType }
 
         if ($Entity.StatusHistory -and $Entity.StatusHistory.Count -gt 0) {
-            $MergedStatus = Get-LastActiveValue -History $Entity.StatusHistory -PropertyName 'Status' -ActiveOn $ActiveOn
+            $MergedStatus = Get-LastActiveValue -History $Entity.StatusHistory -PropertyName 'Value' -ActiveOn $ActiveOn
             if ($MergedStatus) { $Entity.Status = $MergedStatus }
         }
 
         if ($Entity.QuantityHistory -and $Entity.QuantityHistory.Count -gt 0) {
-            $MergedQuantity = Get-LastActiveValue -History $Entity.QuantityHistory -PropertyName 'Quantity' -ActiveOn $ActiveOn
+            $MergedQuantity = Get-LastActiveValue -History $Entity.QuantityHistory -PropertyName 'Value' -ActiveOn $ActiveOn
             if ($MergedQuantity) { $Entity.Quantity = $MergedQuantity }
         }
 
         if ($Entity.FilePathHistory -and $Entity.FilePathHistory.Count -gt 0) {
-            $MergedFilePath = Get-LastActiveValue -History $Entity.FilePathHistory -PropertyName 'FilePath' -ActiveOn $ActiveOn
+            $MergedFilePath = Get-LastActiveValue -History $Entity.FilePathHistory -PropertyName 'Value' -ActiveOn $ActiveOn
             if ($MergedFilePath) { $Entity.FilePath = $MergedFilePath }
         }
 
         if ($Entity.NerthusNameHistory -and $Entity.NerthusNameHistory.Count -gt 0) {
-            $MergedNerthusName = Get-LastActiveValue -History $Entity.NerthusNameHistory -PropertyName 'NerthusName' -ActiveOn $ActiveOn
+            $MergedNerthusName = Get-LastActiveValue -History $Entity.NerthusNameHistory -PropertyName 'Value' -ActiveOn $ActiveOn
             if ($MergedNerthusName) { $Entity.NerthusName = $MergedNerthusName }
         }
     }

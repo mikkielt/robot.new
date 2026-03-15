@@ -52,6 +52,45 @@ $ModuleRoot = $PSScriptRoot
 
 $script:SuppressWarnings = $false
 
+# ── Compiled C# Library ───────────────────────────────────────────────────
+# Consumer files check PSTypeName before using C# types and fall back to
+# PowerShell when unavailable, so a compilation failure is non-fatal.
+
+$LibDir = [System.IO.Path]::Combine($ModuleRoot, 'lib')
+if ([System.IO.Directory]::Exists($LibDir)) {
+    $CsFiles = [System.IO.Directory]::GetFiles($LibDir, '*.cs')
+    if ($CsFiles.Length -gt 0) {
+        # Guard: skip if types already loaded (e.g. module reimport in same session)
+        if (-not ([System.Management.Automation.PSTypeName]'Robot.MarkdownScanner').Type) {
+            # Hoist all 'using' directives above namespace blocks to avoid CS1529
+            # when concatenating multiple .cs files with independent using sets.
+            $Usings = [System.Collections.Generic.HashSet[string]]::new(
+                [System.StringComparer]::Ordinal)
+            $Body = [System.Text.StringBuilder]::new()
+            foreach ($CsFile in $CsFiles) {
+                foreach ($Line in [System.IO.File]::ReadAllLines($CsFile)) {
+                    if ($Line -match '^\s*using\s+[A-Z][\w.]*\s*;') {
+                        [void]$Usings.Add($Line)
+                    } else {
+                        [void]$Body.AppendLine($Line)
+                    }
+                }
+            }
+            $AllSource = [System.Text.StringBuilder]::new()
+            foreach ($U in $Usings) {
+                [void]$AllSource.AppendLine($U)
+            }
+            [void]$AllSource.Append($Body)
+            try {
+                Add-Type -TypeDefinition $AllSource.ToString() -Language CSharp
+            }
+            catch {
+                [System.Console]::Error.WriteLine("[WARN robot.psm1] Failed to compile lib/*.cs: $_")
+            }
+        }
+    }
+}
+
 # ── Season Mapping ────────────────────────────────────────────────────────
 # Optional override from local.config.psd1; null = default meteorological
 # mapping (Mar-May=wiosna, Jun-Aug=lato, Sep-Nov=jesien, Dec-Feb=zima).

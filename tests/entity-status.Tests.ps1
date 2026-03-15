@@ -38,7 +38,7 @@ Describe '@status tag parsing in Get-Entity' {
         It 'has StatusHistory entries' {
             $E = $script:Entities | Where-Object { $_.Name -eq 'Arcydemona Xerona Sojusznik' }
             $E.StatusHistory.Count | Should -Be 1
-            $E.StatusHistory[0].Status | Should -Be 'Aktywny'
+            $E.StatusHistory[0].Value | Should -Be 'Aktywny'
         }
     }
 

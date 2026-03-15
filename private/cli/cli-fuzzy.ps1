@@ -20,7 +20,7 @@
       stages 1-2, to avoid false positives on short queries).
 
     Module-level data:
-    - Robot.FuzzyMatcher C# type (loaded via Add-Type guard): pre-lowercased
+    - Robot.FuzzyMatcher C# type (compiled centrally in robot.psm1): pre-lowercased
       two-stage prefix+contains filter that eliminates per-keystroke
       ToLowerInvariant overhead on 3,757+ candidates
 
@@ -38,15 +38,9 @@
                   resolve-name.ps1 (Resolve-Name), lib/FuzzyMatcher.cs
 #>
 
-# Compiled C# fuzzy matcher for two-stage prefix+contains filtering.
+# C# type: Robot.FuzzyMatcher (lib/FuzzyMatcher.cs) — compiled centrally in robot.psm1.
 # Pre-lowercases candidate names at build time, eliminating per-keystroke
-# ToLowerInvariant overhead on 3,757+ candidates. Source: lib/FuzzyMatcher.cs
-if (-not ([System.Management.Automation.PSTypeName]'Robot.FuzzyMatcher').Type) {
-    $CsPath = [System.IO.Path]::Combine($script:ModuleRoot, 'lib', 'FuzzyMatcher.cs')
-    if ([System.IO.File]::Exists($CsPath)) {
-        Add-Type -TypeDefinition ([System.IO.File]::ReadAllText($CsPath)) -Language CSharp
-    }
-}
+# ToLowerInvariant overhead on 3,757+ candidates.
 
 # ── Get-FuzzySearchCandidates ────────────────────────────────────────────────
 

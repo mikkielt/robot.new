@@ -25,8 +25,8 @@ BeforeAll {
         param([object[]]$Items)
         $Result = @{}
         foreach ($LI in $Items) {
-            if ($null -ne $LI.ParentListItem) {
-                $ParentId = [System.Runtime.CompilerServices.RuntimeHelpers]::GetHashCode($LI.ParentListItem)
+            if ($LI.ParentIndex -ge 0) {
+                $ParentId = $LI.ParentIndex
                 if (-not $Result.ContainsKey($ParentId)) {
                     $Result[$ParentId] = [System.Collections.Generic.List[object]]::new()
                 }
@@ -43,10 +43,10 @@ BeforeAll {
         foreach ($E in $Entities) {
             if (-not $E.GroupHistory -or $E.GroupHistory.Count -eq 0) { continue }
             foreach ($GH in $E.GroupHistory) {
-                if (-not $Result.ContainsKey($GH.Group)) {
-                    $Result[$GH.Group] = [System.Collections.Generic.List[object]]::new()
+                if (-not $Result.ContainsKey($GH.Value)) {
+                    $Result[$GH.Value] = [System.Collections.Generic.List[object]]::new()
                 }
-                $Result[$GH.Group].Add(@{ Entity = $E; History = $GH })
+                $Result[$GH.Value].Add(@{ Entity = $E; History = $GH })
             }
         }
         return $Result
@@ -59,10 +59,10 @@ BeforeAll {
         foreach ($E in $Entities) {
             if (-not $E.LocationHistory -or $E.LocationHistory.Count -eq 0) { continue }
             foreach ($LH in $E.LocationHistory) {
-                if (-not $Result.ContainsKey($LH.Location)) {
-                    $Result[$LH.Location] = [System.Collections.Generic.List[object]]::new()
+                if (-not $Result.ContainsKey($LH.Value)) {
+                    $Result[$LH.Value] = [System.Collections.Generic.List[object]]::new()
                 }
-                $Result[$LH.Location].Add(@{ Entity = $E; History = $LH })
+                $Result[$LH.Value].Add(@{ Entity = $E; History = $LH })
             }
         }
         return $Result
@@ -465,8 +465,8 @@ Describe 'Get-SessionLocations' {
     }
 
     It 'extracts locations from Gen3 tag-based fallback' {
-        $ParentItem = [PSCustomObject]@{ Indent = 0; Text = 'Lokalizacje:'; ParentListItem = $null }
-        $ChildItem = [PSCustomObject]@{ Indent = 1; Text = 'Erathia'; ParentListItem = $ParentItem }
+        $ParentItem = [PSCustomObject]@{ Indent = 0; Text = 'Lokalizacje:'; ParentIndex = -1; LocalIndex = 0 }
+        $ChildItem = [PSCustomObject]@{ Indent = 1; Text = 'Erathia'; ParentIndex = 0; LocalIndex = 1 }
         $SectionLists = @($ParentItem, $ChildItem)
         $Locations = Get-SessionLocations -Format 'Gen3' `
             -FirstNonEmptyLine '' `
@@ -478,9 +478,9 @@ Describe 'Get-SessionLocations' {
     }
 
     It 'extracts locations from Gen4 @Lokacje tag' {
-        $ParentItem = [PSCustomObject]@{ Indent = 0; Text = '@Lokacje:'; ParentListItem = $null }
-        $ChildItem1 = [PSCustomObject]@{ Indent = 1; Text = 'Steadwick'; ParentListItem = $ParentItem }
-        $ChildItem2 = [PSCustomObject]@{ Indent = 1; Text = 'Erathia'; ParentListItem = $ParentItem }
+        $ParentItem = [PSCustomObject]@{ Indent = 0; Text = '@Lokacje:'; ParentIndex = -1; LocalIndex = 0 }
+        $ChildItem1 = [PSCustomObject]@{ Indent = 1; Text = 'Steadwick'; ParentIndex = 0; LocalIndex = 1 }
+        $ChildItem2 = [PSCustomObject]@{ Indent = 1; Text = 'Erathia'; ParentIndex = 0; LocalIndex = 2 }
         $SectionLists = @($ParentItem, $ChildItem1, $ChildItem2)
         $Locations = Get-SessionLocations -Format 'Gen4' `
             -FirstNonEmptyLine '' `
@@ -493,7 +493,7 @@ Describe 'Get-SessionLocations' {
     }
 
     It 'extracts inline comma-separated locations from tag fallback' {
-        $ParentItem = [PSCustomObject]@{ Indent = 0; Text = 'Lokalizacje: Erathia, Steadwick'; ParentListItem = $null }
+        $ParentItem = [PSCustomObject]@{ Indent = 0; Text = 'Lokalizacje: Erathia, Steadwick'; ParentIndex = -1; LocalIndex = 0 }
         $SectionLists = @($ParentItem)
         $Locations = Get-SessionLocations -Format 'Gen3' `
             -FirstNonEmptyLine '' `
@@ -523,8 +523,8 @@ Describe 'Get-SessionLocations' {
             OwnerType = 'Lokacja'
             Ambiguous = $false
         }
-        $ParentItem = [PSCustomObject]@{ Indent = 0; Text = 'Punkty:'; ParentListItem = $null }
-        $ChildItem = [PSCustomObject]@{ Indent = 1; Text = 'Erathia'; ParentListItem = $ParentItem }
+        $ParentItem = [PSCustomObject]@{ Indent = 0; Text = 'Punkty:'; ParentIndex = -1; LocalIndex = 0 }
+        $ChildItem = [PSCustomObject]@{ Indent = 1; Text = 'Erathia'; ParentIndex = 0; LocalIndex = 1 }
         $SectionLists = @($ParentItem, $ChildItem)
         $Locations = Get-SessionLocations -Format 'Gen3' `
             -FirstNonEmptyLine '' `
@@ -615,7 +615,7 @@ Describe 'Resolve-IntelTargets' {
             Owner           = 'Kilgor'
             Names           = @('Xeron')
             GroupHistory    = @(
-                [PSCustomObject]@{ Group = 'Gwardia'; StartDate = [datetime]::new(2024, 1, 1); EndDate = $null }
+                [Robot.TemporalEntry]::new('Gwardia', [datetime]::new(2024, 1, 1), $null, $null)
             )
             LocationHistory = @()
             Overrides       = @{}
@@ -657,7 +657,7 @@ Describe 'Resolve-IntelTargets' {
             Names           = @('Ratusz')
             GroupHistory    = @()
             LocationHistory = @(
-                [PSCustomObject]@{ Location = 'Steadwick'; StartDate = [datetime]::new(2024, 1, 1); EndDate = $null }
+                [Robot.TemporalEntry]::new('Steadwick', [datetime]::new(2024, 1, 1), $null, $null)
             )
             Overrides       = @{}
         }
@@ -668,7 +668,7 @@ Describe 'Resolve-IntelTargets' {
             Names           = @('Merchant')
             GroupHistory    = @()
             LocationHistory = @(
-                [PSCustomObject]@{ Location = 'Steadwick'; StartDate = [datetime]::new(2024, 1, 1); EndDate = $null }
+                [Robot.TemporalEntry]::new('Steadwick', [datetime]::new(2024, 1, 1), $null, $null)
             )
             Overrides       = @{}
         }
@@ -738,8 +738,8 @@ Describe 'Get-SessionMentions' {
     }
 
     It 'excludes PU list items from mention scanning' {
-        $PUItem = [PSCustomObject]@{ Indent = 0; Text = 'PU:'; ParentListItem = $null }
-        $PUChild = [PSCustomObject]@{ Indent = 1; Text = 'Xeron: 0.3'; ParentListItem = $PUItem }
+        $PUItem = [PSCustomObject]@{ Indent = 0; Text = 'PU:'; ParentIndex = -1; LocalIndex = 0 }
+        $PUChild = [PSCustomObject]@{ Indent = 1; Text = 'Xeron: 0.3'; ParentIndex = 0; LocalIndex = 1 }
 
         $Content = "Some other text without entities."
         $Items = @($PUItem, $PUChild)
@@ -758,10 +758,10 @@ Describe 'Get-SessionMentions' {
     }
 
     It 'excludes Logi, Lokalizacje, Zmiany, Intel list items' {
-        $LogiItem = [PSCustomObject]@{ Indent = 0; Text = 'Logi:'; ParentListItem = $null }
-        $LocItem = [PSCustomObject]@{ Indent = 0; Text = 'Lokalizacje:'; ParentListItem = $null }
-        $ZmianyItem = [PSCustomObject]@{ Indent = 0; Text = 'Zmiany:'; ParentListItem = $null }
-        $IntelItem = [PSCustomObject]@{ Indent = 0; Text = 'Intel:'; ParentListItem = $null }
+        $LogiItem = [PSCustomObject]@{ Indent = 0; Text = 'Logi:'; ParentIndex = -1; LocalIndex = 0 }
+        $LocItem = [PSCustomObject]@{ Indent = 0; Text = 'Lokalizacje:'; ParentIndex = -1; LocalIndex = 1 }
+        $ZmianyItem = [PSCustomObject]@{ Indent = 0; Text = 'Zmiany:'; ParentIndex = -1; LocalIndex = 2 }
+        $IntelItem = [PSCustomObject]@{ Indent = 0; Text = 'Intel:'; ParentIndex = -1; LocalIndex = 3 }
 
         $Content = "Body text."
         $Items = @($LogiItem, $LocItem, $ZmianyItem, $IntelItem)
@@ -808,9 +808,9 @@ Describe 'Get-SessionMentions' {
     }
 
     It 'excludes children of excluded list items' {
-        $PUItem = [PSCustomObject]@{ Indent = 0; Text = 'PU:'; ParentListItem = $null }
-        $PUChild = [PSCustomObject]@{ Indent = 1; Text = 'Xeron: 0.3'; ParentListItem = $PUItem }
-        $PUGrandchild = [PSCustomObject]@{ Indent = 2; Text = 'bonus Xeron'; ParentListItem = $PUChild }
+        $PUItem = [PSCustomObject]@{ Indent = 0; Text = 'PU:'; ParentIndex = -1; LocalIndex = 0 }
+        $PUChild = [PSCustomObject]@{ Indent = 1; Text = 'Xeron: 0.3'; ParentIndex = 0; LocalIndex = 1 }
+        $PUGrandchild = [PSCustomObject]@{ Indent = 2; Text = 'bonus Xeron'; ParentIndex = 1; LocalIndex = 2 }
 
         $Content = "No entities here."
         $Items = @($PUItem, $PUChild, $PUGrandchild)
@@ -827,8 +827,8 @@ Describe 'Get-SessionMentions' {
     }
 
     It 'includes non-excluded list items in scan' {
-        $OtherItem = [PSCustomObject]@{ Indent = 0; Text = 'Objaśnienia:'; ParentListItem = $null }
-        $OtherChild = [PSCustomObject]@{ Indent = 1; Text = 'Xeron got a reward'; ParentListItem = $OtherItem }
+        $OtherItem = [PSCustomObject]@{ Indent = 0; Text = 'Objaśnienia:'; ParentIndex = -1; LocalIndex = 0 }
+        $OtherChild = [PSCustomObject]@{ Indent = 1; Text = 'Xeron got a reward'; ParentIndex = 0; LocalIndex = 1 }
 
         $Content = "Some body."
         $Items = @($OtherItem, $OtherChild)

@@ -18,15 +18,16 @@
         - Links:     list of link objects (MarkdownLink with Text+Url, or PlainUrl with Url)
 
     Two parsing paths:
-    1. C# fast path (Robot.MarkdownScanner): pre-loaded by get-markdown.ps1 before
-       RunspacePool workers start. Uses struct-based output with index-based parent
-       tracking. The PowerShell wrapper reconstructs actual object references
-       (ParentHeader, ParentListItem, SectionHeader) from the flat index arrays
-       returned by the C# scanner.
+    1. C# fast path (Robot.MarkdownScanner): compiled centrally by robot.psm1
+       at module import time; AppDomain-wide, so RunspacePool workers share it. Returns ListEntry class objects directly,
+       with ParentIndex converted from global to
+       section-local and LocalIndex set for O(1) parent→children lookups.
+       Headers are still reconstructed as PSCustomObjects (few, needed for
+       ParentHeader chain traversal). Links returned as C# structs directly.
     2. PowerShell fallback: used when Robot.MarkdownScanner is not available
        (restricted environments, direct script invocation from tests without
        pre-loading). Uses precompiled regex patterns and stack-based hierarchy
-       tracking.
+       tracking. Produces compatible output with ParentIndex/LocalIndex integers.
 
     Parsing strategy (both paths):
     - Single-pass line-by-line scan, accumulating content into the current section
@@ -42,14 +43,16 @@ param([string]$FilePath)
 
 $Lines = [System.IO.File]::ReadAllLines($FilePath)
 
-# C# path: compiled scanner with struct output, then reconstruct object references.
-# Robot.MarkdownScanner is pre-loaded by get-markdown.ps1 before RunspacePool workers start.
-# In sequential mode, the type may not be loaded (direct script invocation from tests);
-# PSTypeName check handles both cases.
+# C# path: compiled scanner with mixed struct/class output, then reconstruct object references.
+# Robot.MarkdownScanner compiled centrally in robot.psm1 — AppDomain-wide, shared by all
+# RunspacePool workers. In test mode (direct script invocation without module import)
+# the type may not be loaded; PSTypeName check handles both cases.
 if (([System.Management.Automation.PSTypeName]'Robot.MarkdownScanner').Type) {
     $CsResult = [Robot.MarkdownScanner]::Parse($Lines)
 
-    # Reconstruct header objects with actual ParentHeader references (not indices)
+    # Reconstruct header objects with actual ParentHeader references (not indices).
+    # Headers are few (~10-50 per file) so PSCustomObject overhead is negligible,
+    # and consumers (get-player.ps1) traverse $Header.ParentHeader chains.
     $HeaderObjs = [System.Collections.Generic.List[object]]::new($CsResult.Headers.Length)
     foreach ($H in $CsResult.Headers) {
         $ParentRef = if ($H.ParentIndex -ge 0) { $HeaderObjs[$H.ParentIndex] } else { $null }
@@ -61,27 +64,19 @@ if (([System.Management.Automation.PSTypeName]'Robot.MarkdownScanner').Type) {
         })
     }
 
-    # Reconstruct list items with actual ParentListItem and SectionHeader references
-    $AllListItems = [System.Collections.Generic.List[object]]::new($CsResult.Lists.Length)
-    foreach ($L in $CsResult.Lists) {
-        $ParentRef = if ($L.ParentIndex -ge 0) { $AllListItems[$L.ParentIndex] } else { $null }
-        $SectionRef = if ($L.SectionHeaderIndex -ge 0) { $HeaderObjs[$L.SectionHeaderIndex] } else { $null }
-        $AllListItems.Add([PSCustomObject]@{
-            Type           = $L.Type
-            Text           = $L.Text
-            Indent         = $L.Indent
-            ParentListItem = $ParentRef
-            SectionHeader  = $SectionRef
-        })
-    }
-
-    # Reconstruct sections with Header reference and per-section Lists slice
+    # Return ListEntry class objects directly.
+    # Convert ParentIndex from global (full-file) to section-local (within Section.Lists)
+    # and set LocalIndex for O(1) parent→children lookups in consumers.
     $SectionObjs = [System.Collections.Generic.List[object]]::new($CsResult.Sections.Length)
     foreach ($S in $CsResult.Sections) {
         $HeaderRef = if ($S.HeaderIndex -ge 0) { $HeaderObjs[$S.HeaderIndex] } else { $null }
+        $Offset = $S.ListStartIndex
         $SectionLists = [System.Collections.Generic.List[object]]::new($S.ListCount)
-        for ($J = $S.ListStartIndex; $J -lt ($S.ListStartIndex + $S.ListCount); $J++) {
-            $SectionLists.Add($AllListItems[$J])
+        for ($J = 0; $J -lt $S.ListCount; $J++) {
+            $LI = $CsResult.Lists[$Offset + $J]
+            $LI.LocalIndex = $J
+            $LI.ParentIndex = if ($LI.ParentIndex -ge 0) { $LI.ParentIndex - $Offset } else { -1 }
+            $SectionLists.Add($LI)
         }
         $SectionObjs.Add([PSCustomObject]@{
             Header  = $HeaderRef
@@ -90,29 +85,14 @@ if (([System.Management.Automation.PSTypeName]'Robot.MarkdownScanner').Type) {
         })
     }
 
-    # Reconstruct links
-    $LinkObjs = [System.Collections.Generic.List[object]]::new($CsResult.Links.Length)
-    foreach ($Lk in $CsResult.Links) {
-        if ($Lk.Type -eq 'MarkdownLink') {
-            $LinkObjs.Add([PSCustomObject]@{
-                Type = 'MarkdownLink'
-                Text = $Lk.Text
-                Url  = $Lk.Url
-            })
-        } else {
-            $LinkObjs.Add([PSCustomObject]@{
-                Type = 'PlainUrl'
-                Url  = $Lk.Url
-            })
-        }
-    }
-
+    # Return LinkEntry structs directly — property access works on C# structs
+    # via boxing; no mutations needed so struct semantics are fine.
     return [PSCustomObject]@{
         FilePath = $FilePath
         Headers  = $HeaderObjs
         Sections = $SectionObjs
-        Lists    = $AllListItems
-        Links    = $LinkObjs
+        Lists    = $CsResult.Lists
+        Links    = $CsResult.Links
     }
 }
 
@@ -138,7 +118,7 @@ $CurrentSectionContent = [System.Text.StringBuilder]::new()
 $CurrentLists          = [System.Collections.Generic.List[object]]::new()
 $CurrentHeader         = $null
 $HeaderStack           = [System.Collections.Generic.Stack[object]]::new()  # tracks header hierarchy for ParentHeader
-$ListStack             = [System.Collections.Generic.Stack[object]]::new()  # tracks list nesting for ParentListItem
+$ListStack             = [System.Collections.Generic.Stack[int]]::new()     # tracks list nesting by section-local index
 $InCodeBlock           = $false
 $LineNumber            = 0
 
@@ -227,23 +207,25 @@ foreach ($Line in $Lines) {
         $Text   = $ListMatch.Groups[3].Value.Trim()
 
         # Pop items at same or deeper indent to find the correct parent
-        while ($ListStack.Count -gt 0 -and $ListStack.Peek().Indent -ge $Indent) {
+        while ($ListStack.Count -gt 0 -and $CurrentLists[$ListStack.Peek()].Indent -ge $Indent) {
             [void]$ListStack.Pop()
         }
 
-        $ParentItem = if ($ListStack.Count -gt 0) { $ListStack.Peek() } else { $null }
+        $ParentIdx = if ($ListStack.Count -gt 0) { $ListStack.Peek() } else { -1 }
+        $LocalIdx = $CurrentLists.Count
 
         $ListItem = [PSCustomObject]@{
             Type           = $Type
             Text           = $Text
             Indent         = $Indent
-            ParentListItem = $ParentItem
+            ParentIndex    = $ParentIdx
+            LocalIndex     = $LocalIdx
             SectionHeader  = $CurrentHeader
         }
 
         $CurrentLists.Add($ListItem)
         $ListItems.Add($ListItem)
-        $ListStack.Push($ListItem)
+        $ListStack.Push($LocalIdx)
         [void]$CurrentSectionContent.Append($Line).Append("`n")
         continue
     }

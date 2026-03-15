@@ -35,15 +35,8 @@
 
 . "$script:ModuleRoot/private/string-helpers.ps1"
 
-# Compiled C# declension engine for suffix stripping and stem alternation.
+# C# type: Robot.DeclensionEngine (lib/DeclensionEngine.cs) — compiled centrally in robot.psm1.
 # Eliminates PowerShell loop overhead on the hottest resolution path
-# (412,500 inner-loop string operations per session run). Source: lib/DeclensionEngine.cs
-if (-not ([System.Management.Automation.PSTypeName]'Robot.DeclensionEngine').Type) {
-    $CsPath = [System.IO.Path]::Combine($script:ModuleRoot, 'lib', 'DeclensionEngine.cs')
-    if ([System.IO.File]::Exists($CsPath)) {
-        Add-Type -TypeDefinition ([System.IO.File]::ReadAllText($CsPath)) -Language CSharp
-    }
-}
 
 # Polish noun suffixes ordered longest-first to prevent partial stripping
 # (e.g. "-owi" must be tried before "-i", "-ami" before "-i")

@@ -31,14 +31,9 @@
 
 . "$script:ModuleRoot/private/string-helpers.ps1"
 
-# C# BK-tree eliminates PowerShell interpretation overhead on the hottest path
-# (16,500+ calls per Get-Session run for fuzzy name resolution)
-if (-not ([System.Management.Automation.PSTypeName]'Robot.BKTree').Type) {
-    $CsPath = [System.IO.Path]::Combine($script:ModuleRoot, 'lib', 'BKTree.cs')
-    if ([System.IO.File]::Exists($CsPath)) {
-        Add-Type -TypeDefinition ([System.IO.File]::ReadAllText($CsPath)) -Language CSharp
-    }
-}
+# C# type: Robot.BKTree (lib/BKTree.cs) — compiled centrally in robot.psm1.
+# Eliminates PowerShell interpretation overhead on the hottest path
+# (16,500+ calls per Get-Session run for fuzzy name resolution).
 
 # Legacy PowerShell BK-tree — fallback when Add-Type fails (e.g. no C# compiler)
 function Add-BKTreeNode {

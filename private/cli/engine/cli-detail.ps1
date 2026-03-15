@@ -10,9 +10,10 @@
     in the Nerthus data model: null sentinels, booleans (Polish Tak/Nie),
     datetimes (ISO format), HashSets (inline for small sets, bulleted for
     large), dictionaries (with @tag key display), and temporal objects with
-    ValidFrom/ValidTo date range display. Arrays of PSCustomObjects are
-    rendered as multi-property bullet lines, capped at 8 items to keep the
-    card readable.
+    ValidFrom/ValidTo date range display. Arrays use a negative type check
+    (not [string] and not [System.ValueType]) to distinguish complex objects
+    from scalar values; complex objects are rendered as multi-property bullet
+    lines, capped at 8 items to keep the card readable.
 
     Helpers:
     - New-DetailCardComponent:  creates a scrollable detail card from a data object
@@ -84,7 +85,7 @@ function New-DetailCardComponent {
                 $Row++  # blank line after title
             }
 
-            # Build all property lines first
+            # Pre-render all property lines so scroll offset can clamp against total count
             $AllLines = [System.Collections.Generic.List[object]]::new()
             foreach ($Prop in $Props) {
                 $DisplayVal = Format-DetailValue -Value $Prop.Value
@@ -111,7 +112,7 @@ function New-DetailCardComponent {
                 }
             }
 
-            # Render with scroll offset
+            # Clamp offset and emit visible slice into buffer region
             $VisibleLines = $ContentHeight - ($Row - $Region.StartRow)
             $MaxOffset = [Math]::Max(0, $AllLines.Count - $VisibleLines)
             if ($Offset -gt $MaxOffset) { $ComponentRef.ScrollOffset = $MaxOffset; $Offset = $MaxOffset }
@@ -197,7 +198,7 @@ function Format-DetailValue {
         # Scalar arrays (strings, numbers) can be safely joined inline
         $AllScalar = $true
         foreach ($V in $Value) {
-            if ($V -is [PSCustomObject] -or $V -is [hashtable]) { $AllScalar = $false; break }
+            if (-not ($V -is [string] -or $V -is [System.ValueType])) { $AllScalar = $false; break }
         }
 
         if ($AllScalar -and $Value.Count -le 3) {
@@ -205,7 +206,7 @@ function Format-DetailValue {
         }
 
         # Temporal objects (entity @tag values with ValidFrom/ValidTo date ranges)
-        if ($Value[0] -is [PSCustomObject] -and $Value[0].PSObject.Properties['ValidFrom']) {
+        if ($Value[0].PSObject.Properties['ValidFrom']) {
             $Lines = [System.Collections.Generic.List[string]]::new()
             $SkipNames = [System.Collections.Generic.HashSet[string]]::new(
                 [string[]]@('ValidFrom','ValidTo','Path','CN'),
@@ -240,8 +241,9 @@ function Format-DetailValue {
             return @($Lines)
         }
 
-        # Nested PSCustomObject arrays — show up to 3 properties per item as a summary line
-        if ($Value[0] -is [PSCustomObject]) {
+        # Nested object arrays — negative type check excludes scalars so C# typed
+        # objects (Robot.*) are handled here with multi-property summary lines
+        if (-not ($Value[0] -is [string] -or $Value[0] -is [System.ValueType])) {
             $Lines = [System.Collections.Generic.List[string]]::new()
             $ShowCount = [Math]::Min($Value.Count, 8)
             for ($I = 0; $I -lt $ShowCount; $I++) {

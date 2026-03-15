@@ -12,7 +12,8 @@
     - Resolve-PartialDate:          expands partial dates (YYYY, YYYY-MM) to full datetime values
     - Resolve-SeasonForDate:        returns Polish season name for a given date
     - Test-TemporalActivity:        checks if an item falls within an -ActiveOn date window (date + season)
-    - Get-NestedBulletText:         collects text from child bullets that pass temporal filtering
+    - Get-NestedBulletText:         collects text from child bullets via LocalIndex-keyed
+                                     ChildrenOf lookup, with temporal filtering
     - Get-LastActiveValue:          returns the last active entry from a history list (reverse scan)
     - Get-AllActiveValues:          returns all active entries from a history list as string[]
     - ConvertTo-SessionDate:        parses yyyy-MM-dd string into [datetime] or $null
@@ -223,9 +224,9 @@ function Get-NestedBulletText {
         [AllowNull()][Nullable[datetime]]$ActiveOn
     )
 
-    $ParentId = [System.Runtime.CompilerServices.RuntimeHelpers]::GetHashCode($ParentBullet)
-    if (-not $ChildrenOf.ContainsKey($ParentId)) { return $null }
-    $Children = $ChildrenOf[$ParentId]
+    $ParentIdx = $ParentBullet.LocalIndex
+    if (-not $ChildrenOf.ContainsKey($ParentIdx)) { return $null }
+    $Children = $ChildrenOf[$ParentIdx]
     if ($Children.Count -eq 0) { return $null }
 
     $Texts = [System.Collections.Generic.List[string]]::new()

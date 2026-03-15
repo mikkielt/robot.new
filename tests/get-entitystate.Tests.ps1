@@ -38,13 +38,13 @@ Describe 'Get-EntityState' {
         $Orrin = $script:Enriched | Where-Object { $_.Name -eq 'Kupiec Orrin' }
         $Orrin | Should -Not -BeNullOrEmpty
         # sessions-zmiany.md moves Orrin to Steadwick from 2025-03
-        $OrrinLocations = $Orrin.LocationHistory | ForEach-Object { $_.Location }
+        $OrrinLocations = $Orrin.LocationHistory | ForEach-Object { $_.Value }
         $OrrinLocations | Should -Contain 'Steadwick'
     }
 
     It 'applies @grupa override from Zmiany to Kupiec Orrin' {
         $Orrin = $script:Enriched | Where-Object { $_.Name -eq 'Kupiec Orrin' }
-        $OrrinGroups = $Orrin.GroupHistory | ForEach-Object { $_.Group }
+        $OrrinGroups = $Orrin.GroupHistory | ForEach-Object { $_.Value }
         $OrrinGroups | Should -Contain 'Kupcy Steadwicku'
     }
 
@@ -140,31 +140,31 @@ Describe 'Get-EntityState - @drzwi, @typ, @należy_do, @grupa changes' {
     It 'adds @drzwi to DoorHistory' {
         $NPC = $script:Enriched | Where-Object { $_.Name -eq 'Rycerz Erathii' }
         $NPC.DoorHistory | Should -Not -BeNullOrEmpty
-        ($NPC.DoorHistory | Where-Object { $_.Location -eq 'Brama Główna' }) | Should -Not -BeNullOrEmpty
+        ($NPC.DoorHistory | Where-Object { $_.Value -eq 'Brama Główna' }) | Should -Not -BeNullOrEmpty
     }
 
     It 'adds @typ to TypeHistory' {
         $NPC = $script:Enriched | Where-Object { $_.Name -eq 'Rycerz Erathii' }
         $NPC.TypeHistory | Should -Not -BeNullOrEmpty
-        ($NPC.TypeHistory | Where-Object { $_.Type -eq 'Dowódca' }) | Should -Not -BeNullOrEmpty
+        ($NPC.TypeHistory | Where-Object { $_.Value -eq 'Dowódca' }) | Should -Not -BeNullOrEmpty
     }
 
     It 'adds @należy_do to OwnerHistory' {
         $NPC = $script:Enriched | Where-Object { $_.Name -eq 'Rycerz Erathii' }
         $NPC.OwnerHistory | Should -Not -BeNullOrEmpty
-        ($NPC.OwnerHistory | Where-Object { $_.OwnerName -eq 'Ktoś Inny' }) | Should -Not -BeNullOrEmpty
+        ($NPC.OwnerHistory | Where-Object { $_.Value -eq 'Ktoś Inny' }) | Should -Not -BeNullOrEmpty
     }
 
     It 'adds @grupa to GroupHistory' {
         $NPC = $script:Enriched | Where-Object { $_.Name -eq 'Rycerz Erathii' }
         $NPC.GroupHistory | Should -Not -BeNullOrEmpty
-        ($NPC.GroupHistory | Where-Object { $_.Group -eq 'Złoczyńcy' }) | Should -Not -BeNullOrEmpty
+        ($NPC.GroupHistory | Where-Object { $_.Value -eq 'Złoczyńcy' }) | Should -Not -BeNullOrEmpty
     }
 
     It 'adds @status to StatusHistory with lazy init' {
         $NPC = $script:Enriched | Where-Object { $_.Name -eq 'Rycerz Erathii' }
         $NPC.StatusHistory | Should -Not -BeNullOrEmpty
-        ($NPC.StatusHistory | Where-Object { $_.Status -eq 'Ranny' }) | Should -Not -BeNullOrEmpty
+        ($NPC.StatusHistory | Where-Object { $_.Value -eq 'Ranny' }) | Should -Not -BeNullOrEmpty
     }
 
     It 'handles @ilość with arithmetic delta (+N)' {
@@ -210,13 +210,13 @@ Describe 'Get-EntityState - deep Zmiany from session' {
 
     It 'applies @lokacja change to Kupiec Orrin' {
         $Orrin = $script:Enriched | Where-Object { $_.Name -eq 'Kupiec Orrin' }
-        $OrrinLocations = $Orrin.LocationHistory | ForEach-Object { $_.Location }
+        $OrrinLocations = $Orrin.LocationHistory | ForEach-Object { $_.Value }
         $OrrinLocations | Should -Contain 'Steadwick'
     }
 
     It 'applies @grupa change to Kupiec Orrin' {
         $Orrin = $script:Enriched | Where-Object { $_.Name -eq 'Kupiec Orrin' }
-        $OrrinGroups = $Orrin.GroupHistory | ForEach-Object { $_.Group }
+        $OrrinGroups = $Orrin.GroupHistory | ForEach-Object { $_.Value }
         $OrrinGroups | Should -Contain 'Kupcy Steadwicku'
     }
 
@@ -227,7 +227,7 @@ Describe 'Get-EntityState - deep Zmiany from session' {
 
     It 'applies @status change to Thant' {
         $Thant = $script:Enriched | Where-Object { $_.Name -eq 'Thant' }
-        $ThantStatuses = $Thant.StatusHistory | ForEach-Object { $_.Status }
+        $ThantStatuses = $Thant.StatusHistory | ForEach-Object { $_.Value }
         $ThantStatuses | Should -Contain 'Nieaktywny'
     }
 
@@ -328,7 +328,7 @@ Describe 'Get-EntityState - @plik Zmiany override' {
 
     It 'auto-dates @plik from Zmiany with session date' {
         $Xeron = $script:PlikEnriched | Where-Object { $_.Name -eq 'Xeron Demonlord' }
-        $LatestEntry = $Xeron.FilePathHistory | Where-Object { $_.FilePath -eq 'Postaci/Gracze/Xeron Demonlord v2.md' }
+        $LatestEntry = $Xeron.FilePathHistory | Where-Object { $_.Value -eq 'Postaci/Gracze/Xeron Demonlord v2.md' }
         $LatestEntry.ValidFrom | Should -Be ([datetime]::new(2025, 4, 1))
     }
 }

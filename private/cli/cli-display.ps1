@@ -166,7 +166,9 @@ function Show-DetailCard {
                     }
                 }
             }
-            elseif ($PropVal[0] -is [PSCustomObject] -or $PropVal[0].PSObject) {
+            # Negative type check: C# typed objects (Robot.*) aren't PSCustomObject,
+            # so exclude scalars to identify complex objects for multi-property display
+            elseif (-not ($PropVal[0] -is [string] -or $PropVal[0] -is [System.ValueType])) {
                 $First = $PropVal[0]
                 $HasText = $First.PSObject.Properties['Text']
                 $HasValidFrom = $First.PSObject.Properties['ValidFrom']

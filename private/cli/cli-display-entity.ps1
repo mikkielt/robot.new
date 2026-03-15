@@ -9,10 +9,11 @@
     Helpers:
     - Format-ValidityRange: formats temporal range as "YYYY-MM-DD – YYYY-MM-DD"
       with Polish "od"/"do" prefixes for open-ended ranges
-    - Show-EntityCard:      renders entity detail card with all entity fields
+    - Show-EntityCard:      renders entity detail card with all Robot.Entity fields
       in a fixed vertical layout (core fields, info override, groups, doors,
       contains, aliases with temporal ranges, custom @tags, location history,
-      group history). Waits for Escape before returning.
+      group history). History entries access the .Value property from
+      Robot.TemporalEntry objects. Waits for Escape before returning.
 
     Design:
     - Show-EntityCard accepts either an Entity parameter or a Row parameter
@@ -106,15 +107,15 @@ function Show-EntityCard {
         Write-Host ($Entity.Contains -join ', ')
     }
 
-    # Aliases — format as "Text (range)" for temporal, plain text for scalar
+    # Aliases — format as "Value (range)" for temporal, plain text for scalar
     if ($Entity.Aliases -and $Entity.Aliases.Count -gt 0) {
         Write-Host ''
         Write-CLILine -Text 'Aliasy' -Color $InfoColor
         foreach ($Alias in $Entity.Aliases) {
             $AliasText = if ($Alias -is [string]) { $Alias }
-                         elseif ($Alias.Text) {
+                         elseif ($Alias.Value) {
                              $Range = Format-ValidityRange -ValidFrom $Alias.ValidFrom -ValidTo $Alias.ValidTo
-                             if ($Range) { "$($Alias.Text) ($Range)" } else { $Alias.Text }
+                             if ($Range) { "$($Alias.Value) ($Range)" } else { $Alias.Value }
                          }
                          else { [string]$Alias }
             Write-CLILine -Text "  $([char]0x2022) $AliasText"
@@ -145,7 +146,7 @@ function Show-EntityCard {
         $ShowMax = [Math]::Min($Entity.LocationHistory.Count, 5)  # keep card within single screen
         for ($I = 0; $I -lt $ShowMax; $I++) {
             $H = $Entity.LocationHistory[$I]
-            $Loc = if ($H.Location) { $H.Location } else { '?' }
+            $Loc = if ($H.Value) { $H.Value } else { '?' }
             $Range = Format-ValidityRange -ValidFrom $H.ValidFrom -ValidTo $H.ValidTo
             $RangeText = if ($Range) { " ($Range)" } else { '' }
             Write-CLILine -Text "  $([char]0x2022) $Loc$RangeText"
@@ -161,7 +162,7 @@ function Show-EntityCard {
         $ShowMax = [Math]::Min($Entity.GroupHistory.Count, 5)
         for ($I = 0; $I -lt $ShowMax; $I++) {
             $H = $Entity.GroupHistory[$I]
-            $Grp = if ($H.Group) { $H.Group } else { '?' }
+            $Grp = if ($H.Value) { $H.Value } else { '?' }
             $Range = Format-ValidityRange -ValidFrom $H.ValidFrom -ValidTo $H.ValidTo
             $RangeText = if ($Range) { " ($Range)" } else { '' }
             Write-CLILine -Text "  $([char]0x2022) $Grp$RangeText"

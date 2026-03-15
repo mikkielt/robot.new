@@ -75,13 +75,8 @@ function Get-Markdown {
 
     $AllResults = [System.Collections.Generic.List[object]]::new()
 
-    # Add-Type loads into the AppDomain — all RunspacePool workers share the compiled type
-    if (-not ([System.Management.Automation.PSTypeName]'Robot.MarkdownScanner').Type) {
-        $CsPath = [System.IO.Path]::Combine($script:ModuleRoot, 'lib', 'MarkdownScanner.cs')
-        if ([System.IO.File]::Exists($CsPath)) {
-            Add-Type -TypeDefinition ([System.IO.File]::ReadAllText($CsPath)) -Language CSharp
-        }
-    }
+    # Robot.MarkdownScanner compiled centrally in robot.psm1 — AppDomain-wide,
+    # so all RunspacePool workers share the type without per-call compilation.
 
     # Parser text cached at script scope — used both for [scriptblock]::Create (sequential)
     # and AddScript (parallel workers that lack module scope)

@@ -55,13 +55,7 @@ if (-not (Test-Path variable:script:UTF8NoBOM)) {
     $script:UTF8NoBOM = [System.Text.UTF8Encoding]::new($false)
 }
 
-# Compiled C# JSON helper (reuse from session-hashhelpers if already loaded)
-if (-not ([System.Management.Automation.PSTypeName]'Robot.JsonHelper').Type) {
-    $CsPath = [System.IO.Path]::Combine($script:ModuleRoot, 'lib', 'JsonHelper.cs')
-    if ([System.IO.File]::Exists($CsPath)) {
-        Add-Type -TypeDefinition ([System.IO.File]::ReadAllText($CsPath)) -Language CSharp
-    }
-}
+# C# type: Robot.JsonHelper (lib/JsonHelper.cs) — compiled centrally in robot.psm1.
 
 # Classify a repo-relative file path into an entity involvement record.
 # Returns $null for Unknown category paths.

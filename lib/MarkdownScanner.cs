@@ -6,16 +6,15 @@ using System.Text.RegularExpressions;
 namespace Robot {
     /// Compiled Markdown line scanner for parse-markdownfile.ps1.
     ///
-    /// Compiled C# replaces per-line PowerShell parsing that applied 7 regex
-    /// operations per line through the interpreter, costing ~15ms per file on
-    /// the 700+ Markdown files in the lore repository. The C# version reduces
-    /// this to ~1.5ms per file, critical for Get-Markdown which parses all files
-    /// in parallel via RunspacePool.
+    /// Applies 6 precompiled regex per line in native code, avoiding per-line
+    /// interpreter dispatch. Critical for Get-Markdown's RunspacePool parallelism
+    /// where each worker parses one file with minimal interop overhead.
     ///
-    /// Single-pass algorithm producing flat struct arrays with int-based parent
-    /// indices (not object references). The PowerShell integration layer in
-    /// parse-markdownfile.ps1 reconstructs PSCustomObject parent references
-    /// from these indices for consumer compatibility.
+    /// Single-pass algorithm producing flat arrays with int-based parent
+    /// indices (not object references). ListEntry is a class (not struct)
+    /// so the PowerShell integration layer can set LocalIndex and convert
+    /// ParentIndex from global to section-local without boxing issues.
+    /// HeaderEntry, SectionEntry, and LinkEntry remain structs.
     ///
     /// Per-line operations (6 precompiled regex):
     /// - CodeFence: toggle code block state (skip all parsing inside fences)
@@ -59,11 +58,12 @@ namespace Robot {
             public int ListCount;       // number of list items in this section
         }
 
-        public struct ListEntry {
+        public sealed class ListEntry {
             public string Type;        // "Bullet" or "Numbered"
             public string Text;
             public int Indent;
-            public int ParentIndex;    // -1 = no parent list item
+            public int ParentIndex;    // -1 = no parent; set to section-local by PS layer
+            public int LocalIndex;     // index within Section.Lists, set by PS layer
             public int SectionHeaderIndex;  // -1 = root section
         }
 

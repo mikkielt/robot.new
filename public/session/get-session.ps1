@@ -40,8 +40,9 @@
        EntityByLocation) to avoid O(E) scans per Intel directive
     4. Batch-parse all files via Get-Markdown (RunspacePool parallelism)
     5. Per file: pre-filter sections by date regex, batch Resolve-Narrator
-    6. Per section: parse date, detect format, extract locations/PU/logs/
-       changes/transfers/mentions/Intel
+    6. Per section: parse date, detect format, build ChildrenOf hashtable
+       keyed by ParentIndex/LocalIndex for O(1) parent-child lookups,
+       extract locations/PU/logs/changes/transfers/mentions/Intel
     7. @Data override rescues sessions with malformed header dates
     8. @Narrator override replaces header-based narrator resolution
     9. Cross-file deduplication groups by exact header text (Ordinal)
@@ -54,6 +55,9 @@
 . "$script:ModuleRoot/private/temporal-helpers.ps1"
 . "$script:ModuleRoot/private/session-parsehelpers.ps1"
 . "$script:ModuleRoot/private/session-intelhelpers.ps1"
+
+# C# types: Robot.NarratorResult, Robot.Narrator (lib/NarratorResult.cs)
+# Compiled centrally in robot.psm1 at module import time.
 
 # Extracts yyyy-MM-dd date (with optional /DD range suffix) from a session
 # header. Accepts pre-matched regex and pre-parsed date to avoid redundant work
@@ -408,18 +412,18 @@ function Get-Session {
     foreach ($Entity in $Entities) {
         if ($Entity.GroupHistory -and $Entity.GroupHistory.Count -gt 0) {
             foreach ($GH in $Entity.GroupHistory) {
-                if (-not $EntityByGroup.ContainsKey($GH.Group)) {
-                    $EntityByGroup[$GH.Group] = [System.Collections.Generic.List[object]]::new()
+                if (-not $EntityByGroup.ContainsKey($GH.Value)) {
+                    $EntityByGroup[$GH.Value] = [System.Collections.Generic.List[object]]::new()
                 }
-                $EntityByGroup[$GH.Group].Add(@{ Entity = $Entity; History = $GH })
+                $EntityByGroup[$GH.Value].Add(@{ Entity = $Entity; History = $GH })
             }
         }
         if ($Entity.LocationHistory -and $Entity.LocationHistory.Count -gt 0) {
             foreach ($LH in $Entity.LocationHistory) {
-                if (-not $EntityByLocation.ContainsKey($LH.Location)) {
-                    $EntityByLocation[$LH.Location] = [System.Collections.Generic.List[object]]::new()
+                if (-not $EntityByLocation.ContainsKey($LH.Value)) {
+                    $EntityByLocation[$LH.Value] = [System.Collections.Generic.List[object]]::new()
                 }
-                $EntityByLocation[$LH.Location].Add(@{ Entity = $Entity; History = $LH })
+                $EntityByLocation[$LH.Value].Add(@{ Entity = $Entity; History = $LH })
             }
         }
     }
@@ -461,7 +465,6 @@ function Get-Session {
         if ($SessionSections.Count -eq 0) { continue }
 
         # Single-pass pre-filter: cache date regex matches and build parseable sections list
-        # (merged from two previously separate passes over $SessionSections)
         $HasCandidateSession = $false
         $ParseableSections   = [System.Collections.Generic.List[object]]::new()
         $ParseableIndices    = [System.Collections.Generic.HashSet[int]]::new()
@@ -527,7 +530,7 @@ function Get-Session {
                                 $DateOverrideStr = $DOInline
                             } else {
                                 foreach ($DOChild in $Section.Lists) {
-                                    if ($DOChild.ParentListItem -eq $LI) {
+                                    if ($DOChild.ParentIndex -eq $LI.LocalIndex) {
                                         $DateOverrideStr = $DOChild.Text.Trim()
                                         break
                                     }
@@ -611,15 +614,15 @@ function Get-Session {
             $Format = Get-SessionFormat -FirstNonEmptyLine $FirstNonEmptyLine -SectionLists $Section.Lists
 
             # Parent-to-children list index built once per section and shared by
-            # Get-SessionLocations, Get-SessionListMetadata, and Get-SessionMentions
+            # Get-SessionLocations, Get-SessionListMetadata, and Get-SessionMentions.
+            # Keyed by section-local ParentIndex; lookup via item's LocalIndex.
             $SectionChildrenOf = @{}
             foreach ($LI in $Section.Lists) {
-                if ($null -ne $LI.ParentListItem) {
-                    $ParentId = [System.Runtime.CompilerServices.RuntimeHelpers]::GetHashCode($LI.ParentListItem)
-                    if (-not $SectionChildrenOf.ContainsKey($ParentId)) {
-                        $SectionChildrenOf[$ParentId] = [System.Collections.Generic.List[object]]::new()
+                if ($LI.ParentIndex -ge 0) {
+                    if (-not $SectionChildrenOf.ContainsKey($LI.ParentIndex)) {
+                        $SectionChildrenOf[$LI.ParentIndex] = [System.Collections.Generic.List[object]]::new()
                     }
-                    $SectionChildrenOf[$ParentId].Add($LI)
+                    $SectionChildrenOf[$LI.ParentIndex].Add($LI)
                 }
             }
 
@@ -643,22 +646,14 @@ function Get-Session {
                     if ($Index.ContainsKey($CanonName)) {
                         $IdxEntry = $Index[$CanonName]
                         if (-not $IdxEntry.Ambiguous -and $IdxEntry.OwnerType -eq 'Player') {
-                            $OverrideNarrators.Add([PSCustomObject]@{
-                                Name       = $IdxEntry.Owner.Name
-                                Player     = $IdxEntry.Owner
-                                Confidence = 'High'
-                            })
+                            $OverrideNarrators.Add([Robot.Narrator]::new($IdxEntry.Owner.Name, $IdxEntry.Owner, 'High'))
                             continue
                         }
                     }
                     # Fuzzy resolution fallback yields Medium confidence
                     $Resolved = Resolve-Name -Query $CanonName -Index $Index -StemIndex $StemIndex -BKTree $BKTree -OwnerType 'Player'
                     if ($Resolved) {
-                        $OverrideNarrators.Add([PSCustomObject]@{
-                            Name       = $Resolved.Name
-                            Player     = $Resolved
-                            Confidence = 'Medium'
-                        })
+                        $OverrideNarrators.Add([Robot.Narrator]::new($Resolved.Name, $Resolved, 'Medium'))
                     }
                 }
 
@@ -667,12 +662,12 @@ function Get-Session {
                     foreach ($N in $OverrideNarrators) {
                         if ($N.Confidence -ne 'High') { $OverallConf = $N.Confidence }
                     }
-                    $NarratorResult = [PSCustomObject]@{
-                        Narrators  = @($OverrideNarrators)
-                        IsCouncil  = $false
-                        Confidence = $OverallConf
-                        RawText    = if ($NarratorResult) { $NarratorResult.RawText } else { $null }
-                    }
+                    $NarratorResult = [Robot.NarratorResult]::new(
+                        @($OverrideNarrators),
+                        $false,
+                        $OverallConf,
+                        $(if ($NarratorResult) { $NarratorResult.RawText } else { $null })
+                    )
                 }
             }
 

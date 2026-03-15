@@ -19,13 +19,19 @@
     memberships (@grupa), door connections (@drzwi), ownership (@należy_do), quantity
     (@ilość), coordinates (@koordynaty), and generic key-value overrides (@<anything>).
 
+    History entries use Robot.TemporalEntry (lib/TemporalEntry.cs) typed containers with
+    Value, ValidFrom, ValidTo, and Season fields. Entity objects use Robot.Entity
+    (lib/EntityModel.cs) with 27 typed properties.
+
     Processing pipeline:
     1. Input collection: resolves -Path to individual entity files (entities.md + *-NNN-ent.md)
     2. Sort ordering: files processed highest-key-first so lowest-numbered file wins on merge
        (entities.md = MaxValue, unrecognised = MaxValue-1, NNN-ent.md = NNN)
     3. Batch parse: single Get-Markdown call parses all files, results keyed by path
     4. Section dispatch: section headers mapped to entity types via Polish singular/plural forms
-    5. Tag dispatch: nested @tag bullets dispatched via switch to typed history lists
+    5. Tag dispatch: nested @tag bullets dispatched via switch to typed history lists;
+       parent-child relationships resolved via ParentIndex/LocalIndex integer keying
+       with a pre-built ChildrenOf hashtable for O(1) lookups
     6. Entity merge: same-name entities across files have their histories concatenated
     7. CN resolution: post-parse pass builds hierarchical canonical names via Resolve-EntityCN
 
@@ -38,6 +44,9 @@
     infinite recursion. Locations with active @drzwi also receive path-qualified names
     (e.g. "Ithan/Ratusz Ithan") for resolution convenience.
 #>
+
+# C# types: Robot.TemporalEntry (lib/TemporalEntry.cs), Robot.Entity (lib/EntityModel.cs)
+# Compiled centrally in robot.psm1 at module import time.
 
 . "$script:ModuleRoot/private/temporal-helpers.ps1"
 function Resolve-EntityCN {
@@ -67,7 +76,7 @@ function Resolve-EntityCN {
     }
 
     # Walk upward: last active @lokacja defines the containment parent
-    $ParentName = Get-LastActiveValue -History $Entity.LocationHistory -PropertyName 'Location' -ActiveOn $ActiveOn
+    $ParentName = Get-LastActiveValue -History $Entity.LocationHistory -PropertyName 'Value' -ActiveOn $ActiveOn
 
     # @drzwi provides a physical-access parent when no @lokacja history exists
     if (-not $ParentName -and $Entity.Doors.Count -gt 0) {
@@ -207,19 +216,19 @@ function Get-Entity {
             }
         }
 
-        # O(1) parent->children lookup avoids O(n²) repeated .Where() filtering
+        # O(1) parent->children lookup avoids O(n²) repeated .Where() filtering.
+        # Keyed by section-local ParentIndex; lookup via item's LocalIndex.
         $ChildrenOf = @{}
         $RootChildren = [System.Collections.Generic.List[object]]::new()
         foreach ($LI in $Section.Lists) {
-            if ($null -eq $LI.ParentListItem -and $LI.Indent -eq 0) {
+            if ($LI.ParentIndex -lt 0 -and $LI.Indent -eq 0) {
                 $RootChildren.Add($LI)
             }
-            elseif ($null -ne $LI.ParentListItem) {
-                $ParentId = [System.Runtime.CompilerServices.RuntimeHelpers]::GetHashCode($LI.ParentListItem)
-                if (-not $ChildrenOf.ContainsKey($ParentId)) {
-                    $ChildrenOf[$ParentId] = [System.Collections.Generic.List[object]]::new()
+            elseif ($LI.ParentIndex -ge 0) {
+                if (-not $ChildrenOf.ContainsKey($LI.ParentIndex)) {
+                    $ChildrenOf[$LI.ParentIndex] = [System.Collections.Generic.List[object]]::new()
                 }
-                $ChildrenOf[$ParentId].Add($LI)
+                $ChildrenOf[$LI.ParentIndex].Add($LI)
             }
         }
 
@@ -244,9 +253,8 @@ function Get-Entity {
             $CoordinateHistory  = [System.Collections.Generic.List[object]]::new()
             $Overrides          = @{}
 
-            # Identity-hash lookup for child bullets belonging to this entity
-            $EntityParentId = [System.Runtime.CompilerServices.RuntimeHelpers]::GetHashCode($EntityBullet)
-            $ChildBullets = if ($ChildrenOf.ContainsKey($EntityParentId)) { $ChildrenOf[$EntityParentId] } else { @() }
+            # Index-based lookup for child bullets belonging to this entity
+            $ChildBullets = if ($ChildrenOf.ContainsKey($EntityBullet.LocalIndex)) { $ChildrenOf[$EntityBullet.LocalIndex] } else { @() }
 
             foreach ($Bullet in $ChildBullets) {
                 $LineText = $Bullet.Text.Trim()
@@ -267,79 +275,39 @@ function Get-Entity {
                 switch ($Tag) {
                     '@lokacja' {
                         $Parsed = ConvertFrom-ValidityString -InputText $Value
-                        $LocationHistory.Add([PSCustomObject]@{
-                            Location  = $Parsed.Text
-                            ValidFrom = $Parsed.ValidFrom
-                            ValidTo   = $Parsed.ValidTo
-                            Season    = $Parsed.Season
-                        })
+                        $LocationHistory.Add([Robot.TemporalEntry]::new($Parsed.Text, $Parsed.ValidFrom, $Parsed.ValidTo, $Parsed.Season))
                     }
                     '@drzwi' {
                         $Parsed = ConvertFrom-ValidityString -InputText $Value
-                        $DoorHistory.Add([PSCustomObject]@{
-                            Location  = $Parsed.Text
-                            ValidFrom = $Parsed.ValidFrom
-                            ValidTo   = $Parsed.ValidTo
-                            Season    = $Parsed.Season
-                        })
+                        $DoorHistory.Add([Robot.TemporalEntry]::new($Parsed.Text, $Parsed.ValidFrom, $Parsed.ValidTo, $Parsed.Season))
                     }
                     '@typ' {
                         $Parsed = ConvertFrom-ValidityString -InputText $Value
-                        $TypeHistory.Add([PSCustomObject]@{
-                            Type      = $Parsed.Text
-                            ValidFrom = $Parsed.ValidFrom
-                            ValidTo   = $Parsed.ValidTo
-                            Season    = $Parsed.Season
-                        })
+                        $TypeHistory.Add([Robot.TemporalEntry]::new($Parsed.Text, $Parsed.ValidFrom, $Parsed.ValidTo, $Parsed.Season))
                     }
                     '@należy_do' {
                         $Parsed = ConvertFrom-ValidityString -InputText $Value
-                        $OwnerHistory.Add([PSCustomObject]@{
-                            OwnerName = $Parsed.Text
-                            ValidFrom = $Parsed.ValidFrom
-                            ValidTo   = $Parsed.ValidTo
-                            Season    = $Parsed.Season
-                        })
+                        $OwnerHistory.Add([Robot.TemporalEntry]::new($Parsed.Text, $Parsed.ValidFrom, $Parsed.ValidTo, $Parsed.Season))
                     }
                     '@grupa' {
                         $Parsed = ConvertFrom-ValidityString -InputText $Value
-                        $GroupHistory.Add([PSCustomObject]@{
-                            Group     = $Parsed.Text
-                            ValidFrom = $Parsed.ValidFrom
-                            ValidTo   = $Parsed.ValidTo
-                            Season    = $Parsed.Season
-                        })
+                        $GroupHistory.Add([Robot.TemporalEntry]::new($Parsed.Text, $Parsed.ValidFrom, $Parsed.ValidTo, $Parsed.Season))
                     }
                     '@zawiera' {
                         $ContainsList.Add($Value)
                     }
                     '@status' {
                         $Parsed = ConvertFrom-ValidityString -InputText $Value
-                        $StatusHistory.Add([PSCustomObject]@{
-                            Status    = $Parsed.Text
-                            ValidFrom = $Parsed.ValidFrom
-                            ValidTo   = $Parsed.ValidTo
-                            Season    = $Parsed.Season
-                        })
+                        $StatusHistory.Add([Robot.TemporalEntry]::new($Parsed.Text, $Parsed.ValidFrom, $Parsed.ValidTo, $Parsed.Season))
                     }
                     '@ilość' {
                         $Parsed = ConvertFrom-ValidityString -InputText $Value
-                        $QuantityHistory.Add([PSCustomObject]@{
-                            Quantity  = $Parsed.Text
-                            ValidFrom = $Parsed.ValidFrom
-                            ValidTo   = $Parsed.ValidTo
-                            Season    = $Parsed.Season
-                        })
+                        $QuantityHistory.Add([Robot.TemporalEntry]::new($Parsed.Text, $Parsed.ValidFrom, $Parsed.ValidTo, $Parsed.Season))
                     }
                     '@alias' {
                         $Parsed = ConvertFrom-ValidityString -InputText $EffectiveValue
                         if (Test-TemporalActivity -Item $Parsed -ActiveOn $ActiveOn) {
-                            $Aliases.Add([PSCustomObject]@{
-                                Text      = $Parsed.Text
-                                ValidFrom = $Parsed.ValidFrom
-                                ValidTo   = $Parsed.ValidTo
-                                Season    = $Parsed.Season
-                            })
+                            $Aliases.Add([Robot.TemporalEntry]::new($Parsed.Text, $Parsed.ValidFrom, $Parsed.ValidTo, $Parsed.Season))
                             $Names.Add($Parsed.Text)
                         }
                     }
@@ -354,21 +322,11 @@ function Get-Entity {
                     }
                     '@plik' {
                         $Parsed = ConvertFrom-ValidityString -InputText $Value
-                        $FilePathHistory.Add([PSCustomObject]@{
-                            FilePath  = $Parsed.Text
-                            ValidFrom = $Parsed.ValidFrom
-                            ValidTo   = $Parsed.ValidTo
-                            Season    = $Parsed.Season
-                        })
+                        $FilePathHistory.Add([Robot.TemporalEntry]::new($Parsed.Text, $Parsed.ValidFrom, $Parsed.ValidTo, $Parsed.Season))
                     }
                     '@nazwa_nerthus' {
                         $Parsed = ConvertFrom-ValidityString -InputText $Value
-                        $NerthusNameHistory.Add([PSCustomObject]@{
-                            NerthusName = $Parsed.Text
-                            ValidFrom   = $Parsed.ValidFrom
-                            ValidTo     = $Parsed.ValidTo
-                            Season      = $Parsed.Season
-                        })
+                        $NerthusNameHistory.Add([Robot.TemporalEntry]::new($Parsed.Text, $Parsed.ValidFrom, $Parsed.ValidTo, $Parsed.Season))
                         # Add active Nerthus name to Names for resolution
                         if (Test-TemporalActivity -Item $Parsed -ActiveOn $ActiveOn) {
                             $Names.Add($Parsed.Text)
@@ -384,13 +342,7 @@ function Get-Entity {
                         $Parsed = ConvertFrom-ValidityString -InputText $Value
                         $Coord = ConvertFrom-CoordinateString -Text $Parsed.Text
                         if ($Coord) {
-                            $CoordinateHistory.Add([PSCustomObject]@{
-                                X         = $Coord.X
-                                Y         = $Coord.Y
-                                ValidFrom = $Parsed.ValidFrom
-                                ValidTo   = $Parsed.ValidTo
-                                Season    = $Parsed.Season
-                            })
+                            $CoordinateHistory.Add([Robot.CoordinateTemporalEntry]::new($Coord.X, $Coord.Y, $Parsed.ValidFrom, $Parsed.ValidTo, $Parsed.Season))
                         }
                     }
                     default {
@@ -417,17 +369,17 @@ function Get-Entity {
 
             # Deduplicate names and resolve scalar values from temporal histories
             $Names          = [System.Collections.Generic.HashSet[string]]::new($Names, [System.StringComparer]::OrdinalIgnoreCase)
-            $ActiveLocation = Get-LastActiveValue  -History $LocationHistory -PropertyName 'Location'  -ActiveOn $ActiveOn
-            $ActiveDoors    = Get-AllActiveValues   -History $DoorHistory     -PropertyName 'Location'  -ActiveOn $ActiveOn
-            $ActiveType     = Get-LastActiveValue  -History $TypeHistory     -PropertyName 'Type'      -ActiveOn $ActiveOn
+            $ActiveLocation = Get-LastActiveValue  -History $LocationHistory -PropertyName 'Value' -ActiveOn $ActiveOn
+            $ActiveDoors    = Get-AllActiveValues   -History $DoorHistory     -PropertyName 'Value' -ActiveOn $ActiveOn
+            $ActiveType     = Get-LastActiveValue  -History $TypeHistory     -PropertyName 'Value' -ActiveOn $ActiveOn
             if (-not $ActiveType) { $ActiveType = $SectionType }
-            $ActiveOwner    = Get-LastActiveValue  -History $OwnerHistory    -PropertyName 'OwnerName' -ActiveOn $ActiveOn
-            $ActiveGroups   = Get-AllActiveValues   -History $GroupHistory    -PropertyName 'Group'     -ActiveOn $ActiveOn
-            $ActiveStatus   = Get-LastActiveValue  -History $StatusHistory   -PropertyName 'Status'    -ActiveOn $ActiveOn
+            $ActiveOwner    = Get-LastActiveValue  -History $OwnerHistory    -PropertyName 'Value' -ActiveOn $ActiveOn
+            $ActiveGroups   = Get-AllActiveValues   -History $GroupHistory    -PropertyName 'Value' -ActiveOn $ActiveOn
+            $ActiveStatus   = Get-LastActiveValue  -History $StatusHistory   -PropertyName 'Value' -ActiveOn $ActiveOn
             if (-not $ActiveStatus) { $ActiveStatus = 'Aktywny' }  # default: all entities are active
-            $ActiveQuantity = Get-LastActiveValue  -History $QuantityHistory -PropertyName 'Quantity'  -ActiveOn $ActiveOn
-            $ActiveFilePath = Get-LastActiveValue  -History $FilePathHistory -PropertyName 'FilePath'  -ActiveOn $ActiveOn
-            $ActiveNerthusName = Get-LastActiveValue -History $NerthusNameHistory -PropertyName 'NerthusName' -ActiveOn $ActiveOn
+            $ActiveQuantity = Get-LastActiveValue  -History $QuantityHistory -PropertyName 'Value' -ActiveOn $ActiveOn
+            $ActiveFilePath = Get-LastActiveValue  -History $FilePathHistory -PropertyName 'Value' -ActiveOn $ActiveOn
+            $ActiveNerthusName = Get-LastActiveValue -History $NerthusNameHistory -PropertyName 'Value' -ActiveOn $ActiveOn
 
             $ActiveCoordinates = $null
             if ($CoordinateHistory.Count -gt 0) {
@@ -477,29 +429,29 @@ function Get-Entity {
 
                 # Recompute active scalars from merged histories — latest active entry wins
                 if ($SectionType -ne "Entity") { $Existing.Type = $SectionType }
-                $MergedType = Get-LastActiveValue -History $Existing.TypeHistory -PropertyName 'Type' -ActiveOn $ActiveOn
+                $MergedType = Get-LastActiveValue -History $Existing.TypeHistory -PropertyName 'Value' -ActiveOn $ActiveOn
                 if ($MergedType) { $Existing.Type = $MergedType }
 
-                $MergedOwner = Get-LastActiveValue -History $Existing.OwnerHistory -PropertyName 'OwnerName' -ActiveOn $ActiveOn
+                $MergedOwner = Get-LastActiveValue -History $Existing.OwnerHistory -PropertyName 'Value' -ActiveOn $ActiveOn
                 if ($MergedOwner) { $Existing.Owner = $MergedOwner }
 
-                $Existing.Groups = Get-AllActiveValues -History $Existing.GroupHistory -PropertyName 'Group' -ActiveOn $ActiveOn
+                $Existing.Groups = Get-AllActiveValues -History $Existing.GroupHistory -PropertyName 'Value' -ActiveOn $ActiveOn
 
-                $MergedLoc = Get-LastActiveValue -History $Existing.LocationHistory -PropertyName 'Location' -ActiveOn $ActiveOn
+                $MergedLoc = Get-LastActiveValue -History $Existing.LocationHistory -PropertyName 'Value' -ActiveOn $ActiveOn
                 if ($MergedLoc) { $Existing.Location = $MergedLoc }
 
-                $Existing.Doors = Get-AllActiveValues -History $Existing.DoorHistory -PropertyName 'Location' -ActiveOn $ActiveOn
+                $Existing.Doors = Get-AllActiveValues -History $Existing.DoorHistory -PropertyName 'Value' -ActiveOn $ActiveOn
 
-                $MergedStatus = Get-LastActiveValue -History $Existing.StatusHistory -PropertyName 'Status' -ActiveOn $ActiveOn
+                $MergedStatus = Get-LastActiveValue -History $Existing.StatusHistory -PropertyName 'Value' -ActiveOn $ActiveOn
                 if ($MergedStatus) { $Existing.Status = $MergedStatus }
 
-                $MergedQuantity = Get-LastActiveValue -History $Existing.QuantityHistory -PropertyName 'Quantity' -ActiveOn $ActiveOn
+                $MergedQuantity = Get-LastActiveValue -History $Existing.QuantityHistory -PropertyName 'Value' -ActiveOn $ActiveOn
                 if ($MergedQuantity) { $Existing.Quantity = $MergedQuantity }
 
-                $MergedFilePath = Get-LastActiveValue -History $Existing.FilePathHistory -PropertyName 'FilePath' -ActiveOn $ActiveOn
+                $MergedFilePath = Get-LastActiveValue -History $Existing.FilePathHistory -PropertyName 'Value' -ActiveOn $ActiveOn
                 if ($MergedFilePath) { $Existing.FilePath = $MergedFilePath }
 
-                $MergedNerthusName = Get-LastActiveValue -History $Existing.NerthusNameHistory -PropertyName 'NerthusName' -ActiveOn $ActiveOn
+                $MergedNerthusName = Get-LastActiveValue -History $Existing.NerthusNameHistory -PropertyName 'Value' -ActiveOn $ActiveOn
                 if ($MergedNerthusName) { $Existing.NerthusName = $MergedNerthusName }
 
                 if ($Existing.CoordinateHistory.Count -gt 0) {
@@ -518,35 +470,34 @@ function Get-Entity {
                 }
             }
             else {
-                $Entity = [PSCustomObject]@{
-                    Name               = $EntityName
-                    CN                 = $null  # resolved in post-parse CN pass
-                    Names              = $Names
-                    Aliases            = $Aliases
-                    Type               = $ActiveType
-                    Owner              = $ActiveOwner
-                    Groups             = $ActiveGroups
-                    Overrides          = $Overrides
-                    TypeHistory        = $TypeHistory
-                    OwnerHistory       = $OwnerHistory
-                    GroupHistory       = $GroupHistory
-                    Location           = $ActiveLocation
-                    LocationHistory    = $LocationHistory
-                    Doors              = $ActiveDoors
-                    DoorHistory        = $DoorHistory
-                    Status             = $ActiveStatus
-                    StatusHistory      = $StatusHistory
-                    Quantity           = $ActiveQuantity
-                    QuantityHistory    = $QuantityHistory
-                    GenericNames       = $GenericNames
-                    FilePath           = $ActiveFilePath
-                    FilePathHistory    = $FilePathHistory
-                    NerthusName        = $ActiveNerthusName
-                    NerthusNameHistory = $NerthusNameHistory
-                    Coordinates        = $ActiveCoordinates
-                    CoordinateHistory  = $CoordinateHistory
-                    Contains           = $ContainsList
-                }
+                $Entity = [Robot.Entity]::new()
+                $Entity.Name               = $EntityName
+                $Entity.CN                 = $null  # resolved in post-parse CN pass
+                $Entity.Names              = $Names
+                $Entity.Aliases            = $Aliases
+                $Entity.Type               = $ActiveType
+                $Entity.Owner              = $ActiveOwner
+                $Entity.Groups             = $ActiveGroups
+                $Entity.Overrides          = $Overrides
+                $Entity.TypeHistory        = $TypeHistory
+                $Entity.OwnerHistory       = $OwnerHistory
+                $Entity.GroupHistory       = $GroupHistory
+                $Entity.Location           = $ActiveLocation
+                $Entity.LocationHistory    = $LocationHistory
+                $Entity.Doors              = $ActiveDoors
+                $Entity.DoorHistory        = $DoorHistory
+                $Entity.Status             = $ActiveStatus
+                $Entity.StatusHistory      = $StatusHistory
+                $Entity.Quantity           = $ActiveQuantity
+                $Entity.QuantityHistory    = $QuantityHistory
+                $Entity.GenericNames       = $GenericNames
+                $Entity.FilePath           = $ActiveFilePath
+                $Entity.FilePathHistory    = $FilePathHistory
+                $Entity.NerthusName        = $ActiveNerthusName
+                $Entity.NerthusNameHistory = $NerthusNameHistory
+                $Entity.Coordinates        = $ActiveCoordinates
+                $Entity.CoordinateHistory  = $CoordinateHistory
+                $Entity.Contains           = $ContainsList
                 $EntityMap[$EntityKey] = $Entity
                 $Entities.Add($Entity)
             }

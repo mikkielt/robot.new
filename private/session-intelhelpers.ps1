@@ -37,7 +37,7 @@
     to ensure only entities active on the session date are included.
 
     Get-SessionMentions uses a five-phase pipeline:
-    1. Build excluded list-item set (metadata tags and their descendants)
+    1. Build excluded list-item set via LocalIndex-keyed HashSet (metadata tags and their descendants)
     2. Extract scannable text from non-excluded list items and paragraph lines
     3. Tokenize: extract Markdown link display text, strip formatting, split words
     4. Resolve unique tokens via stages 1/2/2b of Resolve-Name (no fuzzy)
@@ -305,7 +305,7 @@ function Get-SessionMentions {
         if ($Lower.StartsWith('data') -and ($Lower.Length -eq 4 -or $Lower[4] -eq ':' -or $Lower[4] -eq ' ')) { $IsExcluded = $true }
 
         if ($IsExcluded) {
-            [void]$ExcludedListItems.Add([System.Runtime.CompilerServices.RuntimeHelpers]::GetHashCode($LI))
+            [void]$ExcludedListItems.Add($LI.LocalIndex)
         }
     }
 
@@ -317,8 +317,7 @@ function Get-SessionMentions {
         $ParentHash = $ExclStack.Pop()
         if ($MentionChildrenOf.ContainsKey($ParentHash)) {
             foreach ($Child in $MentionChildrenOf[$ParentHash]) {
-                $ChildHash = [System.Runtime.CompilerServices.RuntimeHelpers]::GetHashCode($Child)
-                if ($ExcludedListItems.Add($ChildHash)) { $ExclStack.Push($ChildHash) }
+                if ($ExcludedListItems.Add($Child.LocalIndex)) { $ExclStack.Push($Child.LocalIndex) }
             }
         }
     }
@@ -329,8 +328,7 @@ function Get-SessionMentions {
 
     # Source A: Non-excluded list items
     foreach ($LI in $SectionLists) {
-        $LIId = [System.Runtime.CompilerServices.RuntimeHelpers]::GetHashCode($LI)
-        if ($ExcludedListItems.Contains($LIId)) { continue }
+        if ($ExcludedListItems.Contains($LI.LocalIndex)) { continue }
         $ScannableTexts.Add($LI.Text)
     }
 
@@ -394,7 +392,6 @@ function Get-SessionMentions {
 
     # Phase 4: Resolve Tokens (stages 1, 2, 2b only - no fuzzy)
     # Deduplicate tokens before resolution to avoid redundant Resolve-Name calls.
-    # Typical session: ~150 tokens but only ~50 unique — saves ~3× function call overhead.
 
     $UniqueTokens = [System.Collections.Generic.HashSet[string]]::new($CandidateTokens, [System.StringComparer]::OrdinalIgnoreCase)
 

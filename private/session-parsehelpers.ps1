@@ -28,10 +28,9 @@
     Get-SessionListMetadata is the heaviest helper. It processes up to 8
     tag types per session (PU, Logi, Zmiany, Intel, Transfer, Narrator,
     Data, Lokacje) with a pre-built parent-to-children hashtable (ChildrenOf)
-    to avoid O(n^2) list scanning. When Robot.SessionTagParser is available,
+    keyed by ParentIndex/LocalIndex integers to avoid O(n^2) list scanning. When Robot.SessionTagParser is available,
     list items are flattened to parallel arrays and dispatched to compiled
-    C# code with prefix-based 8-way dispatch, eliminating per-item
-    PowerShell regex overhead.
+    C# code with prefix-based 8-way dispatch for per-item tag routing.
 
     Get-SessionLocations uses a two-strategy approach for Gen3/Gen4:
     first attempts entity-resolution to identify location lists by content
@@ -40,15 +39,9 @@
     both Gen3 (bare tag names) and Gen4 (@-prefixed tags).
 #>
 
-# Compiled C# session tag dispatcher with prefix-based dispatch.
-# Replaces the 8-way sequential if-chain in Get-SessionListMetadata.
-# Source: lib/SessionTagParser.cs
-if (-not ([System.Management.Automation.PSTypeName]'Robot.SessionTagParser').Type) {
-    $CsPath = [System.IO.Path]::Combine($script:ModuleRoot, 'lib', 'SessionTagParser.cs')
-    if ([System.IO.File]::Exists($CsPath)) {
-        Add-Type -TypeDefinition ([System.IO.File]::ReadAllText($CsPath)) -Language CSharp
-    }
-}
+# C# types: Robot.SessionTagParser (lib/SessionTagParser.cs),
+# Robot.SessionPU/SessionChange/SessionTag/SessionIntel/SessionTransfer (lib/SessionMetadata.cs)
+# Compiled centrally in robot.psm1 at module import time.
 
 # PU section header pattern - matches "- PU:" or "- @PU:" list markers in session content.
 # Used by Test-PlayerCharacterPUAssignment and Test-SessionIntegrity for diagnostics.
@@ -117,8 +110,7 @@ function Get-SessionLocations {
                 foreach ($TopLI in $SectionLists) {
                     if ($TopLI.Indent -ne 0) { continue }
 
-                    $TopLIId = [System.Runtime.CompilerServices.RuntimeHelpers]::GetHashCode($TopLI)
-                    $Children = if ($LocChildrenOf.ContainsKey($TopLIId)) { $LocChildrenOf[$TopLIId] } else { $null }
+                    $Children = if ($LocChildrenOf.ContainsKey($TopLI.LocalIndex)) { $LocChildrenOf[$TopLI.LocalIndex] } else { $null }
                     if (-not $Children -or $Children.Count -eq 0) { continue }
 
                     $CandidateNames      = [System.Collections.Generic.List[string]]::new($Children.Count)
@@ -157,8 +149,7 @@ function Get-SessionLocations {
                     }
                 }
                 if ($LocList) {
-                    $LocListId = [System.Runtime.CompilerServices.RuntimeHelpers]::GetHashCode($LocList)
-                    $LocChildren = if ($LocChildrenOf.ContainsKey($LocListId)) { $LocChildrenOf[$LocListId] } else { $null }
+                    $LocChildren = if ($LocChildrenOf.ContainsKey($LocList.LocalIndex)) { $LocChildrenOf[$LocList.LocalIndex] } else { $null }
                     if ($LocChildren) {
                         foreach ($LI in $LocChildren) {
                             $Locations.Add($LI.Text.Trim())
@@ -194,29 +185,17 @@ function Get-SessionListMetadata {
         [hashtable]$ChildrenOf
     )
 
-    # C# path: flatten list items to parallel arrays, dispatch in compiled code
+    # C# path: flatten list items to parallel arrays, dispatch in compiled code.
+    # ParentIndex is already section-local (set by parse-markdownfile.ps1).
     if (([System.Management.Automation.PSTypeName]'Robot.SessionTagParser').Type) {
         $ItemCount = @($SectionLists).Count
         $Texts = [string[]]::new($ItemCount)
         $ParentIndices = [int[]]::new($ItemCount)
-        $ItemToIndex = @{}
 
         for ($Idx = 0; $Idx -lt $ItemCount; $Idx++) {
             $LI = @($SectionLists)[$Idx]
             $Texts[$Idx] = $LI.Text
-            $LIId = [System.Runtime.CompilerServices.RuntimeHelpers]::GetHashCode($LI)
-            $ItemToIndex[$LIId] = $Idx
-
-            if ($null -eq $LI.ParentListItem) {
-                $ParentIndices[$Idx] = -1
-            } else {
-                $ParentId = [System.Runtime.CompilerServices.RuntimeHelpers]::GetHashCode($LI.ParentListItem)
-                if ($ItemToIndex.ContainsKey($ParentId)) {
-                    $ParentIndices[$Idx] = $ItemToIndex[$ParentId]
-                } else {
-                    $ParentIndices[$Idx] = -1
-                }
-            }
+            $ParentIndices[$Idx] = $LI.ParentIndex
         }
 
         $CsResult = [Robot.SessionTagParser]::Parse($Texts, $ParentIndices, $PURegex, $UrlRegex)
@@ -228,37 +207,23 @@ function Get-SessionListMetadata {
         $Transfers = [System.Collections.Generic.List[object]]::new()
 
         foreach ($P in $CsResult.PU) {
-            $PU.Add([PSCustomObject]@{
-                Character = $P.Character
-                Value     = if ($P.HasValue) { $P.Value } else { $null }
-            })
+            $PU.Add([Robot.SessionPU]::new($P.Character, $(if ($P.HasValue) { $P.Value } else { $null })))
         }
 
         foreach ($C in $CsResult.Changes) {
             $Tags = [System.Collections.Generic.List[object]]::new()
             foreach ($T in $C.Tags) {
-                $Tags.Add([PSCustomObject]@{ Tag = $T.Tag; Value = $T.Value })
+                $Tags.Add([Robot.SessionTag]::new($T.Tag, $T.Value))
             }
-            $Changes.Add([PSCustomObject]@{
-                EntityName = $C.EntityName
-                Tags       = $Tags.ToArray()
-            })
+            $Changes.Add([Robot.SessionChange]::new($C.EntityName, $Tags.ToArray()))
         }
 
         foreach ($I in $CsResult.Intel) {
-            $Intel.Add([PSCustomObject]@{
-                RawTarget = $I.RawTarget
-                Message   = $I.Message
-            })
+            $Intel.Add([Robot.SessionIntel]::new($I.RawTarget, $I.Message))
         }
 
         foreach ($Tr in $CsResult.Transfers) {
-            $Transfers.Add([PSCustomObject]@{
-                Amount       = $Tr.Amount
-                Denomination = $Tr.Denomination
-                Source       = $Tr.Source
-                Destination  = $Tr.Destination
-            })
+            $Transfers.Add([Robot.SessionTransfer]::new($Tr.Amount, $Tr.Denomination, $Tr.Source, $Tr.Destination))
         }
 
         return @{
@@ -287,8 +252,7 @@ function Get-SessionListMetadata {
         $MatchText = if ($LowerText.StartsWith('@')) { $LowerText.Substring(1) } else { $LowerText }
 
         # Pre-built parent-to-children hashtable avoids scanning the full list per item
-        $ListItemId = [System.Runtime.CompilerServices.RuntimeHelpers]::GetHashCode($ListItem)
-        $Children = if ($ChildrenOf.ContainsKey($ListItemId)) { $ChildrenOf[$ListItemId] } else { $null }
+        $Children = if ($ChildrenOf.ContainsKey($ListItem.LocalIndex)) { $ChildrenOf[$ListItem.LocalIndex] } else { $null }
 
         # PU entries: "- PU:" or "- @PU:" with nested "- CharName: 0,3"
         if ($MatchText.StartsWith('pu') -and $MatchText.Length -gt 2 -and ($MatchText[2] -eq ':' -or $MatchText[2] -eq ' ')) {
@@ -300,9 +264,9 @@ function Get-SessionListMetadata {
                         $ValueStr = $PUMatch.Groups[2].Value.Trim().Replace(',', '.')
                         [decimal]$DecValue = [decimal]::Zero
                         if ([decimal]::TryParse($ValueStr, [System.Globalization.NumberStyles]::Any, [System.Globalization.CultureInfo]::InvariantCulture, [ref]$DecValue)) {
-                            $PU.Add([PSCustomObject]@{ Character = $CharName; Value = $DecValue })
+                            $PU.Add([Robot.SessionPU]::new($CharName, $DecValue))
                         } else {
-                            $PU.Add([PSCustomObject]@{ Character = $CharName; Value = $null })
+                            $PU.Add([Robot.SessionPU]::new($CharName, $null))
                         }
                     }
                 }
@@ -339,8 +303,7 @@ function Get-SessionListMetadata {
                     $Tags = [System.Collections.Generic.List[object]]::new()
 
                     # Pre-built parent-to-children hashtable avoids scanning the full list per tag
-                    $EntityItemId = [System.Runtime.CompilerServices.RuntimeHelpers]::GetHashCode($EntityItem)
-                    $TagChildren = if ($ChildrenOf.ContainsKey($EntityItemId)) { $ChildrenOf[$EntityItemId] } else { $null }
+                    $TagChildren = if ($ChildrenOf.ContainsKey($EntityItem.LocalIndex)) { $ChildrenOf[$EntityItem.LocalIndex] } else { $null }
 
                     if ($TagChildren) {
                         foreach ($TagItem in $TagChildren) {
@@ -350,18 +313,15 @@ function Get-SessionListMetadata {
                             $ColonIdx = $TagText.IndexOf(':')
                             if ($ColonIdx -lt 0) { continue }
 
-                            $Tags.Add([PSCustomObject]@{
-                                Tag   = $TagText.Substring(0, $ColonIdx).Trim().ToLowerInvariant()
-                                Value = $TagText.Substring($ColonIdx + 1).Trim()
-                            })
+                            $Tags.Add([Robot.SessionTag]::new(
+                                $TagText.Substring(0, $ColonIdx).Trim().ToLowerInvariant(),
+                                $TagText.Substring($ColonIdx + 1).Trim()
+                            ))
                         }
                     }
 
                     if ($Tags.Count -gt 0) {
-                        $Changes.Add([PSCustomObject]@{
-                            EntityName = $EntityName
-                            Tags       = $Tags.ToArray()
-                        })
+                        $Changes.Add([Robot.SessionChange]::new($EntityName, $Tags.ToArray()))
                     }
                 }
             }
@@ -380,10 +340,7 @@ function Get-SessionListMetadata {
 
                     if ([string]::IsNullOrWhiteSpace($RawTarget) -or [string]::IsNullOrWhiteSpace($Message)) { continue }
 
-                    $Intel.Add([PSCustomObject]@{
-                        RawTarget = $RawTarget
-                        Message   = $Message
-                    })
+                    $Intel.Add([Robot.SessionIntel]::new($RawTarget, $Message))
                 }
             }
         }
@@ -447,12 +404,7 @@ function Get-SessionListMetadata {
                         if ([int]::TryParse($AmountStr, [ref]$TransferAmount) -and $TransferAmount -gt 0 `
                             -and -not [string]::IsNullOrWhiteSpace($Source) `
                             -and -not [string]::IsNullOrWhiteSpace($Destination)) {
-                            $Transfers.Add([PSCustomObject]@{
-                                Amount       = $TransferAmount
-                                Denomination = $DenomStr
-                                Source       = $Source
-                                Destination  = $Destination
-                            })
+                            $Transfers.Add([Robot.SessionTransfer]::new($TransferAmount, $DenomStr, $Source, $Destination))
                         }
                     }
                 }

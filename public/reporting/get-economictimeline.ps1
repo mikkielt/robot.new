@@ -12,7 +12,8 @@
     1. Determine month boundaries (first day to last day or MaxDate cap)
     2. Obtain entity state for the month-end date:
        - Pre-provided entities: in-memory status filter via Get-LastActiveValue
-         (avoids re-parsing entities.md on each iteration — 12x I/O reduction)
+         on Robot.TemporalEntry .Value property (avoids re-parsing entities.md
+         on each iteration)
        - No pre-provided entities: full Get-Entity -ActiveOn from disk
     3. Build entity lookup and extract currency items via
        Get-CurrencyEntitiesFiltered with owner classification
@@ -104,9 +105,9 @@ function Get-EconomicTimeline {
 
         if ($EntitiesPreProvided) {
             # Filter in-memory by status history rather than re-parsing entities.md
-            # from disk on each month iteration — typically a 12x I/O reduction
+            # from disk on each month iteration — avoids repeated file I/O
             $MonthEntities = foreach ($E in $Entities) {
-                $Status = Get-LastActiveValue -History $E.StatusHistory -PropertyName 'Status' -ActiveOn $EffectiveDate
+                $Status = Get-LastActiveValue -History $E.StatusHistory -PropertyName 'Value' -ActiveOn $EffectiveDate
                 if ($Status -eq 'Usunięty') { continue }
                 $E
             }
