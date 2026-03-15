@@ -18,7 +18,7 @@
     CompanyName = 'Nerthus'
     
     # Copyright statement for this module
-    Copyright = '(c) 2025 Anward. All rights reserved.'
+    Copyright = '(c) 2026 Anward. All rights reserved.'
     
     # Description of the functionality provided by this module
     Description = 'PowerShell module for managing and processing lore and metadata from Nerthus repository'
