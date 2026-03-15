@@ -7,14 +7,21 @@
     Przedmiot entity. Supports absolute quantity, delta quantity (+N/-N),
     owner transfer, and location assignment.
 
-    Owner and Location are mutually exclusive (per CURRENCY.md §4.2).
-    Delta arithmetic reads current @ilość, computes new value, writes absolute.
+    Mutual exclusions enforced:
+    - -Amount and -AmountDelta cannot be combined (ambiguous intent)
+    - -Owner and -Location cannot be combined (currency is either owned or placed)
 
-    Dot-sources entity-writehelpers.ps1, admin-config.ps1, and currency-helpers.ps1.
+    Delta arithmetic: -AmountDelta reads the current @ilość value (stripping
+    any temporal suffix), adds the delta, and writes the result as an absolute
+    value with a new (YYYY-MM:) temporal suffix.
+
+    Dot-sources entity-writehelpers.ps1 (Read-EntityFile, Find-EntitySection,
+    Find-EntityBullet, Find-EntityTag, Set-EntityTag, Write-EntityFile),
+    admin-config.ps1 (Get-AdminConfig), and currency-helpers.ps1.
+
     Supports -WhatIf via SupportsShouldProcess.
 #>
 
-# Dot-source helpers
 . "$script:ModuleRoot/private/entity-writehelpers.ps1"
 . "$script:ModuleRoot/private/admin-config.ps1"
 . "$script:ModuleRoot/private/currency-helpers.ps1"
@@ -49,7 +56,7 @@ function Set-CurrencyEntity {
         [string]$EntitiesFile
     )
 
-    # Validate mutual exclusions
+    # Fail-early on mutually exclusive parameter combinations
     if ($null -ne $Amount -and $null -ne $AmountDelta) {
         throw "Cannot specify both -Amount and -AmountDelta. Use one or the other."
     }
@@ -69,7 +76,7 @@ function Set-CurrencyEntity {
         $ValidFrom = (Get-Date).ToString('yyyy-MM')
     }
 
-    # Find the entity
+    # Locate entity bullet under ## Przedmiot
     $EntitiesFilePath = Invoke-EnsureEntityFile -Path $EntitiesFile
     $File = Read-EntityFile -Path $EntitiesFilePath
     $LinesArray = $File.Lines.ToArray()
@@ -88,14 +95,13 @@ function Set-CurrencyEntity {
     $ChildEnd = $Bullet.ChildrenEndIdx
     $ChildStart = $Bullet.ChildrenStartIdx
 
-    # Handle delta arithmetic
+    # Delta arithmetic: read current balance, apply delta, write absolute result
     if ($null -ne $AmountDelta) {
-        # Read current @ilość
         $CurrentTag = Find-EntityTag -Lines $LinesArray -ChildrenStart $ChildStart -ChildrenEnd $Bullet.ChildrenEndIdx -TagName 'ilość'
         [int]$CurrentQty = 0
         if ($CurrentTag) {
             $QtyText = $CurrentTag.Value
-            # Strip temporal suffix: "50 (2025-01:)" -> "50"
+            # Strip temporal suffix before parsing: "50 (2025-01:)" -> "50"
             $ParenIdx = $QtyText.IndexOf('(')
             if ($ParenIdx -gt 0) { $QtyText = $QtyText.Substring(0, $ParenIdx).Trim() }
             [void][int]::TryParse($QtyText, [ref]$CurrentQty)
@@ -103,7 +109,7 @@ function Set-CurrencyEntity {
         $Amount = $CurrentQty + $AmountDelta
     }
 
-    # Apply tags
+    # Write modified tags to entity file
     if ($null -ne $Amount) {
         $ChildEnd = Set-EntityTag -Lines $Lines -ChildrenStart $ChildStart -ChildrenEnd $ChildEnd -TagName 'ilość' -Value "$Amount ($ValidFrom`:)"
     }

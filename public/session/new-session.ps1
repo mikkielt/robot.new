@@ -7,13 +7,24 @@
     shared rendering helpers (ConvertTo-Gen4MetadataBlock, ConvertTo-SessionMetadata).
 
     New-Session builds a complete session section in Gen4 @-prefixed markdown format.
-    Returns the string - does NOT write to disk. The caller decides where to place
+    Returns the string — does NOT write to disk. The caller decides where to place
     the output (pipe to Out-File, Add-Content, etc.).
 
-    The output is round-trip compatible with Get-Session -IncludeContent.
+    Assembly pipeline:
+    1. Build the "### YYYY-MM-DD, Title, Narrator" header line, with optional
+       multi-day suffix ("YYYY-MM-DD/DD") when DateEnd is provided.
+    2. Delegate metadata rendering to ConvertTo-SessionMetadata, which serializes
+       @Lokacje, @PU, @Logi, @Zmiany, @Intel, and @Narrator blocks.
+    3. Assemble header + optional body + optional metadata via StringBuilder,
+       separated by double newlines for Markdown paragraph spacing.
+
+    The output is round-trip compatible with Get-Session -IncludeContent: parsing
+    the returned string produces the same structured objects that were passed in.
+
+    DateEnd is restricted to the same calendar month as Date because the session
+    header format encodes multi-day ranges as "YYYY-MM-DD/DD" (day-only suffix).
 #>
 
-# Dot-source shared helpers
 . "$script:ModuleRoot/private/format-sessionblock.ps1"
 
 function New-Session {
@@ -61,8 +72,6 @@ function New-Session {
     )
 
     $NL = [System.Environment]::NewLine
-
-    # Build header
     $DateStr = $Date.ToString('yyyy-MM-dd')
 
     if ($PSBoundParameters.ContainsKey('DateEnd')) {
@@ -77,7 +86,6 @@ function New-Session {
 
     $Header = "### ${DateStr}, ${Title}, ${Narrator}"
 
-    # Build metadata
     $Meta = ConvertTo-SessionMetadata `
         -Narrator  $MetadataNarrators `
         -Locations $Locations `
@@ -87,8 +95,8 @@ function New-Session {
         -Intel     $Intel `
         -NL        $NL
 
-    # Assemble output
-    $SB = [System.Text.StringBuilder]::new(512)
+    # Assemble with double-newline separators for Markdown paragraph breaks
+    $SB = [System.Text.StringBuilder]::new(512)  # typical session section fits in 512 chars
     [void]$SB.Append($Header)
 
     if (-not [string]::IsNullOrEmpty($Content)) {

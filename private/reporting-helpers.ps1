@@ -1,25 +1,40 @@
 <#
     .SYNOPSIS
-    Shared helpers for audit/reporting commands.
+    Shared helpers for audit and reporting commands.
 
     .DESCRIPTION
-    Centralizes the session fetching and directive iteration boilerplate shared by
-    Get-ChangeLog, Get-NotificationLog, and Get-TransactionLedger. Reduces ~50 lines
-    of duplicated session-fetch + date-filter + sub-collection-extract logic per caller.
+    Centralizes the session fetching and directive iteration boilerplate shared
+    by Get-ChangeLog, Get-NotificationLog, and Get-TransactionLedger. Eliminates
+    ~50 lines of duplicated session-fetch + date-filter + sub-collection-extract
+    logic per caller. Not auto-loaded by robot.psm1 (non-Verb-Noun filename).
 
     Helpers:
-    - Get-SessionsForReport:        fetches sessions on demand, passing through
-                                     MinDate/MaxDate to Get-Session; returns pre-supplied
-                                     sessions unchanged when provided
-    - Get-SessionDirectiveEntries:   iterates sessions with date filtering and extracts
-                                     named directive items into a List of @{ Session; Directive }
-                                     hashtables for callers to project into typed output
+    - Get-SessionsForReport:      fetches sessions on demand or passes through pre-supplied ones
+    - Get-SessionDirectiveEntries: iterates sessions, filters by date, and extracts directive items
+
+    Get-SessionsForReport implements lazy fetch: when the caller already has
+    a session array (e.g. from a pipeline), it returns it as-is. Otherwise it
+    calls Get-Session with MinDate/MaxDate and any ExtraFetchArgs the caller
+    needs (e.g. -File). This lets report commands accept both pre-fetched and
+    on-demand session sourcing through a single code path.
+
+    Get-SessionDirectiveEntries is the generic extraction loop. For each
+    session it: (1) checks that the directive property exists on the object
+    via PSObject.Properties (safe for sessions that predate a feature, e.g.
+    Transfers); (2) applies date-range guards for pre-fetched sessions that
+    bypassed Get-Session's date filtering; (3) optionally filters by a
+    single-property name match (TargetName + TargetProperty); (4) emits
+    @{ Session = @{ Date; Title; Narrator }; Directive = item } hashtables
+    for the caller to project into typed PSCustomObject output.
+
+    Date parameters are intentionally untyped ($MinDate, $MaxDate) to avoid
+    null-to-value-type coercion errors when callers pass unbound [datetime]
+    parameters.
 #>
 
 function Get-SessionsForReport {
     param(
         [object[]]$Sessions,
-        # Untyped to avoid null-to-value-type coercion when callers pass unbound [datetime]
         $MinDate,
         $MaxDate,
         [hashtable]$ExtraFetchArgs
@@ -47,7 +62,6 @@ function Get-SessionDirectiveEntries {
         [Parameter(Mandatory)]
         [string]$DirectiveName,
 
-        # Untyped to avoid null-to-value-type coercion
         $MinDate,
         $MaxDate,
 
@@ -58,20 +72,19 @@ function Get-SessionDirectiveEntries {
     $Entries = [System.Collections.Generic.List[object]]::new()
 
     foreach ($Session in $Sessions) {
-        # Safe property access — Transfers may not be declared on all session objects
+        # Directive property may not exist on older session objects (e.g. pre-Transfer sessions)
         $Prop = $Session.PSObject.Properties[$DirectiveName]
         $Collection = if ($Prop) { $Prop.Value } else { $null }
         if (-not $Collection -or $Collection.Count -eq 0) { continue }
         if ($null -eq $Session.Date) { continue }
 
-        # Date range guard (covers pre-fetched sessions that bypass Get-Session date args)
+        # Guard for pre-fetched sessions that bypassed Get-Session date filtering
         if ($MinDate -and $Session.Date -lt $MinDate) { continue }
         if ($MaxDate -and $Session.Date -gt $MaxDate) { continue }
 
         $NarratorName = if ($Session.Narrator) { $Session.Narrator.Name } else { $null }
 
         foreach ($Item in $Collection) {
-            # Optional single-property name filter
             if ($TargetName -and $TargetProperty) {
                 if (-not [string]::Equals($Item.$TargetProperty, $TargetName, [System.StringComparison]::OrdinalIgnoreCase)) {
                     continue

@@ -4,23 +4,33 @@
     graceful error handling.
 
     .DESCRIPTION
-    This file contains Invoke-SessionLogFetch - the recommended entry point
+    This file contains Invoke-SessionLogFetch — the recommended entry point
     for populating the res/logs/ directory before running Get-SessionLog for
     analysis.
 
-    Fetches logs sequentially with configurable throttle delay. Handles HTTP
-    errors gracefully:
-    - 429 Too Many Requests: exponential backoff + retry
-    - 404 Not Found: writes .failed marker, skips
+    Processing pipeline:
+    1. Collect sessions: from pipeline input or by calling Get-Session with
+       optional MinDate/MaxDate filters.
+    2. Deduplicate URLs: sessions often share logs (cross-posted in multiple
+       files), so a HashSet filters to unique normalized URLs.
+    3. Triage: classify each URL as cached (file exists), skipped (has .failed
+       marker and -RetryFailed not set), or pending (needs fetch).
+    4. Sequential fetch with configurable throttle delay between requests.
+
+    HTTP error handling (per-URL, never aborts the batch):
+    - 429 Too Many Requests: exponential backoff + retry (always retried)
+    - 404 Not Found: permanent failure, writes .failed marker, no retry
     - 5xx Server Error: retry with backoff, then .failed marker
     - Network timeout: same retry logic as 5xx
+    - Other error codes: no retry, .failed marker
 
-    Never aborts the batch on individual failures. Previously-failed URLs
-    (with .failed markers) are skipped unless -RetryFailed is set.
+    The .failed marker files record URL, error, HTTP status, and UTC timestamp
+    so administrators can diagnose failures without re-running the fetch.
 
-    Supports -WhatIf for dry-run inspection.
+    Returns a summary object with Total/Fetched/Cached/Failed/Skipped counts
+    and a FailedUrls array for programmatic follow-up.
 
-    Dot-sources log-fetchhelpers.ps1 and admin-config.ps1.
+    Supports -WhatIf for dry-run inspection (returns counts without HTTP requests).
 #>
 
 . "$script:ModuleRoot/private/log-fetchhelpers.ps1"
@@ -76,7 +86,7 @@ function Invoke-SessionLogFetch {
     }
 
     end {
-        # Allow standalone invocation without piping Get-Session output
+        # Allow standalone invocation: fetch sessions internally when none piped in
         if ($CollectedSessions.Count -eq 0) {
             $GetParams = @{}
             if ($PSBoundParameters.ContainsKey('MinDate')) { $GetParams['MinDate'] = $MinDate }
@@ -85,13 +95,13 @@ function Invoke-SessionLogFetch {
                 [PSObject[]]@(Get-Session @GetParams))
         }
 
-        # Default to ResDir/logs so callers don't need to know the config structure
+        # Default to ResDir/logs so callers don't need to resolve the config path
         if (-not $LogDirectory) {
             $Config = Get-AdminConfig
             $LogDirectory = [System.IO.Path]::Combine($Config.ResDir, 'logs')
         }
 
-        # Deduplicate: sessions often share logs (e.g. cross-posted in multiple files)
+        # Deduplicate: sessions often share log URLs (e.g. cross-posted in multiple session files)
         $UrlSet = [System.Collections.Generic.HashSet[string]]::new(
             [System.StringComparer]::OrdinalIgnoreCase)
         $UniqueUrls = [System.Collections.Generic.List[string]]::new()
@@ -119,7 +129,7 @@ function Invoke-SessionLogFetch {
             }
         }
 
-        # Triage URLs to avoid re-fetching cached content or retrying permanent failures
+        # Triage: skip cached files and permanent failures to minimize HTTP requests
         $Cached = 0
         $Skipped = 0
         $Pending = [System.Collections.Generic.List[string]]::new()
@@ -141,7 +151,7 @@ function Invoke-SessionLogFetch {
 
         [System.Console]::Out.WriteLine("Znaleziono $Total URL logów (pobrane: $Cached, wcześniej nieudane: $Skipped, do pobrania: $($Pending.Count))")
 
-        # ShouldProcess gate: dry-run returns counts without HTTP requests
+        # ShouldProcess gate: -WhatIf returns counts without making HTTP requests
         if (-not $PSCmdlet.ShouldProcess(
             "$($Pending.Count) log URLs",
             "Fetch from web and save to '$LogDirectory'")) {
@@ -155,12 +165,12 @@ function Invoke-SessionLogFetch {
             }
         }
 
-        # Create log directory on first use (res/logs/ is not in the repo template)
+        # res/logs/ is not part of the repo template — create on first use
         if (-not [System.IO.Directory]::Exists($LogDirectory)) {
             [void][System.IO.Directory]::CreateDirectory($LogDirectory)
         }
 
-        # Sequential fetch with throttle delay to respect CDN rate limits
+        # Sequential fetch with inter-request delay to respect CDN rate limits
         $Client = Get-LogHttpClient
         $FetchedCount = 0
         $FailedCount = 0
@@ -204,7 +214,7 @@ function Invoke-SessionLogFetch {
                     $Content = $Response.Content.ReadAsStringAsync().GetAwaiter().GetResult()
                     [System.IO.File]::WriteAllText($FilePath, $Content)
 
-                    # Remove .failed marker if present
+                    # Clean up stale .failed marker after successful retry
                     if ([System.IO.File]::Exists($FailedPath)) {
                         [System.IO.File]::Delete($FailedPath)
                     }
@@ -214,19 +224,19 @@ function Invoke-SessionLogFetch {
                     break
                 }
 
-                # 404: permanent failure, no retry
+                # 404: permanent — resource is gone, no point retrying
                 if ($StatusCode -eq 404) {
                     $LastError = "HTTP 404 Not Found"
                     break
                 }
 
-                # 429: rate limited — always retry with backoff
+                # 429: rate limited — always retry (backoff applied at loop top)
                 if ($StatusCode -eq 429) {
                     $LastError = "HTTP 429 Too Many Requests"
                     continue
                 }
 
-                # 5xx: server error — retry
+                # 5xx: transient server error — retry with backoff
                 if ($StatusCode -ge 500) {
                     $LastError = "HTTP $StatusCode"
                     continue
@@ -242,12 +252,12 @@ function Invoke-SessionLogFetch {
                 $FailedUrls.Add($Url)
                 Write-RobotWarning "[WARN Invoke-SessionLogFetch] Failed to fetch '$Url': $LastError"
 
-                # Write .failed marker
+                # Write .failed marker so subsequent runs skip this URL
                 $FailedContent = "URL: $Url`nError: $LastError`nHTTP Status: $LastStatusCode`nTimestamp: $([System.DateTime]::UtcNow.ToString('o'))"
                 [System.IO.File]::WriteAllText($FailedPath, $FailedContent)
             }
 
-            # Respect CDN rate limits between requests
+            # Throttle delay between requests to avoid triggering CDN rate limits
             if ($DelayMs -gt 0 -and $Current -lt $Pending.Count) {
                 [System.Threading.Thread]::Sleep($DelayMs)
             }

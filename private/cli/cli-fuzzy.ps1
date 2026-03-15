@@ -8,19 +8,45 @@
     (StepType = 'fuzzy') and workflow functions. Dot-sourced on demand.
 
     Active helpers (NOT deprecated):
-    - Get-FuzzySearchCandidates: builds candidate list from NavState for a given source
-    - Filter-FuzzyCandidates:    prefix → contains → Resolve-Name filtering
+    - Get-FuzzySearchCandidates: builds typed candidate list from NavState for
+      a given source (players, characters, entities, locations, groups, npcs,
+      currency, narrators). Uses EntityTypeIndex for O(1) type-filtered lookups
+      when available, falling back to full scan otherwise.
+    - Filter-FuzzyCandidates:    three-stage filtering pipeline:
+      Stage 1 — prefix match (fastest, O(N) scan);
+      Stage 2 — contains match (catches mid-word matches);
+      Stage 3 — Resolve-Name with Polish declension stemming + BK-tree edit
+      distance (only for queries >= 3 chars and when fewer than 3 results from
+      stages 1-2, to avoid false positives on short queries).
 
-    DEPRECATED helper:
-    - Show-FuzzySearch: Use Invoke-EngineFuzzySearch instead.
-      Retained for plugin compatibility. Will be removed in a future version.
+    Module-level data:
+    - Robot.FuzzyMatcher C# type (loaded via Add-Type guard): pre-lowercased
+      two-stage prefix+contains filter that eliminates per-keystroke
+      ToLowerInvariant overhead on 3,757+ candidates
 
     Design:
-    - Three-stage filtering: prefix match (fastest) → contains match →
-      Resolve-Name with declension + BK-tree fuzzy (for queries >= 3 chars).
-    - Source types map NavState collections to typed candidate objects.
-    - Viewport-based scrolling with arrow indicators.
+    - When the compiled Robot.FuzzyMatcher is available, stages 1-2 run in
+      compiled C# and return index arrays; otherwise a PowerShell fallback
+      performs the same logic with OrdinalIgnoreCase comparisons.
+    - Candidates are PSCustomObjects with Name, Type, DisplayText, and Owner
+      fields. Owner preserves the original entity/player reference so callers
+      can navigate directly to the selected item without re-lookup.
+    - Show-FuzzySearch uses viewport-based scrolling (10-item window) with
+      arrow indicators and position counter for large result sets.
+
+    Dependencies: cli-primitives.ps1 (Get-CLIColor, Write-CLILine),
+                  resolve-name.ps1 (Resolve-Name), lib/FuzzyMatcher.cs
 #>
+
+# Compiled C# fuzzy matcher for two-stage prefix+contains filtering.
+# Pre-lowercases candidate names at build time, eliminating per-keystroke
+# ToLowerInvariant overhead on 3,757+ candidates. Source: lib/FuzzyMatcher.cs
+if (-not ([System.Management.Automation.PSTypeName]'Robot.FuzzyMatcher').Type) {
+    $CsPath = [System.IO.Path]::Combine($script:ModuleRoot, 'lib', 'FuzzyMatcher.cs')
+    if ([System.IO.File]::Exists($CsPath)) {
+        Add-Type -TypeDefinition ([System.IO.File]::ReadAllText($CsPath)) -Language CSharp
+    }
+}
 
 # ── Get-FuzzySearchCandidates ────────────────────────────────────────────────
 
@@ -167,24 +193,37 @@ function Filter-FuzzyCandidates {
     $Results = [System.Collections.Generic.List[PSCustomObject]]::new()
     $Seen = [System.Collections.Generic.HashSet[object]]::new()
 
-    # Stage 1: Prefix match
-    foreach ($C in $Candidates) {
-        if ($C.Name.StartsWith($Query, [System.StringComparison]::OrdinalIgnoreCase)) {
-            [void]$Results.Add($C)
-            [void]$Seen.Add($C)
-            if ($Results.Count -ge $MaxResults) { return $Results }
+    # C# path: two-stage prefix+contains in compiled code, returns indices
+    if (([System.Management.Automation.PSTypeName]'Robot.FuzzyMatcher').Type) {
+        $NameArr = [string[]]::new($Candidates.Count)
+        for ($I = 0; $I -lt $Candidates.Count; $I++) { $NameArr[$I] = $Candidates[$I].Name }
+        $Matcher = [Robot.FuzzyMatcher]::new($NameArr)
+        $Indices = $Matcher.Filter($Query, $MaxResults)
+        foreach ($Idx in $Indices) {
+            [void]$Results.Add($Candidates[$Idx])
+            [void]$Seen.Add($Candidates[$Idx])
+        }
+    } else {
+        # PowerShell fallback: Stage 1 prefix + Stage 2 contains
+        foreach ($C in $Candidates) {
+            if ($C.Name.StartsWith($Query, [System.StringComparison]::OrdinalIgnoreCase)) {
+                [void]$Results.Add($C)
+                [void]$Seen.Add($C)
+                if ($Results.Count -ge $MaxResults) { return $Results }
+            }
+        }
+
+        foreach ($C in $Candidates) {
+            if ($Seen.Contains($C)) { continue }
+            if ($C.Name.IndexOf($Query, [System.StringComparison]::OrdinalIgnoreCase) -ge 0) {
+                [void]$Results.Add($C)
+                [void]$Seen.Add($C)
+                if ($Results.Count -ge $MaxResults) { return $Results }
+            }
         }
     }
 
-    # Stage 2: Contains match
-    foreach ($C in $Candidates) {
-        if ($Seen.Contains($C)) { continue }
-        if ($C.Name.IndexOf($Query, [System.StringComparison]::OrdinalIgnoreCase) -ge 0) {
-            [void]$Results.Add($C)
-            [void]$Seen.Add($C)
-            if ($Results.Count -ge $MaxResults) { return $Results }
-        }
-    }
+    if ($Results.Count -ge $MaxResults) { return $Results }
 
     # Stage 3: Resolve-Name uses declension stemming + BK-tree edit distance.
     # Only triggered for queries >= 3 chars (shorter queries produce too many
@@ -211,164 +250,4 @@ function Filter-FuzzyCandidates {
     return $Results
 }
 
-# ── Show-FuzzySearch ─────────────────────────────────────────────────────────
-# DEPRECATED: Use Invoke-EngineFuzzySearch instead.
-# Retained for plugin compatibility. Will be removed in a future version.
 
-function Show-FuzzySearch {
-    param(
-        [Parameter(Mandatory)] [string]$Prompt,
-        [Parameter(Mandatory)] [string]$Source,
-        [Parameter(Mandatory)] [object]$State
-    )
-
-    $AllCandidates = Get-FuzzySearchCandidates -Source $Source -State $State
-    $QueryBuffer = [System.Text.StringBuilder]::new()
-    $SelectedIdx = 0   # Absolute index within $Filtered
-    $ViewOffset  = 0   # First visible item index
-    $MaxVisible  = 10
-
-    $AccentColor   = Get-CLIColor -Role 'Accent'
-    $DisabledColor = Get-CLIColor -Role 'Disabled'
-
-    # Fetch all candidates (MaxResults=500) rather than viewport-size cap
-    # so arrow key scrolling works across the full result set.
-    $Filtered = Filter-FuzzyCandidates -Query '' -Candidates $AllCandidates -State $State -MaxResults 500
-
-    $StartRow = [System.Console]::CursorTop
-
-    while ($true) {
-        # Clamp viewport to keep selection visible
-        if ($SelectedIdx -lt $ViewOffset) {
-            $ViewOffset = $SelectedIdx
-        }
-        if ($SelectedIdx -ge ($ViewOffset + $MaxVisible)) {
-            $ViewOffset = $SelectedIdx - $MaxVisible + 1
-        }
-
-        [System.Console]::SetCursorPosition(0, $StartRow)
-
-        # Prompt line with result count
-        $ClearLine = ' ' * [System.Console]::WindowWidth
-        [System.Console]::Write($ClearLine)
-        [System.Console]::SetCursorPosition(0, $StartRow)
-        Write-Host "  $Prompt`: " -NoNewline -ForegroundColor $AccentColor
-        Write-Host $QueryBuffer.ToString() -NoNewline
-        if ($Filtered.Count -gt $MaxVisible) {
-            # Show count indicator after cursor gap
-            $CountCol = 2 + $Prompt.Length + 2 + $QueryBuffer.Length + 2
-            if ($CountCol -lt ([System.Console]::WindowWidth - 15)) {
-                [System.Console]::SetCursorPosition($CountCol, $StartRow)
-                Write-Host "($($SelectedIdx + 1)/$($Filtered.Count))" -NoNewline -ForegroundColor $DisabledColor
-            }
-        }
-
-        # Results list (viewport slice)
-        $HasMore_Above = ($ViewOffset -gt 0)
-        $HasMore_Below = (($ViewOffset + $MaxVisible) -lt $Filtered.Count)
-
-        for ($I = 0; $I -lt $MaxVisible; $I++) {
-            $Row = $StartRow + 1 + $I
-            [System.Console]::SetCursorPosition(0, $Row)
-            [System.Console]::Write($ClearLine)
-            [System.Console]::SetCursorPosition(0, $Row)
-
-            $AbsIdx = $ViewOffset + $I
-
-            # Show "no results" on first line when query yields nothing
-            if ($I -eq 0 -and $Filtered.Count -eq 0 -and $QueryBuffer.Length -gt 0) {
-                Write-Host "      Brak wyników dla '$($QueryBuffer.ToString())'" -ForegroundColor (Get-CLIColor -Role 'Warning')
-                continue
-            }
-
-            # Show scroll arrows on first/last visible line
-            if ($I -eq 0 -and $HasMore_Above) {
-                Write-Host "    $([char]0x2191) " -NoNewline -ForegroundColor $DisabledColor
-            }
-            elseif ($I -eq ($MaxVisible - 1) -and $HasMore_Below) {
-                Write-Host "    $([char]0x2193) " -NoNewline -ForegroundColor $DisabledColor
-            }
-
-            if ($AbsIdx -lt $Filtered.Count) {
-                $C = $Filtered[$AbsIdx]
-                $IsSelected = ($AbsIdx -eq $SelectedIdx)
-                $Pointer = if ($IsSelected) { [char]0x25B8 } else { ' ' }
-                $Color = if ($IsSelected) { $AccentColor } else { $null }
-
-                # Only write prefix spacing if scroll arrow wasn't already written
-                $NeedPrefix = ($I -ne 0 -or -not $HasMore_Above) -and ($I -ne ($MaxVisible - 1) -or -not $HasMore_Below)
-                if ($NeedPrefix) {
-                    Write-Host "      " -NoNewline
-                }
-
-                if ($Color) {
-                    Write-Host "$Pointer $($C.DisplayText)" -ForegroundColor $Color
-                } else {
-                    Write-Host "$Pointer $($C.DisplayText)"
-                }
-            }
-        }
-
-        # Hints line
-        $HintRow = $StartRow + 1 + $MaxVisible
-        [System.Console]::SetCursorPosition(0, $HintRow)
-        [System.Console]::Write($ClearLine)
-        [System.Console]::SetCursorPosition(0, $HintRow)
-        Write-Host "  Wpisz aby filtrować  |  $([char]0x2191)$([char]0x2193) nawigacja  |  Enter wybierz  |  Esc anuluj" -ForegroundColor $DisabledColor
-
-        # Position cursor after the query text for visual feedback
-        $CursorCol = 2 + $Prompt.Length + 2 + $QueryBuffer.Length
-        [System.Console]::SetCursorPosition($CursorCol, $StartRow)
-
-        # Read key
-        $Key = [System.Console]::ReadKey($true)
-
-        switch ($Key.Key) {
-            'UpArrow' {
-                if ($SelectedIdx -gt 0) { $SelectedIdx-- }
-            }
-            'DownArrow' {
-                if ($SelectedIdx -lt ($Filtered.Count - 1)) { $SelectedIdx++ }
-            }
-            'Enter' {
-                if ($Filtered.Count -gt 0 -and $SelectedIdx -lt $Filtered.Count) {
-                    # Clear search area
-                    for ($I = 0; $I -le ($MaxVisible + 1); $I++) {
-                        [System.Console]::SetCursorPosition(0, $StartRow + $I)
-                        [System.Console]::Write($ClearLine)
-                    }
-                    [System.Console]::SetCursorPosition(0, $StartRow)
-                    $Selected = $Filtered[$SelectedIdx]
-                    Write-CLILine -Text "$Prompt`: $($Selected.DisplayText)" -Color $AccentColor
-                    return $Selected
-                }
-            }
-            'Escape' {
-                # Clear search area
-                for ($I = 0; $I -le ($MaxVisible + 1); $I++) {
-                    [System.Console]::SetCursorPosition(0, $StartRow + $I)
-                    [System.Console]::Write($ClearLine)
-                }
-                [System.Console]::SetCursorPosition(0, $StartRow)
-                return $null
-            }
-            'Backspace' {
-                if ($QueryBuffer.Length -gt 0) {
-                    [void]$QueryBuffer.Remove($QueryBuffer.Length - 1, 1)
-                    $Filtered = Filter-FuzzyCandidates -Query $QueryBuffer.ToString() -Candidates $AllCandidates -State $State -MaxResults 500
-                    $SelectedIdx = 0
-                    $ViewOffset = 0
-                }
-            }
-            default {
-                $Ch = $Key.KeyChar
-                if ($Ch -ge ' ') {
-                    [void]$QueryBuffer.Append($Ch)
-                    $Filtered = Filter-FuzzyCandidates -Query $QueryBuffer.ToString() -Candidates $AllCandidates -State $State -MaxResults 500
-                    $SelectedIdx = 0
-                    $ViewOffset = 0
-                }
-            }
-        }
-    }
-}

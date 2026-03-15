@@ -6,9 +6,9 @@
     Non-exported helper functions consumed by robot.psm1 during the plugin
     loading phase. Not auto-loaded (non-Verb-Noun filename).
 
-    Contains:
-    - Resolve-PluginLoadOrder:  topological sort of plugins by DependsOn
-    - Resolve-PluginConfig:     per-plugin config resolution chain
+    Helpers:
+    - Resolve-PluginLoadOrder:  topological sort of plugins by DependsOn using Kahn's algorithm
+    - Resolve-PluginConfig:     per-plugin config resolution from environment, local config, and manifest defaults
 
     Plugin config resolution priority (per key):
     1. Environment variable (declared in manifest Config.<Key>.EnvVar)
@@ -16,11 +16,13 @@
     3. Core local.config.psd1 with namespaced key (pluginname.KeyName)
     4. Manifest default (declared in manifest Config.<Key>.Default)
     5. Warning if Required = $true and nothing resolved
+
+    Resolve-PluginLoadOrder uses Kahn's algorithm for topological sorting.
+    Plugins with missing dependencies are excluded via an InDegree = -1 sentinel
+    and warned. Circular dependencies are detected as remaining nodes with
+    InDegree > 0 after the BFS completes.
 #>
 
-# Topological sort of plugin candidates by DependsOn using Kahn's algorithm.
-# Returns a List[object] of plugin candidates in dependency-safe load order.
-# Plugins with missing dependencies are warned and skipped.
 function Resolve-PluginLoadOrder {
     param(
         [System.Collections.Generic.List[object]]$Candidates
@@ -59,6 +61,7 @@ function Resolve-PluginLoadOrder {
         }
     }
 
+    # BFS from zero-dependency nodes — produces dependency-safe load order
     $Queue  = [System.Collections.Generic.Queue[string]]::new()
     $Result = [System.Collections.Generic.List[object]]::new()
 
@@ -96,8 +99,6 @@ function Resolve-PluginLoadOrder {
     return $Result
 }
 
-# Resolves plugin configuration values from the priority chain.
-# Returns a hashtable of resolved key -> value pairs.
 function Resolve-PluginConfig {
     param(
         [hashtable]$Manifest,
@@ -108,13 +109,12 @@ function Resolve-PluginConfig {
     $ConfigDefs = $Manifest.Config
     if (-not $ConfigDefs) { return @{} }
 
-    # Load plugin-level local.config.psd1
+    # Pre-load both config files once, then iterate keys (avoids repeated I/O per key)
     $PluginLocalPath = [System.IO.Path]::Combine($PluginDir, 'local.config.psd1')
     $PluginLocal = if ([System.IO.File]::Exists($PluginLocalPath)) {
         try { Import-PowerShellDataFile -Path $PluginLocalPath } catch { @{} }
     } else { @{} }
 
-    # Load core local.config.psd1 for namespaced fallback
     $CoreLocalPath = [System.IO.Path]::Combine($ModuleRoot, 'local.config.psd1')
     $CoreLocal = if ([System.IO.File]::Exists($CoreLocalPath)) {
         try { Import-PowerShellDataFile -Path $CoreLocalPath } catch { @{} }
@@ -127,7 +127,7 @@ function Resolve-PluginConfig {
         $Def = $ConfigDefs[$Key]
         $Value = $null
 
-        # 1. Environment variable
+        # Priority 1: env var — highest precedence for CI/CD overrides
         if ($Def.EnvVar) {
             $EnvVal = [System.Environment]::GetEnvironmentVariable($Def.EnvVar)
             if (-not [string]::IsNullOrWhiteSpace($EnvVal)) {
@@ -135,7 +135,7 @@ function Resolve-PluginConfig {
             }
         }
 
-        # 2. Plugin's own local.config.psd1
+        # Priority 2: plugin-local config (git-ignored, per-developer settings)
         if (-not $Value -and $PluginLocal.ContainsKey($Key)) {
             $Val = $PluginLocal[$Key]
             if (-not [string]::IsNullOrWhiteSpace($Val)) {
@@ -143,7 +143,7 @@ function Resolve-PluginConfig {
             }
         }
 
-        # 3. Core local.config.psd1 with namespaced key
+        # Priority 3: core config with namespaced key (shared across plugins)
         $NamespacedKey = "$PluginName.$Key"
         if (-not $Value -and $CoreLocal.ContainsKey($NamespacedKey)) {
             $Val = $CoreLocal[$NamespacedKey]
@@ -152,12 +152,12 @@ function Resolve-PluginConfig {
             }
         }
 
-        # 4. Manifest default
+        # Priority 4: manifest default — last resort before warning
         if (-not $Value -and $null -ne $Def.Default) {
             $Value = $Def.Default
         }
 
-        # 5. Required check
+        # Priority 5: warn if required key unresolved after full chain
         if (-not $Value -and $Def.Required) {
             [System.Console]::Error.WriteLine(
                 "[WARN Resolve-PluginConfig] Plugin '$PluginName' config key '$Key' is required but not set." +

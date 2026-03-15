@@ -8,7 +8,7 @@
     Get-SessionGraph via dot-sourcing. Not auto-loaded by robot.psm1
     (non-Verb-Noun filename).
 
-    Contains:
+    Helpers:
     - Get-FilePathInvolvement:    classify a repo-relative file path into entity category/type
     - ConvertTo-ParticipantRecord: merge three-tier involvement data for a session
     - Read-SessionGraphIndex:     load persistent index from _index.json
@@ -23,8 +23,14 @@
     - Write-MentionCache:         persist mention cache
     - Get-CachedMentions:         return cached mentions if cache key matches
 
-    Three-tier involvement model:
+    Module-level data:
+    - $script:UTF8NoBOM: shared UTF-8 no BOM encoding instance (reused from session-hashhelpers if loaded)
+
+    The session graph tracks entity participation across all sessions in
+    the lore repository. It uses a three-tier involvement model:
+
     - Tier 0 (Filesystem): session file is placed in an entity's directory
+      (e.g. Postaci/Gracze/Alrik.md contains a session -> Alrik is Tier 0)
     - Tier 1 (Structured):  entity appears in PU, @Zmiany, @Transfer, or @Intel metadata
     - Tier 2 (Body Text):   entity name mentioned in session body text
 
@@ -34,11 +40,27 @@
 
     When the same entity appears at multiple tiers, the lowest tier (highest
     confidence) wins. If Tier 1 provides a Weight, it is preserved.
+
+    Persistence uses three JSON files in the graph directory:
+    - _index.json:    session header -> { Date, Format, Participants[], FilePaths[] }
+    - _meta.json:     operational metadata (timestamps, version, staleness flags)
+    - _mentions.json: Tier 2 mention cache keyed by "$NameIndexVersion:$ContentHash"
+
+    All JSON I/O uses Robot.JsonHelper (System.Text.Json) when available,
+    with ConvertTo-Json/ConvertFrom-Json as a PowerShell fallback.
 #>
 
 # Shared UTF-8 no BOM encoding instance (reuse from session-hashhelpers if loaded)
 if (-not (Test-Path variable:script:UTF8NoBOM)) {
     $script:UTF8NoBOM = [System.Text.UTF8Encoding]::new($false)
+}
+
+# Compiled C# JSON helper (reuse from session-hashhelpers if already loaded)
+if (-not ([System.Management.Automation.PSTypeName]'Robot.JsonHelper').Type) {
+    $CsPath = [System.IO.Path]::Combine($script:ModuleRoot, 'lib', 'JsonHelper.cs')
+    if ([System.IO.File]::Exists($CsPath)) {
+        Add-Type -TypeDefinition ([System.IO.File]::ReadAllText($CsPath)) -Language CSharp
+    }
 }
 
 # Classify a repo-relative file path into an entity involvement record.
@@ -239,8 +261,15 @@ function Read-SessionGraphIndex {
     }
 
     try {
-        $RawJson = [System.IO.File]::ReadAllText($IndexPath, $script:UTF8NoBOM)
-        $Parsed = $RawJson | ConvertFrom-Json -AsHashtable
+        # C# path: System.Text.Json with Hashtable output
+        if (([System.Management.Automation.PSTypeName]'Robot.JsonHelper').Type) {
+            $Parsed = [Robot.JsonHelper]::ReadAsHashtable($IndexPath)
+        } else {
+            # PowerShell fallback
+            $RawJson = [System.IO.File]::ReadAllText($IndexPath, $script:UTF8NoBOM)
+            $Parsed = $RawJson | ConvertFrom-Json -AsHashtable
+        }
+
         if ($Parsed) {
             return $Parsed
         }
@@ -262,6 +291,13 @@ function Write-SessionGraphIndex {
         [hashtable]$Index
     )
 
+    # C# path: sorted serialization with native JSON writer
+    if (([System.Management.Automation.PSTypeName]'Robot.JsonHelper').Type) {
+        [Robot.JsonHelper]::WriteSortedJson($IndexPath, $Index, 5)
+        return
+    }
+
+    # PowerShell fallback
     $Dir = [System.IO.Path]::GetDirectoryName($IndexPath)
     if (-not [System.IO.Directory]::Exists($Dir)) {
         [void][System.IO.Directory]::CreateDirectory($Dir)
@@ -305,9 +341,15 @@ function Read-SessionGraphMeta {
     }
 
     try {
-        $RawJson = [System.IO.File]::ReadAllText($MetaPath, $script:UTF8NoBOM)
-        # Use -AsHashtable to prevent automatic DateTime conversion
-        $Parsed = $RawJson | ConvertFrom-Json -AsHashtable
+        # C# path: System.Text.Json (no DateTime auto-conversion)
+        if (([System.Management.Automation.PSTypeName]'Robot.JsonHelper').Type) {
+            $Parsed = [Robot.JsonHelper]::ReadAsHashtable($MetaPath)
+        } else {
+            # PowerShell fallback — use -AsHashtable to prevent DateTime conversion
+            $RawJson = [System.IO.File]::ReadAllText($MetaPath, $script:UTF8NoBOM)
+            $Parsed = $RawJson | ConvertFrom-Json -AsHashtable
+        }
+
         foreach ($Key in @('LastFullUpdate', 'LastIncrementalUpdate', 'NameIndexVersion', 'Tier2StaleReason', 'LastEagerRefresh')) {
             if ($Parsed.ContainsKey($Key) -and $null -ne $Parsed[$Key]) {
                 $Defaults[$Key] = [string]$Parsed[$Key]
@@ -342,6 +384,13 @@ function Write-SessionGraphMeta {
         [hashtable]$Meta
     )
 
+    # C# path: sorted serialization with native JSON writer
+    if (([System.Management.Automation.PSTypeName]'Robot.JsonHelper').Type) {
+        [Robot.JsonHelper]::WriteSortedJson($MetaPath, $Meta, 1)
+        return
+    }
+
+    # PowerShell fallback
     $Dir = [System.IO.Path]::GetDirectoryName($MetaPath)
     if (-not [System.IO.Directory]::Exists($Dir)) {
         [void][System.IO.Directory]::CreateDirectory($Dir)
@@ -508,8 +557,15 @@ function Read-MentionCache {
     }
 
     try {
-        $RawJson = [System.IO.File]::ReadAllText($CachePath, $script:UTF8NoBOM)
-        $Parsed = $RawJson | ConvertFrom-Json -AsHashtable
+        # C# path: System.Text.Json with Hashtable output
+        if (([System.Management.Automation.PSTypeName]'Robot.JsonHelper').Type) {
+            $Parsed = [Robot.JsonHelper]::ReadAsHashtable($CachePath)
+        } else {
+            # PowerShell fallback
+            $RawJson = [System.IO.File]::ReadAllText($CachePath, $script:UTF8NoBOM)
+            $Parsed = $RawJson | ConvertFrom-Json -AsHashtable
+        }
+
         if ($Parsed) {
             return $Parsed
         }
@@ -530,6 +586,13 @@ function Write-MentionCache {
         [hashtable]$Cache
     )
 
+    # C# path: sorted serialization with native JSON writer
+    if (([System.Management.Automation.PSTypeName]'Robot.JsonHelper').Type) {
+        [Robot.JsonHelper]::WriteSortedJson($CachePath, $Cache, 5)
+        return
+    }
+
+    # PowerShell fallback
     $Dir = [System.IO.Path]::GetDirectoryName($CachePath)
     if (-not [System.IO.Directory]::Exists($Dir)) {
         [void][System.IO.Directory]::CreateDirectory($Dir)

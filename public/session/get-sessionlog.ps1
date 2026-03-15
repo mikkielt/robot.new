@@ -6,18 +6,32 @@
     .DESCRIPTION
     This file contains Get-SessionLog, which accepts session objects (typically
     from Get-Session) via pipeline or direct input. For each session with log
-    URLs, it fetches the raw content (from res/logs/ or via HTTP), parses it
-    into structured lines, and builds cross-referenced output objects.
+    URLs, it fetches the raw content (from res/logs/ cache or via HTTP),
+    parses it into structured lines, and builds cross-referenced output objects.
 
-    The function uses a collect-then-emit pattern: sessions are gathered during
-    the process block, URLs are deduplicated and batch-fetched in the end block,
-    then all results are emitted. This ensures each unique URL is fetched only
-    once, even when shared across sessions.
+    The function uses a collect-then-emit pipeline pattern:
+    - begin: initialize collection list
+    - process: accumulate session objects (pipeline-friendly)
+    - end: deduplicate URLs, batch-fetch, parse, and emit results
 
-    Dot-sources private helpers:
-    - log-fetchhelpers.ps1: URL normalization, file caching, HTTP fetch
-    - parse-logcontent.ps1: format detection, ChatLog/Prose parsers
-    - admin-config.ps1: ResDir path resolution
+    This ensures each unique URL is fetched only once, even when shared
+    across sessions. Local file paths (non-HTTP URLs in .Logs) are read
+    directly from .robot/ directory without HTTP overhead.
+
+    Output per session: a PSCustomObject with .Logs array containing:
+    - Url: normalized source URL
+    - Format: detected log format (ChatLog/Prose)
+    - Lines: parsed structured lines with Speaker, Channel, Index, Text
+    - LocationSegments: location header boundaries with optional
+      Resolved entity name and Stage from name resolution
+    - Speakers: aggregated speaker objects with Raw name, Resolved
+      canonical name (via 4-stage name resolution pipeline), and
+      per-speaker line indices for participation analysis
+    - Channels: ChatLog-only channel aggregation (null for Prose)
+
+    Name resolution is optional — when -Index is provided, speakers and
+    location headers are resolved against the entity registry. Without it,
+    only Raw speaker names and unresolved location segments are returned.
 #>
 
 . "$script:ModuleRoot/private/log-fetchhelpers.ps1"
@@ -27,28 +41,7 @@
 function Get-SessionLog {
     <#
         .SYNOPSIS
-        Fetches and parses session logs into structured objects.
-
-        .PARAMETER Session
-        One or more session objects (from Get-Session). Accepts pipeline input.
-
-        .PARAMETER Index
-        Pre-built name index (from Get-NameIndex) for resolving speakers and
-        location headers against the entity registry. Optional.
-
-        .PARAMETER Cache
-        Shared resolution cache hashtable for Resolve-Name. Optional.
-
-        .PARAMETER LogDirectory
-        Override for the log storage directory. Defaults to ResDir/logs from
-        Get-AdminConfig.
-
-        .PARAMETER DelayMs
-        Throttle delay in milliseconds between HTTP requests. Default 500.
-
-        .PARAMETER SkipFetch
-        When set, only reads logs from the local res/logs/ directory. URLs
-        without a cached file are silently skipped (no HTTP requests).
+        Fetches and parses session logs into structured objects with speaker/location resolution.
     #>
 
     [CmdletBinding()] param(
@@ -86,14 +79,14 @@ function Get-SessionLog {
     end {
         if ($CollectedSessions.Count -eq 0) { return }
 
-        # Default to ResDir/logs so callers don't need to know the config structure
+        # Default log directory from config so callers don't need config awareness
         if (-not $LogDirectory) {
             $Config = Get-AdminConfig
             $LogDirectory = [System.IO.Path]::Combine($Config.ResDir, 'logs')
         }
 
-        # Separate HTTP URLs from local paths so we can batch-fetch remote ones
-        # while reading local files directly (no HTTP overhead)
+        # Partition URLs into HTTP (batch-fetchable) and local (direct file read)
+        # to avoid unnecessary HTTP overhead for locally cached logs
         $AllUrls = [System.Collections.Generic.List[string]]::new()
         $LocalPaths = [System.Collections.Generic.Dictionary[string,string]]::new(
             [System.StringComparer]::OrdinalIgnoreCase)
@@ -102,7 +95,7 @@ function Get-SessionLog {
             if ($null -eq $S.Logs -or $S.Logs.Count -eq 0) { continue }
             foreach ($Url in $S.Logs) {
                 if (-not $Url.StartsWith('http', [System.StringComparison]::OrdinalIgnoreCase)) {
-                    # Local path (e.g. res/logs/pastebincomrawX)
+                    # Local path: read from .robot/ directory (legacy pre-HTTP log storage)
                     if (-not $LocalPaths.ContainsKey($Url)) {
                         $FullPath = [System.IO.Path]::Combine($RepoRoot, '.robot', $Url)
                         if ([System.IO.File]::Exists($FullPath)) {
@@ -115,11 +108,11 @@ function Get-SessionLog {
             }
         }
 
-        # Batch fetch deduplicates URLs so shared logs across sessions are downloaded once
+        # Batch fetch deduplicates URLs — shared logs across sessions are downloaded once
         $FetchedContent = @{}
         if ($AllUrls.Count -gt 0) {
             if ($SkipFetch) {
-                # Read only from disk, no HTTP
+                # Disk-only mode: skip URLs without a cached file
                 foreach ($Url in $AllUrls) {
                     $NormalizedUrl = Normalize-LogUrl -Url $Url
                     $FileName = ConvertTo-LogFileName -NormalizedUrl $NormalizedUrl
@@ -136,12 +129,12 @@ function Get-SessionLog {
             }
         }
 
-        # Unify local and remote content into one lookup for uniform processing below
+        # Merge local and remote content into a single lookup for uniform processing
         foreach ($Entry in $LocalPaths.GetEnumerator()) {
             $FetchedContent[$Entry.Key] = $Entry.Value
         }
 
-        # Build structured log objects with speaker/channel aggregation and optional name resolution
+        # Build output objects: parse content, aggregate speakers/channels, resolve names
         $Results = [System.Collections.Generic.List[PSCustomObject]]::new()
 
         foreach ($S in $CollectedSessions) {
@@ -159,11 +152,11 @@ function Get-SessionLog {
 
                 $Parsed = ConvertFrom-LogContent -Content $Content
 
-                # Aggregate speaker line indices for participation analysis
+                # Track per-speaker line indices for participation frequency analysis
                 $SpeakerMap = [System.Collections.Generic.Dictionary[string, System.Collections.Generic.List[int]]]::new(
                     [System.StringComparer]::OrdinalIgnoreCase)
 
-                # Aggregate channel line indices (ChatLog format only)
+                # Channel tracking (ChatLog format only — Prose has no channel concept)
                 $ChannelMap = [System.Collections.Generic.Dictionary[string, System.Collections.Generic.List[int]]]::new(
                     [System.StringComparer]::OrdinalIgnoreCase)
 
@@ -183,7 +176,7 @@ function Get-SessionLog {
                     }
                 }
 
-                # Map raw speaker names to canonical entity names via the 4-stage resolution pipeline
+                # 4-stage name resolution: exact > stem > fuzzy > BK-tree
                 $Speakers = [System.Collections.Generic.List[PSCustomObject]]::new()
                 foreach ($Entry in $SpeakerMap.GetEnumerator()) {
                     $Resolved = $null
@@ -211,7 +204,7 @@ function Get-SessionLog {
                     })
                 }
 
-                # Channels are only meaningful in ChatLog format (Prose has no channel concept)
+                # Channel aggregation only emitted for ChatLog format
                 $Channels = $null
                 if ($Parsed.Format -eq 'ChatLog' -and $ChannelMap.Count -gt 0) {
                     $Channels = [System.Collections.Generic.List[PSCustomObject]]::new()
@@ -225,7 +218,7 @@ function Get-SessionLog {
                     $Channels = [PSCustomObject[]]$Channels.ToArray()
                 }
 
-                # Resolve location headers against entity registry for cross-referencing
+                # Resolve location segment headers against entity registry
                 $LocationSegments = $Parsed.LocationSegments
                 if ($null -ne $Index -and $null -ne $LocationSegments) {
                     for ($i = 0; $i -lt $LocationSegments.Count; $i++) {

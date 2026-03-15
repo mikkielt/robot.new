@@ -7,14 +7,21 @@
     reputation structures (Pozytywna/Neutralna/Negatywna) in character files
     (Postaci/Gracze/*.md).
 
-    Split from charfile-helpers.ps1 — dot-sourced by that file.
+    Split from charfile-helpers.ps1 for readability — dot-sourced by that file,
+    so these helpers share its script scope and regex patterns.
 
     Helpers:
-    - Read-ReputationTier:         parses a single reputation tier (Positive/Neutral/Negative)
-    - Format-ReputationSection:    renders three-tier reputation structure as markdown lines
+    - Read-ReputationTier:         parses a single reputation tier's entries into Location/Detail objects
+    - Format-ReputationSection:    renders three-tier reputation structure back to markdown lines
 
     Module-level data:
     - $script:ReputationTierPattern: matches "- Pozytywna:", "- Neutralna:", "- Negatywna:" tier bullets
+
+    Reputation entries may appear in two formats: inline comma-separated
+    ("- Pozytywna: Loc1, Loc2") or nested bullets with optional detail
+    ("- Nithal: opis"). Read-ReputationTier handles both, plus sub-bullets
+    for multi-line descriptions. Format-ReputationSection chooses inline
+    format when no entries have Detail, nested bullets otherwise.
 #>
 
 # Reputation tier bullets: "- Pozytywna:", "- Neutralna:", "- Negatywna:"
@@ -24,8 +31,6 @@ $script:ReputationTierPattern = [regex]::new(
      [System.Text.RegularExpressions.RegexOptions]::IgnoreCase)
 )
 
-# Helper: parse a single reputation tier
-# Returns array of @{ Location; Detail } objects
 function Read-ReputationTier {
     param(
         [string[]]$Lines,
@@ -91,7 +96,7 @@ function Read-ReputationTier {
             # e.g. "Nithal:" followed by indented description bullets
             if ($EntryText.EndsWith(':')) {
                 $LocName = $EntryText.Substring(0, $EntryText.Length - 1).Trim()
-                # Collect sub-bullet text as detail
+                # Trailing colon indicates sub-bullets follow (e.g. "Nithal:" + indented description)
                 $SubDetails = [System.Collections.Generic.List[string]]::new()
                 for ($k = $i + 1; $k -lt $NextTierOrEnd; $k++) {
                     $SubLine = $Lines[$k]
@@ -122,7 +127,6 @@ function Read-ReputationTier {
     return ,$Results.ToArray()
 }
 
-# Renders three-tier reputation structure as markdown content lines
 function Format-ReputationSection {
     param(
         [object[]]$Positive = @(),
@@ -132,7 +136,7 @@ function Format-ReputationSection {
 
     $Result = [System.Collections.Generic.List[string]]::new()
 
-    # Helper: render one tier
+    # Scriptblock captures $Result from parent scope to avoid triple code duplication
     $RenderTier = {
         param([string]$TierName, [object[]]$Entries)
 

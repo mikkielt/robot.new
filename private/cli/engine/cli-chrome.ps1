@@ -3,13 +3,21 @@
     Chrome rendering helpers for the Robot CLI TUI engine.
 
     .DESCRIPTION
-    Renders the persistent UI chrome elements: top bar (breadcrumb + health
-    badges), filter bar (filter text, command palette, type hints), and
-    status bar (contextual key hints). Also provides match highlighting
-    for the inline filter system.
+    Renders the persistent UI chrome elements that frame the content area:
+    top bar (breadcrumb navigation path and health subsystem badges),
+    filter bar (inline filter text with match count, or the "/" command
+    palette with shortcut hints), and status bar (contextual key hints
+    for the active component).
+
+    Also provides match highlighting for the inline filter system.
+    Filter highlighting uses two rendering strategies: contiguous matches
+    (prefix/contains from stages 1-2) bold the matched character range
+    inline, while non-contiguous matches (fuzzy/declension from stage 3)
+    prepend an approximate symbol because there are no contiguous
+    character positions to highlight.
 
     Helpers:
-    - Split-HighlightSegments:  splits text into highlighted segments for filter matches
+    - Split-HighlightSegments:  splits text into highlighted/normal segments for filter matches
     - Render-TopBar:            breadcrumb path + health badges into TopBar region
     - Render-FilterBar:         filter text + count, or command palette into Filter region
     - Render-StatusBar:         key hints for the active component into StatusBar region
@@ -23,10 +31,6 @@
 
 # ── Match Highlighting ──────────────────────────────────────────────────────
 
-# Splits text into highlighted segments based on match info from filter.
-# Stages 1-2 (prefix/contains): bold Accent on the matched character range.
-# Stage 3 (fuzzy/declension): ≈ prefix instead of inline highlighting because
-# fuzzy matches don't have contiguous character positions to highlight.
 function Split-HighlightSegments {
     param(
         [Parameter(Mandatory)] [string]$Text,
@@ -78,7 +82,7 @@ function Render-TopBar {
     $AccentColor   = Get-CLIColor -Role 'Accent'
     $DisabledColor = Get-CLIColor -Role 'Disabled'
 
-    # Build breadcrumb path
+    # Reverse stack so root appears first (stack is LIFO, breadcrumb reads left-to-right)
     $Parts = [System.Collections.Generic.List[string]]::new()
     $StackArray = $State.BreadcrumbStack.ToArray()
     [System.Array]::Reverse($StackArray)
@@ -88,7 +92,7 @@ function Render-TopBar {
 
     $BreadcrumbText = ' ' + ($Parts -join ' > ')
 
-    # Health badges
+    # Aggregate subsystem health into compact badges (checkmark or warning count)
     $BadgeStr = ''
     if ($State.PSObject.Properties['HealthCache'] -and $State.HealthCache) {
         $HC = $State.HealthCache
@@ -123,7 +127,7 @@ function Render-TopBar {
         }
     }
 
-    # Right-align badges
+    # Right-align badges against breadcrumb to use the full top bar width
     $AvailWidth = $script:ScreenWidth - $BreadcrumbText.Length - 2
     $PaddedBadge = if ($BadgeStr -and $AvailWidth -gt $BadgeStr.Length) {
         $BadgeStr.PadLeft($AvailWidth)
@@ -152,7 +156,7 @@ function Render-FilterBar {
 
     $BorderH = [string][char]0x2500
 
-    # Command palette mode
+    # Command palette mode — shows "/" prompt with available shortcut hints
     if ($script:CommandMode) {
         $CmdText = $script:CommandBuffer.ToString()
         $HintText = ' h pomoc ' + [char]0x00B7 + ' s stan ' + [char]0x00B7 +
@@ -174,7 +178,7 @@ function Render-FilterBar {
         return
     }
 
-    # Filter mode
+    # Active filter mode — shows typed query, optional type prefix badge, and match count
     if ($script:FilterActive) {
         $FilterText = Get-FilterText
         $Parsed = Split-FilterQuery -RawInput $FilterText -FilterPrefixes $Component.FilterPrefixes
@@ -183,7 +187,7 @@ function Render-FilterBar {
         [void]$Segments.Add((New-Segment -Text " $($BorderH * 2) " -Color $DisabledColor -Dim))
         [void]$Segments.Add((New-Segment -Text '> ' -Color $AccentColor -Bold))
 
-        # Type prefix badge
+        # Show resolved type filter label (e.g., "NPC", "Lokacja") when user typed "typ:query"
         if ($Parsed.Prefix) {
             $TypeLabel = $Parsed.TypeFilter
             if (-not $TypeLabel) { $TypeLabel = $Parsed.Prefix }
@@ -192,7 +196,7 @@ function Render-FilterBar {
 
         [void]$Segments.Add((New-Segment -Text "$($Parsed.Query)_" -Color $AccentColor))
 
-        # Count display (from component state if available)
+        # Show "N z M" match count so the user knows how many items passed the filter
         if ($Component -and $Component.PSObject -and
             $Component.FilteredCount -is [int] -and $Component.TotalCount -is [int]) {
             $CountText = "    $($Component.FilteredCount) z $($Component.TotalCount)"
@@ -200,7 +204,7 @@ function Render-FilterBar {
             [void]$Segments.Add((New-Segment -Text $CountText -Color $CountColor))
         }
 
-        # First-time filter hint
+        # One-time onboarding hint shown only on the first filter activation per session
         if ($script:FilterHintPending) {
             $script:FilterHintPending = $false
             [void]$Segments.Add((New-Segment -Text '  wpisz typ: aby filtrowac' -Color $DisabledColor))
@@ -210,7 +214,7 @@ function Render-FilterBar {
         return
     }
 
-    # Inactive — persistent input field placeholder
+    # Inactive state — show dimmed placeholder to signal that typing starts a filter
     $Filterable = $Component -and $Component.Filterable
     if ($Filterable) {
         $Prefix      = " $($BorderH * 2) "

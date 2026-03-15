@@ -5,31 +5,44 @@
 
     .DESCRIPTION
     This file bridges the CLI menu with the migration subsystem. It:
-    1. Dot-sources migration-phases.ps1 (which provides $script:PhaseRegistry)
-    2. Dot-sources migration-state.ps1 (which provides Get-MigrationState, Get-PhaseStatus)
-    3. Builds menu items dynamically from the phase registry + current state
-    4. Delegates execution to phase functions via the registry
+    1. Dot-sources migration-ui.ps1 (UI rendering for phase output)
+    2. Dot-sources migration-state.ps1 (provides Get-MigrationState, Get-PhaseStatus)
+    3. Dot-sources migration-phases.ps1 (provides $script:PhaseRegistry)
+    4. Builds menu items dynamically from the phase registry + current state
+    5. Delegates execution to phase functions via the registry
 
-    Loaded on demand by Invoke-RobotCLI when this file exists.
+    Loaded on demand by Invoke-RobotCLI when the migration directory exists.
 
     Helpers:
-    - Get-MigrationMenuItems:        returns dynamic menu items with status badges
-    - Invoke-MigrationPhaseAction:   dispatches a phase by registry ID
+    - Get-MigrationMenuItems:      returns dynamic menu items with status badges
+      (checkmark/spinner/warning symbols from $script:StatusDisplay). Falls back
+      to hardcoded phases 0-6 if $script:PhaseRegistry is unavailable.
+    - Invoke-MigrationPhaseAction: dispatches a phase by extracting the phase
+      number from the menu item ID (format: "migration-phase-N"), looking up
+      the function name in the registry, and calling it with migration state.
+
+    Module-level data:
+    - $script:MigrationAvailable: boolean flag set during load; guards all
+      migration operations
 
     Design:
     - Both functions override stubs defined in cli-routing.ps1. This allows
       the CLI to operate without migration files present — the stubs return
       empty/no-op results, and this file replaces them only when loaded.
-    - Phase menu items include status symbols from $script:StatusDisplay
-      (checkmark, spinner, warning) so the user sees progress at a glance.
     - Migration phases use console-mode output (not the TUI engine), so
       Invoke-MigrationPhaseAction calls Console.Clear() before dispatching
       to avoid rendering artifacts from the engine's cursor-positioned buffer.
+    - Load failures are caught and reported to stderr with [WARN] prefix,
+      leaving $script:MigrationAvailable as $false so the menu shows a
+      disabled "Migracja niedostępna" item instead of crashing.
 
-    Dependencies: cli-primitives.ps1, cli-routing.ps1 (overrides stubs)
+    Dependencies: cli-primitives.ps1 (Get-CLIColor, Write-CLILine),
+                  cli-routing.ps1 (provides stubs that this file overrides),
+                  migration/ directory (migration-ui.ps1, migration-state.ps1,
+                  migration-phases.ps1)
 #>
 
-# Load migration subsystem
+# Dot-source migration subsystem files if present
 $MigrationRoot = [System.IO.Path]::Combine($script:ModuleRoot, 'migration')
 
 $MigrationStatePath = [System.IO.Path]::Combine($MigrationRoot, 'migration-state.ps1')
@@ -68,7 +81,7 @@ function Get-MigrationMenuItems {
     $Items = [System.Collections.Generic.List[PSCustomObject]]::new()
     $MigrationState = Get-MigrationState
 
-    # Build items from phase registry (if available)
+    # Build items from phase registry, falling back to hardcoded phases 0-8
     if ($script:PhaseRegistry) {
         foreach ($Phase in $script:PhaseRegistry) {
             $PhaseStatus = Get-PhaseStatus -State $MigrationState -Phase $Phase.ID
@@ -86,8 +99,8 @@ function Get-MigrationMenuItems {
             })
         }
     } else {
-        # Fallback: hardcoded phase 0-6
-        for ($I = 0; $I -le 6; $I++) {
+        # Fallback when $script:PhaseRegistry is unavailable
+        for ($I = 0; $I -le 8; $I++) {
             $PhaseStatus = Get-PhaseStatus -State $MigrationState -Phase $I
             $StatusInfo = $script:StatusDisplay[$PhaseStatus]
             $StatusSymbol = if ($StatusInfo) { "$($StatusInfo.Symbol) " } else { '' }
@@ -111,7 +124,7 @@ function Get-MigrationMenuItems {
 function Invoke-MigrationPhaseAction {
     param([string]$PhaseID, [object]$State)
 
-    # Clear engine-rendered screen before switching to console-mode output
+    # Clear engine buffer before switching to console-mode output
     [System.Console]::Clear()
 
     if (-not $script:MigrationAvailable) {
@@ -121,7 +134,7 @@ function Invoke-MigrationPhaseAction {
         return
     }
 
-    # Extract phase number from ID like "migration-phase-3"
+    # Parse phase number from menu item ID (format: "migration-phase-N")
     $PhaseNum = -1
     if ($PhaseID -match 'migration-phase-(\d+)') {
         $PhaseNum = [int]$Matches[1]
@@ -135,7 +148,7 @@ function Invoke-MigrationPhaseAction {
 
     $MigrationState = Get-MigrationState
 
-    # Look up in registry first
+    # Resolve function name from registry, falling back to convention-based name
     $PhaseEntry = $null
     if ($script:PhaseRegistry) {
         $PhaseEntry = $script:PhaseRegistry | Where-Object { $_.ID -eq $PhaseNum } | Select-Object -First 1
@@ -155,7 +168,7 @@ function Invoke-MigrationPhaseAction {
         return
     }
 
-    # Show phase header
+    # Phase header with horizontal rules
     $PhaseName = if ($PhaseEntry) { $PhaseEntry.Name } else { Get-PhaseName -Phase $PhaseNum }
     Write-Host ''
     Write-Host "  $([string][char]0x2500 * 50)" -ForegroundColor (Get-CLIColor -Role 'Accent')

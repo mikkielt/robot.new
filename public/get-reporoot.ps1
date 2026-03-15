@@ -12,16 +12,22 @@
 
     Module-level data:
     - $DataDirectoryOverride: when set by Set-DataDirectory, Get-RepoRoot returns
-      this path instead of performing git traversal.
+      this path instead of performing git traversal
+    - $CachedRepoRoot: memoized result of the upward .git search, cleared when
+      Set-DataDirectory is called
 
     Get-RepoRoot traverses the directory tree upward from the module's parent directory,
-    looking for a .git subdirectory. Returns the first ancestor that contains one. Throws
-    if no repository is found before reaching the filesystem root.
+    looking for a .git subdirectory or file. Returns the first ancestor that contains one.
+    Throws if no repository is found before reaching the filesystem root.
 
     Starts from the module's own location (via $script:ModuleRoot set by robot.psm1)
     rather than the process working directory. This guarantees the result is always the
-    enclosing lore repository - even when the module lives inside a Git submodule whose
-    .git entry is a file, not a directory.
+    enclosing lore repository — even when the module lives inside a Git submodule whose
+    .git entry is a file (gitlink), not a directory.
+
+    Fallback: if no ancestor has .git, checks whether the module directory itself is a
+    repo root (standalone checkout, e.g. CI pipelines). This handles the case where the
+    module is cloned directly rather than as a submodule.
 
     Used by every other function in the module to resolve repo-relative paths.
 #>
@@ -36,12 +42,12 @@ function Get-RepoRoot {
         [string]$ModuleRoot
     )
 
-    # Honour explicit override set by Set-DataDirectory
+    # Set-DataDirectory override takes precedence over git traversal
     if ($script:DataDirectoryOverride) {
         return $script:DataDirectoryOverride
     }
 
-    # Return cached result when no explicit ModuleRoot override is given
+    # Memoized — avoid repeated filesystem traversal on every caller invocation
     if (-not $ModuleRoot -and $script:CachedRepoRoot) {
         return $script:CachedRepoRoot
     }
@@ -53,8 +59,7 @@ function Get-RepoRoot {
         throw "Module root not resolved. Load the robot module via Import-Module before calling Get-RepoRoot."
     }
 
-    # Start from the parent of the module directory - the module is always
-    # a child of the lore repo (whether as a submodule or plain subdirectory).
+    # Start from parent of module dir — the module is always a child of the lore repo
     $CurrentDir = [System.IO.Path]::GetDirectoryName($ModuleRoot)
     if (-not $CurrentDir) {
         throw "Module directory '$ModuleRoot' has no parent directory."
@@ -68,7 +73,7 @@ function Get-RepoRoot {
         $CurrentDir = [System.IO.Path]::GetDirectoryName($CurrentDir)
     }
 
-    # Fallback: the module directory itself may be the repo root (standalone checkout, e.g. CI)
+    # Standalone checkout fallback (CI pipelines where the module is the repo itself)
     $GitPath = [System.IO.Path]::Combine($ModuleRoot, ".git")
     if ([System.IO.Directory]::Exists($GitPath) -or [System.IO.File]::Exists($GitPath)) {
         $script:CachedRepoRoot = $ModuleRoot
@@ -92,8 +97,7 @@ function Get-ParentRepoRoot {
         $RepoRoot = Get-RepoRoot
     }
 
-    # Walk up from the repo root itself. If this repo is a submodule,
-    # its parent directory (or an ancestor) contains the enclosing .git directory.
+    # Walk past the submodule boundary to find the enclosing parent repo
     $CurrentDir = [System.IO.Path]::GetDirectoryName($RepoRoot)
     if (-not $CurrentDir) {
         return $null

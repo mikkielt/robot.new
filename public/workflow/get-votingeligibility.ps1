@@ -3,7 +3,7 @@
     Voting eligibility assessment based on historical PU assignment runs.
 
     .DESCRIPTION
-    This file contains Get-VotingEligibility - a read-only function that
+    This file contains Get-VotingEligibility — a read-only function that
     determines player voting eligibility by replaying PU computation over
     actual PU assignment runs recorded in pu-sessions.md.
 
@@ -13,20 +13,27 @@
     1. Parsing pu-sessions.md processing timestamps to identify runs.
     2. Filtering to runs whose processing date falls within the lookback.
     3. Grouping runs by calendar month and merging into monthly batches.
-    4. Fetching session objects matching the recorded headers.
-    5. Replaying the PU computation algorithm month-by-month with overflow
-       pool tracking across months.
-    6. Aggregating GrantedPU per player across all characters and months.
+    4. Deriving the narrowest date range from session headers to minimize
+       Get-Session file scanning scope (avoid full-repo scan).
+    5. Fetching session objects matching the recorded headers.
+    6. Building a character lookup (including aliases) for PU-to-player mapping.
+    7. Replaying the PU computation algorithm month-by-month with overflow
+       pool tracking across months (same cap/overflow logic as
+       Invoke-PlayerCharacterPUAssignment).
+    8. Aggregating GrantedPU per player across all characters and months.
 
     This ensures the eligibility window matches what was actually processed
-    by the PU assignment workflow, not an approximation based on session
-    dates.
+    by the PU assignment workflow, not an approximation based on session dates.
 
-    Dot-sources admin-state.ps1 and admin-config.ps1 for state file
-    handling and config resolution.
+    Output is sorted with eligible players first (for quick visual scan in
+    CLI and reports), then alphabetically within each group.
+
+    Module-level data:
+    - $script:HistorySessionPattern: precompiled regex for "    - ### header" lines
+    - $script:SessionHeaderDatePattern: precompiled regex for YYYY-MM-DD prefix extraction
+    - $script:AdminHistoryTimestampPattern: canonical definition in admin-state.ps1
 #>
 
-# Dot-source helpers
 . "$script:ModuleRoot/private/admin-state.ps1"
 . "$script:ModuleRoot/private/admin-config.ps1"
 
@@ -70,6 +77,7 @@ function Get-VotingEligibility {
     $Config = Get-AdminConfig
 
     # --- 1. Parse pu-sessions.md into timestamped run blocks ---
+    # Each block starts with a timestamp line and contains indented session headers.
 
     $PUSessionsPath = [System.IO.Path]::Combine($Config.ResDir, 'pu-sessions.md')
 
@@ -82,7 +90,6 @@ function Get-VotingEligibility {
     $Content = [System.IO.File]::ReadAllText($PUSessionsPath, $UTF8NoBOM)
     $Lines = $Content.Split([string[]]@("`r`n", "`n"), [System.StringSplitOptions]::None)
 
-    # Each run block: timestamp + list of session headers
     $Runs = [System.Collections.Generic.List[object]]::new()
     $CurrentTimestamp = $null
     $CurrentHeaders = $null
@@ -90,7 +97,6 @@ function Get-VotingEligibility {
     foreach ($Line in $Lines) {
         $TsMatch = $script:AdminHistoryTimestampPattern.Match($Line)
         if ($TsMatch.Success) {
-            # Save previous block if any
             if ($null -ne $CurrentTimestamp -and $CurrentHeaders.Count -gt 0) {
                 [void]$Runs.Add([PSCustomObject]@{
                     Timestamp = $CurrentTimestamp
@@ -129,8 +135,8 @@ function Get-VotingEligibility {
         return @()
     }
 
-    # 2. Scope to the lookback window using processing timestamp (not session date)
-    #    so eligibility reflects when PU was actually awarded
+    # 2. Scope to lookback window by processing timestamp (not session date)
+    #    so eligibility reflects when PU was actually awarded, not when the session happened
 
     $Now = [datetime]::Now
     $CutoffDate = [datetime]::new($Now.AddMonths(-$Months).Year, $Now.AddMonths(-$Months).Month, 1)
@@ -147,7 +153,8 @@ function Get-VotingEligibility {
         return @()
     }
 
-    # 3. Group by calendar month so the PU cap (5/month) applies per-month as in production
+    # 3. Group by calendar month — the 5 PU/month cap must apply per-month
+    #    to match the production Invoke-PlayerCharacterPUAssignment behavior
 
     $MonthBatches = [System.Collections.Generic.Dictionary[string, System.Collections.Generic.HashSet[string]]]::new(
         [System.StringComparer]::Ordinal
@@ -165,12 +172,12 @@ function Get-VotingEligibility {
         }
     }
 
-    # Overflow pool carries forward across months, so order matters
+    # Overflow pool carries forward across months, so chronological order is required
     $SortedMonths = [System.Collections.Generic.List[string]]::new($MonthBatches.Keys)
     $SortedMonths.Sort([System.StringComparer]::Ordinal)
 
-    # 4. Derive the narrowest date range that covers all referenced sessions
-    #    to minimize Get-Session's file scanning scope
+    # 4. Derive the narrowest date range covering all referenced sessions
+    #    to constrain Get-Session's file scanning (avoid full-repo scan)
 
     $AllHeaders = [System.Collections.Generic.HashSet[string]]::new(
         [System.StringComparer]::OrdinalIgnoreCase
@@ -198,11 +205,11 @@ function Get-VotingEligibility {
         return @()
     }
 
-    # 5. Fetch session objects and extract PU data for matching headers only
+    # 5. Fetch session objects for the derived date range
 
     $Sessions = Get-Session -MinDate $MinSessionDate -MaxDate $MaxSessionDate -Unique
 
-    # Only sessions with PU entries matter; strip "### " prefix for header matching
+    # Index by header (stripped of "### " prefix) for O(1) lookup per PU run
     $SessionLookup = [System.Collections.Generic.Dictionary[string, object]]::new(
         [System.StringComparer]::OrdinalIgnoreCase
     )
@@ -218,7 +225,8 @@ function Get-VotingEligibility {
         }
     }
 
-    # 6. Build character lookup (including aliases) for PU entry → player mapping
+    # 6. Build character lookup (including aliases) for PU entry -> player mapping
+    #    Aliases are needed because PU entries may use any known name variant
 
     $AllCharacters = Get-PlayerCharacter
     $CharacterLookup = [System.Collections.Generic.Dictionary[string, object]]::new(
@@ -237,20 +245,20 @@ function Get-VotingEligibility {
         }
     }
 
-    # 7. Replay PU computation month-by-month, mirroring the actual
-    #    Invoke-PlayerCharacterPUAssignment algorithm for accuracy
+    # 7. Replay PU computation month-by-month, mirroring
+    #    Invoke-PlayerCharacterPUAssignment's algorithm for accuracy
 
-    # Overflow pool per character tracks excess PU above the 5/month cap
+    # Overflow pool per character: excess PU above the 5/month cap carries forward
     $OverflowPool = [System.Collections.Generic.Dictionary[string, decimal]]::new(
         [System.StringComparer]::OrdinalIgnoreCase
     )
 
-    # Sum across all months and characters to get each player's total
+    # Accumulates GrantedPU per player across all characters and months
     $PlayerPU = [System.Collections.Generic.Dictionary[string, decimal]]::new(
         [System.StringComparer]::OrdinalIgnoreCase
     )
 
-    # Retain a character reference per player for MargonemID in the output
+    # Keep one character ref per player to extract MargonemID for the output
     $PlayerCharacterMap = [System.Collections.Generic.Dictionary[string, object]]::new(
         [System.StringComparer]::OrdinalIgnoreCase
     )
@@ -258,7 +266,7 @@ function Get-VotingEligibility {
     foreach ($MonthKey in $SortedMonths) {
         $MonthHeaders = $MonthBatches[$MonthKey]
 
-        # Collect PU entries for this month's sessions
+        # Aggregate PU entries per character for this month's sessions
         $PUByCharacter = [System.Collections.Generic.Dictionary[string, System.Collections.Generic.List[decimal]]]::new(
             [System.StringComparer]::OrdinalIgnoreCase
         )
@@ -271,12 +279,12 @@ function Get-VotingEligibility {
                 if ($null -eq $PUEntry.Value) { continue }
 
                 $CharName = $PUEntry.Character
-                # Resolve to canonical name
+                # Resolve alias to canonical name for consistent aggregation
                 $Character = $null
                 if ($CharacterLookup.TryGetValue($CharName, [ref]$Character)) {
                     $CanonicalName = $Character.Name
                 } else {
-                    # Unresolved character - skip silently for election purposes
+                    # Unresolved character — skip silently (historical data may reference deleted characters)
                     continue
                 }
 
@@ -285,27 +293,25 @@ function Get-VotingEligibility {
                 }
                 [void]$PUByCharacter[$CanonicalName].Add([decimal]$PUEntry.Value)
 
-                # Track player for later
+                # Track player -> character mapping for MargonemID output
                 if (-not $PlayerCharacterMap.ContainsKey($Character.PlayerName)) {
                     $PlayerCharacterMap[$Character.PlayerName] = $Character
                 }
             }
         }
 
-        # Compute PU for each character this month
+        # Apply PU algorithm per character: BasePU = 1 + sum, capped at 5, with overflow pool
         foreach ($Entry in $PUByCharacter.GetEnumerator()) {
             $CanonicalName = $Entry.Key
             $PUValues = $Entry.Value
             $Character = $CharacterLookup[$CanonicalName]
 
-            # Sum session PU values
             $SessionPUSum = [decimal]0
             foreach ($Val in $PUValues) {
                 $SessionPUSum += $Val
             }
 
-            # PU calculation (same algorithm as Invoke-PlayerCharacterPUAssignment)
-            $BasePU = [decimal]1 + $SessionPUSum
+            $BasePU = [decimal]1 + $SessionPUSum  # base participation bonus of 1
 
             $OriginalPUExceeded = [decimal]0
             if ($OverflowPool.ContainsKey($CanonicalName)) {
@@ -323,13 +329,11 @@ function Get-VotingEligibility {
                 $OverflowPU = $BasePU - 5
             }
 
-            $GrantedPU = [math]::Min($BasePU + $UsedExceeded, [decimal]5)
+            $GrantedPU = [math]::Min($BasePU + $UsedExceeded, [decimal]5)  # 5 PU/month cap
             $RemainingPUExceeded = ($OriginalPUExceeded - $UsedExceeded) + $OverflowPU
-
-            # Update overflow pool for next month
             $OverflowPool[$CanonicalName] = [math]::Max([decimal]0, $RemainingPUExceeded)
 
-            # Accumulate GrantedPU for the player
+            # Accumulate across characters — one player may have multiple characters
             $PlayerName = $Character.PlayerName
             if (-not [string]::IsNullOrWhiteSpace($PlayerName)) {
                 if (-not $PlayerPU.ContainsKey($PlayerName)) {
@@ -340,7 +344,7 @@ function Get-VotingEligibility {
         }
     }
 
-    # 8. Build output
+    # 8. Build output — eligible players first for quick visual scan
 
     $Results = [System.Collections.Generic.List[object]]::new()
 
@@ -361,7 +365,7 @@ function Get-VotingEligibility {
         })
     }
 
-    # Eligible players first for quick visual scan in CLI and reports
+    # Partition and sort: eligible first, then ineligible, alphabetical within each
     $Sorted = [System.Collections.Generic.List[object]]::new()
     $Eligible = [System.Collections.Generic.List[object]]::new()
     $Ineligible = [System.Collections.Generic.List[object]]::new()

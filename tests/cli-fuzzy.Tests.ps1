@@ -4,8 +4,6 @@
 
     .DESCRIPTION
     Tests for fuzzy candidate filtering and source-based candidate generation.
-    Interactive fuzzy search UI (Show-FuzzySearch) is NOT tested here as it
-    requires a live terminal.
 #>
 
 BeforeAll {

@@ -3,35 +3,42 @@
     Virtual buffer and diff-based rendering for the Robot CLI TUI engine.
 
     .DESCRIPTION
-    Maintains two screen buffers (front and back). Each buffer is an array
-    of lines, and each line is an array of styled segments. On each render
-    cycle the engine builds the new frame into the back buffer, then diffs
-    it against the front buffer to emit only changed rows.
+    Implements a double-buffering strategy inspired by terminal multiplexers:
+    the engine builds each frame into the back buffer, then diffs it against
+    the front buffer to emit only changed rows. This minimizes ANSI cursor
+    repositioning and avoids full-screen redraws that cause visible flicker,
+    especially over slow terminal emulators or SSH connections.
 
-    Segment structure:
+    Each buffer is an array of lines, and each line is an array of styled
+    segment hashtables:
         @{ Text = [string]; Color = [string]; Bold = [bool]; Dim = [bool] }
+
+    A null or empty segment array means "blank line" — padded with spaces
+    on render to overwrite stale content from the previous frame.
+
+    The diff path uses a two-tier comparison: a fast XOR hash per row
+    (Set-BufferLine computes it on write) eliminates most unchanged rows,
+    then Compare-BufferLine verifies hash collisions segment-by-segment.
+    This avoids O(segments) comparison on every row every frame.
 
     Helpers:
     - New-ScreenBuffer:    creates empty buffer of N rows
     - Initialize-Buffers:  allocates front/back buffers and hash arrays from ScreenHeight
     - Clear-BufferRegion:  clears lines in a specific region
     - Set-BufferLine:      writes segments to a specific row, updates hash array
-    - Compare-BufferLine:  compares two lines segment-by-segment
-    - Render-BufferDiff:   diffs old vs new buffer, re-renders changed rows
+    - Compare-BufferLine:  compares two lines segment-by-segment for equality
+    - Render-BufferDiff:   diffs old vs new buffer, re-renders only changed rows
     - Render-FullBuffer:   forces full re-render (used after terminal resize)
-    - Render-Line:         outputs a single line's segments to the terminal
+    - Render-Line:         outputs a single line's segments to the terminal with padding
     - Render-Segment:      outputs a single segment (ANSI on PS7, Write-Host on PS5.1)
     - Snapshot-Region:     copies region lines for overlay save/restore
     - Restore-Region:      restores region from snapshot
     - New-Segment:         creates a segment hashtable with Text/Color/Bold/Dim
     - New-PaddedLine:      builds a segment array padded to terminal width
 
-    Each line in the buffer is an array of segment hashtables. A null or
-    empty array means "blank line" (filled with spaces on render).
-
     Module-level data:
-    - $script:FrontBuffer:     currently displayed frame
-    - $script:BackBuffer:      frame being assembled for next render
+    - $script:FrontBuffer:     currently displayed frame (last rendered)
+    - $script:BackBuffer:      frame being assembled for next render cycle
     - $script:FrontBufferHash: per-row XOR hash of front buffer (fast diff path)
     - $script:BackBufferHash:  per-row XOR hash of back buffer (fast diff path)
     - $script:BlankBuffer:     pre-allocated char[300] of spaces for zero-allocation padding
@@ -118,7 +125,6 @@ function Set-BufferLine {
 
 # ── Compare-BufferLine ───────────────────────────────────────────────────────
 
-# Returns $true if lines are identical, $false if they differ
 function Compare-BufferLine {
     param(
         [object[]]$LineA,
@@ -191,7 +197,6 @@ function Render-Segment {
 
 # ── Render-Line ──────────────────────────────────────────────────────────────
 
-# Renders a full line at the given row. Pads to terminal width to overwrite old content.
 function Render-Line {
     param(
         [Parameter(Mandatory)] [int]$Row,
@@ -242,8 +247,6 @@ function Render-Line {
 
 # ── Render-BufferDiff ────────────────────────────────────────────────────────
 
-# Compares back buffer against front buffer. Only re-renders rows that changed.
-# After rendering, copies back buffer to front buffer.
 function Render-BufferDiff {
     if ($null -eq $script:FrontBuffer -or $null -eq $script:BackBuffer) { return }
 
@@ -282,7 +285,6 @@ function Render-BufferDiff {
 
 # ── Render-FullBuffer ────────────────────────────────────────────────────────
 
-# Forces full re-render of the back buffer (used after resize)
 function Render-FullBuffer {
     if ($null -eq $script:BackBuffer) { return }
 
@@ -290,7 +292,7 @@ function Render-FullBuffer {
         Render-Line -Row $Row -Segments $script:BackBuffer[$Row]
     }
 
-    # Copy back to front (including hash arrays)
+    # Promote back buffer to front so next diff cycle starts from current state
     for ($Row = 0; $Row -lt $script:BackBuffer.Count; $Row++) {
         $script:FrontBuffer[$Row] = $script:BackBuffer[$Row]
     }
@@ -310,7 +312,7 @@ function Snapshot-Region {
     $Lines = [System.Collections.Generic.List[object]]::new()
     for ($I = $Region.StartRow; $I -lt $Region.EndRow; $I++) {
         if ($I -ge 0 -and $I -lt $Buffer.Count) {
-            # Shallow copy of the segment array
+            # Shallow copy — overlay restore only needs segment references, not deep clones
             $LineCopy = @() + $Buffer[$I]
             [void]$Lines.Add($LineCopy)
         }
@@ -342,7 +344,6 @@ function Restore-Region {
 
 # ── Segment Builder Helpers ──────────────────────────────────────────────────
 
-# Convenience function for creating a single segment
 function New-Segment {
     param(
         [Parameter(Mandatory)] [AllowEmptyString()] [string]$Text,
@@ -358,20 +359,19 @@ function New-Segment {
     }
 }
 
-# Builds a line of segments that together form padded text at a given width
 function New-PaddedLine {
     param(
         [Parameter(Mandatory)] [object[]]$Segments,
         [int]$Width = $script:ScreenWidth
     )
 
-    # Calculate total text length
     $TotalLen = 0
     foreach ($Seg in $Segments) {
         if ($Seg -and $Seg.Text) { $TotalLen += $Seg.Text.Length }
     }
 
-    # If under width, add padding segment
+    # Append transparent padding segment so the line fills the full terminal width,
+    # preventing leftover characters from the previous frame bleeding through
     $Pad = $Width - $TotalLen
     if ($Pad -gt 0) {
         $Result = @() + $Segments + @(@{ Text = ' ' * $Pad; Color = $null; Bold = $false })

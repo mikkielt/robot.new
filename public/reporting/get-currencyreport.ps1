@@ -3,12 +3,32 @@
     Reports currency holdings across the entity system.
 
     .DESCRIPTION
-    Filters entities to currency items (Przedmiot with @generyczne_nazwy matching
-    a known denomination) and produces a structured report. Supports filtering by
-    owner, denomination, inclusion of virtual/inactive holdings, temporal queries,
-    and base-unit conversion for cross-denomination comparison.
+    Get-CurrencyReport filters entities to currency items (Przedmiot entities
+    whose @generyczne_nazwy matches a known denomination) and produces a
+    structured report with optional filtering by owner, denomination,
+    activity status, and temporal state.
 
-    Dot-sources currency-helpers.ps1 for denomination constants and identification.
+    Processing pipeline:
+    1. Fetch entities via Get-EntityState (with optional -ActiveOn temporal filter)
+    2. Resolve optional denomination filter via Resolve-CurrencyDenomination
+    3. Extract currency items via Get-CurrencyEntitiesFiltered
+    4. Apply denomination and owner filters
+    5. Classify owner type: 'Owner' (has @nale¿y_do), 'Location' (placed at
+       @lokacja only), or 'Unowned' (neither)
+    6. Optionally convert to base unit (Kogi) using denomination multiplier
+    7. Compute staleness warning: balance unchanged for >3 months on owned items
+    8. Attach QuantityHistory timeline when -ShowHistory is set
+
+    Each report entry includes Balance (current quantity), Denomination
+    metadata (Name, Short, Tier), owner/location context, and a Warnings
+    array with diagnostic flags ('NegativeBalance', 'StaleBalance').
+
+    The StaleBalance threshold is 3 months relative to -ActiveOn (if set)
+    or current time, flagging owned items whose last QuantityHistory entry
+    predates the threshold.
+
+    Dot-sources currency-helpers.ps1 for denomination constants,
+    Resolve-CurrencyDenomination, and Get-CurrencyEntitiesFiltered.
 #>
 
 . "$script:ModuleRoot/private/currency-helpers.ps1"
@@ -56,7 +76,7 @@ function Get-CurrencyReport {
         $Entities = if ($ActiveOn) { Get-EntityState -ActiveOn $ActiveOn } else { Get-EntityState }
     }
 
-    # Resolve denomination filter
+    # Map user-supplied denomination string (partial/short form) to canonical denomination
     $DenomFilter = $null
     if ($Denomination) {
         $DenomFilter = Resolve-CurrencyDenomination -Name $Denomination
@@ -71,29 +91,27 @@ function Get-CurrencyReport {
     $CurrencyItems = Get-CurrencyEntitiesFiltered -Entities $Entities -IncludeInactive:$IncludeInactive
 
     foreach ($Item in $CurrencyItems) {
-        # Denomination filter
         if (-not (Test-CurrencyDenominationMatch -DenominationName $Item.Denomination.Name -DenomFilter $DenomFilter)) { continue }
-
-        # Owner filter
         if (-not (Test-CurrencyOwnerMatch -EntityOwner $Item.Owner -FilterOwner $Owner)) { continue }
 
-        # Determine owner type
+        # Classify ownership: direct owner takes precedence over location-only placement
         $OwnerType = if ($Item.Owner) { 'Owner' } elseif ($Item.Location) { 'Location' } else { 'Unowned' }
 
-        # Compute base unit value if requested
+        # Convert to Kogi base unit for cross-denomination comparison
         $BaseUnitValue = $null
         if ($AsBaseUnit) {
             $BaseUnitValue = $Item.Quantity * $Item.Denomination.Multiplier
         }
 
-        # Determine last change date from QuantityHistory
+        # Extract most recent change date for staleness detection
         $LastChangeDate = $null
         if ($Item.Entity.QuantityHistory -and $Item.Entity.QuantityHistory.Count -gt 0) {
             $LastEntry = $Item.Entity.QuantityHistory[-1]
             $LastChangeDate = $LastEntry.ValidFrom
         }
 
-        # Status flags
+        # Diagnostic flags: negative balance (data error) and stale balance (no
+        # changes in 3+ months on owned items, may indicate forgotten bookkeeping)
         $Warnings = [System.Collections.Generic.List[string]]::new()
         if ($Item.Quantity -lt 0) {
             $Warnings.Add('NegativeBalance')

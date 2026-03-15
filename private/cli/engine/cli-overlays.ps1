@@ -7,6 +7,25 @@
     help overlay with scrolling and progressive content, health dashboard
     with system status sections, and help topic search across registry.
 
+    The help overlay draws a Unicode box-drawn border inside the content
+    region and renders scrollable text within it. It supports LiveContext
+    scriptblocks that inject dynamic state (e.g., current filter info,
+    selected entity details) at the end of the static help content.
+
+    The health dashboard aggregates results from four subsystem checks
+    (PU, Currency, Session Integrity, Session Graph) into a single view
+    with checkmark/warning icons and warn counts. When checks were
+    skipped via -NoHealthCheck, the dashboard shows a prompt to trigger
+    them on demand via Enter.
+
+    Search-HelpTopics enables the /h search command by scanning registry
+    entries' HelpBrief and HelpFull strings for keyword matches, returning
+    context lines around hits.
+
+    Get-AutoStepHelp provides fallback help text for wizard steps that lack
+    explicit HelpBrief/HelpFull in registry overrides, by introspecting
+    function parameter metadata (type, mandatory, ValidateSet, HelpMessage).
+
     Helpers:
     - New-HelpOverlayComponent:     bordered help overlay with scroll, LiveContext support
     - New-HealthDashboardComponent: full system health status view
@@ -38,12 +57,12 @@ function New-HelpOverlayComponent {
         [scriptblock]$LiveContext
     )
 
-    # Inject live context if available
+    # Append dynamic context (current state, selection info) after static help text
     $DisplayContent = [System.Collections.Generic.List[string]]::new($Content)
 
     if ($LiveContext) {
         try {
-            # LiveContext runs synchronously — callers should keep scriptblocks fast
+            # Runs synchronously on each overlay creation — callers should keep it fast
             $ContextLines = & $LiveContext
             if ($ContextLines) {
                 [void]$DisplayContent.Add('')
@@ -91,12 +110,12 @@ function New-HelpOverlayComponent {
             $BorderBL = [char]0x2514
             $BorderBR = [char]0x2518
 
-            $BoxLeft = 3   # left margin for visual centering
-            $BoxInnerWidth = [Math]::Min(($script:ScreenWidth - 10), 70)  # cap at 70 chars for readability
-            $BoxInnerWidth = [Math]::Max($BoxInnerWidth, 20)  # floor to prevent collapsed boxes
+            $BoxLeft = 3       # left margin for visual centering
+            $BoxInnerWidth = [Math]::Min(($script:ScreenWidth - 10), 70)  # cap at 70 for comfortable reading line length
+            $BoxInnerWidth = [Math]::Max($BoxInnerWidth, 20)              # floor to prevent collapsed boxes
             $BoxWidth = $BoxInnerWidth + 4
 
-            $VisibleLines = $ContentHeight - 4  # subtract: top border, bottom border, footer line, margin
+            $VisibleLines = $ContentHeight - 4  # reserve rows for: top border, bottom border, footer, margin
             $VisibleLines = [Math]::Max($VisibleLines, 1)
 
             $MaxOffset = [Math]::Max(0, $Content.Count - $VisibleLines)
@@ -215,7 +234,7 @@ function New-HealthDashboardComponent {
             )
             $Row += 2
 
-            # Show skip notice when health checks were bypassed via -NoHealthCheck
+            # -NoHealthCheck flag skips all health checks at startup for faster load
             if ($HC.Skipped) {
                 Set-BufferLine -Buffer $script:BackBuffer -Row $Row -Segments @(
                     (New-Segment -Text '    Sprawdzanie pominiete (-NoHealthCheck)' -Color $DisabledColor)
@@ -227,7 +246,7 @@ function New-HealthDashboardComponent {
                 return
             }
 
-            # Check timestamp
+            # Show age of last health check so the user knows if data is stale
             if ($HC.CheckedAt) {
                 $CheckAge = ([datetime]::Now - $HC.CheckedAt).TotalMinutes
                 $AgeStr = if ($CheckAge -lt 1) { 'przed chwila' }
@@ -239,26 +258,22 @@ function New-HealthDashboardComponent {
                 $Row += 2
             }
 
-            # PU section
+            # Render each subsystem as a single status line with checkmark or warning count
             $Row = Render-HealthSection -Row $Row -Label 'PU' -Data $HC.PU `
                 -CheckFn { param($D) $C = 0; foreach ($Item in $D) { if ($Item.Status -ne 'OK') { $C++ } }; return $C }
             $Row++
 
-            # Currency section
             $Row = Render-HealthSection -Row $Row -Label 'Waluta' -Data $HC.Currency `
                 -CheckFn { param($D) if ($D.WarningCount) { $D.WarningCount } else { 0 } }
             $Row++
 
-            # Integrity section
             $Row = Render-HealthSection -Row $Row -Label 'Integralnosc sesji' -Data $HC.Integrity `
                 -CheckFn { param($D) $C = 0; foreach ($Item in $D) { if (-not $Item.IsValid) { $C++ } }; return $C }
             $Row++
 
-            # Graph section
             $Row = Render-HealthSection -Row $Row -Label 'Graf sesji' -Data $HC.Graph `
                 -CheckFn { param($D) if ($D.WarningCount) { $D.WarningCount } else { 0 } }
 
-            # Errors
             if ($HC.Errors -and $HC.Errors.Count -gt 0) {
                 $Row += 2
                 Set-BufferLine -Buffer $script:BackBuffer -Row $Row -Segments @(
@@ -287,7 +302,7 @@ function New-HealthDashboardComponent {
                     }
                 }
                 'Select' {
-                    # Enter triggers health checks when they were skipped
+                    # Enter triggers on-demand health checks when initially skipped
                     if ($State.HealthCache.Skipped -or -not $State.HealthCache.CheckedAt) {
                         Refresh-HealthChecks -State $State
                     }
@@ -338,8 +353,6 @@ function Render-HealthSection {
 
 # ── Help Topic Search ───────────────────────────────────────────────────────
 
-# Searches across registry help content for matching topics
-# Returns an array of matching help entries with context lines
 function Search-HelpTopics {
     param(
         [Parameter(Mandatory)] [string]$Query,
@@ -357,7 +370,6 @@ function Search-HelpTopics {
         $Matched = $false
         $ContextLines = [System.Collections.Generic.List[string]]::new()
 
-        # Search in entry-level HelpFull
         if ($Overrides.HelpFull) {
             foreach ($Line in $Overrides.HelpFull) {
                 if ($Line -and $Line.IndexOf($QueryLower, [System.StringComparison]::OrdinalIgnoreCase) -ge 0) {
@@ -367,7 +379,7 @@ function Search-HelpTopics {
             }
         }
 
-        # Search in step-level help
+        # Also search step-level HelpBrief/HelpFull for deeper matches
         foreach ($Key in $Overrides.Keys) {
             $Step = $Overrides[$Key]
             if ($Step -is [hashtable]) {
@@ -400,8 +412,6 @@ function Search-HelpTopics {
 
 # ── Auto-Generated Step Help ────────────────────────────────────────────────
 
-# Generates help text from function parameter metadata when no explicit
-# HelpBrief/HelpFull is provided in registry Overrides
 function Get-AutoStepHelp {
     param(
         [Parameter(Mandatory)] [string]$FunctionName,
@@ -417,7 +427,7 @@ function Get-AutoStepHelp {
         $ParamInfo = $CmdInfo.Parameters[$ParameterName]
         if (-not $ParamInfo) { return @() }
 
-        # Parameter type
+        # Map .NET types to Polish-language hints appropriate for CLI wizard users
         $TypeName = $ParamInfo.ParameterType.Name
         switch ($TypeName) {
             'Int32'    { [void]$Lines.Add('Liczba calkowita') }
@@ -429,7 +439,7 @@ function Get-AutoStepHelp {
             default    { [void]$Lines.Add("Typ: $TypeName") }
         }
 
-        # Mandatory check
+        # Extract Mandatory flag, HelpMessage, and ValidateSet from parameter attributes
         foreach ($Attr in $ParamInfo.Attributes) {
             if ($Attr -is [System.Management.Automation.ParameterAttribute]) {
                 if ($Attr.Mandatory) {
@@ -440,20 +450,18 @@ function Get-AutoStepHelp {
                 }
             }
 
-            # ValidateSet
             if ($Attr -is [System.Management.Automation.ValidateSetAttribute]) {
                 $Vals = $Attr.ValidValues -join ', '
                 [void]$Lines.Add("Dozwolone wartosci: $Vals")
             }
         }
 
-        # Default value (from DefaultParameterValues if available)
         if ($ParamInfo.PSObject.Properties['DefaultValue'] -and $null -ne $ParamInfo.DefaultValue) {
             [void]$Lines.Add("Domyslnie: $($ParamInfo.DefaultValue)")
         }
     }
     catch {
-        # Silently ignore — auto-help is best-effort
+        # Auto-help is best-effort — missing commands or inaccessible metadata are not errors
     }
 
     return ,$Lines.ToArray()

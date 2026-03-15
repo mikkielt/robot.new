@@ -5,6 +5,24 @@
     .DESCRIPTION
     Paginated table with column headers, responsive column hiding,
     row selection, inline filtering, and cell truncation with ellipsis.
+    Used for report views (named locations, economic snapshots, session
+    lists) where data is best presented in tabular form.
+
+    Pagination is row-based: Left/Right arrows move between pages of
+    PageSize rows, while Up/Down navigate within the current page.
+    The selected row position is tracked as an absolute index across
+    all data, and the current page is derived from it.
+
+    Responsive column hiding uses a priority system: each column has a
+    priority (1 = always show, 2 = hide when narrow, 3 = hide first).
+    Resolve-VisibleColumns progressively removes lower-priority columns
+    from right to left until the total width fits the terminal. The
+    result is cached per screen width to avoid recalculation on each
+    render cycle.
+
+    Filtering pre-builds a lowercase search index at construction time
+    (one concatenated string per row) so filter matching is a single
+    IndexOf call per row instead of iterating columns.
 
     Helpers:
     - New-ResultTableComponent:  creates a paginated table component
@@ -37,13 +55,12 @@ function New-ResultTableComponent {
         [hashtable]$FilterPrefixes
     )
 
-    # Default column width of 20 chars — fits most entity names and short values
     if (-not $Widths -or $Widths.Count -eq 0) {
-        $Widths = @(20) * $Headers.Count
+        $Widths = @(20) * $Headers.Count  # 20 chars fits most entity names and short values
     }
 
-    # Pre-build lowercase search index so filtering searches one string per row
-    # instead of iterating columns — significant speedup for tables with 500+ rows
+    # Pre-build per-row search index: one lowercase string per row instead of
+    # per-column iteration — significant speedup for tables with 500+ rows
     $SearchIndex = [string[]]::new($Data.Count)
     for ($SI = 0; $SI -lt $Data.Count; $SI++) {
         $SB = [System.Text.StringBuilder]::new()
@@ -94,8 +111,7 @@ function New-ResultTableComponent {
             $Headers = $ComponentRef.Headers
             $Widths = $ComponentRef.Widths
 
-            # Responsive columns are cached per screen width to avoid recalculating
-            # priority-based column hiding on every render cycle
+            # Cache visible columns per screen width to avoid priority-based recalculation each frame
             if ($ComponentRef._VisColsWidth -ne $script:ScreenWidth) {
                 $ComponentRef._VisColsCache = Resolve-VisibleColumns -Columns $Columns -Headers $Headers `
                     -Widths $Widths -ColumnPriority $ComponentRef.ColumnPriority `
@@ -171,7 +187,7 @@ function New-ResultTableComponent {
                         }
                     } catch { }
 
-                    # Truncation with ellipsis (… is 1 char, leave 1 char margin)
+                    # Truncate with ellipsis to prevent column overflow
                     if ($Val.Length -gt ($VC.Width - 1)) {
                         $Val = $Val.Substring(0, $VC.Width - 2) + [string][char]0x2026
                     }
@@ -183,7 +199,6 @@ function New-ResultTableComponent {
                 $Row++
             }
 
-            # Page info
             $Row++
             if (($Row - $Region.StartRow) -lt $ContentHeight) {
                 $PageInfo = "  Strona $($CurrentPage + 1)/$TotalPages ($($Data.Count) wynikow)  |  Wiersz $($SelectedAbs + 1)/$($Data.Count)"
@@ -268,21 +283,19 @@ function Invoke-TableFilter {
     $Index = $Component.SearchIndex
 
     if ([string]::IsNullOrEmpty($Query) -and -not $Parsed.TypeFilter) {
-        # No filter — return all data
         $Component.Data = $AllData
         $Component.SelectedAbs = 0
         $Component.FilteredCount = $AllData.Count
         return
     }
 
-    # Use pre-built search index for single-string matching instead of per-column iteration
     for ($RI = 0; $RI -lt $AllData.Count; $RI++) {
         if ($Index -and $RI -lt $Index.Count) {
             if ($Index[$RI].IndexOf($Query) -ge 0) {
                 [void]$Filtered.Add($AllData[$RI])
             }
         } else {
-            # Fallback: per-column search
+            # Fallback when search index is missing or undersized
             foreach ($Col in $Component.Columns) {
                 if ($AllData[$RI].PSObject.Properties[$Col]) {
                     $Val = [string]$AllData[$RI].$Col
@@ -322,16 +335,13 @@ function Resolve-VisibleColumns {
         })
     }
 
-    # Start with all columns, then progressively hide low-priority ones
-    # (priority 3 first, then 2) until total width fits the terminal
+    # Start with all columns, progressively drop priority 3 then 2 until fit
     $Visible = [System.Collections.Generic.List[object]]::new()
     foreach ($C in $AllCols) { [void]$Visible.Add($C) }
 
-    # Calculate total used width
-    $UsedWidth = 4  # 2 chars indent + 2 chars pointer ("▸ " or "  ")
+    $UsedWidth = 4  # 2 chars indent + 2 chars pointer
     foreach ($C in $Visible) { $UsedWidth += $C.Width }
 
-    # Remove priority 3, then 2 if still too wide
     foreach ($PriorityToRemove in @(3, 2)) {
         if ($UsedWidth -le $AvailableWidth) { break }
 

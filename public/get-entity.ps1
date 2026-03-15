@@ -6,32 +6,40 @@
     .DESCRIPTION
     This file contains Get-Entity and its helpers. It dot-sources
     temporal-helpers.ps1 for shared temporal utility functions
-    (ConvertFrom-ValidityString, Test-TemporalActivity, etc.).
+    (ConvertFrom-ValidityString, Test-TemporalActivity, Get-LastActiveValue,
+    Get-AllActiveValues, Get-NestedBulletText, ConvertFrom-CoordinateString).
 
     Helpers:
-    - Resolve-EntityCN: builds hierarchical canonical names for locations via @lokacja chain
+    - Resolve-EntityCN: builds hierarchical canonical names for locations via @lokacja
+      chain traversal, with memoization via $CNCache and cycle detection via $Visited HashSet
 
     Get-Entity reads entity registry Markdown files and builds a unified collection of typed
-    entity objects (NPCs, groups, locations, players). Entities carry time-scoped
+    entity objects (NPCs, groups, locations, players, maps, items). Entities carry time-scoped
     aliases (@alias), location assignments and containment hierarchy (@lokacja), group
-    memberships (@grupa), and generic key-value overrides (@<anything>).
+    memberships (@grupa), door connections (@drzwi), ownership (@należy_do), quantity
+    (@ilość), coordinates (@koordynaty), and generic key-value overrides (@<anything>).
+
+    Processing pipeline:
+    1. Input collection: resolves -Path to individual entity files (entities.md + *-NNN-ent.md)
+    2. Sort ordering: files processed highest-key-first so lowest-numbered file wins on merge
+       (entities.md = MaxValue, unrecognised = MaxValue-1, NNN-ent.md = NNN)
+    3. Batch parse: single Get-Markdown call parses all files, results keyed by path
+    4. Section dispatch: section headers mapped to entity types via Polish singular/plural forms
+    5. Tag dispatch: nested @tag bullets dispatched via switch to typed history lists
+    6. Entity merge: same-name entities across files have their histories concatenated
+    7. CN resolution: post-parse pass builds hierarchical canonical names via Resolve-EntityCN
 
     Multi-file support: files are processed in descending numeric order so the lowest number
     has highest override primacy. Same-name entities across files are merged, not replaced.
 
     After parsing, each entity receives a Canonical Name (CN). Non-location entities get
-    "Type/Name". Locations get hierarchical paths built by walking the @lokacja chain upward
-    (e.g. "Lokacja/Eder/Ithan/Ratusz Ithan"). Cycle detection prevents infinite recursion.
+    "Type/Name". Locations and maps get hierarchical paths built by walking the @lokacja
+    chain upward (e.g. "Lokacja/Eder/Ithan/Ratusz Ithan"). Cycle detection prevents
+    infinite recursion. Locations with active @drzwi also receive path-qualified names
+    (e.g. "Ithan/Ratusz Ithan") for resolution convenience.
 #>
 
-# Dot-source shared temporal helpers
 . "$script:ModuleRoot/private/temporal-helpers.ps1"
-
-# Helper: resolve canonical name for an entity
-# Non-location entities get a flat "Type/Name" CN. Locations get a hierarchical
-# path derived from the @lokacja history (e.g. "Lokacja/Eder/Ithan/Ratusz Ithan").
-# Uses $Visited HashSet for cycle detection to prevent infinite recursion in
-# circular @lokacja references. Falls back to first active @drzwi when no @lokacja exists.
 function Resolve-EntityCN {
     param(
         [object]$Entity,
@@ -41,43 +49,41 @@ function Resolve-EntityCN {
         [hashtable]$CNCache
     )
 
-    # Memoization: return cached CN if already resolved
     if ($CNCache -and $CNCache.ContainsKey($Entity.Name)) {
         return $CNCache[$Entity.Name]
     }
 
-    # Non-locations always get a flat CN (Mapa shares hierarchical CN logic)
+    # Mapa shares hierarchical CN logic with Lokacja; all others get flat "Type/Name"
     if ($Entity.Type -ne 'Lokacja' -and $Entity.Type -ne 'Mapa') {
         $Result = "$($Entity.Type)/$($Entity.Name)"
         if ($CNCache) { $CNCache[$Entity.Name] = $Result }
         return $Result
     }
 
-    # Cycle guard
+    # HashSet.Add returns false if already present — detects circular @lokacja chains
     if (-not $Visited.Add($Entity.Name)) {
         Write-RobotWarning "[WARN Get-Entity] Cycle detected in @lokacja chain for '$($Entity.Name)'"
         return "Lokacja/$($Entity.Name)"
     }
 
-    # Find the containment parent from the last active @lokacja entry
+    # Walk upward: last active @lokacja defines the containment parent
     $ParentName = Get-LastActiveValue -History $Entity.LocationHistory -PropertyName 'Location' -ActiveOn $ActiveOn
 
-    # Fallback: first active @drzwi if no @lokacja history
+    # @drzwi provides a physical-access parent when no @lokacja history exists
     if (-not $ParentName -and $Entity.Doors.Count -gt 0) {
         $ParentName = $Entity.Doors[0]
     }
 
-    # Top-level location - no parent found
+    # Root location — no containment parent
     if (-not $ParentName) {
         $Result = "Lokacja/$($Entity.Name)"
         if ($CNCache) { $CNCache[$Entity.Name] = $Result }
         return $Result
     }
 
-    # Recurse into parent entity
     $ParentEntity = $EntityByName[$ParentName]
     if (-not $ParentEntity) {
-        # Parent not registered as an entity - use raw name as-is
+        # Parent name from @lokacja not in the entity registry — treat as literal path segment
         $Result = "Lokacja/$ParentName/$($Entity.Name)"
         if ($CNCache) { $CNCache[$Entity.Name] = $Result }
         return $Result
@@ -111,7 +117,6 @@ function Get-Entity {
     if ($Quiet) { $script:SuppressWarnings = $true }
     try {
 
-    # Collect and sort input files
     $Entities  = [System.Collections.Generic.List[object]]::new()
     $EntityMap = [System.Collections.Generic.Dictionary[string, object]]::new([System.StringComparer]::OrdinalIgnoreCase)
 
@@ -128,15 +133,12 @@ function Get-Entity {
         }
     }
 
-    # Deduplicate paths
+    # Deduplicate — directory + explicit file args can overlap
     $UniqueSet = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
     foreach ($FileItem in $FilesToProcess) { [void]$UniqueSet.Add($FileItem) }
 
-    # Build sortable entries with numeric keys extracted from filenames.
-    # Processing order: highest key first -> lowest key last.
-    # entities.md  = MaxValue   (processed first, lowest primacy)
-    # unrecognised = MaxValue-1 (next-lowest primacy)
-    # NNN-ent.md   = NNN        (lowest NNN processed last, highest primacy)
+    # Sort by numeric key so lowest-numbered file is processed last (highest override primacy).
+    # entities.md = MaxValue (first/lowest), unrecognised = MaxValue-1, NNN-ent.md = NNN.
     $NumberPattern = [regex]::new('-(?<number>\d+)-ent\.md$')
     $SortEntries = [System.Collections.Generic.List[object]]::new($UniqueSet.Count)
 
@@ -158,7 +160,7 @@ function Get-Entity {
         return $Entities
     }
 
-    # Batch-parse all entity files in a single Get-Markdown call
+    # Single batch parse amortizes RunspacePool overhead across all entity files
     $EntityFilePaths = [System.Collections.Generic.List[string]]::new($SortEntries.Count)
     foreach ($Entry in $SortEntries) { $EntityFilePaths.Add($Entry.Path) }
 
@@ -167,7 +169,7 @@ function Get-Entity {
     $MarkdownByPath = [System.Collections.Generic.Dictionary[string, object]]::new([System.StringComparer]::OrdinalIgnoreCase)
     foreach ($MarkdownResult in $AllMarkdownResults) { $MarkdownByPath[$MarkdownResult.FilePath] = $MarkdownResult }
 
-    # Iterate in sort order to preserve override primacy
+    # Collect sections in sort order so later entities overwrite earlier ones on merge
     $AllSections = [System.Collections.Generic.List[object]]::new()
     foreach ($Entry in $SortEntries) {
         $Markdown = if ($MarkdownByPath.ContainsKey($Entry.Path)) { $MarkdownByPath[$Entry.Path] } else { $null }
@@ -176,11 +178,8 @@ function Get-Entity {
         }
     }
 
-    # Section header -> entity type mapping
-    # Supports singular and plural Polish forms. Headers not in this map
-    # (e.g. "Instrukcja") default to the generic "Entity" type and are skipped
-    # during entity extraction.
-
+    # Polish singular/plural section headers -> canonical type names.
+    # Unmatched headers (e.g. "Instrukcja") default to "Entity" and are skipped.
     $TypeMap = @{
         "npc"              = "NPC"
         "grupy"            = "Grupa"
@@ -199,9 +198,7 @@ function Get-Entity {
         "mapy"             = "Mapa"
     }
 
-    # Main parsing loop: iterate sections -> entities -> tags
     foreach ($Section in $AllSections) {
-        # Determine entity type from section header
         $SectionType = "Entity"
         if ($Section.Header) {
             $HeaderLower = $Section.Header.Text.ToLowerInvariant().Trim()
@@ -210,7 +207,7 @@ function Get-Entity {
             }
         }
 
-        # Build parent->children lookup in one pass to avoid O(n²) repeated .Where() filtering
+        # O(1) parent->children lookup avoids O(n²) repeated .Where() filtering
         $ChildrenOf = @{}
         $RootChildren = [System.Collections.Generic.List[object]]::new()
         foreach ($LI in $Section.Lists) {
@@ -226,13 +223,10 @@ function Get-Entity {
             }
         }
 
-        # Top-level bullets are entity declarations
-        $EntityBullets = $RootChildren
-
-        foreach ($EntityBullet in $EntityBullets) {
+        foreach ($EntityBullet in $RootChildren) {
             $EntityName = $EntityBullet.Text.Trim()
 
-            # Per-entity collections - populated from nested @tag bullets below
+            # Typed history lists — each @tag switch branch appends to its corresponding list
             $Aliases            = [System.Collections.Generic.List[object]]::new()
             $Names              = [System.Collections.Generic.List[string]]::new()
             $Names.Add($EntityName)
@@ -250,28 +244,26 @@ function Get-Entity {
             $CoordinateHistory  = [System.Collections.Generic.List[object]]::new()
             $Overrides          = @{}
 
-            # Iterate child bullets belonging to this entity via lookup
+            # Identity-hash lookup for child bullets belonging to this entity
             $EntityParentId = [System.Runtime.CompilerServices.RuntimeHelpers]::GetHashCode($EntityBullet)
             $ChildBullets = if ($ChildrenOf.ContainsKey($EntityParentId)) { $ChildrenOf[$EntityParentId] } else { @() }
 
             foreach ($Bullet in $ChildBullets) {
                 $LineText = $Bullet.Text.Trim()
 
-                # Non-@ lines are plain aliases (legacy format) - skip them here
+                # Legacy plain-text aliases (non-@ lines) are not parsed here
                 if (-not $LineText.StartsWith('@')) { continue }
 
-                # Split "@tag: value"
                 $ColonIdx = $LineText.IndexOf(':')
                 if ($ColonIdx -lt 0) { continue }
 
                 $Tag   = $LineText.Substring(0, $ColonIdx).Trim().ToLowerInvariant()
                 $Value = $LineText.Substring($ColonIdx + 1).Trim()
 
-                # Some tags accept multi-line values via nested bullets (e.g. @info)
+                # Multi-line tags (e.g. @info) carry values in nested child bullets
                 $NestedValue    = Get-NestedBulletText -ParentBullet $Bullet -ChildrenOf $ChildrenOf -ActiveOn $ActiveOn
                 $EffectiveValue = if ([string]::IsNullOrWhiteSpace($Value) -and $NestedValue) { $NestedValue } else { $Value }
 
-                # Dispatch by tag
                 switch ($Tag) {
                     '@lokacja' {
                         $Parsed = ConvertFrom-ValidityString -InputText $Value
@@ -402,7 +394,7 @@ function Get-Entity {
                         }
                     }
                     default {
-                        # Any unrecognised @tag -> generic override (e.g. @pu_startowe, @info, @trigger)
+                        # Unrecognised @tags stored as generic overrides (e.g. @pu_startowe, @info, @trigger)
                         $Parsed = ConvertFrom-ValidityString -InputText $EffectiveValue
                         if (Test-TemporalActivity -Item $Parsed -ActiveOn $ActiveOn) {
                             $PropName  = $Tag.Substring(1)  # strip leading '@'
@@ -423,7 +415,7 @@ function Get-Entity {
                 }
             }
 
-            # Resolve active scalar values from histories
+            # Deduplicate names and resolve scalar values from temporal histories
             $Names          = [System.Collections.Generic.HashSet[string]]::new($Names, [System.StringComparer]::OrdinalIgnoreCase)
             $ActiveLocation = Get-LastActiveValue  -History $LocationHistory -PropertyName 'Location'  -ActiveOn $ActiveOn
             $ActiveDoors    = Get-AllActiveValues   -History $DoorHistory     -PropertyName 'Location'  -ActiveOn $ActiveOn
@@ -432,12 +424,11 @@ function Get-Entity {
             $ActiveOwner    = Get-LastActiveValue  -History $OwnerHistory    -PropertyName 'OwnerName' -ActiveOn $ActiveOn
             $ActiveGroups   = Get-AllActiveValues   -History $GroupHistory    -PropertyName 'Group'     -ActiveOn $ActiveOn
             $ActiveStatus   = Get-LastActiveValue  -History $StatusHistory   -PropertyName 'Status'    -ActiveOn $ActiveOn
-            if (-not $ActiveStatus) { $ActiveStatus = 'Aktywny' }
+            if (-not $ActiveStatus) { $ActiveStatus = 'Aktywny' }  # default: all entities are active
             $ActiveQuantity = Get-LastActiveValue  -History $QuantityHistory -PropertyName 'Quantity'  -ActiveOn $ActiveOn
             $ActiveFilePath = Get-LastActiveValue  -History $FilePathHistory -PropertyName 'FilePath'  -ActiveOn $ActiveOn
             $ActiveNerthusName = Get-LastActiveValue -History $NerthusNameHistory -PropertyName 'NerthusName' -ActiveOn $ActiveOn
 
-            # Resolve active coordinates from history
             $ActiveCoordinates = $null
             if ($CoordinateHistory.Count -gt 0) {
                 $ActiveCoordEntries = $CoordinateHistory.Where({ Test-TemporalActivity -Item $_ -ActiveOn $ActiveOn })
@@ -447,23 +438,21 @@ function Get-Entity {
                 }
             }
 
-            # For locations/maps with active doors, add path-qualified names for resolution
+            # Path-qualified names (e.g. "Ithan/Ratusz") enable unambiguous resolution via door context
             if (($SectionType -eq 'Lokacja' -or $SectionType -eq 'Mapa') -and $ActiveDoors.Count -gt 0) {
                 foreach ($DoorName in $ActiveDoors) {
                     [void]$Names.Add("$DoorName/$EntityName")
                 }
             }
 
-            # Merge or create entity
             $EntityKey = "$SectionType/$EntityName"
             if ($EntityMap.ContainsKey($EntityKey)) {
-                # Entity already seen in a previously-processed file - merge data
+                # Same-name entity from another file — merge all histories and recompute scalars
                 $Existing = $EntityMap[$EntityKey]
 
                 foreach ($NameEntry in $Names) { [void]$Existing.Names.Add($NameEntry) }
                 $Existing.Aliases.AddRange($Aliases)
 
-                # Merge override dictionaries
                 foreach ($Key in $Overrides.Keys) {
                     if (-not $Existing.Overrides.ContainsKey($Key)) {
                         $Existing.Overrides[$Key] = [System.Collections.Generic.List[string]]::new()
@@ -471,7 +460,6 @@ function Get-Entity {
                     $Existing.Overrides[$Key].AddRange($Overrides[$Key])
                 }
 
-                # Merge all history lists
                 $Existing.TypeHistory.AddRange($TypeHistory)
                 $Existing.OwnerHistory.AddRange($OwnerHistory)
                 $Existing.GroupHistory.AddRange($GroupHistory)
@@ -483,12 +471,11 @@ function Get-Entity {
                 foreach ($GN in $GenericNames) { [void]$Existing.Names.Add($GN) }
                 $Existing.Contains.AddRange($ContainsList)
 
-                # Merge file path and NerthusName histories
                 $Existing.FilePathHistory.AddRange($FilePathHistory)
                 $Existing.NerthusNameHistory.AddRange($NerthusNameHistory)
                 $Existing.CoordinateHistory.AddRange($CoordinateHistory)
 
-                # Recompute active scalar properties from merged histories
+                # Recompute active scalars from merged histories — latest active entry wins
                 if ($SectionType -ne "Entity") { $Existing.Type = $SectionType }
                 $MergedType = Get-LastActiveValue -History $Existing.TypeHistory -PropertyName 'Type' -ActiveOn $ActiveOn
                 if ($MergedType) { $Existing.Type = $MergedType }
@@ -515,7 +502,6 @@ function Get-Entity {
                 $MergedNerthusName = Get-LastActiveValue -History $Existing.NerthusNameHistory -PropertyName 'NerthusName' -ActiveOn $ActiveOn
                 if ($MergedNerthusName) { $Existing.NerthusName = $MergedNerthusName }
 
-                # Recompute active coordinates from merged history
                 if ($Existing.CoordinateHistory.Count -gt 0) {
                     $MergedCoordEntries = $Existing.CoordinateHistory.Where({ Test-TemporalActivity -Item $_ -ActiveOn $ActiveOn })
                     if ($MergedCoordEntries.Count -gt 0) {
@@ -524,7 +510,7 @@ function Get-Entity {
                     }
                 }
 
-                # Recompute door-path names after merge
+                # Regenerate path-qualified names after door list merge
                 if (($Existing.Type -eq 'Lokacja' -or $Existing.Type -eq 'Mapa') -and $Existing.Doors.Count -gt 0) {
                     foreach ($DoorName in $Existing.Doors) {
                         [void]$Existing.Names.Add("$DoorName/$($Existing.Name)")
@@ -532,10 +518,9 @@ function Get-Entity {
                 }
             }
             else {
-                # First occurrence - create new entity object
                 $Entity = [PSCustomObject]@{
                     Name               = $EntityName
-                    CN                 = $null           # resolved in post-parse pass below
+                    CN                 = $null  # resolved in post-parse CN pass
                     Names              = $Names
                     Aliases            = $Aliases
                     Type               = $ActiveType
@@ -568,7 +553,7 @@ function Get-Entity {
         }
     }
 
-    # Post-parse: resolve canonical names
+    # Post-parse CN resolution — walks @lokacja chains to build hierarchical paths
     $EntityByName = @{}
     foreach ($Entity in $Entities) {
         $EntityByName[$Entity.Name] = $Entity

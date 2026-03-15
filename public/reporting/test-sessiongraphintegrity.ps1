@@ -4,27 +4,42 @@
     against current repository state.
 
     .DESCRIPTION
-    This file contains Test-SessionGraphIntegrity which performs 5 validation checks:
+    This file contains Test-SessionGraphIntegrity which performs 5 validation
+    checks against the session graph index:
 
-    1. IndexMissing:      _index.json does not exist (graph never built)
-    2. StaleNameVersion:  entity name set changed since last build (Tier 2 invalid)
-    3. OrphanedSessions:  session header in index but not in current repo
-    4. MissingSessions:   session header in repo but not in index
-    5. EmptySessions:     index entries with zero participants
+    1. IndexMissing:     _index.json does not exist (graph never built).
+                         Returns immediately with OK=$false.
+    2. StaleNameVersion: entity name set changed since last build. Detected
+                         by comparing the NameIndexVersion hash stored in
+                         _meta.json against a freshly computed version from
+                         Get-NameIndex. Indicates Tier 2 body-text matches
+                         may be invalid.
+    3. OrphanedSessions: session header present in index but not found in
+                         current repository (session was renamed/deleted
+                         after graph build).
+    4. MissingSessions:  session header exists in repository but is absent
+                         from the index (new session added since last build).
+    5. EmptySessions:    index entries with zero participants (may indicate
+                         a build failure or empty session content).
 
-    Returns a structured diagnostic object following the same pattern as
-    Test-SessionIntegrity: an OK boolean and categorized arrays.
+    Pipeline:
+    1. Check index file existence (early return if missing)
+    2. Load index and metadata via Read-SessionGraphIndex / Read-SessionGraphMeta
+    3. Compare stored NameIndexVersion against current (check 2)
+    4. Scan index for zero-participant entries (check 5, done before
+       Get-Session to avoid conflating build issues with repo changes)
+    5. Load current sessions and build HashSet of known headers
+    6. Cross-reference index headers vs repo headers for orphan/missing
+       detection (checks 3, 4)
 
-    Dot-sources:
-    - private/session-graphhelpers.ps1 (index I/O, NameIndexVersion)
-    - private/session-hashhelpers.ps1 (Get-ContentHash via NameIndexVersion)
-    - private/admin-config.ps1 (ResDir resolution)
+    Returns a structured diagnostic object with OK boolean and categorized
+    arrays, following the same pattern as Test-SessionIntegrity.
 #>
 
 function Test-SessionGraphIntegrity {
     <#
         .SYNOPSIS
-        Validates session graph index integrity against current repository state.
+        Validates the session graph index against current repository state.
     #>
 
     [CmdletBinding()] param(
@@ -48,7 +63,7 @@ function Test-SessionGraphIntegrity {
     if ($Quiet) { $script:SuppressWarnings = $true }
     try {
 
-    # Load helpers
+    # Lazy-load helpers to avoid import overhead when called from modules that already loaded them
     if (-not (Get-Command 'Read-SessionGraphIndex' -ErrorAction SilentlyContinue)) {
         . "$PSScriptRoot/../../private/session-graphhelpers.ps1"
     }
@@ -64,7 +79,7 @@ function Test-SessionGraphIntegrity {
     $IndexPath = [System.IO.Path]::Combine($GraphDir, '_index.json')
     $MetaPath = [System.IO.Path]::Combine($GraphDir, '_meta.json')
 
-    # Result collections
+    # Each check category accumulates its own list for structured output
     $OrphanedSessions  = [System.Collections.Generic.List[object]]::new()
     $MissingSessions   = [System.Collections.Generic.List[object]]::new()
     $EmptySessions     = [System.Collections.Generic.List[object]]::new()
@@ -106,7 +121,8 @@ function Test-SessionGraphIntegrity {
         }
     }
 
-    # Check 5: Empty sessions (check before Get-Session to avoid confusion)
+    # Check 5: Empty sessions — checked before Get-Session to distinguish build
+    # failures from repository changes
     foreach ($Header in $Index.Keys) {
         $Entry = $Index[$Header]
         $ParticipantCount = 0
@@ -122,7 +138,7 @@ function Test-SessionGraphIntegrity {
         }
     }
 
-    # Load current sessions for orphan/missing checks
+    # Load current repo sessions for cross-reference against index
     if ($PSBoundParameters.ContainsKey('Sessions') -and $Sessions) {
         $AllSessions = @($Sessions)
     }

@@ -227,11 +227,11 @@ function Invoke-FullReport {
     Write-Host '  PEŁNY RAPORT MIGRACJI' -ForegroundColor $AccentColor
     Write-Host ('=' * 60) -ForegroundColor $AccentColor
 
-    # Use registry if available, fallback to hardcoded 0-6
+    # Use registry if available, fallback to hardcoded 0-8
     $Phases = if ($script:PhaseRegistry) {
         $script:PhaseRegistry
     } else {
-        0..6 | ForEach-Object { @{ ID = $_; Name = Get-PhaseName -Phase $_ } }
+        0..8 | ForEach-Object { @{ ID = $_; Name = Get-PhaseName -Phase $_ } }
     }
 
     foreach ($Phase in $Phases) {

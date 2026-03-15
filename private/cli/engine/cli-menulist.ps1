@@ -5,7 +5,22 @@
     .DESCRIPTION
     Arrow-navigable menu with role tags, InfoText display, inline filtering
     (stages 1-2 immediate, stage 3 fuzzy via debounce callback), and
-    match highlighting.
+    match highlighting. This is the primary navigation component used for
+    entity browsers, session lists, and action menus throughout the CLI.
+
+    Filtering uses a three-stage pipeline:
+    1. Prefix match (case-insensitive StartsWith) — instant, highest priority
+    2. Contains match (case-insensitive IndexOf) — instant, shown after prefix matches
+    3. Fuzzy/declension match (BK-tree + Polish stem reversal) — deferred via
+       FuzzyCallback after debounce, appended to stage 1+2 results
+
+    When Robot.FuzzyMatcher C# type is available, stages 1-2 use the compiled
+    filter for better throughput on large item sets (500+ entities). Otherwise
+    a PowerShell fallback handles both stages with type-prefix support.
+
+    Description columns are aligned to the widest label in the current visible
+    set (_MaxLabelWidth), recalculated on each filter operation to keep columns
+    tight when the filtered set is narrower than the full list.
 
     Helpers:
     - New-MenuListComponent:   creates a menu list component from item array
@@ -36,7 +51,7 @@ function New-MenuListComponent {
         [scriptblock]$FuzzyCallback
     )
 
-    # Build selectable indices
+    # Build index of non-disabled positions for arrow key navigation
     $SelectableIndices = [System.Collections.Generic.List[int]]::new()
     for ($I = 0; $I -lt $Items.Count; $I++) {
         if (-not $Items[$I].Disabled) {
@@ -44,8 +59,7 @@ function New-MenuListComponent {
         }
     }
 
-    # Pre-compute max label width to align description columns consistently;
-    # recalculated on filter since the visible item set changes
+    # Pre-compute max label width for description column alignment
     $PreMaxLabel = 0
     foreach ($Item in $Items) {
         $LLen = $Item.Label.Length
@@ -90,7 +104,7 @@ function New-MenuListComponent {
             $SelPos = $ComponentRef.SelectedPos
             $CurrentIndex = if ($SelIdx.Count -gt 0) { $SelIdx[$SelPos] } else { -1 }
 
-            # Use pre-computed max label width (recalculated on filter via _MaxLabelWidth)
+            # Clamp label column to leave at least 20 chars for descriptions
             $MaxLabelWidth = [Math]::Min($ComponentRef._MaxLabelWidth + 4, $script:ScreenWidth - 20)
 
             $ContentHeight = Get-RegionHeight -Name 'Content'
@@ -116,8 +130,8 @@ function New-MenuListComponent {
 
                 $LabelColor = if ($IsDisabled) { $DisabledColor } elseif ($IsSelected) { $AccentColor } else { $null }
 
-                # Apply match highlighting only on non-selected, non-disabled items —
-                # selected items use full Accent color, disabled items stay grayed out
+                # Highlight filter matches only on normal items — selected items already
+                # use full Accent color, and disabled items must stay visually muted
                 $MI = if ($ComponentRef.MatchInfoList -and $I -lt $ComponentRef.MatchInfoList.Count) { $ComponentRef.MatchInfoList[$I] } else { $null }
                 if ($MI -and -not $IsDisabled -and -not $IsSelected) {
                     $HighlightSegs = Split-HighlightSegments -Text $Item.Label -NormalColor $LabelColor -HighlightColor $AccentColor -MatchInfo $MI
@@ -154,7 +168,6 @@ function New-MenuListComponent {
                 }
             }
 
-            # Zero-match hint when filtering
             if ($Items.Count -eq 0) {
                 $Segs = @(
                     (New-Segment -Text '    (brak wynikow)' -Color $DisabledColor)
@@ -235,50 +248,73 @@ function Invoke-MenuFilter {
     $Filtered = [System.Collections.Generic.List[object]]::new()
     $MatchInfoList = [System.Collections.Generic.List[object]]::new()
 
-    foreach ($Item in $Component.AllItems) {
-        $Label = $Item.Label
+    # Use compiled C# FuzzyMatcher when available and no TypeFilter is active
+    # (TypeFilter needs PSObject property access, which C# can't perform)
+    if (-not $Parsed.TypeFilter -and -not [string]::IsNullOrEmpty($Query) -and
+        ([System.Management.Automation.PSTypeName]'Robot.FuzzyMatcher').Type -and
+        $Component.AllItems.Count -gt 0) {
 
-        # Type prefix filter
-        if ($Parsed.TypeFilter) {
-            $TypeMatch = $false
-            if ($Item.PSObject.Properties['Type'] -and
-                [string]::Equals($Item.Type, $Parsed.TypeFilter, [System.StringComparison]::OrdinalIgnoreCase)) {
-                $TypeMatch = $true
+        $LabelArr = [string[]]::new($Component.AllItems.Count)
+        for ($I = 0; $I -lt $Component.AllItems.Count; $I++) { $LabelArr[$I] = $Component.AllItems[$I].Label }
+        $Matcher = [Robot.FuzzyMatcher]::new($LabelArr)
+        $Indices = $Matcher.Filter($Query, $Component.AllItems.Count)
+        foreach ($Idx in $Indices) {
+            $Item = $Component.AllItems[$Idx]
+            [void]$Filtered.Add($Item)
+            # Determine match type via highlight position
+            $HL = [Robot.FuzzyMatcher]::FindHighlight($Item.Label, $Query)
+            if ($HL[0] -eq 0) {
+                [void]$MatchInfoList.Add(@{ Type = 'prefix'; Start = 0; Length = $HL[1] })
+            } else {
+                [void]$MatchInfoList.Add(@{ Type = 'contains'; Start = $HL[0]; Length = $HL[1] })
             }
-            if ($Item.PSObject.Properties['RoleTag'] -and
-                [string]::Equals($Item.RoleTag, $Parsed.TypeFilter, [System.StringComparison]::OrdinalIgnoreCase)) {
-                $TypeMatch = $true
+        }
+    } else {
+        # PowerShell fallback — supports TypeFilter via PSObject property access
+        foreach ($Item in $Component.AllItems) {
+            $Label = $Item.Label
+
+            # Match against entity Type or RoleTag for type-prefix filtering (e.g., "npc:query")
+            if ($Parsed.TypeFilter) {
+                $TypeMatch = $false
+                if ($Item.PSObject.Properties['Type'] -and
+                    [string]::Equals($Item.Type, $Parsed.TypeFilter, [System.StringComparison]::OrdinalIgnoreCase)) {
+                    $TypeMatch = $true
+                }
+                if ($Item.PSObject.Properties['RoleTag'] -and
+                    [string]::Equals($Item.RoleTag, $Parsed.TypeFilter, [System.StringComparison]::OrdinalIgnoreCase)) {
+                    $TypeMatch = $true
+                }
+                if (-not $TypeMatch) { continue }
             }
-            if (-not $TypeMatch) { continue }
-        }
 
-        # Empty query after prefix = show all of that type
-        if ([string]::IsNullOrEmpty($Query)) {
-            [void]$Filtered.Add($Item)
-            [void]$MatchInfoList.Add($null)
-            continue
-        }
+            # Empty query after type prefix shows all items of that type
+            if ([string]::IsNullOrEmpty($Query)) {
+                [void]$Filtered.Add($Item)
+                [void]$MatchInfoList.Add($null)
+                continue
+            }
 
-        # Stage 1: prefix match
-        if ($Label.StartsWith($Query, [System.StringComparison]::OrdinalIgnoreCase)) {
-            [void]$Filtered.Add($Item)
-            [void]$MatchInfoList.Add(@{ Type = 'prefix'; Start = 0; Length = $Query.Length })
-            continue
-        }
+            # Stage 1: prefix match
+            if ($Label.StartsWith($Query, [System.StringComparison]::OrdinalIgnoreCase)) {
+                [void]$Filtered.Add($Item)
+                [void]$MatchInfoList.Add(@{ Type = 'prefix'; Start = 0; Length = $Query.Length })
+                continue
+            }
 
-        # Stage 2: contains match
-        $Pos = $Label.IndexOf($Query, [System.StringComparison]::OrdinalIgnoreCase)
-        if ($Pos -ge 0) {
-            [void]$Filtered.Add($Item)
-            [void]$MatchInfoList.Add(@{ Type = 'contains'; Start = $Pos; Length = $Query.Length })
-            continue
+            # Stage 2: contains match
+            $Pos = $Label.IndexOf($Query, [System.StringComparison]::OrdinalIgnoreCase)
+            if ($Pos -ge 0) {
+                [void]$Filtered.Add($Item)
+                [void]$MatchInfoList.Add(@{ Type = 'contains'; Start = $Pos; Length = $Query.Length })
+                continue
+            }
         }
     }
 
     $Component.Items = @($Filtered)
     $Component.MatchInfoList = @($MatchInfoList)
     $Component.SelectableIndices = [System.Collections.Generic.List[int]]::new()
-    # Recalculate max label width for filtered set
     $NewMax = 0
     for ($I = 0; $I -lt $Filtered.Count; $I++) {
         if (-not $Filtered[$I].Disabled) {
@@ -295,8 +331,6 @@ function Invoke-MenuFilter {
 
 # ── Fuzzy Extend Helper ─────────────────────────────────────────────────────
 
-# Extends stage 1+2 filter results with stage 3 fuzzy/declension matches
-# Called after debounce timeout when component has a FuzzyCallback
 function Invoke-MenuFuzzyExtend {
     param(
         [Parameter(Mandatory)] [object]$Component,
@@ -309,7 +343,7 @@ function Invoke-MenuFuzzyExtend {
     $Query = $Parsed.Query
     if ([string]::IsNullOrEmpty($Query)) { return }
 
-    # Collect labels already matched by stages 1+2
+    # Exclude items already matched by stages 1+2 to avoid duplicates
     $MatchedLabels = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
     foreach ($Item in $Component.Items) {
         [void]$MatchedLabels.Add($Item.Label)
@@ -327,7 +361,7 @@ function Invoke-MenuFuzzyExtend {
     $FuzzyMatches = & $Component.FuzzyCallback $Query @($Remaining)
     if (-not $FuzzyMatches -or $FuzzyMatches.Count -eq 0) { return }
 
-    # Merge fuzzy results into the existing filtered set
+    # Append fuzzy results after existing prefix/contains matches to preserve ranking
     $NewItems = [System.Collections.Generic.List[object]]::new($Component.Items)
     $NewMatchInfo = [System.Collections.Generic.List[object]]::new()
     if ($Component.MatchInfoList) {
@@ -342,7 +376,7 @@ function Invoke-MenuFuzzyExtend {
     $Component.Items = @($NewItems)
     $Component.MatchInfoList = @($NewMatchInfo)
 
-    # Rebuild selectable indices and update max label width
+    # Rebuild navigation indices after merge
     $Component.SelectableIndices = [System.Collections.Generic.List[int]]::new()
     $FuzzyMax = $Component._MaxLabelWidth
     for ($I = 0; $I -lt $NewItems.Count; $I++) {

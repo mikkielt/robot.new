@@ -7,22 +7,24 @@
     @trigger, and @alias tags to the player's entity entry in entities.md
     under the ## Gracz section.
 
-    If the player has no entity entry yet, one is created.
+    If the player has no entity entry yet, one is created via
+    Resolve-EntityTarget, making Set-Player an upsert operation.
 
     Validates Discord webhook URL format (must match
     https://discord.com/api/webhooks/*).
 
-    Aliases are appended with deduplication (case-insensitive) - existing
-    aliases with the same value are not duplicated.
+    Aliases use append-with-dedup semantics (case-insensitive) — existing
+    aliases with the same value are not duplicated, preventing entity
+    index bloat. Triggers use replace-all semantics because the full set
+    is always provided as a unit.
 
-    Player renaming is not supported via entity overrides - entity names
-    are identity keys.
+    Player renaming is not supported via entity overrides — entity names
+    are identity keys used as foreign keys by @należy_do references.
 
-    Dot-sources entity-writehelpers.ps1 for file manipulation.
+    Dot-sources entity-writehelpers.ps1 (file I/O and tag manipulation).
     Supports -WhatIf via SupportsShouldProcess.
 #>
 
-# Dot-source entity write helpers
 . "$script:ModuleRoot/private/entity-writehelpers.ps1"
 
 function Set-Player {
@@ -68,8 +70,8 @@ function Set-Player {
         throw "Invalid webhook URL format. Must match 'https://discord.com/api/webhooks/*'. Got: $PRFWebhook"
     }
 
-    # Resolve-EntityTarget creates the ## Gracz section and bullet if absent,
-    # so Set-Player doubles as an upsert for entity-only players
+    # Resolve-EntityTarget creates the section and bullet if absent,
+    # enabling upsert semantics for entity-only players
     $Target = Resolve-EntityTarget -FilePath $EntitiesFile -EntityType 'Gracz' -EntityName $Name
     $Lines = $Target.Lines
     $ChildEnd = $Target.ChildrenEnd
@@ -83,8 +85,8 @@ function Set-Player {
     }
 
     if ($PSBoundParameters.ContainsKey('Triggers')) {
-        # Triggers use replace-all semantics (not append) because the full
-        # set is always provided as a unit; remove existing before inserting
+        # Replace-all: triggers are always provided as a complete set,
+        # so existing entries must be removed before inserting the new set
         $LinesToRemove = [System.Collections.Generic.List[int]]::new()
         for ($i = $Target.ChildrenStart; $i -lt $ChildEnd; $i++) {
             $TagMatch = $script:TagPattern.Match($Lines[$i])
@@ -111,7 +113,8 @@ function Set-Player {
     if ($Aliases) {
         foreach ($Alias in $Aliases) {
             if (-not [string]::IsNullOrWhiteSpace($Alias)) {
-                # Aliases use append-with-dedup semantics unlike triggers
+                # Append-with-dedup: aliases accumulate over time,
+                # unlike triggers which are always provided as a full replacement
                 $ExistingAlias = $null
                 for ($i = $Target.ChildrenStart; $i -lt $ChildEnd; $i++) {
                     $AliasMatch = $script:TagPattern.Match($Lines[$i])

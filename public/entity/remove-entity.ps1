@@ -8,16 +8,20 @@
 
     Searches all entity type sections for the named entity, or scopes to
     -Type if provided for disambiguation. Does not delete the bullet or
-    any files - only sets the status tag.
+    any files — only sets the status tag. This preserves referential
+    integrity: session @Zmiany and @PU entries that reference the entity
+    remain valid, and historical queries still find it.
 
     Entities with status Usunięty are filtered out by Get-Entity unless
     -IncludeDeleted is set.
 
-    ConfirmImpact is High for safety.
-    Dot-sources entity-writehelpers.ps1 and admin-config.ps1.
+    ConfirmImpact is High because the operation changes entity visibility
+    across all downstream consumers (reports, CLI, PU assignment).
+
+    Dot-sources entity-writehelpers.ps1 (file I/O and tag manipulation)
+    and admin-config.ps1 (entities file path resolution).
 #>
 
-# Dot-source helpers
 . "$script:ModuleRoot/private/entity-writehelpers.ps1"
 . "$script:ModuleRoot/private/admin-config.ps1"
 
@@ -58,7 +62,7 @@ function Remove-Entity {
     $File = Read-EntityFile -Path $EntitiesFilePath
     $LinesArray = $File.Lines.ToArray()
 
-    # Find the entity
+    # Search scoped to -Type when given, otherwise scan all sections sequentially
     $FoundBullet = $null
     $FoundType = $null
 

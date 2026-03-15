@@ -8,17 +8,24 @@
     directory, then hands each file to the self-contained parse-markdownfile.ps1 script for
     the actual parsing work.
 
+    Module-level data:
+    - $CachedParseFileScriptStr: parser script text cached after first read to avoid
+      repeated file I/O across calls
+
     Two-file architecture:
     - get-markdown.ps1 (this file): orchestration, parallelism, input validation
     - parse-markdownfile.ps1: single-file parsing logic (headers, sections, lists, links)
 
     The split exists because RunspacePool workers don't share the module scope. The parser
-    script is loaded as a string and passed to each worker, making it fully self-contained.
+    script is loaded as a string and passed to each worker via AddScript, making it
+    fully self-contained. When Robot.MarkdownScanner (lib/MarkdownScanner.cs) is available,
+    the parser delegates line scanning to compiled C# for single-pass performance.
 
     Parallelism:
     When more than 4 files need parsing, a RunspacePool is created with up to ProcessorCount
-    threads. Below that threshold, files are processed sequentially to avoid pool setup overhead.
-    This matters for Get-Session which parses dozens of Markdown files in a single call.
+    threads. Below that threshold, files are processed sequentially to avoid the ~50ms pool
+    setup overhead. This matters for Get-Session which parses dozens of Markdown files in
+    a single call.
 
     Return convention:
     - Single file via -File: returns the object directly (not wrapped in array)
@@ -49,12 +56,12 @@ function Get-Markdown {
         [string]$Directory
     )
 
-    # Default directory to repo root if no parameters provided
+    # Default to repo root when called without arguments (e.g. from Get-Session)
     if ($PSCmdlet.ParameterSetName -eq "Directory" -and -not $PSBoundParameters.ContainsKey('Directory')) {
         $Directory = Get-RepoRoot
     }
 
-    # Collect all files to process based on parameter set
+    # Collect input files from either -File paths or -Directory recursive scan
     $FilesToProcess = [System.Collections.Generic.List[string]]::new()
 
     if ($PSCmdlet.ParameterSetName -eq "File") {
@@ -68,9 +75,16 @@ function Get-Markdown {
 
     $AllResults = [System.Collections.Generic.List[object]]::new()
 
-    # Load the parser script as a string - needed both for sequential invocation
-    # (via [scriptblock]::Create) and for parallel workers (which receive it as AddScript text).
-    # Cached at script scope after first read to avoid repeated file I/O.
+    # Add-Type loads into the AppDomain — all RunspacePool workers share the compiled type
+    if (-not ([System.Management.Automation.PSTypeName]'Robot.MarkdownScanner').Type) {
+        $CsPath = [System.IO.Path]::Combine($script:ModuleRoot, 'lib', 'MarkdownScanner.cs')
+        if ([System.IO.File]::Exists($CsPath)) {
+            Add-Type -TypeDefinition ([System.IO.File]::ReadAllText($CsPath)) -Language CSharp
+        }
+    }
+
+    # Parser text cached at script scope — used both for [scriptblock]::Create (sequential)
+    # and AddScript (parallel workers that lack module scope)
     if (-not $script:CachedParseFileScriptStr) {
         $ParseFileScriptPath = [System.IO.Path]::Combine($script:ModuleRoot, 'private', 'parse-markdownfile.ps1')
         $script:CachedParseFileScriptStr = [System.IO.File]::ReadAllText($ParseFileScriptPath)
@@ -78,16 +92,14 @@ function Get-Markdown {
     $ParseFileScriptStr = $script:CachedParseFileScriptStr
     $ParseFileScript    = [scriptblock]::Create($ParseFileScriptStr)
 
-    # Parallel threshold: RunspacePool setup has fixed overhead (~50ms), only worth it
-    # when there are enough files to amortize that cost across workers
-    $ParallelThreshold = 4
+    $ParallelThreshold = 4  # RunspacePool setup ~50ms; only amortized above this count
 
     if ($FilesToProcess.Count -gt $ParallelThreshold) {
         $MaxThreads = [Math]::Min($FilesToProcess.Count, [Environment]::ProcessorCount)
         $Pool = [System.Management.Automation.Runspaces.RunspaceFactory]::CreateRunspacePool(1, $MaxThreads)
         $Pool.Open()
 
-        # Launch all workers - each gets the parser script text and one file path
+        # Each worker receives parser script text + one file path
         $Jobs = [System.Collections.Generic.List[object]]::new($FilesToProcess.Count)
         foreach ($FP in $FilesToProcess) {
             $PS = [System.Management.Automation.PowerShell]::Create()
@@ -96,7 +108,7 @@ function Get-Markdown {
             $Jobs.Add([PSCustomObject]@{ PS = $PS; Handle = $PS.BeginInvoke() })
         }
 
-        # Collect results - EndInvoke blocks until the worker finishes
+        # EndInvoke blocks until each worker completes
         foreach ($Job in $Jobs) {
             $JobResults = $Job.PS.EndInvoke($Job.Handle)
             if ($JobResults -and $JobResults.Count -gt 0) {
@@ -114,7 +126,7 @@ function Get-Markdown {
         }
     }
 
-    # Single file via -File returns unwrapped object for caller convenience
+    # Single-file callers expect a direct object, not a one-element list
     if ($FilesToProcess.Count -eq 1 -and $PSCmdlet.ParameterSetName -eq "File") {
         return $AllResults[0]
     } else {

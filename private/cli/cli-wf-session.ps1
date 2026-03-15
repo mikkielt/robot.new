@@ -6,17 +6,21 @@
     This file contains workflow functions for session management, consumed by
     the CLI menu registry (Mode = 'Workflow'). Dot-sourced on demand.
 
-    Workflows:
-    - Invoke-EditSessionWorkflow: diff review pattern for session edits
+    Helpers:
+    - Invoke-EditSessionWorkflow: auto-generated wizard for Set-Session with UI overrides
     - Invoke-SessionValidation:   session name/date validation with name resolution
 
-    Design:
-    - Edit workflow delegates to Invoke-Wizard with Set-Session overrides
-      that hide internal parameters and type-hint the user-facing ones.
-    - Validation iterates all sessions in the date range and attempts
-      Resolve-Name on every PU character name and Changes entity name.
-      Unresolvable names are reported per-session with cross/warning marks.
-      This catches typos before they cause PU assignment failures.
+    Edit workflow: delegates to Invoke-Wizard with Set-Session overrides that
+    hide internal parameters (Session, UpgradeFormat, Properties, DateOverride)
+    and type-hint user-facing ones (multi-entry for Locations, multitext for
+    Narrator, date picker for Date).
+
+    Validation: iterates all sessions in the date range and attempts
+    Resolve-Name on every @PU character name and @Zmiany entity name.
+    Unresolvable names are reported per-session with cross marks (errors)
+    for PU names and warning marks for entity changes. This pre-flight
+    check catches typos before they cause PU assignment failures (fail-early
+    policy: unresolved names abort the entire PU assignment).
 
     Dependencies: cli-primitives.ps1, cli-wizard.ps1, cli-display.ps1
 #>
@@ -32,7 +36,7 @@ function Invoke-EditSessionWorkflow {
     Write-Host ''
     Write-CLILine -Text 'Wyszukaj sesję do edycji:' -Color $AccentColor
 
-    # For now: use Set-Session wizard with overrides
+    # Delegate to auto-generated wizard with overrides that hide internal params
     $EditEntry = @{
         Function = 'Set-Session'
         Overrides = @{
@@ -67,7 +71,7 @@ function Invoke-SessionValidation {
         Show-InfoBox -Checks $Entry.PreChecks
     }
 
-    # Get date range
+    # Date range scopes which sessions to validate
     $MinDateStep = New-WizardDateStep -Name 'MinDate' -Label 'Od daty'
     $MinDate = Invoke-WizardStep -Step $MinDateStep -State $State
     if ($MinDate -eq '__back__') { return }
@@ -99,7 +103,7 @@ function Invoke-SessionValidation {
             $HasIssue = $false
             $Issues = [System.Collections.Generic.List[string]]::new()
 
-            # Check PU character names
+            # Validate @PU character names against the name index
             if ($Session.PU) {
                 foreach ($PUEntry in $Session.PU) {
                     $CharName = if ($PUEntry.Character) { $PUEntry.Character } elseif ($PUEntry.Name) { $PUEntry.Name } else { $null }
@@ -118,7 +122,7 @@ function Invoke-SessionValidation {
                 }
             }
 
-            # Check Changes entity names
+            # Validate @Zmiany entity names against the name index
             if ($Session.Changes) {
                 foreach ($Change in $Session.Changes) {
                     $EntityName = $Change.EntityName

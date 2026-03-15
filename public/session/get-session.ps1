@@ -1,7 +1,7 @@
 <#
     .SYNOPSIS
-    Parses session metadata from Markdown files into structured objects with format
-    detection, narrator resolution, and cross-file deduplication.
+    Parses session metadata from Markdown files into structured objects with
+    format detection, narrator resolution, and cross-file deduplication.
 
     .DESCRIPTION
     This file contains Get-Session and its core helpers. It dot-sources
@@ -9,44 +9,55 @@
     session-intelhelpers.ps1 for notification routing and mention extraction.
 
     Helpers:
-    - ConvertFrom-SessionHeader: parses a yyyy-MM-dd date (with optional /DD range)
-      from a session header string
-    - Get-SessionFormat: classifies a section as Gen1/Gen2/Gen3/Gen4 based on content
-      heuristics (italic location lines, structured list items, @-prefixed tags, etc.)
-    - Merge-SessionGroup: deduplicates sessions sharing the same header across files,
-      selecting the metadata-richest primary and merging array fields
+    - ConvertFrom-SessionHeader: parses a yyyy-MM-dd date (with optional
+      /DD range suffix) from a session header string. Returns a hashtable
+      with Date, DateEnd, DateStr, EndDayStr or $null.
+    - Get-SessionFormat: classifies a section as Gen1/Gen2/Gen3/Gen4
+      based on content heuristics (italic location prefix, @-prefixed
+      list items, PU-like list items). Detection order: Gen2 > Gen4 >
+      Gen3 > Gen1 (fallback).
+    - Merge-SessionGroup: deduplicates sessions sharing the same header
+      across files, selecting the metadata-richest primary via scoring
+      and merging array fields (locations, logs, PU, changes, transfers,
+      mentions, Intel) via HashSet/Dictionary union. Reports scalar
+      field conflicts (Title, Format) as warnings.
 
-    Get-Session scans Markdown files for level-3 headers containing a yyyy-MM-dd date
-    and extracts structured session objects. It supports four format generations that
-    evolved over time:
-    - Gen1 (START-2022): plain text with no structured metadata
+    Get-Session scans Markdown files for level-3 headers containing a
+    yyyy-MM-dd date and extracts structured session objects. It supports
+    four format generations:
+    - Gen1 (START-2022): plain text, no structured metadata
     - Gen2 (2022-2023): italic location lines (*Lokalizacja: ...*)
-    - Gen3 (2024-2026): fully structured list-based metadata (- Lokalizacje:, - Logi:, - PU:).
-      - Zmiany: blocks contain entity state overrides and are extracted to session objects.
-      - Efekty: and Objaśnienia: are present in source but not extracted to session object fields.
-    - Gen4 (2026+): @-prefixed list-based metadata (- @Lokacje:, - @PU:, - @Logi:, - @Zmiany:).
-      Backwards compatible - Gen3 sessions parse identically to before.
+    - Gen3 (2024-2026): list-based metadata (- Lokalizacje:, - Logi:,
+      - PU:, - Zmiany:). Efekty/Objaśnienia present in source but not
+      extracted to session fields.
+    - Gen4 (2026+): @-prefixed tags (- @Lokacje:, - @PU:, - @Logi:,
+      - @Zmiany:). Backwards compatible with Gen3.
 
-    Key implementation decisions:
-    - All Markdown files are batch-parsed in a single Get-Markdown call to enable
-      RunspacePool parallelism for large directory scans
-    - Narrator resolution is batched per file (Resolve-Narrator takes all parseable
-      sections at once) so the shared name index is built only once
-    - NarratorIdx tracking must stay in sync with ParseableIndices even when sessions
-      are date-filtered out, because Resolve-Narrator returns results for all sections
-    - Cross-file deduplication groups by exact header text (Ordinal comparison) and
-      merges array fields (locations, logs, PU) via HashSet union
+    Pipeline:
+    1. Collect input files (explicit file, directory scan, or repo root)
+    2. Pre-fetch shared dependencies: entities, players, name index
+    3. Pre-build entity indices for O(1) Intel resolution (EntityByGroup,
+       EntityByLocation) to avoid O(E) scans per Intel directive
+    4. Batch-parse all files via Get-Markdown (RunspacePool parallelism)
+    5. Per file: pre-filter sections by date regex, batch Resolve-Narrator
+    6. Per section: parse date, detect format, extract locations/PU/logs/
+       changes/transfers/mentions/Intel
+    7. @Data override rescues sessions with malformed header dates
+    8. @Narrator override replaces header-based narrator resolution
+    9. Cross-file deduplication groups by exact header text (Ordinal)
+
+    Critical invariant: NarratorIdx must stay in sync with ParseableIndices
+    even when sessions are date-filtered out, because Resolve-Narrator
+    returns results for all parseable sections in a file.
 #>
 
-# Dot-source helpers
 . "$script:ModuleRoot/private/temporal-helpers.ps1"
 . "$script:ModuleRoot/private/session-parsehelpers.ps1"
 . "$script:ModuleRoot/private/session-intelhelpers.ps1"
 
-# Helper: parse session date from header
-# Extracts a yyyy-MM-dd date (and optional /DD range suffix) from a session
-# header string. Returns hashtable: @{ Date; DateEnd; Match } or $null when
-# no valid date is found in the header.
+# Extracts yyyy-MM-dd date (with optional /DD range suffix) from a session
+# header. Accepts pre-matched regex and pre-parsed date to avoid redundant work
+# when the caller has already performed these steps during pre-filtering.
 function ConvertFrom-SessionHeader {
     param(
         [string]$Header,
@@ -87,13 +98,8 @@ function ConvertFrom-SessionHeader {
     }
 }
 
-# Helper: detect session format generation
-# Determines the format generation based on content heuristics:
-#   Gen1 (START-2022): No structured metadata, plain text Logi/Rezultat lines
-#   Gen2 (2022-2023): Italic location line (*Lokalizacja: ...*), plain text Logi
-#   Gen3 (2024-2026): List-based metadata (- Lokalizacje:, - Logi:, - PU:, etc.)
-#   Gen4 (2026+):     @-prefixed list-based metadata (- @Lokacje:, - @PU:, etc.)
-# Returns: "Gen1", "Gen2", "Gen3", or "Gen4"
+# Format detection: Gen2 (italic location prefix) > Gen4 (@ prefix on
+# top-level list items) > Gen3 (PU-like top-level items) > Gen1 (fallback).
 function Get-SessionFormat {
     param(
         [string]$FirstNonEmptyLine,
@@ -116,10 +122,8 @@ function Get-SessionFormat {
     return "Gen1"
 }
 
-# Helper: merge duplicate sessions
-# Given a group of sessions sharing the same header, selects the primary (most
-# metadata-rich) and merges array fields from all duplicates. Returns a single
-# merged session object.
+# Deduplicates sessions sharing the same header across files. Selects the
+# metadata-richest primary via scoring and merges array fields via HashSet union.
 function Merge-SessionGroup {
     param(
         [System.Collections.Generic.List[object]]$Group,
@@ -137,7 +141,7 @@ function Merge-SessionGroup {
         return $S
     }
 
-    # Pick primary: highest metadata score
+    # Score: each non-null metadata field adds 1; Content adds 2 (it implies richer source)
     $Primary      = $Group[0]
     $PrimaryScore = 0
     foreach ($S in $Group) {
@@ -155,7 +159,7 @@ function Merge-SessionGroup {
         }
     }
 
-    # Collect all file paths and per-copy format info (for dedup conflict analysis)
+    # Collect provenance metadata for dedup conflict analysis
     $AllFilePaths = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
     $CopyFormatsList = [System.Collections.Generic.List[PSCustomObject]]::new($Count)
     foreach ($S in $Group) {
@@ -163,7 +167,7 @@ function Merge-SessionGroup {
         [void]$CopyFormatsList.Add([PSCustomObject]@{ FilePath = $S.FilePath; Format = $S.Format })
     }
 
-    # Conflict detection for scalar fields
+    # Warn when copies disagree on scalar fields (Title, Format)
     if ($null -ne $Primary.Date) {
         $ScalarFields = @('Title', 'Format')
         foreach ($FieldName in $ScalarFields) {
@@ -179,7 +183,7 @@ function Merge-SessionGroup {
         }
     }
 
-    # Merge array fields: union unique values
+    # Union array fields across all copies via HashSet/Dictionary dedup
     $MergedLocations    = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
     $MergedLogs         = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
     $MergedPU           = [System.Collections.Generic.List[object]]::new()
@@ -265,8 +269,7 @@ function Merge-SessionGroup {
 function Get-Session {
     <#
         .SYNOPSIS
-        Parses session metadata from Markdown files into structured objects with
-        format detection, narrator resolution, and cross-file deduplication.
+        Parses session metadata from Markdown files with format detection, narrator resolution, and deduplication.
     #>
 
     [CmdletBinding()] param(
@@ -319,7 +322,7 @@ function Get-Session {
 
     $RepoRoot = Get-RepoRoot
 
-    # Collect input files
+    # Resolve file scope: explicit -File, explicit -Directory, or full repo
 
     if (-not $File -and -not $Directory) {
         $Directory = $RepoRoot
@@ -335,11 +338,11 @@ function Get-Session {
         $SearchDir = if ($Directory) { $Directory } else { $RepoRoot }
         $AllFiles = [System.IO.Directory]::GetFiles($SearchDir, "*.md", [System.IO.SearchOption]::AllDirectories)
 
-        # Build exclusion prefixes
+        # Exclusion prefixes prevent scanning the module's own files and user-specified directories
         $Sep = [System.IO.Path]::DirectorySeparatorChar
         $ExcludePrefixes = [System.Collections.Generic.List[string]]::new()
 
-        # Auto-exclude the module's own directory when it is a proper subdirectory of the search path
+        # Auto-exclude module directory to avoid parsing devdocs/tests as session files
         $SearchDirNorm  = $SearchDir.TrimEnd($Sep) + $Sep
         $ModuleRootNorm = $script:ModuleRoot.TrimEnd($Sep) + $Sep
         if ($ModuleRootNorm.StartsWith($SearchDirNorm, [System.StringComparison]::OrdinalIgnoreCase) -and
@@ -347,8 +350,7 @@ function Get-Session {
             $ExcludePrefixes.Add($ModuleRootNorm)
         }
 
-        # When Set-DataDirectory points to a different repo, the module may also
-        # exist as a submodule inside SearchDir under the same leaf name.
+        # Also exclude the module's submodule copy when Set-DataDirectory points elsewhere
         $ModuleLeafName = [System.IO.Path]::GetFileName($script:ModuleRoot.TrimEnd($Sep))
         $ModuleInSearchDir = [System.IO.Path]::Combine($SearchDir, $ModuleLeafName) + $Sep
         if (-not $ModuleInSearchDir.Equals($ModuleRootNorm, [System.StringComparison]::OrdinalIgnoreCase) -and
@@ -356,7 +358,7 @@ function Get-Session {
             $ExcludePrefixes.Add($ModuleInSearchDir)
         }
 
-        # Add user-specified exclusions
+        # Append user-specified directory exclusions
         foreach ($Dir in $ExcludeDirectory) {
             if ([System.IO.Directory]::Exists($Dir)) {
                 $ExcludePrefixes.Add($Dir.TrimEnd($Sep) + $Sep)
@@ -379,7 +381,7 @@ function Get-Session {
         }
     }
 
-    # Pre-fetch shared dependencies
+    # Shared dependencies: entities, players, name index (built once, reused across all files)
 
     if (-not $PSBoundParameters.ContainsKey('Entities')) {
         $Entities = Get-Entity
@@ -400,7 +402,7 @@ function Get-Session {
     $IntelCache    = @{}
     $NarratorCache = [System.Collections.Generic.Dictionary[string, object]]::new([System.StringComparer]::OrdinalIgnoreCase)
 
-    # Pre-build entity indices for O(1) Intel resolution (replaces O(E) scans per directive)
+    # O(1) entity indices for Intel resolution — avoids O(E) linear scans per directive
     $EntityByGroup = @{}
     $EntityByLocation = @{}
     foreach ($Entity in $Entities) {
@@ -422,7 +424,7 @@ function Get-Session {
         }
     }
 
-    # Precompile regex patterns
+    # Local regex patterns shared across all sections in the processing loop
 
     $DateRegex      = $script:SessionDatePattern
     $LocItalicRegex = [regex]::new('\*Lokalizacj[ae]?:\s*(.+?)\*')
@@ -430,18 +432,18 @@ function Get-Session {
     $UrlRegex       = [regex]::new('(https?://\S+)')
     $LogiLineRegex  = [regex]::new('^Logi:\s*(https?://\S+)')
 
-    # Results collection
+    # Separate lists for valid and failed sessions (failed only populated when -IncludeFailed)
 
     $AllSessions    = [System.Collections.Generic.List[object]]::new()
     $FailedSessions = [System.Collections.Generic.List[object]]::new()
 
-    # Batch-parse all Markdown files in a single call
+    # Single Get-Markdown call enables RunspacePool parallelism for large directory scans
 
     $AllMarkdownResults = @(Get-Markdown -File ($FilesToProcess.ToArray()))
     $MarkdownByPath = [System.Collections.Generic.Dictionary[string, object]]::new([System.StringComparer]::OrdinalIgnoreCase)
     foreach ($MarkdownResult in $AllMarkdownResults) { $MarkdownByPath[$MarkdownResult.FilePath] = $MarkdownResult }
 
-    # Main file processing loop
+    # Per-file processing: pre-filter sections, resolve narrators, extract metadata
 
     $script:ProgressFileIdx = 0
     $script:ProgressFileTotal = $FilesToProcess.Count
@@ -458,8 +460,8 @@ function Get-Session {
         $SessionSections = $Markdown.Sections.Where({ $_.Header -and $_.Header.Level -eq 3 })
         if ($SessionSections.Count -eq 0) { continue }
 
-        # Single pass: pre-filter + cache date regex matches + build parseable sections list.
-        # Merges what was previously two separate passes over $SessionSections.
+        # Single-pass pre-filter: cache date regex matches and build parseable sections list
+        # (merged from two previously separate passes over $SessionSections)
         $HasCandidateSession = $false
         $ParseableSections   = [System.Collections.Generic.List[object]]::new()
         $ParseableIndices    = [System.Collections.Generic.HashSet[int]]::new()
@@ -475,7 +477,7 @@ function Get-Session {
                 $ParseableSections.Add($Sect)
                 [void]$ParseableIndices.Add($i)
 
-                # Parse and cache the date for reuse by ConvertFrom-SessionHeader
+                # Cache parsed date to avoid redundant TryParseExact in ConvertFrom-SessionHeader
                 $DStr = $DMatch.Groups[1].Value
                 $DParsed = ConvertTo-SessionDate -DateString $DStr
                 if ($DParsed) {
@@ -485,7 +487,7 @@ function Get-Session {
                     }
                 }
             } else {
-                # No date - can't filter out, must process (or skip as failed)
+                # No date match — must process (may become a failed session entry)
                 $HasCandidateSession = $true
             }
         }
@@ -496,21 +498,21 @@ function Get-Session {
             $NarratorResults = Resolve-Narrator -Sessions $ParseableSections.ToArray() -Index $Index -StemIndex $StemIndex -BKTree $BKTree -NarratorCache $NarratorCache
         }
 
-        # Process each section
+        # Per-section processing: date parsing, format detection, metadata extraction
 
         $NarratorIdx = 0
         for ($i = 0; $i -lt $SessionSections.Count; $i++) {
             $Section = $SessionSections[$i]
             $Header  = $Section.Header.Text
 
-            # Parse date from header (using cached regex match and pre-parsed date)
+            # Reuse cached regex match and pre-parsed date from the pre-filter pass
             $CachedMatch = if ($CachedDateMatches.ContainsKey($i)) { $CachedDateMatches[$i] } else { $null }
             $HeaderArgs = @{ Header = $Header; DateRegex = $DateRegex; Match = $CachedMatch }
             if ($CachedDateParsed.ContainsKey($i)) { $HeaderArgs['ParsedDate'] = $CachedDateParsed[$i] }
             $DateInfo = ConvertFrom-SessionHeader @HeaderArgs
 
-            # @Data override: scan for date override tag before failed-session check.
-            # This rescues sessions with malformed header dates (e.g. "2024-07-014").
+            # @Data override rescues sessions with malformed header dates (e.g. "2024-07-014")
+            # by providing a correct date via a structured tag in the session body
             $DateOverrideStr = $null
             if ($Section.Lists) {
                 foreach ($LI in $Section.Lists) {
@@ -581,9 +583,8 @@ function Get-Session {
                 continue
             }
 
-            # Narrator result (aligned with parseable sections index)
-            # Must be extracted BEFORE date filtering to keep $NarratorIdx in sync
-            # with $ParseableIndices - skipped sessions must still consume their slot.
+            # Extract narrator BEFORE date filtering — $NarratorIdx must stay in sync
+            # with $ParseableIndices even when sessions are filtered out
             $NarratorResult = $null
             if ($NarratorResults -and $ParseableIndices.Contains($i)) {
                 $NarratorResult = if ($NarratorResults -is [array]) { $NarratorResults[$NarratorIdx] } else { $NarratorResults }
@@ -593,10 +594,10 @@ function Get-Session {
             # Date filtering
             if ($DateInfo.Date -lt $MinDate -or $DateInfo.Date -gt $MaxDate) { continue }
 
-            # Title extraction
+            # Extract title from header (middle comma-separated segment)
             $Title = Get-SessionTitle -Header $Header -DateInfo $DateInfo
 
-            # Format detection
+            # Classify session format generation from content heuristics
             $ContentLines = $Section.Content.Split([char]"`n")
 
             $FirstNonEmptyLine = $null
@@ -609,7 +610,7 @@ function Get-Session {
 
             $Format = Get-SessionFormat -FirstNonEmptyLine $FirstNonEmptyLine -SectionLists $Section.Lists
 
-            # Build parent→children list index once per section - shared by
+            # Parent-to-children list index built once per section and shared by
             # Get-SessionLocations, Get-SessionListMetadata, and Get-SessionMentions
             $SectionChildrenOf = @{}
             foreach ($LI in $Section.Lists) {
@@ -622,10 +623,10 @@ function Get-Session {
                 }
             }
 
-            # Location extraction
+            # Extract session metadata: locations, PU, logs, changes, transfers
             $Locations = Get-SessionLocations -Format $Format -FirstNonEmptyLine $FirstNonEmptyLine -SectionLists $Section.Lists -LocItalicRegex $LocItalicRegex -Index $Index -ChildrenOf $SectionChildrenOf
 
-            # List-based metadata (PU, Logs)
+            # List-based metadata extraction (PU, logs, changes, transfers, narrators)
             $ListMeta = Get-SessionListMetadata -SectionLists $Section.Lists -PURegex $PURegex -UrlRegex $UrlRegex -ChildrenOf $SectionChildrenOf
 
             $Logs    = $ListMeta.Logs
@@ -633,12 +634,12 @@ function Get-Session {
             $Changes = $ListMeta.Changes
             $Transfers = $ListMeta.Transfers
 
-            # @Narrator override: when present, completely replaces header-based narrator resolution
+            # @Narrator override replaces header-based resolution with explicit canonical names
             $MetaNarrators = $ListMeta.Narrators
             if ($MetaNarrators -and $MetaNarrators.Count -gt 0) {
                 $OverrideNarrators = [System.Collections.Generic.List[object]]::new()
                 foreach ($CanonName in $MetaNarrators) {
-                    # Exact index lookup -> High confidence
+                    # Exact name index match yields High confidence
                     if ($Index.ContainsKey($CanonName)) {
                         $IdxEntry = $Index[$CanonName]
                         if (-not $IdxEntry.Ambiguous -and $IdxEntry.OwnerType -eq 'Player') {
@@ -650,7 +651,7 @@ function Get-Session {
                             continue
                         }
                     }
-                    # Fallback: full Resolve-Name with Player type filter -> Medium confidence
+                    # Fuzzy resolution fallback yields Medium confidence
                     $Resolved = Resolve-Name -Query $CanonName -Index $Index -StemIndex $StemIndex -BKTree $BKTree -OwnerType 'Player'
                     if ($Resolved) {
                         $OverrideNarrators.Add([PSCustomObject]@{
@@ -675,12 +676,12 @@ function Get-Session {
                 }
             }
 
-            # Plain text log fallback (Gen 1/2)
+            # Gen1/Gen2 fallback: extract log URLs from plain text "Logi:" lines
             if ($Logs.Count -eq 0) {
                 $Logs = Get-SessionPlainTextLogs -ContentLines $ContentLines -LogiLineRegex $LogiLineRegex
             }
 
-            # Mention extraction
+            # Entity mention extraction (opt-in via -IncludeMentions for performance)
             $MentionsV = @()
             if ($IncludeMentions) {
                 $RawMentions = Get-SessionMentions `
@@ -696,7 +697,7 @@ function Get-Session {
                 $MentionsV = if ($RawMentions -and $RawMentions.Count -gt 0) { @($RawMentions) } else { @() }
             }
 
-            # Intel resolution - always runs when @Intel entries exist
+            # Intel resolution: map @Intel directives to recipient entities
             $IntelV = @()
             if ($ListMeta.Intel -and $ListMeta.Intel.Count -gt 0 -and $null -ne $DateInfo.Date) {
                 $ResolvedIntel = Resolve-IntelTargets `
@@ -712,7 +713,7 @@ function Get-Session {
                 $IntelV = if ($ResolvedIntel -and $ResolvedIntel.Count -gt 0) { @($ResolvedIntel) } else { @() }
             }
 
-            # Build session object
+            # Assemble final session object with all extracted metadata
             $LocationsV = if ($Locations) { @($Locations) } else { @() }
             $LogsV = if ($Logs) { @($Logs) } else { @() }
             $PUV = if ($PU) { @($PU) } else { @() }
@@ -743,7 +744,7 @@ function Get-Session {
         }
     }
 
-    # Deduplication pass
+    # Cross-file deduplication: group by exact header text, merge array fields
 
     $SessionsByHeader = [System.Collections.Generic.Dictionary[string, System.Collections.Generic.List[object]]]::new(
         [System.StringComparer]::Ordinal
@@ -763,13 +764,13 @@ function Get-Session {
         $DedupSessions.Add($Merged)
     }
 
-    # Filter out entries with no parsed date - these are non-session headers
+    # Remove null-date entries (non-session level-3 headers that matched no date)
     $Filtered = [System.Collections.Generic.List[object]]::new()
     foreach ($S in $DedupSessions) {
         if ($null -ne $S.Date) { $Filtered.Add($S) }
     }
 
-    # Append failed sessions if requested
+    # Failed sessions (no valid date) appended for diagnostic consumers
 
     if ($IncludeFailed -and $FailedSessions.Count -gt 0) {
         foreach ($F in $FailedSessions) {
@@ -777,11 +778,11 @@ function Get-Session {
         }
     }
 
-    # Attach parsed log data if requested
+    # Optional log attachment: fetch and parse log content for sessions with URLs
     if ($IncludeLogs) {
         $LogIndex = if ($NameIndex) { $NameIndex } else { $null }
         $LogResults = $Filtered | Get-SessionLog -Index $LogIndex -SkipFetch:$false
-        # Match results to sessions by positional index (same order as collect-then-emit)
+        # Positional matching: Get-SessionLog emits in same order as input sessions
         $SessionsWithLogs = [System.Collections.Generic.List[object]]::new()
         foreach ($S in $Filtered) {
             if ($null -ne $S.Logs -and $S.Logs.Count -gt 0) {

@@ -3,8 +3,16 @@
     Detail card component for the Robot CLI TUI engine.
 
     .DESCRIPTION
-    Key-value card that displays object properties with type-aware
-    formatting, scrolling support, and temporal range display.
+    Renders a scrollable key-value card that displays all properties of a
+    data object (entity, session, player, etc.) with type-aware formatting.
+
+    Format-DetailValue handles the full range of property types encountered
+    in the Nerthus data model: null sentinels, booleans (Polish Tak/Nie),
+    datetimes (ISO format), HashSets (inline for small sets, bulleted for
+    large), dictionaries (with @tag key display), and temporal objects with
+    ValidFrom/ValidTo date range display. Arrays of PSCustomObjects are
+    rendered as multi-property bullet lines, capped at 8 items to keep the
+    card readable.
 
     Helpers:
     - New-DetailCardComponent:  creates a scrollable detail card from a data object
@@ -29,8 +37,8 @@ function New-DetailCardComponent {
         [string]$Title
     )
 
-    # Extract displayable properties — skip PS-prefixed internals (e.g., PSComputerName)
-    # and infrastructure properties (Path, CN) that aren't meaningful in the card view
+    # Skip PS-prefixed internals and infrastructure properties (Path, CN)
+    # that are meaningful for lookups but not for human-readable display
     $Props = [System.Collections.Generic.List[object]]::new()
     foreach ($Prop in $Data.PSObject.Properties) {
         if ($Prop.Name.StartsWith('PS') -and $Prop.Name -ne 'PSTypeName') { continue }
@@ -160,8 +168,8 @@ function Format-DetailValue {
     if ($Value -is [bool]) { return $(if ($Value) { 'Tak' } else { 'Nie' }) }
     if ($Value -is [datetime]) { return $Value.ToString('yyyy-MM-dd') }
 
-    # HashSet[string] — inline comma-separated for ≤3 items to save vertical space;
-    # bullet list for larger sets to maintain readability
+    # HashSet[string] — inline for small sets to save vertical space;
+    # bulleted for larger sets so each value gets its own scannable line
     if ($Value -is [System.Collections.Generic.HashSet[string]]) {
         $AsList = @($Value)
         if ($AsList.Count -eq 0) { return '(brak)' }
@@ -186,7 +194,7 @@ function Format-DetailValue {
     if ($Value -is [array] -or $Value -is [System.Collections.IList]) {
         if ($Value.Count -eq 0) { return '(brak)' }
 
-        # Simple scalar arrays
+        # Scalar arrays (strings, numbers) can be safely joined inline
         $AllScalar = $true
         foreach ($V in $Value) {
             if ($V -is [PSCustomObject] -or $V -is [hashtable]) { $AllScalar = $false; break }
@@ -196,7 +204,7 @@ function Format-DetailValue {
             return ($Value -join ', ')
         }
 
-        # Temporal objects (have ValidFrom)
+        # Temporal objects (entity @tag values with ValidFrom/ValidTo date ranges)
         if ($Value[0] -is [PSCustomObject] -and $Value[0].PSObject.Properties['ValidFrom']) {
             $Lines = [System.Collections.Generic.List[string]]::new()
             $SkipNames = [System.Collections.Generic.HashSet[string]]::new(
@@ -207,7 +215,7 @@ function Format-DetailValue {
                 $V = $Value[$I]
                 $VF = if ($V.ValidFrom) { try { ([datetime]$V.ValidFrom).ToString('yyyy-MM-dd') } catch { [string]$V.ValidFrom } } else { '' }
                 $VT = if ($V.ValidTo) { try { ([datetime]$V.ValidTo).ToString('yyyy-MM-dd') } catch { [string]$V.ValidTo } } else { '' }
-                # Prefer Text, fall back to Value, then find first scalar property
+                # Display value resolution: prefer Text, then Value, then first scalar property
                 $VV = $null
                 if ($V.PSObject.Properties['Text'] -and $V.Text) { $VV = $V.Text }
                 elseif ($V.PSObject.Properties['Value'] -and $V.Value) { $VV = $V.Value }
@@ -232,7 +240,7 @@ function Format-DetailValue {
             return @($Lines)
         }
 
-        # Nested PSCustomObject arrays — generic multi-property display
+        # Nested PSCustomObject arrays — show up to 3 properties per item as a summary line
         if ($Value[0] -is [PSCustomObject]) {
             $Lines = [System.Collections.Generic.List[string]]::new()
             $ShowCount = [Math]::Min($Value.Count, 8)
@@ -257,7 +265,7 @@ function Format-DetailValue {
             return @($Lines)
         }
 
-        # Generic array
+        # Generic array — bulleted list with overflow indicator
         $Lines = [System.Collections.Generic.List[string]]::new()
         $Limit = [Math]::Min($Value.Count, 8)
         for ($I = 0; $I -lt $Limit; $I++) {

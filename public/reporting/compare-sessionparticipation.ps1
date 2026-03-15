@@ -3,9 +3,28 @@
     Compares session participation across multiple entities.
 
     .DESCRIPTION
-    Finds sessions shared between the given entities and sessions exclusive
-    to each. Returns common sessions, exclusive sessions per entity, and
-    an overlap matrix with pairwise overlap percentages.
+    Compare-SessionParticipation finds sessions shared between the given
+    entities and sessions exclusive to each. It uses HashSet intersection
+    and union operations to efficiently compute pairwise overlap without
+    repeated linear scans.
+
+    Processing pipeline:
+    1. Collect session headers per entity via Get-SessionGraph (Sessions mode)
+    2. Compute the global intersection (sessions where ALL entities appear)
+    3. Compute exclusive sessions per entity (sessions not shared with ANY other)
+    4. Build an overlap matrix with pairwise Jaccard-style percentages
+       (SharedCount / UnionCount * 100) for every unique entity pair
+
+    The overlap matrix uses upper-triangle iteration (i < j) so each pair
+    appears exactly once. Overlap percentage is Jaccard similarity scaled
+    to 0-100, with zero returned when both sets are empty.
+
+    Returns a PSCustomObject with EntityNames, CommonSessions (headers
+    present in all sets), ExclusiveSessions (ordered hashtable of per-entity
+    exclusive header arrays), and OverlapMatrix (list of pairwise objects).
+
+    Requires at least 2 entity names; emits a warning and returns $null
+    if fewer are provided.
 #>
 
 function Compare-SessionParticipation {
@@ -35,7 +54,7 @@ function Compare-SessionParticipation {
         return $null
     }
 
-    # Collect session headers for each entity
+    # Build per-entity HashSets of session headers for O(1) membership testing
     $EntitySessionSets = [ordered]@{}
     foreach ($Name in $EntityNames) {
         $Sessions = @(Get-SessionGraph -EntityName $Name -MinTier $MinTier -Mode Sessions -Quiet)
@@ -47,7 +66,7 @@ function Compare-SessionParticipation {
         $EntitySessionSets[$Name] = $Headers
     }
 
-    # Common sessions: intersection of all sets
+    # Start with the first entity's set and progressively intersect with remaining sets
     $CommonHeaders = [System.Collections.Generic.HashSet[string]]::new(
         $EntitySessionSets[$EntityNames[0]],
         [System.StringComparer]::OrdinalIgnoreCase)
@@ -55,7 +74,7 @@ function Compare-SessionParticipation {
         $CommonHeaders.IntersectWith($EntitySessionSets[$EntityNames[$i]])
     }
 
-    # Exclusive sessions: per entity, sessions not shared with ANY other entity
+    # For each entity, collect headers that appear in no other entity's set
     $ExclusiveSessions = [ordered]@{}
     foreach ($Name in $EntityNames) {
         $OwnHeaders = $EntitySessionSets[$Name]
@@ -76,7 +95,7 @@ function Compare-SessionParticipation {
         $ExclusiveSessions[$Name] = @($Exclusive)
     }
 
-    # Overlap matrix (pairwise)
+    # Upper-triangle pairwise overlap: Jaccard similarity as percentage
     $OverlapMatrix = [System.Collections.Generic.List[object]]::new()
     for ($i = 0; $i -lt $EntityNames.Count; $i++) {
         for ($j = $i + 1; $j -lt $EntityNames.Count; $j++) {

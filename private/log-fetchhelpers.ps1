@@ -4,7 +4,9 @@
 
     .DESCRIPTION
     Provides URL normalization, filesystem-safe filename generation, single-URL
-    fetch with local caching, and batch fetch with CDN-safe throttling.
+    fetch with local caching, and batch fetch with CDN-safe throttling. Consumed
+    by the migration pipeline (log download phase) and session-decomposehelpers.ps1
+    (URL localization during format upgrade).
 
     Fetched logs are persisted in the res/logs/ directory (via Get-AdminConfig ResDir)
     as raw text files with URL-derived filenames. A .failed marker is written for
@@ -25,6 +27,19 @@
     - $script:PastebinRawPattern: compiled regex for raw pastebin URLs
     - $script:UrlUnsafeChars: compiled regex for non-alphanumeric characters
     - $script:LogHttpClient: lazily-initialized shared HttpClient instance
+
+    URL normalization pipeline: Pastebin is the primary log hosting service.
+    Non-raw URLs (pastebin.com/XXXX) are converted to raw form
+    (pastebin.com/raw/XXXX) to fetch plain text instead of HTML. All URLs
+    are normalized to HTTPS. The normalized URL is then converted to a
+    filesystem-safe filename by stripping the protocol and removing all
+    non-alphanumeric characters.
+
+    Batch fetch uses sequential requests with a configurable throttle delay
+    (default 500ms) between HTTP requests to avoid CDN rate limiting.
+    Cache hits skip the delay since no HTTP request is made. URL deduplication
+    via HashSet prevents redundant fetches when the same URL appears in
+    multiple sessions.
 #>
 
 # ── Precompiled Regex ─────────────────────────────────────────────────────────

@@ -3,53 +3,58 @@
     Temporal validity helpers for time-scoped entity metadata.
 
     .DESCRIPTION
-    This file contains shared temporal utility functions extracted from get-entity.ps1:
+    Shared temporal utility functions extracted from get-entity.ps1 so they
+    can be consumed by multiple subsystems without circular dot-source
+    dependencies. Not auto-loaded by robot.psm1 (non-Verb-Noun filename).
 
     Helpers:
-    - ConvertFrom-ValidityString: splits "Value (2025-02:)" into { Text, ValidFrom, ValidTo, Season }
-    - Resolve-PartialDate:        expands partial dates (YYYY, YYYY-MM) to full datetime values
-    - Resolve-SeasonForDate:      returns Polish season name for a given date
-    - Test-TemporalActivity:      checks if an item falls within an -ActiveOn date window (date + season)
-    - Get-NestedBulletText:       collects text from child bullets that pass temporal filtering
-    - Get-LastActiveValue:        returns the last active entry from a history list
-    - Get-AllActiveValues:        returns all active entries from a history list as string[]
-    - ConvertTo-SessionDate:      parses yyyy-MM-dd string into [datetime] or $null
+    - ConvertFrom-ValidityString:   splits "Value (2025-02:)" into { Text, ValidFrom, ValidTo, Season }
+    - Resolve-PartialDate:          expands partial dates (YYYY, YYYY-MM) to full datetime values
+    - Resolve-SeasonForDate:        returns Polish season name for a given date
+    - Test-TemporalActivity:        checks if an item falls within an -ActiveOn date window (date + season)
+    - Get-NestedBulletText:         collects text from child bullets that pass temporal filtering
+    - Get-LastActiveValue:          returns the last active entry from a history list (reverse scan)
+    - Get-AllActiveValues:          returns all active entries from a history list as string[]
+    - ConvertTo-SessionDate:        parses yyyy-MM-dd string into [datetime] or $null
     - ConvertFrom-CoordinateString: parses "X, Y" coordinate pair into @{ X; Y } or $null
 
     Module-level data:
-    - $ValidityPattern:      precompiled regex for parsing validity range syntax
-    - $SeasonKeywords:       HashSet of valid Polish season keywords
-    - $DateRangePattern:     precompiled regex for detecting date range components
-    - $SessionDatePattern:   precompiled regex for extracting session dates (YYYY-MM-DD with optional /DD range)
+    - $script:ValidityPattern:    precompiled regex for parsing validity range syntax "text (range)"
+    - $script:SeasonKeywords:     HashSet of valid Polish season keywords (wiosna, lato, jesien, zima)
+    - $script:DateRangePattern:   precompiled regex for detecting "start:end" date range components
+    - $script:SessionDatePattern: precompiled regex for YYYY-MM-DD with optional /DD range suffix
 
-    These helpers are used by Get-Entity, Get-EntityState, Get-Session (via
-    Resolve-IntelTargets), and various reporting commands. They are dot-sourced
-    by consuming files (get-entity.ps1, etc.) rather than auto-loaded by the
-    module loader.
+    ConvertFrom-ValidityString is the central parser for entity @tag values.
+    It handles four syntactic forms:
+    1. Plain value: "Erathia" -> no temporal bounds
+    2. Date range: "Erathia (2021-01:2024-06)" -> ValidFrom/ValidTo set
+    3. Season only: "ithan-zima.png (zima)" -> Season set, no dates
+    4. Combined: "Targowisko (2024-01:, lato)" -> both date range and season
+    Non-temporal parentheticals (no colon, not a season keyword) are treated
+    as literal name parts for backward compatibility (e.g. "Rada (Ithan)").
+
+    Test-TemporalActivity is the hot-path filter: it checks date bounds and
+    season constraints. Season resolution is cached per date in script-scope
+    variables ($script:CachedSeasonDate/$script:CachedSeasonResult) to avoid
+    thousands of redundant Resolve-SeasonForDate calls when filtering a large
+    entity list against a single -ActiveOn date.
+
+    Get-LastActiveValue uses reverse-scan instead of .Where() filtering
+    because history lists are ordered by ValidFrom ascending, so the last
+    active entry (most recent) is found fastest from the end.
+
+    Consumers: Get-Entity, Get-EntityState, Get-Session (via
+    Resolve-IntelTargets), session-decomposehelpers.ps1, and reporting
+    commands. All dot-source this file on demand.
 #>
 
-# Precompiled regex - captures text and optional parenthetical content
 $script:ValidityPattern = [regex]::new('^(.*?)(?:\s*\(([^)]+)\))?$', [System.Text.RegularExpressions.RegexOptions]::Compiled)
-
-# Date range component detector - matches start:end patterns
 $script:DateRangePattern = [regex]::new('^([^:]*):(.*)$', [System.Text.RegularExpressions.RegexOptions]::Compiled)
-
-# Session date pattern - matches YYYY-MM-DD with optional /DD range suffix in session headers
-# Used by Get-Session, Set-Session (via session-decomposehelpers), and Test-SessionIntegrity
 $script:SessionDatePattern = [regex]::new('\b(\d{4}-\d{2}-\d{2})(?:/(\d{2}))?\b', [System.Text.RegularExpressions.RegexOptions]::Compiled)
-
-# Valid Polish season keywords (case-insensitive matching via OrdinalIgnoreCase)
 $script:SeasonKeywords = [System.Collections.Generic.HashSet[string]]::new(
     [string[]]@('wiosna', 'lato', 'jesień', 'zima'),
     [System.StringComparer]::OrdinalIgnoreCase)
 
-# Helper: parse temporal validity range
-# Splits text like "Value (2025-02:)" or "Value (:2025-01)" or "Value (zima)"
-# or "Value (2024-01:, zima)" into structured components.
-# Handles partial dates (YYYY, YYYY-MM, YYYY-MM-DD). Start dates resolve to
-# first day of period, end dates to last day.
-# Season keywords: wiosna, lato, jesień, zima (Polish, case-insensitive).
-# Returns hashtable: @{ Text; ValidFrom; ValidTo; Season }
 function ConvertFrom-ValidityString {
     param([string]$InputText)
 
@@ -63,13 +68,12 @@ function ConvertFrom-ValidityString {
     $ParenGroup = $Match.Groups[2]
 
     if (-not $ParenGroup.Success) {
-        # No parenthetical content
-        return @{ Text = $Name; ValidFrom = $null; ValidTo = $null; Season = $null }
+            return @{ Text = $Name; ValidFrom = $null; ValidTo = $null; Season = $null }
     }
 
     $ParenContent = $ParenGroup.Value.Trim()
 
-    # Check for comma-separated components (season + date range in any order)
+    # Comma-separated: season + date range in any order (e.g. "2024-01:, lato")
     if ($ParenContent.Contains(',')) {
         $Parts = $ParenContent.Split(',')
         $Season    = $null
@@ -84,7 +88,6 @@ function ConvertFrom-ValidityString {
             }
         }
 
-        # Parse date range part if found
         $ValidFrom = $null
         $ValidTo   = $null
         if ($DatePart) {
@@ -103,9 +106,7 @@ function ConvertFrom-ValidityString {
         }
     }
 
-    # Single component: season keyword, date range, or literal text
     if ($script:SeasonKeywords.Contains($ParenContent)) {
-        # Season-only
         return @{
             Text      = $Name
             ValidFrom = $null
@@ -116,7 +117,6 @@ function ConvertFrom-ValidityString {
 
     $DateMatch = $script:DateRangePattern.Match($ParenContent)
     if ($DateMatch.Success) {
-        # Date range without season constraint
         $ValidFrom = Resolve-PartialDate -DateStr $DateMatch.Groups[1].Value.Trim() -IsEnd $false
         $ValidTo   = Resolve-PartialDate -DateStr $DateMatch.Groups[2].Value.Trim() -IsEnd $true
         return @{
@@ -127,7 +127,7 @@ function ConvertFrom-ValidityString {
         }
     }
 
-    # Not temporal — parenthetical is part of the entity name (e.g. "Rada (Ithan)")
+    # Non-temporal parenthetical: literal name part (e.g. "Rada (Ithan)")
     return @{
         Text      = "$Name ($ParenContent)"
         ValidFrom = $null
@@ -136,10 +136,6 @@ function ConvertFrom-ValidityString {
     }
 }
 
-# Helper: parse partial date string
-# Accepts YYYY, YYYY-MM, or YYYY-MM-DD. When -IsEnd is true, expands to the
-# last day of the period (e.g. 2024-06 -> 2024-06-30); otherwise to the first
-# day (e.g. 2024-06 -> 2024-06-01). Returns [datetime] or $null.
 function Resolve-PartialDate {
     param(
         [string]$DateStr,
@@ -172,16 +168,13 @@ function Resolve-PartialDate {
     }
 }
 
-# Helper: resolve season name for a given date
-# Default meteorological mapping: Mar-May=wiosna, Jun-Aug=lato, Sep-Nov=jesień, Dec-Feb=zima.
-# Custom mapping from $script:CachedSeasonMapping (loaded from local.config.psd1) overrides defaults.
 function Resolve-SeasonForDate {
     param(
         [Parameter(Mandatory)]
         [datetime]$Date
     )
 
-    # Check for custom mapping from local.config.psd1
+    # Custom mapping from local.config.psd1 overrides meteorological defaults
     if ($script:CachedSeasonMapping) {
         foreach ($Entry in $script:CachedSeasonMapping.GetEnumerator()) {
             $Months = $Entry.Value
@@ -191,7 +184,6 @@ function Resolve-SeasonForDate {
         }
     }
 
-    # Default meteorological seasons
     switch ($Date.Month) {
         { $_ -ge 3 -and $_ -le 5 }  { return 'wiosna' }
         { $_ -ge 6 -and $_ -le 8 }  { return 'lato' }
@@ -200,10 +192,6 @@ function Resolve-SeasonForDate {
     }
 }
 
-# Helper: temporal activity check
-# Returns $true when $Item falls within the -ActiveOn window. Items without
-# validity bounds are always active. When $ActiveOn is $null (not supplied),
-# every item is considered active. Also checks seasonal constraint when present.
 function Test-TemporalActivity {
     param(
         [object]$Item,
@@ -214,8 +202,7 @@ function Test-TemporalActivity {
     if ($Item.ValidFrom -and $ActiveOn -lt $Item.ValidFrom)   { return $false }
     if ($Item.ValidTo   -and $ActiveOn -gt $Item.ValidTo)     { return $false }
 
-    # Season check: if item has a Season constraint, verify it matches the ActiveOn date.
-    # Cache the resolved season per date to avoid thousands of redundant Resolve-SeasonForDate calls.
+    # Per-date season cache avoids redundant Resolve-SeasonForDate calls across large entity lists
     if ($Item.Season) {
         if ($script:CachedSeasonDate -ne $ActiveOn) {
             $script:CachedSeasonDate   = $ActiveOn
@@ -229,10 +216,6 @@ function Test-TemporalActivity {
     return $true
 }
 
-# Helper: collect nested bullet text
-# Given a parent list item and a ChildrenOf lookup, gathers text from
-# all direct children that pass the temporal activity filter. Returns a single
-# newline-joined string or $null when no children match.
 function Get-NestedBulletText {
     param(
         [object]$ParentBullet,
@@ -257,9 +240,6 @@ function Get-NestedBulletText {
     return $Texts -join "`n"
 }
 
-# Helper: resolve last-active scalar from history list
-# Filters a history list through Test-TemporalActivity and returns the property
-# value of the last (most recently added) active entry, or $null.
 function Get-LastActiveValue {
     param(
         [System.Collections.Generic.List[object]]$History,
@@ -269,9 +249,7 @@ function Get-LastActiveValue {
 
     if ($History.Count -eq 0) { return $null }
 
-    # Reverse-scan: return on first match instead of filtering entire list.
-    # History is sorted by ValidFrom (null first, then ascending), so the
-    # last active entry is the most recent — scanning backward finds it fastest.
+    # Reverse scan: history is ValidFrom-ascending, so most recent active entry is near the end
     for ($i = $History.Count - 1; $i -ge 0; $i--) {
         if (Test-TemporalActivity -Item $History[$i] -ActiveOn $ActiveOn) {
             return $History[$i].$PropertyName
@@ -280,9 +258,6 @@ function Get-LastActiveValue {
     return $null
 }
 
-# Helper: resolve all active values from history as string[]
-# Similar to Get-LastActiveValue but collects all active entries into an array.
-# Used for multi-valued properties like Groups and Doors.
 function Get-AllActiveValues {
     param(
         [System.Collections.Generic.List[object]]$History,

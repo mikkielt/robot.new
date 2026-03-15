@@ -6,18 +6,23 @@
     This file contains workflow functions for economic analysis, consumed by
     the CLI menu registry (Mode = 'Workflow'). Dot-sourced on demand.
 
-    Workflows:
-    - Invoke-EconomicSnapshotWorkflow:         point-in-time economic snapshot
-    - Invoke-EconomicTimelineWorkflow:         monthly economic trends
-    - Invoke-MaterializationReportWorkflow:    physical vs virtual currency analysis
+    Helpers:
+    - Invoke-EconomicSnapshotWorkflow:         point-in-time economic snapshot with Gini/top-holders
+    - Invoke-EconomicTimelineWorkflow:         monthly economic trend table over a date range
+    - Invoke-MaterializationReportWorkflow:    physical vs virtual currency breakdown by player
 
-    Design:
-    - All three workflows follow the same pattern: optional wizard filters,
-      progress indicator, core function call, and engine table display.
-    - Snapshot and materialization show inline summary stats before the
-      interactive table. Timeline shows a month-by-month table directly.
-    - All amounts are normalized to Kogi base units for cross-denomination
-      comparison (ConvertFrom-CurrencyBaseUnit for display).
+    All three workflows follow the same pattern: optional wizard filters,
+    progress indicator, core function call, inline summary stats, then an
+    engine-driven interactive table for drill-down.
+
+    Snapshot shows supply breakdown by denomination, Gini coefficient,
+    transaction volume, and a top-holders table. Timeline shows a
+    month-by-month row per period. Materialization splits physical vs
+    virtual holdings per player and surfaces orphaned physical currency
+    (owned by inactive/deleted entities).
+
+    All amounts are normalized to Kogi base units for cross-denomination
+    comparison (ConvertFrom-CurrencyBaseUnit for display).
 
     Dependencies: cli-primitives.ps1, cli-wizard.ps1
 #>
@@ -34,7 +39,7 @@ function Invoke-EconomicSnapshotWorkflow {
     Write-CLILine -Text 'Obraz gospodarki' -Color $AccentColor
     Write-Host ''
 
-    # Optional denomination filter
+    # Optional denomination filter narrows snapshot to a single currency type
     $DenomStep = New-WizardChoiceStep -Name 'Denomination' -Label 'Nominał (opcjonalny)' `
         -Options @('Wszystkie', 'Korony Elanckie', 'Talary Hirońskie', 'Kogi Skeltvorskie') -Default 'Wszystkie'
     $DenomChoice = Invoke-WizardStep -Step $DenomStep -State $State
@@ -57,14 +62,14 @@ function Invoke-EconomicSnapshotWorkflow {
         Write-CLILine -Text "  Data: $($Snapshot.SnapshotDate.ToString('yyyy-MM-dd'))" -Color $AccentColor
         Write-Host ''
 
-        # Supply breakdown
+        # Per-denomination supply split (physical vs virtual)
         Write-CLILine -Text '  Podaż wg nominałów:' -Color $AccentColor
         foreach ($Entry in $Snapshot.SupplyByDenomination.GetEnumerator()) {
             Write-CLILine -Text "    $($Entry.Key): $($Entry.Value.Total) (fiz: $($Entry.Value.Physical), wirt: $($Entry.Value.Virtual))" -Color $DisabledColor
         }
         Write-Host ''
 
-        # Summary stats
+        # Aggregate economic indicators (all normalized to Kogi base units)
         $Breakdown = ConvertFrom-CurrencyBaseUnit -Amount $Snapshot.TotalSupplyKogi
         Write-CLILine -Text "  Podaż ogółem (Kogi): $($Snapshot.TotalSupplyKogi)" -Color $AccentColor
         Write-CLILine -Text "  Fizyczna: $($Snapshot.PhysicalSupplyKogi) Kogi ($([math]::Round($Snapshot.PhysicalRatio * 100, 1))%)" -Color $AccentColor
@@ -74,7 +79,7 @@ function Invoke-EconomicSnapshotWorkflow {
         Write-CLILine -Text "  Transakcje: $($Snapshot.TransactionVolume) (wartość: $($Snapshot.TransactionValueKogi) Kogi)" -Color $AccentColor
         Write-Host ''
 
-        # Top holders table
+        # Top holders ranked by total Kogi wealth (interactive table)
         if ($Snapshot.TopHolders.Count -gt 0) {
             $TableData = $Snapshot.TopHolders | ForEach-Object {
                 [PSCustomObject]@{
@@ -114,7 +119,7 @@ function Invoke-EconomicTimelineWorkflow {
     Write-CLILine -Text 'Oś czasu gospodarki' -Color $AccentColor
     Write-Host ''
 
-    # Date range
+    # Date range bounds the timeline query (both required)
     $MinDateStep = New-WizardDateStep -Name 'MinDate' -Label 'Od daty' -Required
     $MinDate = Invoke-WizardStep -Step $MinDateStep -State $State
     if ($MinDate -eq '__back__') { return }
@@ -185,7 +190,7 @@ function Invoke-MaterializationReportWorkflow {
 
         Write-Host ''
 
-        # Summary
+        # Aggregate totals across all denominations
         $Summary = $Report.Summary
         Write-CLILine -Text "  Fizyczna łącznie: $($Summary.TotalPhysical) Kogi" -Color $AccentColor
         Write-CLILine -Text "  Wirtualna łącznie: $($Summary.TotalVirtual) Kogi" -Color $AccentColor
@@ -194,7 +199,7 @@ function Invoke-MaterializationReportWorkflow {
         }
         Write-Host ''
 
-        # Denomination breakdown
+        # Per-denomination physical/virtual split with percentage
         if ($Report.DenominationBreakdown.Count -gt 0) {
             Write-CLILine -Text '  Podział wg nominałów:' -Color $AccentColor
             foreach ($D in $Report.DenominationBreakdown) {
@@ -203,7 +208,7 @@ function Invoke-MaterializationReportWorkflow {
             Write-Host ''
         }
 
-        # Player breakdown table
+        # Physical wealth by player (characters are joined for display)
         if ($Report.PlayerBreakdown.Count -gt 0) {
             $PlayerData = $Report.PlayerBreakdown | ForEach-Object {
                 [PSCustomObject]@{
@@ -220,7 +225,7 @@ function Invoke-MaterializationReportWorkflow {
             [void](Invoke-EngineLifecycle -Component $TableComponent -State $State)
         }
 
-        # Orphaned physical
+        # Orphaned physical currency: owned by inactive/deleted entities, needs reconciliation
         if ($Report.OrphanedPhysical.Count -gt 0) {
             Write-Host ''
             $OrphanData = $Report.OrphanedPhysical | ForEach-Object {

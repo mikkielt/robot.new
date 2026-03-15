@@ -23,8 +23,15 @@
     Reputation helpers (Read-ReputationTier, Format-ReputationSection) are in
     charfile-reputation.ps1, dot-sourced below.
 
+    Character files follow a fixed-section Markdown format with bold headers
+    (**Karta Postaci:**, **Stan:**, etc.). The parser locates sections by regex,
+    extracts typed data (scalars, bullet lists, reputation tiers), and returns a
+    single PSCustomObject. Writers splice line arrays in-place to preserve
+    surrounding content and original newline style (CRLF/LF auto-detected).
+
     All functions operate on raw line arrays following the same pattern as
-    entity-writehelpers.ps1.
+    entity-writehelpers.ps1. Write-CharacterFile fires BeforeWrite/AfterWrite
+    plugin hooks and registers files with the operation context for audit trails.
 #>
 
 # Dot-source reputation helpers (Read-ReputationTier, Format-ReputationSection)
@@ -52,11 +59,11 @@ $script:LocationDetailPattern = [regex]::new(
     [System.Text.RegularExpressions.RegexOptions]::Compiled
 )
 
-# Section name -> English property name mapping
+# Maps Polish section headers to English property names used in the parsed PSCustomObject
 $script:SectionNameToProperty = @{
     'Karta Postaci'          = 'CharacterSheet'
-    'Tematy zastrzeżone'     = 'RestrictedTopics'    # note: ż in source files
-    'Tematy zastrzezone'     = 'RestrictedTopics'     # variant without diacritic
+    'Tematy zastrzeżone'     = 'RestrictedTopics'    # canonical form with ż diacritic
+    'Tematy zastrzezone'     = 'RestrictedTopics'     # fallback for files missing the diacritic
     'Stan'                   = 'Condition'
     'Przedmioty specjalne'   = 'SpecialItems'
     'Reputacja'              = 'Reputation'
@@ -64,9 +71,6 @@ $script:SectionNameToProperty = @{
     'Opisane sesje'          = 'DescribedSessions'
 }
 
-# Helper: locate a bold-header section in a character file's line array
-# Returns hashtable: HeaderIdx, InlineContent, ContentStart, ContentEnd (exclusive)
-# Returns $null if not found.
 function Find-CharacterSection {
     param(
         [string[]]$Lines,
@@ -108,7 +112,6 @@ function Find-CharacterSection {
     return $null
 }
 
-# Main parser: reads an entire character file into a structured object
 function Read-CharacterFile {
     param([string]$Path)
 
@@ -162,6 +165,7 @@ function Read-CharacterFile {
             }
         }
         $Joined = ($TopicLines -join ' ').Trim()
+        # "Brak"/"Brak." is the Polish placeholder for "none" — normalize to null
         if ($Joined -ieq 'Brak.' -or $Joined -ieq 'brak') { $Joined = $null }
         $RestrictedTopics = $Joined
     }
@@ -266,12 +270,12 @@ function Read-CharacterFile {
         $AdditionalNotes = $Notes.ToArray()
     }
 
-    # Opisane sesje (DescribedSessions, read-only)
+    # Opisane sesje (DescribedSessions) — read-only, never written back
     $DescribedSessions = @()
     $Sec = $Sections['Opisane sesje']
     if ($Sec) {
         $SessionList = [System.Collections.Generic.List[object]]::new()
-        # Scan from ContentStart to end of file (sessions span to EOF)
+        # Scan to end of file, not ContentEnd — session entries are the last section and span to EOF
         for ($i = $Sec.ContentStart; $i -lt $LineArray.Count; $i++) {
             $SessMatch = $script:SessionHeaderPattern_CF.Match($LineArray[$i])
             if (-not $SessMatch.Success) { continue }
@@ -319,8 +323,6 @@ function Read-CharacterFile {
     }
 }
 
-# Writer: section-level in-place replacement
-# Replaces content of a single bold-header section. Modifies $Lines in-place.
 function Write-CharacterFileSection {
     param(
         [System.Collections.Generic.List[string]]$Lines,
@@ -340,9 +342,8 @@ function Write-CharacterFileSection {
         $Lines[$Section.HeaderIdx] = "**${SectionName}:** $InlineValue"
     }
 
-    # Find the actual end for removal (include trailing blank lines up to next section)
+    # Extend removal range past trailing blank lines up to the next section header
     $RemoveEnd = $Section.ContentEnd
-    # Also remove blank lines between content and next section
     $RawEnd = $Lines.Count
     for ($j = $Section.HeaderIdx + 1; $j -lt $Lines.Count; $j++) {
         if ($script:CharSectionPattern.IsMatch($Lines[$j]) -or $Lines[$j].StartsWith('###')) {
@@ -368,8 +369,6 @@ function Write-CharacterFileSection {
     $Lines.Insert($InsertIdx, '')
 }
 
-# Helper: write character file to disk (UTF-8 no BOM) with plugin hooks.
-# Mirrors Write-EntityFile pattern from entity-writehelpers.ps1.
 function Write-CharacterFile {
     param(
         [Parameter(Mandatory)]

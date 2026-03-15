@@ -5,38 +5,52 @@
     potential PU manipulation.
 
     .DESCRIPTION
-    This file contains Test-SessionIntegrity which performs 8 validation checks:
+    This file contains Test-SessionIntegrity which performs 9 validation checks:
 
-    1. Modified Sessions:      content changed since last hash (hash mismatch)
-    2. Deleted Sessions:       header in hash store but not in current file
-    3. New Sessions:           header in file but not in hash store
-    4. Missing Hash Files:     .md files with no corresponding .json sidecar
-    5. Malformed Headers:      ### headers that fail date parsing
-    6. PU-Affected Sessions:   modified sessions containing PU data (high severity)
-    7. Duplicate PU Markers:   sessions with 2+ PU section markers (tamper indicator)
-    8. Format Anomalies:       date-like lines without proper ### header prefix
-    9. Future-Dated Sessions:  ### session headers with dates after today
+    1. ModifiedSessions:     content hash mismatch between stored sidecar
+                             and current file (possible edit or tampering)
+    2. DeletedSessions:      header in hash store but absent from current
+                             file (session removed without hash update)
+    3. NewSessions:          header in file but not in hash store (new
+                             session added since last hash baseline)
+    4. MissingHashFiles:     .md files with no corresponding .json sidecar
+                             (never baselined)
+    5. MalformedHeaders:     level-3 headers that fail date parsing
+    6. PUAffectedSessions:   modified sessions that contain PU data
+                             (high severity — potential PU manipulation)
+    7. DuplicatePUMarkers:   sessions with 2+ PU section markers within
+                             the same section (strong tamper indicator)
+    8. FormatAnomalies:      date-like lines without ### header prefix
+                             (possible malformed session boundary)
+    9. FutureDatedSessions:  session headers with dates after today
 
-    Returns a structured diagnostic object following the same pattern as
-    Test-PlayerCharacterPUAssignment: an OK boolean and categorized arrays.
+    Module-level data:
+    - $script:DateLineLikePattern: precompiled regex matching lines starting
+      with YYYY-MM-DD for format anomaly detection
+    - $script:SessionDatePattern: canonical definition in temporal-helpers.ps1
+    - $script:PUSectionPattern: canonical definition in session-parsehelpers.ps1
 
-    Supports full and incremental modes. Incremental mode uses Get-GitChangeLog
-    to limit checks to recently changed files.
+    Pipeline:
+    1. Determine file scope: -File (explicit paths), -Full (all hashable
+       files), or incremental (git changelog since last update)
+    2. Batch-parse all files via Get-Markdown in a single call
+    3. For each file, compare current per-header SHA256 hashes against
+       stored .json sidecar (checks 1-3)
+    4. Scan sections for malformed dates and format anomalies (checks 5, 8, 9)
+    5. For modified sessions, scan content for PU markers (checks 6, 7)
 
-    Dot-sources:
-    - private/session-hashhelpers.ps1 (hashing primitives)
-    - private/admin-config.ps1 (ResDir resolution)
+    Incremental mode reads _meta.json for LastIncrementalUpdate timestamp,
+    then uses Get-GitChangeLog -NoPatch to identify changed .md files.
+    Falls back to full scan if git changelog fails.
 
-    Uses canonical patterns from other helpers (available via module scope):
-    - $script:SessionDatePattern from temporal-helpers.ps1
-    - $script:PUSectionPattern from session-parsehelpers.ps1
+    Code block tracking ($InCodeBlock) prevents false-positive format
+    anomalies from date strings inside fenced code blocks.
 #>
 
 # $script:PUSectionPattern — canonical definition in private/session-parsehelpers.ps1
 # (available via module scope; loaded by get-session.ps1 at import time)
 
-# Date-like line pattern for format anomaly detection
-# Matches lines starting with YYYY-MM-DD but NOT preceded by ### prefix
+# Anchored YYYY-MM-DD pattern for detecting date-like lines that lack ### prefix
 $script:DateLineLikePattern = [regex]::new(
     '^\d{4}-\d{2}-\d{2}',
     [System.Text.RegularExpressions.RegexOptions]::Compiled
@@ -45,7 +59,7 @@ $script:DateLineLikePattern = [regex]::new(
 function Test-SessionIntegrity {
     <#
         .SYNOPSIS
-        Validates session content integrity by comparing current file state against stored hashes.
+        Validates session content integrity via SHA256 hash comparison and structural checks.
     #>
 
     [CmdletBinding()] param(
@@ -72,7 +86,7 @@ function Test-SessionIntegrity {
     if ($Quiet) { $script:SuppressWarnings = $true }
     try {
 
-    # Load helpers
+    # Lazy-load helpers to avoid import overhead when called from modules that already loaded them
     if (-not (Get-Command 'Get-ContentHash' -ErrorAction SilentlyContinue)) {
         . "$PSScriptRoot/../../private/session-hashhelpers.ps1"
     }
@@ -85,7 +99,7 @@ function Test-SessionIntegrity {
     $HashDir = [System.IO.Path]::Combine($Config.ResDir, 'session-hashes')
     $MetaPath = [System.IO.Path]::Combine($HashDir, '_meta.json')
 
-    # Result collections
+    # Each check category accumulates its own list for structured output
     $ModifiedSessions   = [System.Collections.Generic.List[object]]::new()
     $DeletedSessions    = [System.Collections.Generic.List[object]]::new()
     $NewSessions        = [System.Collections.Generic.List[object]]::new()
@@ -96,10 +110,10 @@ function Test-SessionIntegrity {
     $FormatAnomalies    = [System.Collections.Generic.List[object]]::new()
     $FutureDatedSessions = [System.Collections.Generic.List[object]]::new()
 
-    # Today's date at midnight for future-date comparison
+    # Midnight boundary avoids time-of-day sensitivity in future-date check
     $Today = [datetime]::Today
 
-    # Determine which files to check
+    # File scope resolution: explicit paths > full scan > incremental (git-based)
     $FilesToCheck = [System.Collections.Generic.List[string]]::new()
 
     if ($File) {
@@ -114,7 +128,7 @@ function Test-SessionIntegrity {
     } elseif ($Full) {
         $FilesToCheck = Get-HashableFiles -RepoRoot $RepoRoot -ExcludeDirectory $ExcludeDirectory
     } else {
-        # Incremental: use git changelog
+        # Incremental mode: limit to files changed since last hash update
         $MinDateStr = $Since
         if (-not $MinDateStr) {
             $Meta = Read-SessionHashMeta -MetaPath $MetaPath
@@ -177,7 +191,7 @@ function Test-SessionIntegrity {
         }
     }
 
-    # Batch-parse all files
+    # Single Get-Markdown call enables RunspacePool parallelism for large file sets
     $MarkdownResults = @(Get-Markdown -File @($FilesToCheck))
     $MarkdownByPath = [System.Collections.Generic.Dictionary[string, object]]::new(
         [System.StringComparer]::OrdinalIgnoreCase
@@ -278,22 +292,20 @@ function Test-SessionIntegrity {
             continue
         }
 
-        # We have both a markdown result and a hash file
+        # Both markdown parse and hash sidecar available — compare hashes
         if ($null -eq $MdResult) { continue }
 
-        # Compute current hashes
+        # SHA256 per level-3 header for fine-grained change detection
         $CurrentHashes = Get-FileHeaderHashes -MarkdownResult $MdResult
 
-        # Load stored hashes
+        # Baseline hashes from the .json sidecar
         $StoredHashes = Read-SessionHashFile -JsonPath $JsonPath
 
-        # Check 1, 2, 3: Compare stored vs current
-
-        # Check 1 + 6 + 7: Modified sessions
+        # Check 1 + 6 + 7: Modified sessions (current headers that exist in store with different hash)
         foreach ($Key in $CurrentHashes.Keys) {
             if ($StoredHashes.ContainsKey($Key)) {
                 if (-not [string]::Equals($StoredHashes[$Key], $CurrentHashes[$Key], [System.StringComparison]::OrdinalIgnoreCase)) {
-                    # Hash mismatch — modified session
+                    # Content changed since baseline — flag for review
                     $IssueEntry = [PSCustomObject]@{
                         FilePath     = $FilePath
                         RelativePath = $RelPath
@@ -305,7 +317,7 @@ function Test-SessionIntegrity {
                     }
                     [void]$ModifiedSessions.Add($IssueEntry)
 
-                    # Find the corresponding section content for PU checks
+                    # Locate section content to check for PU data in modified sessions
                     $SectionContent = $null
                     foreach ($Section in $MdResult.Sections) {
                         if ($null -eq $Section.Header) { continue }
@@ -421,7 +433,8 @@ function Test-SessionIntegrity {
             }
         }
 
-        # Check 8: Format anomalies (from parsed sections — no extra file read)
+        # Check 8: Format anomalies — detect date-like lines outside code blocks
+        # that lack proper ### prefix (possible broken session boundary)
         $InCodeBlock = $false
         foreach ($Section in $MdResult.Sections) {
             $ContentStartLine = if ($null -eq $Section.Header) { 1 } else { $Section.Header.LineNumber + 1 }

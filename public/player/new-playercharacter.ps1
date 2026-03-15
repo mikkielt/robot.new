@@ -6,17 +6,24 @@
     This file contains New-PlayerCharacter which:
     1. Creates an entity entry under ## Postać with @należy_do and
        @pu_startowe tags in entities.md.
-    2. If the player has no entity entry yet, also creates one under ## Gracz.
+    2. If the player has no entity entry yet, also creates one under ## Gracz
+       so the @należy_do reference resolves.
     3. Optionally creates the character's Markdown file in Postaci/Gracze/
        from the player-character-file.md.template.
     4. Optionally applies initial character file property values (Condition,
-       SpecialItems, Reputation, AdditionalNotes) via charfile-helpers.ps1.
+       SpecialItems, Reputation, AdditionalNotes) via charfile-helpers.ps1,
+       so the character ships pre-populated rather than requiring a
+       follow-up Set-PlayerCharacter call.
 
-    Dot-sources entity-writehelpers.ps1, admin-config.ps1, and charfile-helpers.ps1.
+    PU start is computed from existing characters' earned PU via
+    Get-NewPlayerCharacterPUCount when not explicitly provided.
+
+    Dot-sources entity-writehelpers.ps1 (file I/O and tag manipulation),
+    admin-config.ps1 (paths and templates), and charfile-helpers.ps1
+    (character file read/write operations).
     Supports -WhatIf via SupportsShouldProcess.
 #>
 
-# Dot-source helpers
 . "$script:ModuleRoot/private/entity-writehelpers.ps1"
 . "$script:ModuleRoot/private/admin-config.ps1"
 . "$script:ModuleRoot/private/charfile-helpers.ps1"
@@ -92,7 +99,7 @@ function New-PlayerCharacter {
             $Computed = Get-NewPlayerCharacterPUCount -PlayerName $PlayerName
             $Computed
         } catch {
-            # Function not yet available (Phase 2) - default to 20
+            # Fallback for Phase 2 migration when function is not yet loaded
             [decimal]20
         }
     }
@@ -119,8 +126,8 @@ function New-PlayerCharacter {
         }
     }
 
-    # Template provides default tags (@należy_do, @plik, @pu_startowe);
-    # ConvertFrom-EntityTemplate parses the rendered result into tag pairs
+    # Template renders the canonical entity entry; ConvertFrom-EntityTemplate
+    # extracts tag pairs so Resolve-EntityTarget can insert them positionally
     $RelCharPath = if ($PSBoundParameters.ContainsKey('FilePath') -and -not [string]::IsNullOrWhiteSpace($FilePath)) {
         $FilePath
     } else {
@@ -159,7 +166,7 @@ function New-PlayerCharacter {
             $FileContent = Get-AdminTemplate -Name 'player-character-file.md.template' -Variables $TemplateVars
 
             if ($PSCmdlet.ShouldProcess($CharFilePath, "New-PlayerCharacter: create character file")) {
-                # Ensure directory exists
+                # First character for a player may need the Postaci/Gracze/ directory created
                 $Dir = [System.IO.Path]::GetDirectoryName($CharFilePath)
                 if (-not [System.IO.Directory]::Exists($Dir)) {
                     [void][System.IO.Directory]::CreateDirectory($Dir)

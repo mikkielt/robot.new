@@ -21,6 +21,17 @@
     Module-level data:
     - $script:CurrencyDenominations:   canonical denomination definitions with exchange rates (Korony/Talary/Kogi)
     - $script:DenomLookup:             precomputed hashtable mapping all name variants to denomination objects
+
+    The currency system uses a three-tier denomination model: Korony Elanckie (gold,
+    10000 Kogi), Talary Hirońskie (silver, 100 Kogi), Kogi Skeltvorskie (copper, 1 Kogi).
+    All cross-denomination arithmetic is done in the Kogi base unit.
+
+    Currency entities are Przedmiot-type entities with @generyczne_nazwy matching a
+    denomination name. Owner classification (Physical/Virtual/Unknown) determines
+    whether currency is backed by Margonem game items or exists only in the ledger.
+
+    $script:DenomLookup is built once at dot-source time, providing O(1) resolution
+    for canonical names, short names, and stem prefixes ("kor" -> Korony Elanckie).
 #>
 
 # Canonical denomination definitions
@@ -75,10 +86,10 @@ function ConvertFrom-CurrencyBaseUnit {
     $Remaining = [math]::Abs($Amount)
     $Sign = if ($Amount -lt 0) { -1 } else { 1 }
 
-    $Korony = [math]::Floor($Remaining / 10000)
+    $Korony = [math]::Floor($Remaining / 10000)    # 1 Korona = 10000 Kogi
     $Remaining = $Remaining % 10000
 
-    $Talary = [math]::Floor($Remaining / 100)
+    $Talary = [math]::Floor($Remaining / 100)      # 1 Talar = 100 Kogi
     $Kogi = $Remaining % 100
 
     return @{

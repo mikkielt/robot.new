@@ -59,7 +59,8 @@ function Get-PlayerCharacter {
 
     $Players = Get-Player @GetPlayerParams
 
-    # When -IncludeState is set, pre-fetch entity state and build lookup
+    # Pre-fetching entity state in bulk avoids per-character Get-EntityState
+    # calls, which would re-parse sessions N times instead of once
     $EntityLookup = $null
     $RepoRoot = $null
     if ($IncludeState) {
@@ -73,7 +74,7 @@ function Get-PlayerCharacter {
         if ($ActiveOn) { $EntityStateParams['ActiveOn'] = $ActiveOn }
         $EnrichedEntities = Get-EntityState @EntityStateParams
 
-        # Build lookup by entity name (case-insensitive)
+        # Dictionary keyed by all entity names for O(1) character-to-entity matching
         $EntityLookup = [System.Collections.Generic.Dictionary[string, object]]::new([System.StringComparer]::OrdinalIgnoreCase)
         foreach ($Entity in $EnrichedEntities) {
             foreach ($Name in $Entity.Names) {
@@ -89,7 +90,6 @@ function Get-PlayerCharacter {
 
     foreach ($Player in $Players) {
         foreach ($Character in $Player.Characters) {
-            # Apply character name filter if specified
             if ($CharacterName) {
                 $Matched = $false
                 foreach ($Filter in $CharacterName) {
@@ -101,7 +101,8 @@ function Get-PlayerCharacter {
                 if (-not $Matched) { continue }
             }
 
-            # State fields - $null when -IncludeState is not set
+            # State fields remain $null when -IncludeState is not set,
+            # keeping the output lightweight for callers that only need PU data
             $ActiveStatus       = $null
             $ActiveCharSheet    = $null
             $ActiveTopics       = $null
@@ -112,21 +113,22 @@ function Get-PlayerCharacter {
             $SessionList        = $null
 
             if ($IncludeState) {
-                # Find matching entity in EntityState
                 $Entity = $null
                 if ($EntityLookup.ContainsKey($Character.Name)) {
                     $Entity = $EntityLookup[$Character.Name]
                 }
 
-                # Resolve @status from entity (default: Aktywny)
+                # Entities default to Aktywny when no @status tag exists
                 $ActiveStatus = if ($Entity -and $Entity.Status) { $Entity.Status } else { 'Aktywny' }
 
-                # Skip soft-deleted characters unless -IncludeDeleted
+                # Soft-deleted characters pollute PU reports and CLI views;
+                # callers that need them must opt in via -IncludeDeleted
                 if ($ActiveStatus -eq 'Usunięty' -and -not $IncludeDeleted) {
                     continue
                 }
 
-                # Read character file (Layer 1: undated baseline)
+                # Layer 1: character file provides undated baseline values that are
+                # always active unless superseded by a dated entity override
                 $CharFile = $null
                 if ($Character.Path) {
                     $CharFilePath = [System.IO.Path]::Combine($RepoRoot, $Character.Path)
@@ -135,23 +137,14 @@ function Get-PlayerCharacter {
                     }
                 }
 
-                # --- Three-layer merge per property ---
-                # Layer 1: character file (base, no date = always-active)
-                # Layers 2+3: entity Overrides (entities.md + session @zmiany, already merged by Get-EntityState)
-
-                # CharacterSheet (scalar)
+                # Three-layer merge: character file (undated baseline), entities.md
+                # overrides, and session @Zmiany — all pre-merged by Get-EntityState.
+                # Scalar properties resolve to last-dated-wins; multi-valued accumulate.
                 $ActiveCharSheet = Merge-ScalarProperty -CharFileValue ($CharFile.CharacterSheet) -Entity $Entity -OverrideKey 'karta_postaci' -ActiveOn $EffectiveDate
-
-                # RestrictedTopics (scalar)
                 $ActiveTopics = Merge-ScalarProperty -CharFileValue ($CharFile.RestrictedTopics) -Entity $Entity -OverrideKey 'tematy_zastrzezone' -ActiveOn $EffectiveDate
-
-                # Condition (scalar)
                 $ActiveCondition = Merge-ScalarProperty -CharFileValue ($CharFile.Condition) -Entity $Entity -OverrideKey 'stan' -ActiveOn $EffectiveDate
-
-                # SpecialItems (multi-valued)
                 $ActiveItems = Merge-MultiValuedProperty -CharFileValues ($CharFile.SpecialItems) -Entity $Entity -OverrideKey 'przedmiot_specjalny' -ActiveOn $EffectiveDate
-
-                # Reputation (three tiers, each multi-valued)
+                # Reputation tiers are each multi-valued but carry Location+Detail pairs
                 $RepPositive = Merge-ReputationTier -CharFileTier ($CharFile.Reputation.Positive) -Entity $Entity -OverrideKey 'reputacja_pozytywna' -ActiveOn $EffectiveDate
                 $RepNeutral  = Merge-ReputationTier -CharFileTier ($CharFile.Reputation.Neutral)  -Entity $Entity -OverrideKey 'reputacja_neutralna' -ActiveOn $EffectiveDate
                 $RepNegative = Merge-ReputationTier -CharFileTier ($CharFile.Reputation.Negative) -Entity $Entity -OverrideKey 'reputacja_negatywna' -ActiveOn $EffectiveDate
@@ -161,10 +154,9 @@ function Get-PlayerCharacter {
                     Negative = $RepNegative
                 }
 
-                # AdditionalNotes (multi-valued)
                 $ActiveNotes = Merge-MultiValuedProperty -CharFileValues ($CharFile.AdditionalNotes) -Entity $Entity -OverrideKey 'dodatkowe_informacje' -ActiveOn $EffectiveDate
 
-                # DescribedSessions (read-only from character file)
+                # DescribedSessions come only from the character file (no entity override)
                 $SessionList = if ($CharFile) { $CharFile.DescribedSessions } else { @() }
             }
 
@@ -304,10 +296,10 @@ function Merge-ReputationTier {
 
     $ActiveLocations = Get-AllActiveValues -History $History -PropertyName 'Value' -ActiveOn $ActiveOn
 
-    # Convert back to Location/Detail objects - override entries lose Detail
+    # Reconstitute Location/Detail pairs; entity overrides only carry Location,
+    # so we recover Detail from the character file where names match
     $Result = [System.Collections.Generic.List[object]]::new()
     foreach ($Loc in $ActiveLocations) {
-        # Try to find matching char file entry for Detail preservation
         $Detail = $null
         if ($CharFileTier) {
             foreach ($Entry in $CharFileTier) {

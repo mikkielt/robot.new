@@ -9,15 +9,28 @@
 
     For each .md file, a corresponding .json sidecar is created containing
     a dictionary of header text -> SHA256 hash (of whitespace-stripped content).
+    The sidecar always reflects the current file state, even when no diff
+    exists, to ensure the store mirrors the repository.
 
-    Supports two modes:
-    - Full (-Full): scans all eligible .md files in the repository
-    - Incremental (default): uses Get-GitChangeLog to find changed files
+    Three operating modes:
+    - Explicit file list (-File): processes only the specified paths, useful
+      for targeted updates after a known edit.
+    - Full (-Full): scans all eligible .md files in the repository.
+    - Incremental (default): uses Get-GitChangeLog to find changed files,
+      filtered against Get-HashableFiles. Falls back to full scan when git
+      changelog fails or no previous timestamp exists.
 
-    Exclusions (applied automatically):
+    Exclusions (applied automatically by Get-HashableFiles):
     - Dot directories (.git/, .robot/, .robot.new/)
     - Nerthus/ subdirectory
     - User-specified directories via -ExcludeDirectory
+
+    Batch parsing leverages Get-Markdown's RunspacePool parallelism for
+    concurrent file processing.
+
+    Metadata (_meta.json) uses non-ISO date format ("yyyy-MM-dd HH:mm:ss")
+    to prevent ConvertFrom-Json from auto-converting to DateTime, which
+    would break string comparisons in the incremental path.
 
     Helpers:
     - Dot-sources private/session-hashhelpers.ps1 for hashing primitives
@@ -53,7 +66,7 @@ function Set-SessionHash {
 
     if ($script:HasOpCtx) { Clear-OperationContext }
 
-    # Load helpers
+    # Lazy-load helpers: only dot-source if not already loaded
     if (-not (Get-Command 'Get-ContentHash' -ErrorAction SilentlyContinue)) {
         . "$PSScriptRoot/../../private/session-hashhelpers.ps1"
     }
@@ -66,11 +79,10 @@ function Set-SessionHash {
     $HashDir = [System.IO.Path]::Combine($Config.ResDir, 'session-hashes')
     $MetaPath = [System.IO.Path]::Combine($HashDir, '_meta.json')
 
-    # Three modes: explicit file list, full repo scan, or incremental via git changelog
+    # Mode selection: explicit file list > full repo scan > incremental via git changelog
     $FilesToProcess = [System.Collections.Generic.List[string]]::new()
 
     if ($File) {
-        # Explicit file list
         foreach ($F in $File) {
             $FullPath = if ([System.IO.Path]::IsPathRooted($F)) { $F } else {
                 [System.IO.Path]::GetFullPath([System.IO.Path]::Combine($RepoRoot, $F))
@@ -82,10 +94,9 @@ function Set-SessionHash {
             }
         }
     } elseif ($Full) {
-        # Full scan
         $FilesToProcess = Get-HashableFiles -RepoRoot $RepoRoot -ExcludeDirectory $ExcludeDirectory
     } else {
-        # Incremental: use git changelog to find changed files
+        # Incremental: scope to files changed since last run
         $MinDateStr = $Since
         if (-not $MinDateStr) {
             $Meta = Read-SessionHashMeta -MetaPath $MetaPath
@@ -114,7 +125,7 @@ function Set-SessionHash {
                     }
                 }
 
-                # Filter to hashable files only
+                # Intersect with hashable files to exclude dot-dirs, Nerthus/, etc.
                 $AllHashable = [System.Collections.Generic.HashSet[string]]::new(
                     (Get-HashableFiles -RepoRoot $RepoRoot -ExcludeDirectory $ExcludeDirectory),
                     [System.StringComparer]::OrdinalIgnoreCase
@@ -130,7 +141,7 @@ function Set-SessionHash {
                 $UseFullScan = $true
             }
         } else {
-            # No previous timestamp — full scan needed
+            # No previous timestamp — first run requires full scan
             $UseFullScan = $true
         }
 
@@ -148,7 +159,7 @@ function Set-SessionHash {
         }
     }
 
-    # Batch parse leverages Get-Markdown's RunspacePool parallelism
+    # Get-Markdown's RunspacePool parallelism speeds up batch parsing
     $MarkdownResults = @(Get-Markdown -File @($FilesToProcess))
 
     $TotalHashes = 0
@@ -162,11 +173,11 @@ function Set-SessionHash {
         $RelPath = Get-RelativeHashPath -FilePath $MdResult.FilePath -RepoRoot $RepoRoot
         $JsonPath = [System.IO.Path]::Combine($HashDir, "$RelPath.json")
 
-        # Compare against stored hashes to count actual changes for reporting
+        # Compute current hashes and diff against stored to report actual changes
         $CurrentHashes = Get-FileHeaderHashes -MarkdownResult $MdResult
         $TotalHashes += $CurrentHashes.Count
 
-        # Diff against stored hashes for the updated/new counters in the report
+        # Classify each hash as new or updated for the summary counters
         $StoredHashes = Read-SessionHashFile -JsonPath $JsonPath
         foreach ($Key in $CurrentHashes.Keys) {
             if ($StoredHashes.ContainsKey($Key)) {
@@ -178,15 +189,15 @@ function Set-SessionHash {
             }
         }
 
-        # Persist even if no diff — ensures sidecar mirrors the current file state
+        # Always persist: sidecar must mirror the current file state even when unchanged
         if ($PSCmdlet.ShouldProcess($RelPath, 'Update session hashes')) {
             Write-SessionHashFile -JsonPath $JsonPath -Hashes $CurrentHashes
             $FilesWritten++
         }
     }
 
-    # Non-ISO date format ("yyyy-MM-dd HH:mm:ss") prevents ConvertFrom-Json
-    # from auto-converting to DateTime, which would break string comparisons
+    # Non-ISO format prevents ConvertFrom-Json from auto-converting to DateTime
+    # (would break string comparisons in incremental path)
     $Now = [datetime]::Now.ToString('yyyy-MM-dd HH:mm:ss')
     $Meta = Read-SessionHashMeta -MetaPath $MetaPath
     if ($Full) {

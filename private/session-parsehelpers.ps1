@@ -4,7 +4,8 @@
 
     .DESCRIPTION
     This file contains helpers extracted from get-session.ps1 that handle
-    format-specific parsing of session content:
+    format-specific parsing of session content. Dot-sourced by get-session.ps1
+    and not auto-loaded by the module loader (non-Verb-Noun filename).
 
     Helpers:
     - Get-SessionTitle:        strips date and trailing narrator segment from a header
@@ -20,11 +21,34 @@
                                as a Gen1/Gen2 fallback
 
     Module-level data:
-    - $PUSectionPattern:  precompiled regex matching PU section markers ("- PU:" or "- @PU:")
+    - $script:PUSectionPattern: precompiled regex matching PU section markers
+      ("- PU:" or "- @PU:"); also used by Test-PlayerCharacterPUAssignment
+      and Test-SessionIntegrity for diagnostics
 
-    These helpers are dot-sourced by get-session.ps1 and are not auto-loaded
-    by the module loader.
+    Get-SessionListMetadata is the heaviest helper. It processes up to 8
+    tag types per session (PU, Logi, Zmiany, Intel, Transfer, Narrator,
+    Data, Lokacje) with a pre-built parent-to-children hashtable (ChildrenOf)
+    to avoid O(n^2) list scanning. When Robot.SessionTagParser is available,
+    list items are flattened to parallel arrays and dispatched to compiled
+    C# code with prefix-based 8-way dispatch, eliminating per-item
+    PowerShell regex overhead.
+
+    Get-SessionLocations uses a two-strategy approach for Gen3/Gen4:
+    first attempts entity-resolution to identify location lists by content
+    (all children resolve to Lokacja type), then falls back to tag-name
+    matching (Lokalizacj* / Lokacj* prefix). This makes it robust against
+    both Gen3 (bare tag names) and Gen4 (@-prefixed tags).
 #>
+
+# Compiled C# session tag dispatcher with prefix-based dispatch.
+# Replaces the 8-way sequential if-chain in Get-SessionListMetadata.
+# Source: lib/SessionTagParser.cs
+if (-not ([System.Management.Automation.PSTypeName]'Robot.SessionTagParser').Type) {
+    $CsPath = [System.IO.Path]::Combine($script:ModuleRoot, 'lib', 'SessionTagParser.cs')
+    if ([System.IO.File]::Exists($CsPath)) {
+        Add-Type -TypeDefinition ([System.IO.File]::ReadAllText($CsPath)) -Language CSharp
+    }
+}
 
 # PU section header pattern - matches "- PU:" or "- @PU:" list markers in session content.
 # Used by Test-PlayerCharacterPUAssignment and Test-SessionIntegrity for diagnostics.
@@ -170,6 +194,85 @@ function Get-SessionListMetadata {
         [hashtable]$ChildrenOf
     )
 
+    # C# path: flatten list items to parallel arrays, dispatch in compiled code
+    if (([System.Management.Automation.PSTypeName]'Robot.SessionTagParser').Type) {
+        $ItemCount = @($SectionLists).Count
+        $Texts = [string[]]::new($ItemCount)
+        $ParentIndices = [int[]]::new($ItemCount)
+        $ItemToIndex = @{}
+
+        for ($Idx = 0; $Idx -lt $ItemCount; $Idx++) {
+            $LI = @($SectionLists)[$Idx]
+            $Texts[$Idx] = $LI.Text
+            $LIId = [System.Runtime.CompilerServices.RuntimeHelpers]::GetHashCode($LI)
+            $ItemToIndex[$LIId] = $Idx
+
+            if ($null -eq $LI.ParentListItem) {
+                $ParentIndices[$Idx] = -1
+            } else {
+                $ParentId = [System.Runtime.CompilerServices.RuntimeHelpers]::GetHashCode($LI.ParentListItem)
+                if ($ItemToIndex.ContainsKey($ParentId)) {
+                    $ParentIndices[$Idx] = $ItemToIndex[$ParentId]
+                } else {
+                    $ParentIndices[$Idx] = -1
+                }
+            }
+        }
+
+        $CsResult = [Robot.SessionTagParser]::Parse($Texts, $ParentIndices, $PURegex, $UrlRegex)
+
+        # Convert C# output to matching hashtable with List[T] values
+        $PU       = [System.Collections.Generic.List[object]]::new()
+        $Changes  = [System.Collections.Generic.List[object]]::new()
+        $Intel    = [System.Collections.Generic.List[object]]::new()
+        $Transfers = [System.Collections.Generic.List[object]]::new()
+
+        foreach ($P in $CsResult.PU) {
+            $PU.Add([PSCustomObject]@{
+                Character = $P.Character
+                Value     = if ($P.HasValue) { $P.Value } else { $null }
+            })
+        }
+
+        foreach ($C in $CsResult.Changes) {
+            $Tags = [System.Collections.Generic.List[object]]::new()
+            foreach ($T in $C.Tags) {
+                $Tags.Add([PSCustomObject]@{ Tag = $T.Tag; Value = $T.Value })
+            }
+            $Changes.Add([PSCustomObject]@{
+                EntityName = $C.EntityName
+                Tags       = $Tags.ToArray()
+            })
+        }
+
+        foreach ($I in $CsResult.Intel) {
+            $Intel.Add([PSCustomObject]@{
+                RawTarget = $I.RawTarget
+                Message   = $I.Message
+            })
+        }
+
+        foreach ($Tr in $CsResult.Transfers) {
+            $Transfers.Add([PSCustomObject]@{
+                Amount       = $Tr.Amount
+                Denomination = $Tr.Denomination
+                Source       = $Tr.Source
+                Destination  = $Tr.Destination
+            })
+        }
+
+        return @{
+            Logs         = $CsResult.Logs
+            PU           = $PU
+            Changes      = $Changes
+            Intel        = $Intel
+            Transfers    = $Transfers
+            Narrators    = $CsResult.Narrators
+            DateOverride = $CsResult.DateOverride
+        }
+    }
+
+    # PowerShell fallback
     $Logs         = [System.Collections.Generic.List[string]]::new()
     $PU           = [System.Collections.Generic.List[object]]::new()
     $Changes      = [System.Collections.Generic.List[object]]::new()

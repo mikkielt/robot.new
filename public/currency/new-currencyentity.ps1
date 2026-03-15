@@ -7,15 +7,23 @@
     under ## Przedmiot with validated denomination, auto-generated entity name,
     and standard currency tags (@generyczne_nazwy, @ilość, @należy_do, @status).
 
-    Uses the currency-entity.md.template for initial structure.
-    Validates denomination via Resolve-CurrencyDenomination.
-    Auto-generates entity name: "{DenomShort} {Owner}" (e.g. "Korony Erdamon").
+    Processing pipeline:
+    1. Resolves denomination stem via Resolve-CurrencyDenomination (throws on unknown)
+    2. Auto-generates entity name: "{DenomShort} {Owner}" (e.g. "Korony Erdamon")
+    3. Checks for duplicate entity bullet under ## Przedmiot (throws if exists)
+    4. Renders currency-entity.md.template with denomination/owner/amount/date variables
+    5. Resolves target file and insertion point via Resolve-EntityTarget
+    6. Writes entity file via Write-EntityFile (guarded by ShouldProcess)
 
-    Dot-sources entity-writehelpers.ps1, admin-config.ps1, and currency-helpers.ps1.
-    Supports -WhatIf via SupportsShouldProcess.
+    Dot-sources entity-writehelpers.ps1 (Read-EntityFile, Find-EntitySection,
+    Find-EntityBullet, Resolve-EntityTarget, Write-EntityFile),
+    admin-config.ps1 (Get-AdminConfig, Get-AdminTemplate), and
+    currency-helpers.ps1 (Resolve-CurrencyDenomination).
+
+    Supports -WhatIf via SupportsShouldProcess. When $script:HasOpCtx is true,
+    returns an OperationResult for auditing.
 #>
 
-# Dot-source helpers
 . "$script:ModuleRoot/private/entity-writehelpers.ps1"
 . "$script:ModuleRoot/private/admin-config.ps1"
 . "$script:ModuleRoot/private/currency-helpers.ps1"
@@ -54,16 +62,16 @@ function New-CurrencyEntity {
         $ValidFrom = (Get-Date).ToString('yyyy-MM')
     }
 
-    # Validate denomination
+    # Resolve stem to canonical denomination (e.g. "tal" -> Talary)
     $ResolvedDenom = Resolve-CurrencyDenomination -Name $Denomination
     if (-not $ResolvedDenom) {
         throw "Unknown currency denomination: '$Denomination'. Use Korony/Talary/Kogi or a recognized stem."
     }
 
-    # Auto-generate entity name
+    # Convention: currency entity name = "{DenomShort} {Owner}"
     $EntityName = "$($ResolvedDenom.Short) $Owner"
 
-    # Duplicate detection via raw entity file search
+    # Fail-early duplicate detection against raw entity file
     $EntitiesFilePath = Invoke-EnsureEntityFile -Path $EntitiesFile
     $File = Read-EntityFile -Path $EntitiesFilePath
     $Section = Find-EntitySection -Lines $File.Lines.ToArray() -EntityType 'Przedmiot'
@@ -74,7 +82,7 @@ function New-CurrencyEntity {
         }
     }
 
-    # Build tags from template
+    # Render template with denomination/owner/amount variables
     $TemplateVars = @{
         EntityName            = $EntityName
         CanonicalDenomination = $ResolvedDenom.Name
@@ -86,7 +94,7 @@ function New-CurrencyEntity {
     $Parsed = ConvertFrom-EntityTemplate -Content $RenderedEntry
     $InitialTags = $Parsed.Tags
 
-    # Create entity under ## Przedmiot
+    # Resolve insertion point under ## Przedmiot section
     $Target = Resolve-EntityTarget -FilePath $EntitiesFile -EntityType 'Przedmiot' -EntityName $EntityName -InitialTags $InitialTags
 
     if ($PSCmdlet.ShouldProcess($EntitiesFile, "New-CurrencyEntity: create '$EntityName' ($($ResolvedDenom.Name), owner: $Owner, amount: $Amount)")) {

@@ -3,11 +3,30 @@
     Parses the PU assignment state file into structured processing history.
 
     .DESCRIPTION
-    Reads the append-only pu-sessions.md state file and returns structured objects
-    showing when PU was processed and which sessions were included in each run.
-    Each entry contains the processing timestamp and the list of session headers.
+    Reads the append-only pu-sessions.md state file and returns structured
+    objects showing when PU was processed and which sessions were included
+    in each run.
 
-    Dot-sources admin-state.ps1 for precompiled regex patterns.
+    Module-level data:
+    - $script:AdminHistoryTimestampPattern: precompiled regex from admin-state.ps1
+      that matches timestamp header lines in the state file
+    - $script:HistoryEntryPattern: precompiled regex from admin-state.ps1 that
+      matches session header entries under each timestamp
+    - $script:MultiSpacePattern: precompiled regex from admin-state.ps1 for
+      normalizing multiple consecutive spaces in header text
+
+    Pipeline:
+    1. Read pu-sessions.md as raw text (UTF-8 no BOM) and split into lines
+    2. Stream-parse lines: timestamp headers start new entries, indented
+       lines with list markers are session headers belonging to the current entry
+    3. Parse each session header into structured Date/Title/Narrator fields
+       by splitting on comma separators
+    4. Apply ProcessedAt date range filters (MinDate/MaxDate)
+    5. Sort descending by ProcessedAt (most recent first) for display
+
+    The state file is append-only: each PU assignment run appends a timestamp
+    header followed by the session headers that were processed. This function
+    reconstructs the full history by scanning all entries.
 #>
 
 . "$script:ModuleRoot/private/admin-state.ps1"
@@ -18,7 +37,7 @@
 function Get-PUAssignmentLog {
     <#
         .SYNOPSIS
-        View structured PU processing history from the state file.
+        Returns structured PU assignment processing history from the state file.
     #>
 
     [CmdletBinding()] param(
@@ -59,10 +78,10 @@ function Get-PUAssignmentLog {
     $CurrentHeaders = $null
 
     foreach ($Line in $Lines) {
-        # Check for timestamp line
+        # Timestamp lines delimit PU processing runs in the state file
         $TsMatch = $script:AdminHistoryTimestampPattern.Match($Line)
         if ($TsMatch.Success) {
-            # Flush previous entry
+            # Emit completed entry before starting a new one
             if ($null -ne $CurrentTimestamp -and $null -ne $CurrentHeaders) {
                 $Entries.Add([PSCustomObject]@{
                     ProcessedAt  = $CurrentTimestamp
@@ -72,7 +91,7 @@ function Get-PUAssignmentLog {
                 })
             }
 
-            # Parse timestamp
+            # Start a new processing run entry
             $TsStr = $TsMatch.Groups[1].Value
             $CurrentTimezone = $TsMatch.Groups[2].Value
             $CurrentTimestamp = [datetime]::ParseExact($TsStr, 'yyyy-MM-dd HH:mm', [System.Globalization.CultureInfo]::InvariantCulture)
@@ -80,7 +99,7 @@ function Get-PUAssignmentLog {
             continue
         }
 
-        # Check for session header line (uses admin-state.ps1 pattern)
+        # Session header lines are indented list items under the current timestamp
         $HdrMatch = $script:HistoryEntryPattern.Match($Line)
         if ($HdrMatch.Success -and $null -ne $CurrentHeaders) {
             $Header = $HdrMatch.Groups[1].Value.Trim()
@@ -88,7 +107,7 @@ function Get-PUAssignmentLog {
 
             if ($Header.Length -eq 0) { continue }
 
-            # Parse header: "2025-06-15, Ucieczka z Erathii, Catherine"
+            # Decompose header into Date/Title/Narrator components
             $Parts = $Header.Split(',')
             $SessionDate = $null
             $SessionTitle = $null
@@ -124,7 +143,7 @@ function Get-PUAssignmentLog {
         })
     }
 
-    # Date range filtering on ProcessedAt
+    # Post-parse filtering on the processing timestamp (not session dates)
     if ($MinDate -or $MaxDate) {
         $Filtered = [System.Collections.Generic.List[object]]::new()
         foreach ($Entry in $Entries) {
@@ -135,7 +154,7 @@ function Get-PUAssignmentLog {
         $Entries = $Filtered
     }
 
-    # Sort by ProcessedAt descending (most recent first)
+    # Most recent runs first for typical "what happened last?" queries
     $Entries.Sort([System.Comparison[object]]{
         param($a, $b)
         return $b.ProcessedAt.CompareTo($a.ProcessedAt)

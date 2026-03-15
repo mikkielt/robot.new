@@ -3,17 +3,25 @@
     Queries currency entities with filtering by owner, denomination, and name.
 
     .DESCRIPTION
-    This file contains Get-CurrencyEntity which wraps Get-Entity + currency
-    identification logic to return currency-enriched objects. Filters to
-    Przedmiot entities whose @generyczne_nazwy match a known denomination.
+    This file contains Get-CurrencyEntity which wraps Get-EntityState output
+    with currency identification logic to return currency-enriched objects.
 
-    Excludes Nieaktywny/Usunięty entities unless -IncludeInactive is set.
-    Returns enriched objects with balance, denomination metadata, and tier.
+    Processing pipeline:
+    1. Iterates all entities from Get-EntityState (or pre-fetched -Entities)
+    2. Filters to Przedmiot entities identified as currency via Test-IsCurrencyEntity
+    3. Resolves denomination by matching @generyczne_nazwy against known denominations
+    4. Applies optional -Owner, -Denomination, -Name filters
+    5. Excludes Nieaktywny/Usunięty entities unless -IncludeInactive is set
+    6. Parses @ilość into integer balance and enriches output with denomination metadata
 
-    Dot-sources currency-helpers.ps1.
+    Returns an array of enriched PSCustomObjects with EntityName, Denomination,
+    DenomShort, Tier, Owner, Location, Balance, and Status properties.
+
+    Dot-sources currency-helpers.ps1 for Resolve-CurrencyDenomination,
+    Test-IsCurrencyEntity, Test-CurrencyDenominationMatch, and
+    Test-CurrencyOwnerMatch.
 #>
 
-# Dot-source helpers
 . "$script:ModuleRoot/private/currency-helpers.ps1"
 
 function Get-CurrencyEntity {
@@ -46,7 +54,7 @@ function Get-CurrencyEntity {
         $Entities = if ($ActiveOn) { Get-EntityState -ActiveOn $ActiveOn } else { Get-EntityState }
     }
 
-    # Resolve denomination filter
+    # Normalize denomination stem (e.g. "tal" -> Talary) before filtering
     $DenomFilter = $null
     if ($Denomination) {
         $DenomFilter = Resolve-CurrencyDenomination -Name $Denomination
@@ -60,20 +68,18 @@ function Get-CurrencyEntity {
     foreach ($Entity in $Entities) {
         if (-not (Test-IsCurrencyEntity -Entity $Entity)) { continue }
 
-        # Name filter
         if (-not [string]::IsNullOrWhiteSpace($Name)) {
             if (-not [string]::Equals($Entity.Name, $Name, [System.StringComparison]::OrdinalIgnoreCase)) {
                 continue
             }
         }
 
-        # Status filter
-        $Status = if ($Entity.Status) { $Entity.Status } else { 'Aktywny' }
+        $Status = if ($Entity.Status) { $Entity.Status } else { 'Aktywny' }  # default: active
         if (-not $IncludeInactive) {
             if ($Status -eq 'Usunięty' -or $Status -eq 'Nieaktywny') { continue }
         }
 
-        # Resolve entity denomination
+        # Match @generyczne_nazwy against known denomination registry
         $EntityDenom = $null
         foreach ($GN in $Entity.GenericNames) {
             $Resolved = Resolve-CurrencyDenomination -Name $GN
@@ -81,14 +87,12 @@ function Get-CurrencyEntity {
         }
         if (-not $EntityDenom) { continue }
 
-        # Denomination filter
         if (-not (Test-CurrencyDenominationMatch -DenominationName $EntityDenom.Name -DenomFilter $DenomFilter)) { continue }
 
-        # Owner filter
         $EntityOwner = $Entity.Owner
         if (-not (Test-CurrencyOwnerMatch -EntityOwner $EntityOwner -FilterOwner $Owner)) { continue }
 
-        # Parse balance
+        # Parse @ilość into integer balance (defaults to 0 if absent or unparseable)
         $CurrentQty = if ($Entity.Quantity) { $Entity.Quantity } else { '0' }
         [int]$Balance = 0
         [void][int]::TryParse($CurrentQty, [ref]$Balance)

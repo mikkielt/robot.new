@@ -6,16 +6,18 @@
     This file contains workflow functions for Discord integration, consumed by
     the CLI menu registry (Mode = 'Workflow'). Dot-sourced on demand.
 
-    Workflows:
-    - Invoke-DiscordPUNotificationWorkflow: re-send PU notification for a player
+    Helpers:
+    - Invoke-DiscordPUNotificationWorkflow: re-send PU notification for a player (stub)
     - Invoke-DiscordAnnouncementWorkflow:   structured announcement via webhook
 
-    Design:
-    - PU notification is a stub — requires integration with the PU assignment
-      log to reconstruct per-player notification content.
-    - Announcement workflow collects webhook URL, title, and body in separate
-      steps, formats as Markdown bold title + body, then sends via
-      Send-DiscordMessage after yesno confirmation.
+    PU notification is a stub pending integration with the PU assignment log
+    to reconstruct per-player notification content. Currently it picks a
+    player and month, then reports "not implemented".
+
+    Announcement workflow: 4-step pipeline (webhook URL, title, body, yesno
+    confirmation) that formats the message as Markdown bold title + body and
+    sends via Send-DiscordMessage. The webhook URL is entered manually each
+    time because storing it would require per-channel configuration.
 
     Dependencies: cli-primitives.ps1, cli-fuzzy.ps1, cli-wizard.ps1
 #>

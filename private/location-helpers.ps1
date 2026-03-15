@@ -22,7 +22,6 @@
     - $script:LocPietroPattern:        strips "- piętro N" floor
     - $script:LocPiwnicaPattern:       strips "- piwnica p.N" basement
     - $script:LocNamedSubareaPattern:  strips "- ..." generic named subarea (broadest, applied last)
-    - $script:RE_Difficulty:           backward-compatible alias for $script:LocDifficultyPattern
 
     Maps use naming conventions like:
         "Piekielna Grota p.3 - sala 2"
@@ -30,6 +29,11 @@
         "Lezysko Baraniego Kanoniera (poziom: trudny)"
         "Erem Czarnego Słońca p.1 - północ"
         "Grota Arbor s.2"
+
+    Get-MapBaseName generates candidate base names by progressively dropping
+    trailing words, longest-first. This ordering maximizes the chance of matching
+    the most specific entity name first during resolution. A HashSet deduplicates
+    candidates (e.g. when stripping produces the same result at different word counts).
 
     This file is the single source of truth for location regex patterns.
     Dot-sourced by:
@@ -74,9 +78,6 @@ $script:LocNamedSubareaPattern = [regex]::new(
     '\s+-\s+\S.+$',
     [System.Text.RegularExpressions.RegexOptions]::Compiled)
 
-# Backward-compatible alias for existing callers
-$script:RE_Difficulty = $script:LocDifficultyPattern
-
 function Get-MapBaseName {
     param(
         [Parameter(Mandatory)]
@@ -84,7 +85,7 @@ function Get-MapBaseName {
     )
 
     # Pre-strip difficulty parenthetical
-    $Clean = $script:RE_Difficulty.Replace($Name, '').Trim()
+    $Clean = $script:LocDifficultyPattern.Replace($Name, '').Trim()
     if ($Clean.Length -eq 0) { return [string[]]@() }
 
     $Candidates = [System.Collections.Generic.List[string]]::new()
@@ -102,7 +103,7 @@ function Get-MapBaseName {
 
     # Progressively drop words from the end, keeping at least 1 word
     for ($i = $Words.Count - 1; $i -ge 1; $i--) {
-        $Candidate = ($Words[0..($i - 1)] -join ' ').TrimEnd(' ', '-', [char]0x2013, [char]0x2014)
+        $Candidate = ($Words[0..($i - 1)] -join ' ').TrimEnd(' ', '-', [char]0x2013, [char]0x2014)  # en-dash, em-dash
         if ($Candidate.Length -gt 0 -and
             -not [string]::Equals($Candidate, $Name, [System.StringComparison]::OrdinalIgnoreCase) -and
             $Seen.Add($Candidate)) {

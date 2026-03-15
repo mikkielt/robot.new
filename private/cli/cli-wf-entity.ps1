@@ -5,23 +5,25 @@
     .DESCRIPTION
     This file contains workflow functions for entity management, consumed by
     the CLI menu registry (Mode = 'Workflow'). Dot-sourced on demand.
+    Chain-loads cli-display-entity.ps1 for display helpers (Format-ValidityRange,
+    Show-EntityCard).
 
-    Display helpers (Format-ValidityRange, Show-EntityCard) live in
-    cli-display-entity.ps1 and are chain-loaded via dot-source below.
+    Helpers:
+    - Invoke-NewEntityWorkflow:      guided tag entry loop for new entities
+    - Invoke-EditEntityWorkflow:     diff review with existing-tag context for entity edits
+    - Invoke-EntityHistoryWorkflow:  fuzzy-pick entity then show change history timeline
+    - Invoke-EntitySearchWorkflow:   fuzzy search then entity detail card
 
-    Workflows:
-    - Invoke-NewEntityWorkflow:      guided tag entry for new entities
-    - Invoke-EditEntityWorkflow:     diff review with context for entity edits
-    - Invoke-EntityHistoryWorkflow:  fuzzy-pick then history timeline
-    - Invoke-EntitySearchWorkflow:   fuzzy search then detail card
+    New/Edit entity workflows use an interactive tag loop: the user picks
+    a tag name from a common set (@lokacja, @grupa, @status, @alias, @typ,
+    @info) or types a custom one, then enters a value. @lokacja and @grupa
+    values use fuzzy entity search; all others use free-text input. The
+    accumulated tags are passed to New-Entity / Set-Entity via Show-Preview
+    which runs the operation with -WhatIf for review before confirming.
 
-    Design:
-    - New/Edit entity workflows use an interactive tag loop: the user
-      repeatedly picks a tag name from a common set (or types a custom one),
-      enters a value (with fuzzy search for @lokacja/@grupa), and the
-      accumulated tags are passed to New-Entity / Set-Entity via Show-Preview.
-    - The screen is fully redrawn before each fuzzy search step to prevent
-      cursor overflow when the search viewport follows an arrow menu.
+    The screen is fully redrawn before each fuzzy search step because the
+    engine's cursor positioning can overflow when a fuzzy search viewport
+    follows an arrow-based selection menu on the same screen.
 
     Dependencies: cli-primitives.ps1, cli-fuzzy.ps1, cli-wizard.ps1, cli-display-entity.ps1
 #>
@@ -39,7 +41,7 @@ function Invoke-NewEntityWorkflow {
     $InfoColor     = $Colors.Info
     $Sep = [string][char]0x2500 * 50
 
-    # Step 1: Entity type
+    # Step 1: Entity type (determines which @tags are relevant)
     $TypeComponent = New-WizardStepComponent -Label 'Typ encji' `
         -StepNumber 0 -TotalSteps 0 -StepType 'selection' `
         -Options @('NPC', 'Grupa', 'Lokacja', 'Przedmiot')
@@ -59,7 +61,7 @@ function Invoke-NewEntityWorkflow {
     $Name = Invoke-WizardStep -Step $NameStep -State $State
     if ($Name -eq '__back__' -or -not $Name) { return }
 
-    # Step 3: Guided tag entry loop
+    # Step 3: Guided tag entry loop (user adds tags until choosing 'Zakończ')
     $Tags = @{}
     $CommonTags = @('lokacja', 'grupa', 'status', 'alias', 'typ', 'info')
 
@@ -96,7 +98,7 @@ function Invoke-NewEntityWorkflow {
             if (-not $TagName -or $TagName -eq '__back__') { continue }
         }
 
-        # Tag value - use fuzzy for lokacja/grupa, text for others
+        # @lokacja/@grupa use fuzzy entity search; all others use free text
         $ValueStep = if ($TagName -ieq 'lokacja') {
             New-WizardFuzzyStep -Name 'Value' -Label "Wartość @$TagName" -Source 'locations'
         } elseif ($TagName -ieq 'grupa') {
@@ -105,7 +107,7 @@ function Invoke-NewEntityWorkflow {
             New-WizardTextStep -Name 'Value' -Label "Wartość @$TagName" -Required
         }
 
-        # Redraw before value input - prevents screen overflow when fuzzy search follows arrow menu
+        # Full redraw prevents cursor overflow when fuzzy viewport follows arrow menu
         [System.Console]::Clear()
         Write-CLILine -Text 'Kreator nowej encji' -Color $AccentColor
         Write-Host "  $Sep" -ForegroundColor $DisabledColor
@@ -131,7 +133,7 @@ function Invoke-NewEntityWorkflow {
         $Tags[$TagName] = $TagValue
     }
 
-    # Build params and preview
+    # Show-Preview runs New-Entity with -WhatIf for review before confirming
     $Params = [ordered]@{
         'Type' = $Type
         'Name' = $Name
@@ -152,13 +154,13 @@ function Invoke-EditEntityWorkflow {
     $InfoColor     = $Colors.Info
     $Sep = [string][char]0x2500 * 50
 
-    # Pick entity
+    # Pick entity via fuzzy search (returns candidate with .Owner entity object)
     $Entity = Invoke-EngineFuzzySearch -Prompt 'Wybierz encję' -Source 'entities' -State $State
     if (-not $Entity) { return }
 
     $EntityObj = $Entity.Owner
 
-    # Guided tag upsert loop
+    # Guided tag upsert loop (shows existing overrides as context for the user)
     $Tags = @{}
     $CommonTags = @('lokacja', 'grupa', 'status', 'alias', 'typ', 'info')
 
@@ -205,7 +207,7 @@ function Invoke-EditEntityWorkflow {
             if (-not $TagName -or $TagName -eq '__back__') { continue }
         }
 
-        # Tag value - use fuzzy for lokacja/grupa, text for others
+        # @lokacja/@grupa use fuzzy entity search; all others use free text
         $ValueStep = if ($TagName -ieq 'lokacja') {
             New-WizardFuzzyStep -Name 'Value' -Label "Wartość @$TagName" -Source 'locations'
         } elseif ($TagName -ieq 'grupa') {
@@ -214,7 +216,7 @@ function Invoke-EditEntityWorkflow {
             New-WizardTextStep -Name 'Value' -Label "Wartość @$TagName" -Required
         }
 
-        # Redraw before value input - prevents screen overflow when fuzzy search follows arrow menu
+        # Full redraw prevents cursor overflow when fuzzy viewport follows arrow menu
         [System.Console]::Clear()
         Write-CLILine -Text 'Edycja encji' -Color $AccentColor
         Write-Host "  $Sep" -ForegroundColor $DisabledColor
@@ -302,6 +304,6 @@ function Invoke-EntitySearchWorkflow {
     $Result = Invoke-EngineFuzzySearch -Prompt 'Szukaj' -Source 'entities' -State $State
     if (-not $Result) { return }
 
-    # Display entity detail card
+    # Show rich entity card (PU, aliases, locations, overrides)
     Show-EntityCard -Entity $Result.Owner -State $State
 }

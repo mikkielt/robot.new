@@ -6,16 +6,19 @@
     This file contains workflow functions for currency management, consumed by
     the CLI menu registry (Mode = 'Workflow'). Dot-sourced on demand.
 
-    Workflows:
+    Helpers:
     - Invoke-CurrencyTransferWorkflow:       full transfer wizard (source -> amount -> destination)
     - Invoke-CurrencyReconciliationDisplay:  formatted currency reconciliation results
 
-    Design:
-    - Transfer workflow executes two Set-CurrencyEntity calls (debit + credit)
-      in sequence. If the credit fails after the debit succeeds, the transfer
-      is left in an inconsistent state — manual reconciliation is needed.
-    - Reconciliation display delegates to Test-CurrencyReconciliation and
-      formats the structured result (warnings, supply summary) for console.
+    Transfer workflow: 4-step pipeline (fuzzy source, amount, fuzzy destination,
+    yesno confirmation) that executes two Set-CurrencyEntity calls (debit + credit)
+    in sequence. The two writes are NOT atomic — if the credit fails after the
+    debit succeeds, the transfer is left inconsistent and requires manual
+    reconciliation via Test-CurrencyReconciliation.
+
+    Reconciliation display: delegates to Test-CurrencyReconciliation, then
+    renders the structured result (per-entity warnings with severity coloring,
+    supply summary by denomination) as a scrollable console report.
 
     Dependencies: cli-primitives.ps1, cli-fuzzy.ps1, cli-wizard.ps1, cli-display.ps1
 #>
@@ -32,18 +35,17 @@ function Invoke-CurrencyTransferWorkflow {
     $InfoColor    = $Colors.Info
     $Sep = [string][char]0x2500 * 50
 
-    # Step 1: Source currency
-
+    # Step 1: Pick the currency entity to debit
     $Source = Invoke-EngineFuzzySearch -Prompt 'Źródło (waluta do obciążenia)' -Source 'currency' -State $State
     if (-not $Source) { return }
 
-    # Step 2: Amount
+    # Step 2: Transfer amount (positive integer)
     Write-Host ''
     $AmountStep = New-WizardNumberStep -Name 'Amount' -Label 'Kwota do przelania' -Required
     $Amount = Invoke-WizardStep -Step $AmountStep -State $State
     if ($Amount -eq '__back__' -or -not $Amount) { return }
 
-    # Step 3: Destination currency
+    # Step 3: Pick the currency entity to credit
     [System.Console]::Clear()
     Write-CLILine -Text 'Transfer walutowy' -Color $AccentColor
     Write-Host "  $Sep" -ForegroundColor (Get-CLIColor -Role 'Disabled')
@@ -56,7 +58,7 @@ function Invoke-CurrencyTransferWorkflow {
     $Dest = Invoke-EngineFuzzySearch -Prompt 'Cel (waluta do zasilenia)' -Source 'currency' -State $State
     if (-not $Dest) { return }
 
-    # Preview both operations
+    # Preview debit/credit pair before confirmation
     [System.Console]::Clear()
     Write-Host "  $Sep" -ForegroundColor (Get-CLIColor -Role 'Disabled')
     Write-CLILine -Text 'Podgląd transferu:' -Color $AccentColor
@@ -79,15 +81,14 @@ function Invoke-CurrencyTransferWorkflow {
     }
 
     try {
-        # Execute source debit
+        # Non-atomic two-phase write: debit first, then credit
         Set-CurrencyEntity -Name $Source.Name -AmountDelta (-$Amount)
-        # Execute destination credit
         Set-CurrencyEntity -Name $Dest.Name -AmountDelta $Amount
 
         Write-Host ''
         Write-CLILine -Text "$([char]0x2713) Transfer zakończony pomyślnie." -Color $SuccessColor
 
-        # Refresh state
+        # Refresh cached entities so subsequent menus reflect the new balances
         try { Refresh-NavState -State $State } catch {}
     }
     catch {
@@ -141,7 +142,7 @@ function Invoke-CurrencyReconciliationDisplay {
             }
         }
 
-        # Show supply summary
+        # Supply breakdown shows total per denomination (physical + virtual)
         if ($Result.Supply -and $Result.Supply.Count -gt 0) {
             Write-Host ''
             Write-CLILine -Text 'Podaż walut:' -Color $AccentColor

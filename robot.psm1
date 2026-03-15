@@ -1,37 +1,60 @@
 <#
     .SYNOPSIS
-    Module loader for Robot - PowerShell functions for Nerthus repository lore and metadata processing.
+    Module loader for Robot — PowerShell functions for Nerthus repository
+    lore and metadata processing.
 
     .DESCRIPTION
-    Auto-discovers and dot-sources all Verb-Noun .ps1 files in the module directory, exporting them
-    as module functions. Non-Verb-Noun scripts (e.g. parse-markdownfile.ps1) are left unloaded -
-    they are consumed on demand by the functions that need them.
+    Auto-discovers and dot-sources all Verb-Noun .ps1 files in the module
+    directory, exporting them as module functions. Non-Verb-Noun scripts
+    (e.g. parse-markdownfile.ps1) are left unloaded — they are consumed
+    on demand by the functions that need them, keeping import time minimal.
 
-    After loading core functions, discovers and loads plugins from the plugins/ directory.
-    Each plugin is an independent directory containing a plugin.psd1 manifest.
-    Plugin functions are exported alongside core functions.
+    Loading proceeds in four phases:
+    Phase 1 (Core Functions): .NET Directory.GetFiles with AllDirectories
+      enumerates all .ps1 files, filters to Verb-Noun names via compiled
+      regex, dot-sources each, and collects names for Export-ModuleMember.
+      Plugin files are skipped (loaded separately in Phase 2).
+    Phase 2 (Plugin Loading):
+      2a. Discover plugin.psd1 manifests in plugins/ subdirectories.
+          Validate Name/Version presence, reject plugins requiring a
+          newer core version than the current VERSION file.
+      2b. Topological sort by DependsOn via Resolve-PluginLoadOrder.
+      2c. Load each plugin's public/ Verb-Noun files, wire hooks into
+          the "Operation:Phase" registry, collect menu items, categories,
+          and help content for CLI integration.
+    Phase 3 (Plugin Management): Define Get-PluginConfig and
+      Get-LoadedPlugins inline (they need $script: variable access).
+    Phase 4 (Export): Export-ModuleMember with the collected function names.
 
-    Assumes the working directory is inside the Nerthus Git repository containing Markdown files
-    with structured information about players, characters, sessions, and entities.
+    Module-level data:
+    - $script:SuppressWarnings: warning suppression flag for -Quiet switches
+    - $script:CachedSeasonMapping: season mapping from local.config.psd1
+    - $script:LoadedPlugins: Name -> manifest hashtable
+    - $script:HookRegistry: "Operation:Phase" -> sorted handler list
+    - $script:PluginConfigs: Name -> resolved config hashtable
+    - $script:PluginMenuItems: CLI menu entries contributed by plugins
+    - $script:PluginMenuCategories: new CLI categories from plugins
+    - $script:PluginHelpContent: Category -> help entries from plugins
+    - $script:ModuleRoot: absolute path to the module directory
 
     Core design principles:
-    - No external modules or dependencies - only Git and PowerShell
+    - No external modules or dependencies — only Git and PowerShell
     - Compatible with PowerShell 5.1 (Windows) and 7.0+ (Core)
-    - .NET methods for file I/O, string manipulation, and process execution (performance + cross-platform)
+    - .NET methods for file I/O, string manipulation, and process execution
     - No tools beyond Git and PowerShell
 #>
 
 $ModuleRoot = $PSScriptRoot
 
 # ── Warning Suppression ────────────────────────────────────────────────────
-# Module-scoped flag checked by Write-RobotWarning/Write-RobotInfo.
+# Checked by Write-RobotWarning/Write-RobotInfo before emitting to stderr.
 # Set to $true by CLI dispatch or public functions called with -Quiet.
 
 $script:SuppressWarnings = $false
 
 # ── Season Mapping ────────────────────────────────────────────────────────
-# Loaded from local.config.psd1 SeasonMapping key. Used by Resolve-SeasonForDate
-# in temporal-helpers.ps1. Null means use default meteorological mapping.
+# Optional override from local.config.psd1; null = default meteorological
+# mapping (Mar-May=wiosna, Jun-Aug=lato, Sep-Nov=jesien, Dec-Feb=zima).
 
 $script:CachedSeasonMapping = $null
 
@@ -43,7 +66,7 @@ if ([System.IO.File]::Exists($LocalConfigPath)) {
             $script:CachedSeasonMapping = $LocalCfg.SeasonMapping
         }
     } catch {
-        # Non-fatal: local config is optional
+        # Non-fatal: local config is optional, absence = use defaults
     }
 }
 
@@ -66,34 +89,34 @@ function Write-RobotInfo {
 
 # ── PHASE 1: Core Function Loading ──────────────────────────────────────────
 
-# .NET I/O avoids Get-ChildItem overhead (~3x faster on large trees).
-# AllDirectories finds files in subfolders (public/session/, public/workflow/, etc.).
+# .NET I/O avoids Get-ChildItem overhead (~3x faster on large trees);
+# AllDirectories reaches subfolders (public/session/, public/workflow/, etc.).
 $FunctionFiles = [System.IO.Directory]::GetFiles($ModuleRoot, '*.ps1', [System.IO.SearchOption]::AllDirectories)
 
-# Only Verb-Noun files are auto-loaded; helpers are dot-sourced on demand by the functions that need them
+# Only Verb-Noun files are auto-loaded; helpers are dot-sourced on demand
 $VerbNounPattern = [regex]::new('^(Get|Set|New|Remove|Resolve|Test|Invoke|Send|Export)-\w+$', [System.Text.RegularExpressions.RegexOptions]::IgnoreCase)
 
 $ExportedFunctions = [System.Collections.Generic.HashSet[string]]::new(
     [System.StringComparer]::OrdinalIgnoreCase)
 
-# Plugin files are loaded in Phase 2 with dependency ordering; skip them here
+# Plugin files use dependency ordering in Phase 2; skip them in Phase 1
 $PluginsDirSep = [System.IO.Path]::DirectorySeparatorChar + 'plugins' + [System.IO.Path]::DirectorySeparatorChar
 
 foreach ($FilePath in $FunctionFiles) {
     $FileName = [System.IO.Path]::GetFileName($FilePath)
 
-    # Skip the module file itself and core.ps1 (case-insensitive)
+    # Skip the module file itself and core.ps1 (loaded separately)
     if ($FileName -ieq 'robot.psm1' -or $FileName -ieq 'core.ps1') { continue }
 
-    # Skip files inside plugins/ (loaded separately by plugin loader)
+    # Skip files inside plugins/ — loaded in Phase 2 with dependency ordering
     $RelPath = $FilePath.Substring($ModuleRoot.Length)
     if ($RelPath.Contains($PluginsDirSep) -or $RelPath.Contains('/plugins/')) { continue }
 
-    # Derive function name directly from filename (cheaper than Get-ChildItem Function: diff)
+    # Derive function name from filename — cheaper than inspecting AST or Function: drive
     $FuncName = [System.IO.Path]::GetFileNameWithoutExtension($FilePath)
 
-    # Non-Verb-Noun files (parse-markdownfile.ps1, etc.) are loaded on demand
-    # by the functions that need them, keeping module import time minimal.
+    # Non-Verb-Noun files (parse-markdownfile.ps1, etc.) are loaded on demand,
+    # keeping module import time minimal.
     if (-not $VerbNounPattern.IsMatch($FuncName)) { continue }
 
     try {
@@ -109,19 +132,19 @@ foreach ($FilePath in $FunctionFiles) {
 
 # ── PHASE 2: Plugin Loading ─────────────────────────────────────────────────
 
-# Module-scoped plugin state
-$script:LoadedPlugins        = @{}             # Name -> manifest hashtable
-$script:HookRegistry         = @{}             # "Operation:Phase" -> sorted list of handlers
-$script:PluginConfigs        = @{}             # Name -> resolved config hashtable
-$script:PluginMenuItems      = [System.Collections.Generic.List[hashtable]]::new()  # CLI menu entries from plugins
-$script:PluginMenuCategories = [System.Collections.Generic.List[string]]::new()     # New CLI categories from plugins
-$script:PluginHelpContent    = @{}             # Category -> List[hashtable] of help entries from plugins
-$script:ModuleRoot           = $ModuleRoot     # Expose to plugin helpers
+# Module-scoped plugin state — populated during Phase 2, queried by CLI and hooks
+$script:LoadedPlugins        = @{}
+$script:HookRegistry         = @{}
+$script:PluginConfigs        = @{}
+$script:PluginMenuItems      = [System.Collections.Generic.List[hashtable]]::new()
+$script:PluginMenuCategories = [System.Collections.Generic.List[string]]::new()
+$script:PluginHelpContent    = @{}
+$script:ModuleRoot           = $ModuleRoot
 
 $PluginsDir = [System.IO.Path]::Combine($ModuleRoot, 'plugins')
 
 if ([System.IO.Directory]::Exists($PluginsDir)) {
-    # Load plugin helper functions
+    # Plugin infrastructure: loader (discovery/validation) and hooks (dispatch)
     $PluginLoaderPath = [System.IO.Path]::Combine($ModuleRoot, 'private', 'plugin-loader.ps1')
     if ([System.IO.File]::Exists($PluginLoaderPath)) {
         . $PluginLoaderPath
@@ -132,14 +155,14 @@ if ([System.IO.Directory]::Exists($PluginsDir)) {
         . $PluginHooksPath
     }
 
-    # VERSION file gates plugin loading via MinCoreVersion in manifests
+    # VERSION file gates plugin compatibility via MinCoreVersion in manifests
     $CoreVersion = $null
     $VersionPath = [System.IO.Path]::Combine($ModuleRoot, 'VERSION')
     if ([System.IO.File]::Exists($VersionPath)) {
         $CoreVersion = [System.IO.File]::ReadAllText($VersionPath).Trim()
     }
 
-    # Phase 2a: Discover all plugin manifests
+    # Phase 2a: discover and validate plugin manifests
     $PluginCandidates = [System.Collections.Generic.List[object]]::new()
     $PluginDirs = [System.IO.Directory]::GetDirectories($PluginsDir)
 
@@ -156,14 +179,14 @@ if ([System.IO.Directory]::Exists($PluginsDir)) {
             continue
         }
 
-        # Name + Version are mandatory per plugin contract
+        # Name + Version are mandatory — reject malformed manifests early
         if (-not $Manifest.Name -or -not $Manifest.Version) {
             [System.Console]::Error.WriteLine(
                 "[WARN robot.psm1] Plugin at '$PluginDir' missing Name or Version - skipped")
             continue
         }
 
-        # Reject plugins that require a newer core than what's running
+        # Version gate: reject plugins requiring a newer core
         if ($Manifest.MinCoreVersion -and $CoreVersion) {
             if ([version]$Manifest.MinCoreVersion -gt [version]$CoreVersion) {
                 [System.Console]::Error.WriteLine(
@@ -180,26 +203,26 @@ if ([System.IO.Directory]::Exists($PluginsDir)) {
         })
     }
 
-    # Phase 2b: Topological sort by DependsOn
+    # Phase 2b: topological sort ensures dependencies load before dependents
     $SortedPlugins = if (Get-Command 'Resolve-PluginLoadOrder' -ErrorAction SilentlyContinue) {
         Resolve-PluginLoadOrder -Candidates $PluginCandidates
     } else {
         $PluginCandidates
     }
 
-    # Phase 2c: Load each plugin in dependency order
+    # Phase 2c: load each plugin in dependency order
     foreach ($Plugin in $SortedPlugins) {
         $Manifest   = $Plugin.Manifest
         $PluginDir  = $Plugin.Dir
         $PluginName = $Manifest.Name
 
-        # Resolve plugin config
+        # Merge plugin's default config with any local overrides
         if (Get-Command 'Resolve-PluginConfig' -ErrorAction SilentlyContinue) {
             $PluginConfig = Resolve-PluginConfig -Manifest $Manifest -PluginDir $PluginDir -ModuleRoot $ModuleRoot
             $script:PluginConfigs[$PluginName] = $PluginConfig
         }
 
-        # Load plugin functions using the same Verb-Noun convention as core
+        # Load plugin's public functions using the same Verb-Noun convention as core
         $PluginPublicDir = [System.IO.Path]::Combine($PluginDir, 'public')
         if ([System.IO.Directory]::Exists($PluginPublicDir)) {
             $PluginFiles = [System.IO.Directory]::GetFiles(
@@ -209,7 +232,7 @@ if ([System.IO.Directory]::Exists($PluginsDir)) {
                 $FuncName = [System.IO.Path]::GetFileNameWithoutExtension($FilePath)
                 if (-not $VerbNounPattern.IsMatch($FuncName)) { continue }
 
-                # Prevent plugins from shadowing core functions
+                # Prevent plugin functions from shadowing core — would cause silent behavior changes
                 if ($ExportedFunctions.Contains($FuncName)) {
                     [System.Console]::Error.WriteLine(
                         "[WARN robot.psm1] Plugin '$PluginName' function '$FuncName'" +
@@ -230,7 +253,7 @@ if ([System.IO.Directory]::Exists($PluginsDir)) {
             }
         }
 
-        # Wire up plugin hooks into the "Operation:Phase" registry for Invoke-PluginHook
+        # Wire plugin hooks into "Operation:Phase" registry for Invoke-PluginHook dispatch
         if ($Manifest.Hooks) {
             foreach ($HookDef in $Manifest.Hooks) {
                 $HookKey = "$($HookDef.Operation):$($HookDef.Phase)"
@@ -245,7 +268,7 @@ if ([System.IO.Directory]::Exists($PluginsDir)) {
             }
         }
 
-        # Collect menu entries for Phase 2c merge into CLI navigation
+        # Collect menu entries for CLI navigation integration
         if ($Manifest.MenuItems) {
             foreach ($MenuItem in $Manifest.MenuItems) {
                 $MenuItem['_PluginName'] = $PluginName
@@ -253,7 +276,7 @@ if ([System.IO.Directory]::Exists($PluginsDir)) {
             }
         }
 
-        # New categories appear as top-level menu groups in the CLI
+        # New categories appear as top-level groups in the CLI menu
         if ($Manifest.MenuCategories) {
             foreach ($Cat in $Manifest.MenuCategories) {
                 if (-not $script:PluginMenuCategories.Contains($Cat)) {
@@ -262,7 +285,7 @@ if ([System.IO.Directory]::Exists($PluginsDir)) {
             }
         }
 
-        # Plugin help entries are merged into the CLI help system by category
+        # Plugin help entries merge into the CLI help system keyed by category
         if ($Manifest.HelpContent) {
             foreach ($HelpKey in $Manifest.HelpContent.Keys) {
                 if (-not $script:PluginHelpContent.ContainsKey($HelpKey)) {
@@ -279,7 +302,7 @@ if ([System.IO.Directory]::Exists($PluginsDir)) {
         Write-Verbose "Loaded plugin: $PluginName v$($Manifest.Version)"
     }
 
-    # Lower priority values execute first (e.g. validation before logging)
+    # Sort hooks by priority: lower values execute first (e.g. validation before logging)
     foreach ($HookKey in @($script:HookRegistry.Keys)) {
         $Handlers = $script:HookRegistry[$HookKey]
         $Sorted = $Handlers | Sort-Object { $_.Priority }
@@ -290,7 +313,7 @@ if ([System.IO.Directory]::Exists($PluginsDir)) {
 
 # ── PHASE 3: Plugin Management Functions ────────────────────────────────────
 
-# Defined inline because they need access to $script: variables.
+# Defined inline because they need direct access to $script: plugin state.
 
 function Get-PluginConfig {
     <#

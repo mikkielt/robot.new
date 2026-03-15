@@ -42,10 +42,11 @@ function Invoke-RobotCLI {
         [switch]$NoHealthCheck
     )
 
-    # Dot-source CLI helpers (loaded on demand, not at module import)
+    # CLI helpers dot-sourced on demand — not at module import to keep startup fast.
+    # Layers must load in order: later layers depend on earlier ones.
     $CLIRoot = [System.IO.Path]::Combine($script:ModuleRoot, 'private', 'cli')
 
-    # Layer 1: Primitives (leaf - no CLI dependencies)
+    # Layer 1: Primitives (leaf — no CLI dependencies)
     . "$CLIRoot/cli-primitives.ps1"
 
     # Layer 2: Core systems (depend on primitives)
@@ -62,7 +63,7 @@ function Invoke-RobotCLI {
     # Layer 5: Routing (depends on all above)
     . "$CLIRoot/cli-routing.ps1"
 
-    # Layer 5.5: Merge plugin menu items, categories, and help into CLI state
+    # Layer 5.5: Merge plugin-contributed menu items into routing tables
     Merge-PluginMenuItems
 
     # Layer 6: Workflows (depend on primitives, fuzzy, wizard, display)
@@ -72,7 +73,7 @@ function Invoke-RobotCLI {
         if ([System.IO.File]::Exists($WFPath)) { . $WFPath }
     }
 
-    # Layer 6.5: Plugin CLI workflows (dot-source cli/*.ps1 from loaded plugins)
+    # Layer 6.5: Plugin-provided CLI workflows
     if ($script:LoadedPlugins) {
         foreach ($PluginEntry in $script:LoadedPlugins.GetEnumerator()) {
             $PluginCLIDir = [System.IO.Path]::Combine(
@@ -92,11 +93,11 @@ function Invoke-RobotCLI {
         }
     }
 
-    # Layer 7: Migration integration (overrides stubs from routing)
+    # Layer 7: Migration integration (replaces routing stubs with real phase handlers)
     $MigPath = [System.IO.Path]::Combine($CLIRoot, 'cli-wizard-migration.ps1')
     if ([System.IO.File]::Exists($MigPath)) { . $MigPath }
 
-    # Validate terminal supports interactive mode
+    # ISE and non-interactive terminals lack [Console]::KeyAvailable
     try {
         $null = [System.Console]::KeyAvailable
     }
@@ -104,10 +105,9 @@ function Invoke-RobotCLI {
         throw "Terminal nie wspiera trybu interaktywnego. Użyj standardowego terminala (nie ISE)."
     }
 
-    # Detect theme
     $Theme = Resolve-CLITheme
 
-    # Pre-load shared data for fuzzy search
+    # Pre-load shared data — entities, players, name index needed by all workflows
     Write-Host ''
     $LoadProgress = New-ProgressState -Title 'Ładowanie danych' -TotalSteps 4
 
@@ -123,7 +123,7 @@ function Invoke-RobotCLI {
     $NameIdx  = Get-NameIndex -Players $Players -Entities $Entities
     Complete-ProgressStep -State $LoadProgress -Detail "$($NameIdx.Count) wpisów"
 
-    # Build entity type index for O(1) type-filtered lookups in fuzzy search
+    # O(1) type-filtered lookups avoid linear scans in fuzzy search typeahead
     Start-ProgressStep -State $LoadProgress -Label 'Indeks typów'
     $EntityTypeIdx = @{}
     foreach ($E in $Entities) {
@@ -136,7 +136,7 @@ function Invoke-RobotCLI {
 
     Complete-ProgressGroup -State $LoadProgress
 
-    # Health dashboard: run quick checks and cache results
+    # Health dashboard: cached validation results shown on main menu
     $HealthCache = @{
         PU        = $null
         Currency  = $null
@@ -153,16 +153,12 @@ function Invoke-RobotCLI {
         $HCProgress = New-ProgressState -Title 'Sprawdzanie stanu systemu' -TotalSteps 6
         $HealthCache.CheckedAt = Get-Date
 
-        # Suppress non-terminating errors during health checks — internal calls
-        # (e.g. Get-Player when Gracze.md is missing) would otherwise corrupt
-        # the CLI display. Health checks have their own error reporting via
-        # $HealthCache.Errors.
+        # SilentlyContinue prevents health-check errors (e.g. missing Gracze.md)
+        # from corrupting the CLI display; errors go to $HealthCache.Errors instead
         $PrevEAP = $ErrorActionPreference
         $ErrorActionPreference = 'SilentlyContinue'
 
-        # Pre-load shared data once to avoid redundant loads across health checks:
-        # - AllSessions: used by PU (stale history), Currency, and Graph checks
-        # - EntityState: used by Currency check (enriched entity data)
+        # Load sessions and entity state once — shared across PU, Currency, and Graph checks
         Start-ProgressStep -State $HCProgress -Label 'Sesje'
         $SessCB = { param($C,$T,$D); Update-ProgressStep -State $HCProgress -Detail "$C/$T" }.GetNewClosure()
         $SharedSessions = Get-Session -Quiet -Entities $Entities -Players $Players -NameIndex $NameIdx -ProgressCallback $SessCB

@@ -3,9 +3,21 @@
     Screen and region management for the Robot CLI TUI engine.
 
     .DESCRIPTION
-    Manages a three-panel layout with fixed TopBar, dynamic Content region,
+    Manages a four-region layout with fixed TopBar, dynamic Content region,
     contextual Filter bar, and persistent StatusBar. All rendering is
-    region-aware — components only write within their allocated rows.
+    region-aware — components only write within their allocated row ranges,
+    preventing cross-region bleed when content is taller than the viewport.
+
+    Region boundaries are recalculated on terminal resize via Build-Regions.
+    The Content region absorbs all height changes (TopBar, Filter, StatusBar
+    are fixed at 1 row each), so the menu/table/wizard visible area scales
+    automatically. A minimum terminal size of 60x15 is enforced to guarantee
+    that at least a few content rows are visible.
+
+    The 5-tier visual hierarchy (Get-TierStyle) provides consistent emphasis
+    across all components without per-component color decisions. ANSI escape
+    support is detected at load time via PS version check; PS 5.1 falls back
+    to Write-Host color-only rendering with accent promotion for bold.
 
     Helpers:
     - Initialize-Screen:    check min dimensions, calculate regions, clear, hide cursor
@@ -31,10 +43,10 @@
     - $script:ScreenHeight:  current terminal height (updated on resize)
 
     Layout:
-        Row 0              → TopBar (breadcrumb + health badges)
-        Row 1..(H-3)       → Content (menus, tables, wizards, cards, overlays)
-        Row (H-2)          → Filter (contextual, hidden when inactive)
-        Row (H-1)          → StatusBar (persistent key hints)
+        Row 0              -> TopBar (breadcrumb + health badges)
+        Row 1..(H-3)       -> Content (menus, tables, wizards, cards, overlays)
+        Row (H-2)          -> Filter (contextual, hidden when inactive)
+        Row (H-1)          -> StatusBar (persistent key hints)
 #>
 
 # ── Module-level data ────────────────────────────────────────────────────────
@@ -73,7 +85,6 @@ function Test-MinimumSize {
 
 # ── Build-Regions ────────────────────────────────────────────────────────────
 
-# Calculates region boundaries from current terminal dimensions
 function Build-Regions {
     $W = [System.Console]::WindowWidth
     $H = [System.Console]::WindowHeight
@@ -196,7 +207,6 @@ function Test-TerminalResized {
 
 # ── Restore-Cursor ───────────────────────────────────────────────────────────
 
-# Restores cursor visibility on engine teardown
 function Restore-Cursor {
     try { [System.Console]::CursorVisible = $true } catch {}
 }
@@ -222,7 +232,6 @@ function Get-TierStyle {
     }
 }
 
-# Creates a segment styled for a given visual hierarchy tier
 function New-TierSegment {
     param(
         [Parameter(Mandatory)] [string]$Text,

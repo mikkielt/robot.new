@@ -3,23 +3,39 @@
     Reports all narrator names found across recorded sessions.
 
     .DESCRIPTION
-    Scans all sessions for narrator data and produces a structured report
-    for guiding manual creation of narrator normalization entries and
-    player aliases.
+    Get-NarratorReport scans all sessions for narrator data and produces
+    a structured report for guiding manual creation of narrator
+    normalization entries and player aliases.
 
     Processing pipeline:
-    1. Extract raw narrator text from session headers (third comma-separated segment)
-    2. Normalize and group by case-insensitive key, pick canonical spelling
-    3. Levenshtein near-duplicate detection (O(n^2) with length-difference pruning)
+    1. Extract raw narrator text from session headers (third
+       comma-separated segment) along with resolution Confidence,
+       resolved Narrators list, and IsCouncil flag
+    2. Normalize and group by case-insensitive key, pick canonical
+       spelling (most frequently observed raw form wins)
+    3. Levenshtein near-duplicate detection (O(n^2) with
+       length-difference pruning, skips names shorter than 3 chars)
     4. Cross-reference against existing narrator mappings from
        migration/narrator-normalization.ps1 (Import-NarratorMappings)
-    5. Conflict detection: CaseVariant, NearDuplicate
-    6. Optional UnresolvedOnly filter (Confidence = None)
+       to identify which narrators already have normalization entries
+    5. Conflict detection: CaseVariant (multiple raw spellings),
+       NearDuplicate (Levenshtein-based similar names)
+    6. Optional UnresolvedOnly filter (Confidence='None') to surface
+       only narrators that the resolution pipeline could not map to
+       any known player
+
+    Each report entry includes: canonical RawText, Variants, OccurrenceCount,
+    Confidence level (from Resolve-Narrator), ResolvedPlayers, IsCouncil
+    flag, HasMapping status, MappedTo targets, NearDuplicates list,
+    Conflicts array, and optional Sessions references.
+
+    The Confidence field reflects how the narrator text was resolved:
+    'High' (exact player match), 'Medium' (fuzzy or alias match),
+    'None' (unresolved — needs manual normalization entry).
 
     Dot-sources string-helpers.ps1 for Get-LevenshteinDistance.
 #>
 
-# Dot-source shared helpers
 . "$script:ModuleRoot/private/string-helpers.ps1"
 
 function Get-NarratorReport {
@@ -79,7 +95,7 @@ function Get-NarratorReport {
 
     if ($RawOccurrences.Count -eq 0) { return @() }
 
-    # 3. Normalize and group by RawText (case-insensitive)
+    # 3. Group by normalized (lowercased) text; track raw spelling variants
     $Groups = [System.Collections.Generic.Dictionary[string, object]]::new(
         [System.StringComparer]::OrdinalIgnoreCase)
 
@@ -109,7 +125,7 @@ function Get-NarratorReport {
         $Group.Occurrences.Add($Occ)
     }
 
-    # Pick canonical raw form: most frequent spelling
+    # Canonical form = most frequently observed raw spelling (preserves intended casing)
     $CanonicalForms = [System.Collections.Generic.Dictionary[string, string]]::new(
         [System.StringComparer]::OrdinalIgnoreCase)
     foreach ($KV in $Groups.GetEnumerator()) {
@@ -124,7 +140,7 @@ function Get-NarratorReport {
         $CanonicalForms[$KV.Key] = $BestForm
     }
 
-    # 4. Levenshtein near-duplicate detection (O(n²) over unique normalized keys)
+    # 4. Pairwise Levenshtein detection: identify narrator names that may be typos
     $NormalizedKeys = [System.Collections.Generic.List[string]]::new($Groups.Keys)
     $FuzzyPairs = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::Ordinal)
     $NearDuplicates = [System.Collections.Generic.Dictionary[string, System.Collections.Generic.List[object]]]::new(
@@ -160,11 +176,11 @@ function Get-NarratorReport {
         }
     }
 
-    # 5. Check existing narrator mappings
+    # 5. Load existing narrator normalization mappings for HasMapping check
     . "$script:ModuleRoot/migration/narrator-normalization.ps1"
     $Mappings = Import-NarratorMappings
 
-    # 6. Detect conflicts
+    # 6. Detect naming conflicts: case variants and near-duplicates
     $ConflictsByNormalized = [System.Collections.Generic.Dictionary[string, System.Collections.Generic.List[object]]]::new(
         [System.StringComparer]::OrdinalIgnoreCase)
 
@@ -172,7 +188,7 @@ function Get-NarratorReport {
         $Conflicts = [System.Collections.Generic.List[object]]::new()
         $Group = $Groups[$Key]
 
-        # CaseVariant: multiple raw forms
+        # CaseVariant: multiple spellings suggest inconsistent data entry
         $DistinctForms = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::Ordinal)
         foreach ($RC in $Group.RawCounts.Keys) {
             [void]$DistinctForms.Add($RC)
@@ -198,7 +214,7 @@ function Get-NarratorReport {
         $ConflictsByNormalized[$Key] = $Conflicts
     }
 
-    # 7. Assemble report
+    # 7. Assemble final report objects with all enrichment data
     $Report = [System.Collections.Generic.List[object]]::new()
 
     foreach ($KV in $Groups.GetEnumerator()) {
@@ -210,13 +226,13 @@ function Get-NarratorReport {
 
         $CanonRaw = $CanonicalForms[$Norm]
 
-        # Variants: all raw forms except the canonical one
+        # Non-canonical raw forms (case-sensitive comparison to preserve variants)
         $Variants = [System.Collections.Generic.List[string]]::new()
         foreach ($RC in $Group.RawCounts.Keys) {
             if ($RC -cne $CanonRaw) { $Variants.Add($RC) }
         }
 
-        # Resolved players
+        # Extract player names from Resolve-Narrator results
         $ResolvedPlayers = [System.Collections.Generic.List[string]]::new()
         if ($Group.Narrators -and $Group.Narrators.Count -gt 0) {
             foreach ($N in $Group.Narrators) {
@@ -224,19 +240,19 @@ function Get-NarratorReport {
             }
         }
 
-        # Mapping check
+        # Check if narrator-normalization.ps1 already has an entry for this narrator
         $HasMapping = $Mappings.ContainsKey($CanonRaw)
         $MappedTo = if ($HasMapping) { $Mappings[$CanonRaw] } else { @() }
 
-        # NearDuplicates
+        # Levenshtein-based similar narrators (potential typos)
         $ND = if ($NearDuplicates.ContainsKey($Norm)) { @($NearDuplicates[$Norm]) } else { @() }
 
-        # Conflicts
+        # All detected naming conflicts for this narrator
         $Conf = if ($ConflictsByNormalized.ContainsKey($Norm)) {
             @($ConflictsByNormalized[$Norm])
         } else { @() }
 
-        # Session references
+        # Per-session references (only populated when -IncludeReferences is set)
         $SessionRefs = @()
         if ($IncludeReferences) {
             $SessionRefs = @($Group.Occurrences | ForEach-Object {
@@ -248,7 +264,7 @@ function Get-NarratorReport {
             })
         }
 
-        # Apply UnresolvedOnly filter
+        # Skip resolved narrators when caller only wants unresolved ones
         if ($UnresolvedOnly -and $Group.Confidence -ne 'None') { continue }
 
         $Report.Add([PSCustomObject]@{
@@ -267,7 +283,7 @@ function Get-NarratorReport {
         })
     }
 
-    # Sort by occurrence count descending
+    # Most-referenced narrators first for coordinator prioritization
     $Sorted = $Report | Sort-Object -Property OccurrenceCount -Descending
 
     return @($Sorted)

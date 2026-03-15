@@ -185,7 +185,16 @@ Current types:
 
 | File | Class | Purpose |
 |------|-------|---------|
-| `lib/BKTree.cs` | `Robot.BKTree` | BK-tree with integrated Levenshtein distance for O(log N) fuzzy name matching |
+| `lib/BKTree.cs` | `Robot.BKTree` | BK-tree with integrated Levenshtein distance for O(log N) fuzzy name matching; batch pairwise FindFuzzyPairs with ArrayPool zero-alloc |
+| `lib/DeclensionEngine.cs` | `Robot.DeclensionEngine` | Polish noun declension suffix stripping and stem alternation reversal for name resolution |
+| `lib/TemporalSorter.cs` | `Robot.TemporalSorter` | Compiled temporal comparers for entity history list sorting (requires SMA reference) |
+| `lib/ContentHasher.cs` | `Robot.ContentHasher` | SHA256 content hasher with ArrayPool zero-allocation, single-pass whitespace strip |
+| `lib/EconomicAnalyzer.cs` | `Robot.EconomicAnalyzer` | Gini coefficient and top-holder extraction for economic snapshot reporting |
+| `lib/FuzzyMatcher.cs` | `Robot.FuzzyMatcher` | Pre-lowercased two-stage prefix+contains filter for CLI fuzzy typeahead |
+| `lib/JsonHelper.cs` | `Robot.JsonHelper` | Fast JSON read/write via System.Text.Json for session graph index, hash sidecars, and metadata files |
+| `lib/LogParser.cs` | `Robot.LogParser` | Compiled ChatLog/Prose log content parser with format detection and location segment extraction |
+| `lib/SessionTagParser.cs` | `Robot.SessionTagParser` | Compiled session tag dispatcher for Get-SessionListMetadata; prefix-based 8-way dispatch with flat array I/O |
+| `lib/MarkdownScanner.cs` | `Robot.MarkdownScanner` | Compiled Markdown line scanner for parse-markdownfile.ps1; single-pass with index-based parent tracking |
 
 ### Output Suppression
 

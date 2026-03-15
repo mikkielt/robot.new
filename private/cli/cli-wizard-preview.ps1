@@ -12,16 +12,28 @@
     cli-wizard.ps1 at load time.
 
     Helpers:
-    - Show-Preview: parameter review card, yesno confirmation, and execution
+    - Show-Preview: three-phase pipeline:
+      1. Parameter review card (engine DetailCardComponent, Esc to proceed)
+      2. Yes/No confirmation (engine WizardStepComponent, yesno type)
+      3. Execution with result summary or error card display
 
     Design:
     - After successful execution, the result is displayed as an engine
-      DetailCardComponent and NavState is refreshed so that subsequent CLI
-      screens reflect the new data.
+      DetailCardComponent and NavState is refreshed (via Refresh-NavState)
+      so that subsequent CLI screens reflect the new data.
     - OperationResult objects (PSTypeName 'Robot.OperationResult') are
-      destructured into a human-readable summary with action label, change
-      diff, file path, warnings, and undo hint.
-    - On error, an error detail card is shown instead of crashing the CLI.
+      destructured into a human-readable summary with Polish action labels
+      (Utworzono/Zaktualizowano/Usunięto/Pominięto), property change diffs
+      (OldValue → NewValue), file path, warnings with action hints, and
+      undo hint text.
+    - Non-OperationResult return values show a generic success status.
+    - On error, a structured error detail card is shown instead of crashing
+      the CLI — the exception message is captured as a 'Szczegóły' field.
+    - '__quit__' sentinel propagates to caller for global quit handling.
+
+    Dependencies: cli-wizard-steps.ps1 (Invoke-EngineLifecycle),
+                  engine/ (New-DetailCardComponent, New-WizardStepComponent,
+                  Invoke-EngineDetailCard), cli-routing.ps1 (Refresh-NavState)
 #>
 
 # ── Show-Preview ─────────────────────────────────────────────────────────────
@@ -33,27 +45,27 @@ function Show-Preview {
         [Parameter(Mandatory)] [object]$State
     )
 
-    # Build preview data object for engine detail card
+    # Convert collected parameters to PSCustomObject for detail card rendering
     $PreviewProps = [ordered]@{}
     foreach ($Key in $Parameters.Keys) {
         $PreviewProps[$Key] = $Parameters[$Key]
     }
     $PreviewObj = [PSCustomObject]$PreviewProps
 
-    # Show preview via engine detail card (user reviews parameters, Esc to proceed)
+    # Phase 1: User reviews parameters (Esc to proceed)
     $PreviewComponent = New-DetailCardComponent -Data $PreviewObj -Title "Podgląd: $FunctionName"
     $PreviewComponent.StatusHints = "$([char]0x2191)$([char]0x2193) przewiń  Esc dalej"
     $PreviewResult = Invoke-EngineLifecycle -Component $PreviewComponent -State $State
     if ($PreviewResult -eq '__quit__') { return '__quit__' }
 
-    # Confirmation via engine yesno
+    # Phase 2: Confirmation gate
     $ConfirmComponent = New-WizardStepComponent -Label 'Wykonać operację?' `
         -StepNumber 0 -TotalSteps 0 -StepType 'yesno'
     $Confirm = Invoke-EngineLifecycle -Component $ConfirmComponent -State $State
     if ($Confirm -eq '__quit__') { return '__quit__' }
     if ($Confirm -ne $true) { return $null }
 
-    # Execute
+    # Phase 3: Execute and display result
     [System.Console]::Clear()
     try {
         $SplatParams = @{}
@@ -65,7 +77,7 @@ function Show-Preview {
 
         $ExecResult = & $FunctionName @SplatParams
 
-        # Build result summary for engine detail card
+        # Build human-readable result summary
         $ResultData = [ordered]@{}
 
         $OpResult = $null
@@ -120,10 +132,10 @@ function Show-Preview {
             $ResultData['Status'] = "$([char]0x2713) Operacja zakończona pomyślnie"
         }
 
-        # Refresh NavState before showing result card
+        # Refresh NavState so subsequent screens reflect the changes
         try { Refresh-NavState -State $State } catch {}
 
-        # Show result via engine detail card
+        # Display result card and return execution result to caller
         Invoke-EngineDetailCard -Data ([PSCustomObject]$ResultData) -Title 'Wynik operacji' -State $State
 
         return $ExecResult

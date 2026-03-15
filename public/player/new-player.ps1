@@ -10,12 +10,14 @@
     3. Validates Discord webhook URL format.
     4. Optionally creates a first character by delegating to New-PlayerCharacter.
 
-    Dot-sources entity-writehelpers.ps1 and admin-config.ps1 for file
-    manipulation and config resolution.
+    The delegation to New-PlayerCharacter reuses its template rendering,
+    PU computation, and charfile generation logic rather than duplicating it.
+
+    Dot-sources entity-writehelpers.ps1 (file I/O and tag manipulation)
+    and admin-config.ps1 (entities file path resolution).
     Supports -WhatIf via SupportsShouldProcess.
 #>
 
-# Dot-source helpers
 . "$script:ModuleRoot/private/entity-writehelpers.ps1"
 . "$script:ModuleRoot/private/admin-config.ps1"
 

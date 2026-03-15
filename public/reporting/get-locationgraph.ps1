@@ -3,7 +3,7 @@
     Builds a unified location graph from entity registry, session metadata, and session logs.
 
     .DESCRIPTION
-    Merges six edge sources into a single node+edge graph:
+    Get-LocationGraph merges six edge sources into a single node+edge graph:
     - Containment edges from @lokacja parent-child chains (entity registry)
     - Door edges from @drzwi bidirectional connections (entity registry)
     - Route edges from session metadata separators (-> and - patterns)
@@ -13,17 +13,34 @@
 
     Processing pipeline:
     1. Load entities and sessions, build case-insensitive entity lookup
-    2. Extract Containment and Door edges from entity registry
-    3. Build adjacency sets from structural edges for walkability classification
-    4. Extract Route and InferredHierarchy edges from Get-NamedLocationReport
-    5. Optionally extract Movement/Teleport edges from session log transitions
-    6. Build node objects from all edge endpoints, enriched with entity metadata
-    7. Detect stale edges where source/target coordinates changed after edge creation
+       (maps primary names + aliases for node enrichment in step 9)
+    2. Extract Containment edges from @lokacja parent-child chains
+    3. Extract Door edges from @drzwi bidirectional connections
+    4. Build adjacency sets from structural edges (Containment + Door)
+       for walkability classification in step 7
+    5. Extract Route and InferredHierarchy edges from Get-NamedLocationReport
+    6. Optionally extract Movement/Teleport edges from session log transitions
+       via Get-NamedLogLocationReport, classifying each transition as Movement
+       (structurally walkable within distance 2) or Teleport (no structural path)
+    7. Build node objects from all edge endpoints, enriched with entity metadata
+       (CN, NerthusName, Coordinates, in/out degree)
+    8. Detect stale edges where source/target CoordinateHistory changed after
+       the edge's FirstSeen date (indicates map geometry may have invalidated
+       the connection)
 
     Inline scriptblocks:
-    - $AddEdge: merges duplicate edges by incrementing weight and expanding source list
+    - $AddEdge: merges duplicate edges by incrementing weight and expanding
+      source list; tracks FirstSeen/LastSeen for staleness detection
     - $EnsureAdj: lazily initializes adjacency HashSets in the adjacency dictionary
-    - $IsWalkable: checks structural reachability within distance 2 (neighbor-of-neighbor)
+    - $IsWalkable: checks structural reachability within distance 2
+      (direct neighbor or share a common neighbor)
+
+    Edge deduplication uses a "Source|Target|Type" composite key in a
+    case-insensitive dictionary. Repeated edges increment weight and
+    accumulate data source tags rather than creating duplicates.
+
+    Returns a PSCustomObject with Nodes array, Edges array, and Summary
+    containing counts by edge type, resolution stats, and staleness metrics.
 #>
 
 function Get-LocationGraph {
@@ -59,7 +76,7 @@ function Get-LocationGraph {
     if ($Quiet) { $script:SuppressWarnings = $true }
     try {
 
-    # 1. Load entities
+    # 1. Load entities (all types, not just Lokacja — needed for owner classification)
     if (-not $PSBoundParameters.ContainsKey('Entities')) {
         $Entities = Get-Entity
     }
@@ -72,7 +89,7 @@ function Get-LocationGraph {
         $Sessions = Get-Session @GetSessionArgs
     }
 
-    # Build entity lookup (case-insensitive)
+    # Multi-name entity lookup for enriching nodes with entity metadata in step 9
     $EntityByName = [System.Collections.Generic.Dictionary[string, object]]::new(
         [System.StringComparer]::OrdinalIgnoreCase)
     foreach ($Ent in $Entities) {
@@ -88,11 +105,11 @@ function Get-LocationGraph {
         }
     }
 
-    # Edge accumulator: key = "Source|Target|Type" → edge object
+    # Edge accumulator: composite key deduplicates edges across data sources
     $EdgeKey = [System.Collections.Generic.Dictionary[string, object]]::new(
         [System.StringComparer]::OrdinalIgnoreCase)
 
-    # Helper to add/merge an edge
+    # Merge-on-insert: increment weight for existing edges, create new otherwise
     $AddEdge = {
         param([string]$Source, [string]$Target, [string]$Type, [string]$DataSource, [datetime]$Date)
         $Key = "$Source|$Target|$Type"
@@ -140,9 +157,9 @@ function Get-LocationGraph {
         }
     }
 
-    # 4b. Build adjacency sets from structural edges (Containment + Door)
-    #     Used to classify Movement vs Teleport in step 7.
-    #     Two locations are "walkable" if they share at least one structural neighbor (distance ≤ 2).
+    # 4b. Build adjacency sets from structural edges (Containment + Door) for
+    #     walkability classification: two locations are "walkable" if they are
+    #     direct neighbors or share a common structural neighbor (distance <= 2)
     $AdjSet = [System.Collections.Generic.Dictionary[string, System.Collections.Generic.HashSet[string]]]::new(
         [System.StringComparer]::OrdinalIgnoreCase)
     $EnsureAdj = {
@@ -158,13 +175,12 @@ function Get-LocationGraph {
         [void]$AdjSet[$Edge.Source].Add($Edge.Target)
         [void]$AdjSet[$Edge.Target].Add($Edge.Source)
     }
-    # Check walkability: direct neighbor or share a common neighbor (distance ≤ 2)
+    # Two-hop reachability check: direct neighbor or neighbor-of-neighbor
     $IsWalkable = {
         param([string]$A, [string]$B)
         if (-not $AdjSet.ContainsKey($A) -or -not $AdjSet.ContainsKey($B)) { return $false }
-        # Distance 1: direct neighbor
-        if ($AdjSet[$A].Contains($B)) { return $true }
-        # Distance 2: share a common neighbor
+        if ($AdjSet[$A].Contains($B)) { return $true }  # distance 1
+        # Distance 2: check for shared neighbor between A and B
         $NA = $AdjSet[$A]
         $NB = $AdjSet[$B]
         foreach ($N in $NA) {
@@ -224,7 +240,7 @@ function Get-LocationGraph {
                 if (-not $LogSession.Transitions -or $LogSession.Transitions.Count -eq 0) { continue }
                 foreach ($Trans in $LogSession.Transitions) {
                     $EdgeDate = if ($LogSession.SessionDate) { $LogSession.SessionDate } else { $Now }
-                    # Classify: walkable (structural distance ≤ 2) → Movement, otherwise → Teleport
+                    # Structurally reachable transitions are Movement; unreachable are Teleport
                     $Walkable = & $IsWalkable $Trans.Source $Trans.Target
                     if ($Walkable) {
                         & $AddEdge $Trans.Source $Trans.Target 'Movement' 'SessionLog' $EdgeDate
@@ -306,12 +322,13 @@ function Get-LocationGraph {
         })
     }
 
-    # 10. Staleness detection for edges
+    # 10. Flag edges where source/target coordinates changed after edge creation
+    #     (map geometry changes may have invalidated the physical connection)
     foreach ($Edge in $EdgeKey.Values) {
         $SourceEntity = if ($EntityByName.ContainsKey($Edge.Source)) { $EntityByName[$Edge.Source] } else { $null }
         $TargetEntity = if ($EntityByName.ContainsKey($Edge.Target)) { $EntityByName[$Edge.Target] } else { $null }
 
-        # Check if coordinates changed between FirstSeen and now
+        # Coordinate history entries after FirstSeen indicate the map moved post-edge
         if ($SourceEntity -and $SourceEntity.PSObject.Properties['CoordinateHistory'] -and $SourceEntity.CoordinateHistory.Count -gt 1) {
             foreach ($CH in $SourceEntity.CoordinateHistory) {
                 if ($CH.ValidFrom -and $CH.ValidFrom -gt $Edge.FirstSeen) {
@@ -332,7 +349,7 @@ function Get-LocationGraph {
         }
     }
 
-    # 11. Compute summary counts
+    # 11. Aggregate edge type counts and staleness metrics for the summary object
     $ContainmentEdges = 0
     $DoorEdges = 0
     $InferredEdges = 0

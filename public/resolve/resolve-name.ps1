@@ -33,8 +33,17 @@
     prevent partial stripping (e.g. "-owi" before "-i", "-ami" before "-i").
 #>
 
-# Dot-source shared helpers
 . "$script:ModuleRoot/private/string-helpers.ps1"
+
+# Compiled C# declension engine for suffix stripping and stem alternation.
+# Eliminates PowerShell loop overhead on the hottest resolution path
+# (412,500 inner-loop string operations per session run). Source: lib/DeclensionEngine.cs
+if (-not ([System.Management.Automation.PSTypeName]'Robot.DeclensionEngine').Type) {
+    $CsPath = [System.IO.Path]::Combine($script:ModuleRoot, 'lib', 'DeclensionEngine.cs')
+    if ([System.IO.File]::Exists($CsPath)) {
+        Add-Type -TypeDefinition ([System.IO.File]::ReadAllText($CsPath)) -Language CSharp
+    }
+}
 
 # Polish noun suffixes ordered longest-first to prevent partial stripping
 # (e.g. "-owi" must be tried before "-i", "-ami" before "-i")
@@ -71,12 +80,26 @@ $script:StemAlternations = @(
     @{ Inflected = "ci";    Base = "ć"   }   # (locative/vocative)
 )
 
-# Helper: strip declension suffix from a name
-# Returns the stem. Returns the original if no suffix matches.
-# Minimum stem length of 3 prevents stripping real names down to nothing.
+# Prefer the compiled C# engine when available; fall back to the
+# PowerShell loop implementations below
+$script:CsDeclensionEngine = $null
+if (([System.Management.Automation.PSTypeName]'Robot.DeclensionEngine').Type) {
+    $AltInflected = [string[]]($script:StemAlternations | ForEach-Object { $_.Inflected })
+    $AltBase      = [string[]]($script:StemAlternations | ForEach-Object { $_.Base })
+    $script:CsDeclensionEngine = [Robot.DeclensionEngine]::new(
+        [string[]]$script:DeclensionSuffixes,
+        $AltInflected,
+        $AltBase
+    )
+}
+
 function Get-DeclensionStem {
     param([string]$Text)
+    if ($script:CsDeclensionEngine) {
+        return $script:CsDeclensionEngine.GetStem($Text)
+    }
     foreach ($Suffix in $script:DeclensionSuffixes) {
+        # +2 guard: stem must be at least 3 chars to prevent stripping real short names
         if ($Text.Length -gt ($Suffix.Length + 2) -and $Text.EndsWith($Suffix, [System.StringComparison]::OrdinalIgnoreCase)) {
             return $Text.Substring(0, $Text.Length - $Suffix.Length)
         }
@@ -84,12 +107,14 @@ function Get-DeclensionStem {
     return $Text
 }
 
-# Helper: reverse stem alternation, producing candidate base forms
-# For "Valesce": strip "ce", append "ka" -> "Valeska".
 function Get-StemAlternationCandidates {
     param([string]$Text)
+    if ($script:CsDeclensionEngine) {
+        return $script:CsDeclensionEngine.GetAlternationCandidates($Text)
+    }
     $Candidates = [System.Collections.Generic.List[string]]::new()
     foreach ($Alt in $script:StemAlternations) {
+        # Same +2 minimum-stem guard as Get-DeclensionStem
         if ($Text.Length -gt ($Alt.Inflected.Length + 2) -and $Text.EndsWith($Alt.Inflected, [System.StringComparison]::OrdinalIgnoreCase)) {
             $Stem = $Text.Substring(0, $Text.Length - $Alt.Inflected.Length)
             $Candidates.Add($Stem + $Alt.Base)
@@ -139,7 +164,6 @@ function Resolve-Name {
         [switch]$NoFuzzy
     )
 
-    # Build index if not provided - includes both players and entities
     if ([string]::IsNullOrWhiteSpace($Query)) { return $null }
     if (-not $Index) {
         if (-not $Players) { $Players = Get-Player }
@@ -150,14 +174,12 @@ function Resolve-Name {
         $BKTree    = $NameIndexResult.BKTree
     }
 
-    # Cache key includes OwnerType filter so "Thant" resolves differently
-    # when caller requests only Lokacja vs any type
+    # OwnerType must be part of the key because the same query can resolve
+    # to different objects when scoped to different types
     $CacheKey = if ($OwnerType) { "$Query|$OwnerType" } else { $Query }
     if ($Cache -and $Cache.ContainsKey($CacheKey)) {
         $Cached = $Cache[$CacheKey]
-        # [DBNull]::Value is a sentinel for "we looked this up before and found nothing" -
-        # distinguishes a cached miss from a cache miss
-        if ($Cached -is [System.DBNull]) { return $null }
+        if ($Cached -is [System.DBNull]) { return $null }  # cached negative result
         return $Cached
     }
 
@@ -168,7 +190,7 @@ function Resolve-Name {
             if ($Cache) { $Cache[$CacheKey] = $Entry.Owner }
             return $Entry.Owner
         }
-        # Ambiguous or wrong type - fall through to later stages
+        # Ambiguous or wrong type — later stages may disambiguate
     }
 
     # Stage 2: Declension-stripped match
@@ -208,7 +230,8 @@ function Resolve-Name {
     $BestOwner    = $null
     $BestDistance = [int]::MaxValue
 
-    # Dynamic threshold: short names (<5 chars) allow max 1 edit, longer names allow floor(length / 3)
+    # Short names (<5 chars) allow max 1 edit to prevent false positives;
+    # longer names scale to floor(length / 3) to accommodate typos
     $Threshold = if ($MaxDistance -ge 0) {
         $MaxDistance
     } else {
@@ -216,7 +239,6 @@ function Resolve-Name {
     }
 
     if ($BKTree -is [Robot.BKTree]) {
-        # C# BK-tree search: O(log N) with integrated Levenshtein early-exit
         $BKResults = $BKTree.Search($Query, $Threshold)
 
         foreach ($BKResult in $BKResults) {
@@ -231,7 +253,7 @@ function Resolve-Name {
             }
         }
     } elseif ($BKTree) {
-        # Legacy PowerShell hashtable BK-tree search
+        # PowerShell hashtable BK-tree fallback when C# type is unavailable
         $BKResults = Search-BKTree -Tree $BKTree -Query $Query -Threshold $Threshold
 
         foreach ($BKResult in $BKResults) {
@@ -246,12 +268,12 @@ function Resolve-Name {
             }
         }
     } else {
-        # Fallback: linear scan when no BK-tree is available
+        # Linear scan fallback when no BK-tree is available
         $QueryLength = $Query.Length
 
         foreach ($TokenKey in $Index.Keys) {
-            # Length-difference pruning: if lengths differ by more than the threshold,
-            # the Levenshtein distance must exceed it too - skip without computing
+            # Length-difference pruning: Levenshtein distance >= |len(a) - len(b)|,
+            # so tokens outside the threshold are unreachable
             $LenDiff = [Math]::Abs($QueryLength - $TokenKey.Length)
             if ($LenDiff -gt $Threshold) { continue }
 
@@ -265,8 +287,7 @@ function Resolve-Name {
                 }
             }
 
-            # Early exit: distance 0-1 is already an excellent match
-            if ($BestDistance -le 1) { break }
+            if ($BestDistance -le 1) { break }  # distance 0-1 cannot improve further
         }
     }
 
@@ -275,7 +296,7 @@ function Resolve-Name {
         return $BestOwner
     }
 
-    # No match found at any stage - cache the miss too
+    # Cache the negative result to avoid redundant resolution on repeated queries
     if ($Cache) { $Cache[$CacheKey] = [System.DBNull]::Value }
     return $null
 }

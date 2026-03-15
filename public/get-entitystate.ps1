@@ -11,7 +11,7 @@
     Pass 2: Get-EntityState merges entity file data + session Zmiany chronologically
 
     Get-EntityState takes pre-fetched entities and sessions as input. For each session
-    that contains a - Zmiany: block, it resolves entity names via the full name
+    that contains a @Zmiany block, it resolves entity names via the full name
     resolution pipeline (exact match, declension stripping, stem alternation,
     Levenshtein fuzzy matching) and applies @tag overrides to the matching entity objects.
 
@@ -31,7 +31,20 @@
     lookup first (exact match), then fall back to the full Resolve-Name pipeline.
     When Resolve-Name returns a Player object (due to Player/Gracz dedup in the name
     index), the result is mapped back to the corresponding entity via shared names.
+
+    Preamble: loads Robot.TemporalSorter (lib/TemporalSorter.cs) — compiled C#
+    temporal sort comparer that replaces PowerShell scriptblock comparers invoked
+    O(n log n) times per sort across 9 history lists per entity.
 #>
+
+# Compiled C# comparer eliminates scriptblock overhead on sort-heavy post-merge pass
+if (-not ([System.Management.Automation.PSTypeName]'Robot.TemporalSorter').Type) {
+    $CsPath = [System.IO.Path]::Combine($script:ModuleRoot, 'lib', 'TemporalSorter.cs')
+    if ([System.IO.File]::Exists($CsPath)) {
+        $SMAPath = [System.Management.Automation.PSObject].Assembly.Location
+        Add-Type -TypeDefinition ([System.IO.File]::ReadAllText($CsPath)) -Language CSharp -ReferencedAssemblies $SMAPath
+    }
+}
 
 function Get-EntityState {
     <#
@@ -73,8 +86,7 @@ function Get-EntityState {
         $Sessions = Get-Session
     }
 
-    # Build entity name lookup from all entity names and aliases (case-insensitive)
-    # This enables exact-match entity resolution independent of the Player-priority name index.
+    # Entity-only lookup bypasses the Player-priority name index for exact-match resolution
     $EntityByName = [System.Collections.Generic.Dictionary[string, object]]::new([System.StringComparer]::OrdinalIgnoreCase)
     foreach ($Entity in $Entities) {
         foreach ($Name in $Entity.Names) {
@@ -84,17 +96,17 @@ function Get-EntityState {
         }
     }
 
-    # Build full name resolution infrastructure for fuzzy matching fallback
+    # Full name resolution infrastructure (BK-tree + stem index) for fuzzy matching fallback
     if (-not $PSBoundParameters.ContainsKey('Players')) {
         $Players = Get-Player -Entities $Entities
     }
     $NameIndexResult = if ($PSBoundParameters.ContainsKey('NameIndex') -and $NameIndex) { $NameIndex } else { Get-NameIndex -Players $Players -Entities $Entities }
     $Cache = @{}
 
-    # Track which entities were modified to recompute their active values
+    # Only modified entities need expensive history re-sort + scalar recomputation
     $ModifiedEntities = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
 
-    # Filter to sessions with Zmiany or Transfers and sort chronologically
+    # Chronological ordering ensures later session overrides correctly supersede earlier ones
     $SessionsWithChanges = [System.Collections.Generic.List[object]]::new()
     foreach ($Session in $Sessions) {
         $HasChanges = $Session.Changes -and $Session.Changes.Count -gt 0
@@ -105,34 +117,32 @@ function Get-EntityState {
     }
     $SessionsWithChanges.Sort([System.Comparison[object]]{ param($a, $b) $a.Date.CompareTo($b.Date) })
 
-    $CurrencyLookup = $null
+    $CurrencyLookup = $null  # lazy-loaded on first @Transfer encounter
 
     $script:ProgressSessIdx = 0
     $script:ProgressSessTotal = $SessionsWithChanges.Count
 
     foreach ($Session in $SessionsWithChanges) {
         $script:ProgressSessIdx++
-        if ($ProgressCallback -and ($script:ProgressSessIdx % 10 -eq 0 -or $script:ProgressSessIdx -eq $script:ProgressSessTotal)) {
+        if ($ProgressCallback -and ($script:ProgressSessIdx % 10 -eq 0 -or $script:ProgressSessIdx -eq $script:ProgressSessTotal)) {  # throttled to every 10th session
             & $ProgressCallback $script:ProgressSessIdx $script:ProgressSessTotal $null
         }
 
         foreach ($Change in $Session.Changes) {
 
-            # Resolve entity name - exact entity lookup first, then fuzzy fallback
+            # Two-stage resolution: exact entity lookup, then Resolve-Name fuzzy fallback
             $TargetEntity = $null
 
             if ($EntityByName.ContainsKey($Change.EntityName)) {
                 $TargetEntity = $EntityByName[$Change.EntityName]
             } else {
-                # Fuzzy matching via Resolve-Name (may return Player or entity)
+                # Resolve-Name may return a Player; map back to entity via shared names
                 $Resolved = Resolve-Name -Query $Change.EntityName -Index $NameIndexResult.Index -StemIndex $NameIndexResult.StemIndex -BKTree $NameIndexResult.BKTree -Cache $Cache
 
                 if ($Resolved) {
-                    # Direct entity match by resolved name
                     if ($EntityByName.ContainsKey($Resolved.Name)) {
                         $TargetEntity = $EntityByName[$Resolved.Name]
                     } else {
-                        # Resolved to a Player - search for matching entity via shared names
                         foreach ($N in $Resolved.Names) {
                             if ($EntityByName.ContainsKey($N)) {
                                 $TargetEntity = $EntityByName[$N]
@@ -153,7 +163,7 @@ function Get-EntityState {
             foreach ($TagEntry in $Change.Tags) {
                 $Parsed = ConvertFrom-ValidityString -InputText $TagEntry.Value
 
-                # Auto-date: if no temporal range specified, use session date as ValidFrom
+                # Implicit dating: Zmiany tags without temporal ranges inherit the session date
                 if (-not $Parsed.ValidFrom -and -not $Parsed.ValidTo) {
                     $Parsed = @{
                         Text      = $Parsed.Text
@@ -232,7 +242,7 @@ function Get-EntityState {
                             $TargetEntity.QuantityHistory = [System.Collections.Generic.List[object]]::new()
                         }
                         $QtyText = $Parsed.Text
-                        # Arithmetic delta: +N or -N modifies current quantity
+                        # +N/-N prefix triggers delta arithmetic against current balance
                         if ($QtyText -match '^[+-]\d+$') {
                             $Delta = [int]$QtyText
                             $CurrentQty = 0
@@ -304,7 +314,6 @@ function Get-EntityState {
                         }
                     }
                     default {
-                        # Generic override (e.g. @pu_startowe, @info, @trigger)
                         $PropName = $TagEntry.Tag.Substring(1)  # strip leading '@'
                         if (-not $TargetEntity.Overrides.ContainsKey($PropName)) {
                             $TargetEntity.Overrides[$PropName] = [System.Collections.Generic.List[string]]::new()
@@ -315,7 +324,7 @@ function Get-EntityState {
             }
         }
 
-        # Expand @Transfer directives into symmetric @ilość deltas
+        # @Transfer creates symmetric @ilość changes: -N on source, +N on destination
         if ($Session.PSObject.Properties['Transfers'] -and $Session.Transfers -and $Session.Transfers.Count -gt 0) {
             if (-not $CurrencyLookup) {
                 . "$script:ModuleRoot/private/currency-helpers.ps1"
@@ -329,7 +338,7 @@ function Get-EntityState {
                     continue
                 }
 
-                # Resolve source name through the same fuzzy pipeline as Zmiany
+                # Source owner name resolution — same fuzzy pipeline as Zmiany
                 $ResolvedSourceName = $Transfer.Source
                 if (-not $EntityByName.ContainsKey($ResolvedSourceName)) {
                     $Resolved = Resolve-Name -Query $ResolvedSourceName -Index $NameIndexResult.Index -StemIndex $NameIndexResult.StemIndex -BKTree $NameIndexResult.BKTree -Cache $Cache
@@ -347,7 +356,7 @@ function Get-EntityState {
                     }
                 }
 
-                # Resolve destination name through the same fuzzy pipeline as Zmiany
+                # Destination owner name resolution
                 $ResolvedDestName = $Transfer.Destination
                 if (-not $EntityByName.ContainsKey($ResolvedDestName)) {
                     $Resolved = Resolve-Name -Query $ResolvedDestName -Index $NameIndexResult.Index -StemIndex $NameIndexResult.StemIndex -BKTree $NameIndexResult.BKTree -Cache $Cache
@@ -365,19 +374,18 @@ function Get-EntityState {
                     }
                 }
 
-                # Find source currency entity
+                # Locate currency Przedmiot entities by denomination + owner
                 $SourceEntity = Find-CurrencyEntity -Entities $Entities -Denomination $Transfer.Denomination -OwnerName $ResolvedSourceName -CurrencyLookup $CurrencyLookup
                 if (-not $SourceEntity) {
                     Write-RobotWarning "[WARN Get-EntityState] No currency entity for '$($ResolvedSourceName)' ($($ResolvedDenom.Name)) in @Transfer in session '$($Session.Header)'"
                 }
 
-                # Find destination currency entity
                 $DestEntity = Find-CurrencyEntity -Entities $Entities -Denomination $Transfer.Denomination -OwnerName $ResolvedDestName -CurrencyLookup $CurrencyLookup
                 if (-not $DestEntity) {
                     Write-RobotWarning "[WARN Get-EntityState] No currency entity for '$($ResolvedDestName)' ($($ResolvedDenom.Name)) in @Transfer in session '$($Session.Header)'"
                 }
 
-                # Skip entire transfer if either side is missing — no partial application
+                # Atomicity: skip entire transfer if either side is unresolvable
                 if (-not $SourceEntity -or -not $DestEntity) {
                     $ErrMsg = "Unresolved @Transfer in session '$($Session.Header)': " +
                               "Source='$ResolvedSourceName' Dest='$ResolvedDestName' ($($ResolvedDenom.Name))"
@@ -391,7 +399,7 @@ function Get-EntityState {
                     continue
                 }
 
-                # Apply -N to source
+                # Debit source
                 if ($SourceEntity) {
                     if (-not $SourceEntity.QuantityHistory) {
                         $SourceEntity.QuantityHistory = [System.Collections.Generic.List[object]]::new()
@@ -410,7 +418,7 @@ function Get-EntityState {
                     [void]$ModifiedEntities.Add($SourceEntity.Name)
                 }
 
-                # Apply +N to destination
+                # Credit destination
                 if ($DestEntity) {
                     if (-not $DestEntity.QuantityHistory) {
                         $DestEntity.QuantityHistory = [System.Collections.Generic.List[object]]::new()
@@ -432,21 +440,24 @@ function Get-EntityState {
         }
     }
 
-    # Sort history lists by ValidFrom and recompute active values for modified entities.
-    # Sorting ensures Get-LastActiveValue (which returns $Active[-1]) picks the most
-    # recent dated entry, regardless of whether it came from an entity file or session.
-    foreach ($EntityName in $ModifiedEntities) {
-        $Entity = if ($EntityByName.ContainsKey($EntityName)) { $EntityByName[$EntityName] } else { $null }
-        if (-not $Entity) { continue }
-
-        # Sort helper: $null ValidFrom sorts before dated entries (always-active entries)
-        $DateComparer = [System.Comparison[object]]{
+    # Sorting by ValidFrom ensures Get-LastActiveValue picks the most recent entry
+    # regardless of source (entity file vs session). $null ValidFrom sorts first
+    # (always-active entries). C# comparer eliminates scriptblock invocation overhead.
+    $DateComparer = if (([System.Management.Automation.PSTypeName]'Robot.TemporalSorter').Type) {
+        [Robot.TemporalSorter]::CreateComparer('ValidFrom')
+    } else {
+        [System.Comparison[object]]{
             param($a, $b)
             if ($null -eq $a.ValidFrom -and $null -eq $b.ValidFrom) { return 0 }
             if ($null -eq $a.ValidFrom) { return -1 }
             if ($null -eq $b.ValidFrom) { return 1 }
             return $a.ValidFrom.CompareTo($b.ValidFrom)
         }
+    }
+
+    foreach ($EntityName in $ModifiedEntities) {
+        $Entity = if ($EntityByName.ContainsKey($EntityName)) { $EntityByName[$EntityName] } else { $null }
+        if (-not $Entity) { continue }
 
         if ($Entity.LocationHistory.Count -gt 0) { $Entity.LocationHistory.Sort($DateComparer) }
         if ($Entity.DoorHistory.Count -gt 0)     { $Entity.DoorHistory.Sort($DateComparer) }
@@ -458,7 +469,7 @@ function Get-EntityState {
         if ($Entity.FilePathHistory -and $Entity.FilePathHistory.Count -gt 0) { $Entity.FilePathHistory.Sort($DateComparer) }
         if ($Entity.NerthusNameHistory -and $Entity.NerthusNameHistory.Count -gt 0) { $Entity.NerthusNameHistory.Sort($DateComparer) }
 
-        # Recompute active scalar/array values from merged + sorted histories
+        # Recompute active scalars from merged + sorted histories
         $Entity.Location = Get-LastActiveValue -History $Entity.LocationHistory -PropertyName 'Location'  -ActiveOn $ActiveOn
         $Entity.Doors    = Get-AllActiveValues -History $Entity.DoorHistory     -PropertyName 'Location'  -ActiveOn $ActiveOn
         $Entity.Owner    = Get-LastActiveValue -History $Entity.OwnerHistory    -PropertyName 'OwnerName' -ActiveOn $ActiveOn

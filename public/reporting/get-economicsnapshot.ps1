@@ -3,13 +3,36 @@
     Economic snapshot report — supply breakdown, wealth distribution, and Gini coefficient.
 
     .DESCRIPTION
-    Produces a point-in-time economic snapshot showing physical vs virtual currency
-    supply, top holders, Gini coefficient (wealth inequality), and transaction volume.
+    Get-EconomicSnapshot produces a point-in-time economic snapshot showing
+    physical vs virtual currency supply, top holders, Gini coefficient
+    (wealth inequality), and transaction volume.
 
-    Physical currency = owned by Postać entities (actual Margonem items in player equipment).
-    Virtual currency = owned by NPC/Grupa/Gracz entities (RP bookkeeping).
+    Key concepts:
+    - Physical currency: owned by Postać entities (actual Margonem items
+      in player equipment). These are real in-game objects.
+    - Virtual currency: owned by NPC/Grupa/Gracz entities (RP bookkeeping
+      balances that don't correspond to in-game items).
 
-    Dot-sources currency-helpers.ps1, reporting-helpers.ps1, and economy-helpers.ps1.
+    Processing pipeline:
+    1. Fetch entities (with optional -ActiveOn temporal filter) and sessions
+    2. Build a case-insensitive entity lookup for owner type classification
+       (determines Physical vs Virtual categorization)
+    3. Extract and filter currency items via Get-CurrencyEntitiesFiltered,
+       including inactive and deleted entities for complete supply picture
+    4. Apply optional denomination and owner filters
+    5. Extract transfer entries from session @Transfer directives for
+       transaction volume metrics
+    6. Delegate snapshot computation to New-EconomicSnapshotData (in
+       economy-helpers.ps1), which calculates supply breakdown, Gini
+       coefficient via Robot.EconomicAnalyzer C# type, and top holders
+
+    The Gini coefficient ranges from 0 (perfect equality) to 1 (maximum
+    inequality) and measures wealth concentration across all currency
+    holders. Computed in C# for performance when Robot.EconomicAnalyzer
+    is available, with a PowerShell fallback.
+
+    Dot-sources currency-helpers.ps1, reporting-helpers.ps1, and
+    economy-helpers.ps1.
 #>
 
 . "$script:ModuleRoot/private/currency-helpers.ps1"
@@ -56,7 +79,8 @@ function Get-EconomicSnapshot {
         $Sessions = Get-Session
     }
 
-    # Build entity lookup for owner type classification
+    # Multi-name entity lookup: maps every known name (primary + aliases) to its entity
+    # for classifying currency owners as Physical (Postać) or Virtual (NPC/Grupa/Gracz)
     $EntityLookup = [System.Collections.Generic.Dictionary[string, object]]::new([System.StringComparer]::OrdinalIgnoreCase)
     foreach ($Entity in $Entities) {
         foreach ($Name in $Entity.Names) {
@@ -66,10 +90,11 @@ function Get-EconomicSnapshot {
         }
     }
 
-    # Get enriched currency items with owner classification
+    # Include inactive/deleted entities for a complete supply picture (deleted currency
+    # still existed and affects historical totals; inactive may return to circulation)
     $CurrencyItems = Get-CurrencyEntitiesFiltered -Entities $Entities -IncludeInactive -IncludeDeleted -EntityLookup $EntityLookup
 
-    # Apply filters
+    # Narrow results to user-specified denomination or owner scope
     if ($Denomination) {
         $DenomFilter = Resolve-CurrencyDenomination -Name $Denomination
         if ($DenomFilter) {
@@ -90,13 +115,13 @@ function Get-EconomicSnapshot {
         $CurrencyItems = @($Filtered)
     }
 
-    # Get transfer entries for transaction volume
+    # Count session @Transfer directives for transaction volume metrics
     $TransferEntries = @()
     if ($Sessions -and $Sessions.Count -gt 0) {
         $TransferEntries = @(Get-SessionDirectiveEntries -Sessions $Sessions -DirectiveName 'Transfers')
     }
 
-    # Build snapshot data
+    # Delegate aggregation (Gini, top holders, supply split) to economy-helpers
     $Data = New-EconomicSnapshotData -CurrencyItems $CurrencyItems -TransferEntries $TransferEntries -Top $Top
 
     $SnapshotDate = if ($ActiveOn) { $ActiveOn } else { [datetime]::Now }

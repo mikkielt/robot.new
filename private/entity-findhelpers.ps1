@@ -1,6 +1,6 @@
 <#
     .SYNOPSIS
-    Entity file find helpers - locate sections, bullets, and tags in entity
+    Entity file find helpers -- locate sections, bullets, and tags in entity
     files (entities.md and *-NNN-ent.md).
 
     .DESCRIPTION
@@ -14,22 +14,35 @@
     - Find-EntityTag:      locates - @tag: line within an entity's children (returns last match for update semantics)
 
     Module-level data:
-    - $script:SectionHeaderPattern: matches "## SectionName" headers
-    - $script:EntityBulletPattern:  matches "* EntityName" top-level bullets
-    - $script:TagPattern:           matches indented "- @tag: value" lines
-    - $script:EntityTypeMap:        Polish section header -> canonical entity type normalization
+    - $script:SectionHeaderPattern: precompiled regex matching "## SectionName" headers
+    - $script:EntityBulletPattern:  precompiled regex matching "* EntityName" top-level bullets
+    - $script:TagPattern:           precompiled regex matching indented "- @tag: value" lines
+    - $script:EntityTypeMap:        Polish section header -> canonical entity type normalization (handles singular/plural)
     - $script:TypeToHeader:         reverse map: canonical type -> preferred section header text
 
-    All functions operate on raw line arrays (same approach as Set-Session).
-    Parse boundaries by scanning lines, return hashtables with index ranges.
+    All three functions operate on raw string[] line arrays (same approach
+    as Set-Session) and return hashtables with boundary indices:
+
+    - Find-EntitySection scans for "## Header" lines, normalizes the header
+      text through EntityTypeMap, and returns HeaderIdx/StartIdx/EndIdx
+      (exclusive) bounding the section. EndIdx is the next ## header or EOF.
+
+    - Find-EntityBullet scans within a section range for "* Name" lines,
+      compares case-insensitively, and determines children range by walking
+      forward until the next top-level bullet or non-indented content.
+      Trailing blank lines are trimmed from the children range.
+
+    - Find-EntityTag scans within a children range for "- @tag:" lines.
+      When multiple occurrences exist (e.g. multiple @lokacja entries),
+      it returns the last match so callers get update-in-place semantics
+      for scalar tags.
 #>
 
-# Precompiled patterns
 $script:SectionHeaderPattern = [regex]::new('^##\s+(.+)$', [System.Text.RegularExpressions.RegexOptions]::Compiled)
 $script:EntityBulletPattern  = [regex]::new('^\*\s+(.+)$', [System.Text.RegularExpressions.RegexOptions]::Compiled)
 $script:TagPattern           = [regex]::new('^\s+[-\*]\s+@([^:]+):\s*(.*)', [System.Text.RegularExpressions.RegexOptions]::Compiled)
 
-# Section header -> entity type normalization (same map as Get-Entity)
+# Mirrors the normalization map in Get-Entity; must stay in sync
 $script:EntityTypeMap = @{
     "npc"              = "NPC"
     "grupy"            = "Grupa"
@@ -48,7 +61,6 @@ $script:EntityTypeMap = @{
     "mapy"             = "Mapa"
 }
 
-# Reverse map: canonical type -> preferred section header text
 $script:TypeToHeader = @{
     "NPC"              = "NPC"
     "Grupa"            = "Grupa"
@@ -59,9 +71,6 @@ $script:TypeToHeader = @{
     "Mapa"             = "Mapa"
 }
 
-# Helper: find a ## Type section in file lines
-# Returns hashtable with HeaderIdx, StartIdx (first content line), EndIdx (exclusive),
-# HeaderText, and EntityType. Returns $null if not found.
 function Find-EntitySection {
     param(
         [string[]]$Lines,
@@ -78,7 +87,6 @@ function Find-EntitySection {
 
         if (-not [string]::Equals($Normalized, $EntityType, [System.StringComparison]::OrdinalIgnoreCase)) { continue }
 
-        # Find section end (next ## header or EOF)
         $EndIdx = $Lines.Count
         for ($j = $i + 1; $j -lt $Lines.Count; $j++) {
             if ($script:SectionHeaderPattern.IsMatch($Lines[$j])) {
@@ -99,9 +107,6 @@ function Find-EntitySection {
     return $null
 }
 
-# Helper: find a top-level * EntityName bullet within a section range
-# Returns hashtable with BulletIdx, ChildrenStartIdx, ChildrenEndIdx (exclusive),
-# EntityName. Returns $null if not found.
 function Find-EntityBullet {
     param(
         [string[]]$Lines,
@@ -117,16 +122,14 @@ function Find-EntityBullet {
         $BulletName = $Match.Groups[1].Value.Trim()
         if (-not [string]::Equals($BulletName, $EntityName, [System.StringComparison]::OrdinalIgnoreCase)) { continue }
 
-        # Children are indented lines following the bullet until next top-level bullet or blank line group
+        # Walk forward to find children boundary: indented lines until next bullet or unindented content
         $ChildEnd = $i + 1
         for ($j = $i + 1; $j -lt $SectionEnd; $j++) {
             $Line = $Lines[$j]
-            # Next top-level bullet -> end of children
             if ($script:EntityBulletPattern.IsMatch($Line)) {
                 $ChildEnd = $j
                 break
             }
-            # A non-indented, non-blank line that isn't a bullet -> also end
             if ($Line.Length -gt 0 -and $Line[0] -ne ' ' -and $Line[0] -ne "`t" -and -not [string]::IsNullOrWhiteSpace($Line)) {
                 $ChildEnd = $j
                 break
@@ -134,7 +137,6 @@ function Find-EntityBullet {
             $ChildEnd = $j + 1
         }
 
-        # Trim trailing blank lines from children range
         while ($ChildEnd -gt $i + 1 -and [string]::IsNullOrWhiteSpace($Lines[$ChildEnd - 1])) {
             $ChildEnd--
         }
@@ -150,9 +152,6 @@ function Find-EntityBullet {
     return $null
 }
 
-# Helper: find a - @tag: line within an entity's children range
-# Returns hashtable with TagIdx, Tag, Value. Returns $null if not found.
-# If multiple occurrences exist, returns the last one (for update semantics).
 function Find-EntityTag {
     param(
         [string[]]$Lines,

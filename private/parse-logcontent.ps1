@@ -5,9 +5,27 @@
     .DESCRIPTION
     Detects log format (ChatLog vs Prose) and parses content into a cross-referenced
     structure with numbered lines, location segments, and extracted speaker/channel data.
+    Consumed by get-session.ps1 to populate the session's Logs property with parsed
+    content from fetched log URLs.
 
     ChatLog format: timestamped lines with [HH:MM] [Channel] Speaker: text
+    (used by Margonem game client logs). Supports multi-line continuations where
+    a timestamp line has no content and the next non-empty line provides it.
+
     Prose format: narrative text with Speaker: text lines, no timestamps
+    (used for hand-written session logs). Location headers are detected via
+    heuristic: short line (<=60 chars) after an empty line with no Speaker: pattern.
+
+    Both parsers produce identical output structure:
+    - Format: 'ChatLog' or 'Prose'
+    - Lines[]: { Index, Time, Channel, Speaker, Text, Segment }
+    - LocationSegments[]: { Index, Raw, StartLine, EndLine }
+
+    ConvertFrom-LogContent is the primary entry point. It first attempts
+    the compiled C# path (Robot.LogParser) which pre-compiles all regex
+    patterns and uses struct-based output to avoid per-line PowerShell
+    object allocation. Falls back to PowerShell helpers when the C# type
+    is unavailable.
 
     Helpers:
     - Get-LogFormat: detects ChatLog vs Prose by scanning first ~30 non-empty lines
@@ -24,6 +42,15 @@
     - $script:SpeakerOnlyPattern: compiled regex for Speaker: (no text)
     - $script:FormatDetectPattern: compiled regex for format detection
 #>
+
+# Compiled C# log parser with precompiled regex and struct-based output.
+# Replaces per-line PowerShell regex marshaling. Source: lib/LogParser.cs
+if (-not ([System.Management.Automation.PSTypeName]'Robot.LogParser').Type) {
+    $CsPath = [System.IO.Path]::Combine($script:ModuleRoot, 'lib', 'LogParser.cs')
+    if ([System.IO.File]::Exists($CsPath)) {
+        Add-Type -TypeDefinition ([System.IO.File]::ReadAllText($CsPath)) -Language CSharp
+    }
+}
 
 # ── Precompiled Regex ─────────────────────────────────────────────────────────
 
@@ -343,6 +370,40 @@ function ConvertFrom-LogContent {
         [string]$Content
     )
 
+    # C# path: compiled regex + struct output, then convert to PSCustomObject
+    if (([System.Management.Automation.PSTypeName]'Robot.LogParser').Type) {
+        $CsResult = [Robot.LogParser]::Parse($Content)
+
+        $ParsedLines = [System.Collections.Generic.List[PSCustomObject]]::new($CsResult.Lines.Length)
+        foreach ($L in $CsResult.Lines) {
+            $ParsedLines.Add([PSCustomObject]@{
+                Index   = $L.Index
+                Time    = $L.Time
+                Channel = $L.Channel
+                Speaker = $L.Speaker
+                Text    = $L.Text
+                Segment = $L.Segment
+            })
+        }
+
+        $LocSegments = [System.Collections.Generic.List[PSCustomObject]]::new($CsResult.LocationSegments.Length)
+        foreach ($S in $CsResult.LocationSegments) {
+            $LocSegments.Add([PSCustomObject]@{
+                Index     = $S.Index
+                Raw       = $S.Raw
+                StartLine = $S.StartLine
+                EndLine   = $S.EndLine
+            })
+        }
+
+        return [PSCustomObject]@{
+            Format           = $CsResult.Format
+            Lines            = [PSCustomObject[]]$ParsedLines.ToArray()
+            LocationSegments = [PSCustomObject[]]$LocSegments.ToArray()
+        }
+    }
+
+    # PowerShell fallback
     $Format = Get-LogFormat -Content $Content
 
     switch ($Format) {

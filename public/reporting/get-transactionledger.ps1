@@ -3,11 +3,27 @@
     Extracts all @Transfer directives from sessions into a chronological ledger.
 
     .DESCRIPTION
-    Scans sessions for Transfer directives and returns a flat, chronologically sorted
-    transaction ledger. Supports filtering by entity (source or destination),
-    denomination, and date range. When filtering by entity, computes a running balance.
+    Scans sessions for @Transfer directives and returns a flat, chronologically
+    sorted transaction ledger. Supports filtering by entity (source or
+    destination), denomination, and date range.
 
-    Dot-sources currency-helpers.ps1 and reporting-helpers.ps1 for shared logic.
+    Pipeline:
+    1. Fetch sessions via Get-SessionsForReport (shared reporting helper)
+    2. Resolve denomination filter via Resolve-CurrencyDenomination to map
+       user-friendly names (e.g. "koron") to canonical denomination objects
+    3. Extract Transfer entries via Get-SessionDirectiveEntries
+    4. Apply denomination filter using Test-CurrencyDenominationMatch
+    5. Apply entity filter against both Source and Destination fields
+    6. Sort chronologically by session date
+    7. When entity filter is active, compute a running balance by walking
+       the sorted ledger and accumulating +In/-Out amounts
+
+    The running balance (RunningBalance property) is only added when
+    -Entity is specified, because a global running balance across all
+    entities would be meaningless.
+
+    Direction property ('In'/'Out') indicates whether the filtered entity
+    received or sent the transfer.
 #>
 
 . "$script:ModuleRoot/private/currency-helpers.ps1"
@@ -16,7 +32,7 @@
 function Get-TransactionLedger {
     <#
         .SYNOPSIS
-        View currency transactions from sessions with optional filters.
+        Returns a chronological ledger of @Transfer currency transactions from sessions.
     #>
 
     [CmdletBinding()] param(
@@ -48,7 +64,7 @@ function Get-TransactionLedger {
 
     $Sessions = Get-SessionsForReport -Sessions $Sessions -MinDate $MinDate -MaxDate $MaxDate
 
-    # Resolve denomination filter
+    # Map user-supplied denomination name to canonical denomination object for filtering
     $DenomFilter = $null
     if ($Denomination) {
         $DenomFilter = Resolve-CurrencyDenomination -Name $Denomination
@@ -68,7 +84,7 @@ function Get-TransactionLedger {
     foreach ($E in $Entries) {
         $Transfer = $E.Directive
 
-        # Denomination filter
+        # Resolve each transfer's denomination to canonical form for consistent matching
         $ResolvedDenom = Resolve-CurrencyDenomination -Name $Transfer.Denomination
         $DenomName = if ($ResolvedDenom) { $ResolvedDenom.Name } else { $Transfer.Denomination }
 
@@ -76,7 +92,7 @@ function Get-TransactionLedger {
             continue
         }
 
-        # Entity filter
+        # Match entity against both sides of the transfer
         $IsSource = $Entity -and [string]::Equals($Transfer.Source, $Entity, [System.StringComparison]::OrdinalIgnoreCase)
         $IsDest = $Entity -and [string]::Equals($Transfer.Destination, $Entity, [System.StringComparison]::OrdinalIgnoreCase)
 
@@ -94,7 +110,7 @@ function Get-TransactionLedger {
             Destination  = $Transfer.Destination
         }
 
-        # Add direction info when entity filter is active
+        # Direction property only meaningful when viewing from a specific entity's perspective
         if ($Entity) {
             $Direction = if ($IsDest) { 'In' } else { 'Out' }
             $Entry | Add-Member -NotePropertyName 'Direction' -NotePropertyValue $Direction
@@ -103,13 +119,13 @@ function Get-TransactionLedger {
         $Ledger.Add($Entry)
     }
 
-    # Sort chronologically
+    # Chronological order is required before computing running balance
     $Ledger.Sort([System.Comparison[object]]{
         param($a, $b)
         return $a.Date.CompareTo($b.Date)
     })
 
-    # Compute running balance when entity filter is active
+    # Running balance accumulates net position for the filtered entity over time
     if ($Entity -and $Ledger.Count -gt 0) {
         $RunningBalance = 0
         foreach ($Entry in $Ledger) {

@@ -1,21 +1,39 @@
 <#
     .SYNOPSIS
-    Interactive menu components for the Robot CLI - arrow menus and result tables.
+    Interactive menu components for the Robot CLI - arrow menus, result tables,
+    and help overlay (DEPRECATED).
 
     .DESCRIPTION
     DEPRECATED: All functions in this file are deprecated. Use the TUI engine
     (engine/) equivalents instead:
-    - Show-ArrowMenu  → New-MenuListComponent + Invoke-EngineLifecycle
-    - Show-ResultTable → New-TableComponent + Invoke-EngineLifecycle
-    - Show-HelpOverlay → engine overlay system
+    - Show-ArrowMenu   → New-MenuListComponent + Invoke-EngineLifecycle
+    - Show-ResultTable  → New-TableComponent + Invoke-EngineLifecycle
+    - Show-HelpOverlay  → engine overlay system
 
     Retained for plugin/migration compatibility (migration-ui.ps1,
     cli-wf-margoworld.ps1). Will be removed once all callers are ported.
 
-    These functions depend on the primitives defined in cli-primitives.ps1
-    (Get-CLIColor, Write-CLILine, Read-ArrowKey, Clear-MenuArea) and are
-    chain-loaded via dot-source from that file. Do not dot-source this file
-    directly; loading cli-primitives.ps1 is sufficient.
+    Helpers:
+    - Show-HelpOverlay: renders a scrollable bordered text box over the
+      current screen (box-drawing chars, Up/Down to scroll, any key to dismiss)
+    - Show-ArrowMenu:   vertical list menu with pointer navigation, role tags,
+      info text for selected item, optional integrated help overlay
+    - Show-ResultTable:  paginated data table with column headers, row selection,
+      Left/Right page navigation, Enter for detail view
+
+    Design:
+    - All three components use absolute cursor positioning (RawUI.CursorPosition)
+      with per-line overwrite rather than Console.Clear to avoid flicker.
+    - Show-ArrowMenu pre-extends the terminal buffer with blank lines before
+      rendering to prevent automatic scrolling from shifting row coordinates.
+    - Show-ResultTable derives page boundaries from an absolute row index
+      ($SelectedAbs), so navigation is continuous across page boundaries.
+    - Terminal resize is detected per-frame in Show-ArrowMenu; label widths
+      and menu anchoring are recalculated dynamically.
+
+    Dependencies: cli-primitives.ps1 (Get-CLIColor, Write-CLILine,
+                  Read-ArrowKey, Clear-MenuArea). Chain-loaded via dot-source
+                  from cli-primitives.ps1 — do not dot-source this file directly.
 #>
 
 # ── Show-HelpOverlay ─────────────────────────────────────────────────────────
@@ -29,7 +47,7 @@ function Show-HelpOverlay {
         [int]$MenuLineCount
     )
 
-    # Box-drawing characters
+    # Unicode box-drawing characters for bordered overlay frame
     $BorderTL = [char]0x250C  # ┌
     $BorderTR = [char]0x2510  # ┐
     $BorderBL = [char]0x2514  # └
@@ -41,7 +59,7 @@ function Show-HelpOverlay {
     $DisabledColor = Get-CLIColor -Role 'Disabled'
     $InfoColor     = Get-CLIColor -Role 'Info'
 
-    # Calculate box dimensions
+    # Size the box to fit content, clamped to terminal dimensions
     $TermWidth = [System.Console]::WindowWidth
     $MaxContentWidth = 0
     foreach ($Line in $Content) {
@@ -51,18 +69,18 @@ function Show-HelpOverlay {
     if ($TitleWidth -gt $MaxContentWidth) { $MaxContentWidth = $TitleWidth }
 
     $BoxInnerWidth = [Math]::Min($MaxContentWidth + 2, $TermWidth - 10)
-    $BoxInnerWidth = [Math]::Max($BoxInnerWidth, 20)
-    $BoxWidth = $BoxInnerWidth + 4  # 2 border + 2 padding
+    $BoxInnerWidth = [Math]::Max($BoxInnerWidth, 20)  # minimum readable width
+    $BoxWidth = $BoxInnerWidth + 4  # 2 border chars + 2 padding spaces
 
-    # Height: use full terminal height for sizing, shift $Top upward if needed
+    # Height — clamp to terminal and shift $Top upward if box would overflow
     $TermHeight = [System.Console]::WindowHeight
     $BoxInnerHeight = [Math]::Min($Content.Count, $TermHeight - 4)
     $BoxInnerHeight = [Math]::Max($BoxInnerHeight, 1)
-    $BoxHeight = $BoxInnerHeight + 4  # top + content + footer + bottom
+    $BoxHeight = $BoxInnerHeight + 4  # top border + content lines + footer + bottom border
 
     $NeedsScroll = $Content.Count -gt $BoxInnerHeight
 
-    # Left-align with indent, top-align with menu start (shift up if box overflows terminal)
+    # Position: left-indent 3, top-align with menu (shift up if overflow)
     $Left = 3
     $Top = $MenuStartRow
     if ($Top + $BoxHeight -gt $TermHeight) {
@@ -74,7 +92,7 @@ function Show-HelpOverlay {
     while ($true) {
         $Row = $Top
 
-        # Top border with title
+        # Top border — centered title text
         $Host.UI.RawUI.CursorPosition = [System.Management.Automation.Host.Coordinates]::new($Left, $Row)
         $TitleStr = if ($Title) { " $Title " } else { '' }
         $TopFillLen = $BoxWidth - 2 - $TitleStr.Length
@@ -83,7 +101,7 @@ function Show-HelpOverlay {
         Write-Host "$BorderTL$([string]$BorderH * $TopLeftFill)$TitleStr$([string]$BorderH * $TopRightFill)$BorderTR" -NoNewline -ForegroundColor $AccentColor
         $Row++
 
-        # Content lines
+        # Content lines (viewport slice with optional scroll)
         for ($I = 0; $I -lt $BoxInnerHeight; $I++) {
             $Host.UI.RawUI.CursorPosition = [System.Management.Automation.Host.Coordinates]::new($Left, $Row)
             $ContentIdx = $ScrollOffset + $I
@@ -98,7 +116,7 @@ function Show-HelpOverlay {
             $Row++
         }
 
-        # Footer line with scroll indicators and dismiss hint
+        # Footer — scroll indicators + dismiss hint
         $Host.UI.RawUI.CursorPosition = [System.Management.Automation.Host.Coordinates]::new($Left, $Row)
         $ScrollHint = ''
         if ($NeedsScroll) {
@@ -117,11 +135,10 @@ function Show-HelpOverlay {
         Write-Host " $BorderV" -NoNewline -ForegroundColor $AccentColor
         $Row++
 
-        # Bottom border
+        # Bottom border — close the box frame
         $Host.UI.RawUI.CursorPosition = [System.Management.Automation.Host.Coordinates]::new($Left, $Row)
         Write-Host "$BorderBL$([string]$BorderH * ($BoxWidth - 2))$BorderBR" -NoNewline -ForegroundColor $AccentColor
 
-        # Read input
         $Key = Read-ArrowKey
 
         if ($Key.Key -eq 'UpArrow') {
@@ -137,7 +154,7 @@ function Show-HelpOverlay {
         break
     }
 
-    # Clean up overlay area so menu redraw starts from clean state
+    # Erase overlay area so the underlying menu can redraw cleanly
     $OverlayBlank = ' ' * $BoxWidth
     $OverlayEnd = $Top + $BoxInnerHeight + 3  # top border + content + footer + bottom border
     for ($CleanRow = $Top; $CleanRow -le $OverlayEnd; $CleanRow++) {
@@ -167,7 +184,7 @@ function Show-ArrowMenu {
         return '__back__'
     }
 
-    # Filter out disabled items for selection, but show them in the list
+    # Disabled items are rendered (grayed out) but excluded from keyboard navigation
     $SelectableIndices = [System.Collections.Generic.List[int]]::new()
     for ($I = 0; $I -lt $Items.Count; $I++) {
         if (-not $Items[$I].Disabled) {
@@ -181,11 +198,11 @@ function Show-ArrowMenu {
         return '__back__'
     }
 
-    $SelectedPos = 0  # Position within selectable indices
-    $PrevInfoLines = 0
-    $PrevHintRow = -1
+    $SelectedPos = 0    # index into $SelectableIndices (not $Items)
+    $PrevInfoLines = 0  # tracks previous render's info line count for clearing
+    $PrevHintRow = -1   # tracks previous hint row position for clearing
 
-    # Calculate max label width for alignment
+    # Align labels to the widest item (clamped to terminal width)
     $MaxLabelWidth = 0
     foreach ($Item in $Items) {
         $LabelLen = $Item.Label.Length
@@ -194,9 +211,8 @@ function Show-ArrowMenu {
     }
     $MaxLabelWidth = [Math]::Min($MaxLabelWidth + 4, [System.Console]::WindowWidth - 20)
 
-    # Pre-extend terminal buffer with empty lines so that Write-Host during
-    # rendering never triggers an automatic scroll that would shift our
-    # absolute row coordinates.
+    # Pre-extend buffer so Write-Host never triggers auto-scroll
+    # that would invalidate absolute row coordinates
     $MaxInfoLines = 0
     foreach ($Item in $Items) {
         if ($Item.InfoText) {
@@ -215,13 +231,13 @@ function Show-ArrowMenu {
     while ($true) {
         $CurrentIndex = $SelectableIndices[$SelectedPos]
 
-        # Detect terminal resize and re-anchor menu position
+        # Detect terminal resize — recalculate label widths and re-anchor position
         $CurWidth = [System.Console]::WindowWidth
         $CurHeight = [System.Console]::WindowHeight
         if ($CurWidth -ne $PrevWindowWidth -or $CurHeight -ne $PrevWindowHeight) {
             $PrevWindowWidth = $CurWidth
             $PrevWindowHeight = $CurHeight
-            # Recalculate label width for new terminal width
+            # Re-clamp label width to new terminal width
             $MaxLabelWidth = 0
             foreach ($Item in $Items) {
                 $LabelLen = $Item.Label.Length
@@ -229,12 +245,12 @@ function Show-ArrowMenu {
                 if ($LabelLen -gt $MaxLabelWidth) { $MaxLabelWidth = $LabelLen }
             }
             $MaxLabelWidth = [Math]::Min($MaxLabelWidth + 4, $CurWidth - 20)
-            # Re-anchor: estimate menu start from current cursor position
+            # Re-anchor menu start from current cursor position
             $TotalMenuLines = $Items.Count + $PrevInfoLines + 3
             $MenuStartRow = [Math]::Max(0, $Host.UI.RawUI.CursorPosition.Y - $TotalMenuLines)
         }
 
-        # Move to menu start position
+        # Render from menu anchor row
         $Host.UI.RawUI.CursorPosition = [System.Management.Automation.Host.Coordinates]::new(0, $MenuStartRow)
 
         $AccentColor  = Get-CLIColor -Role 'Accent'
@@ -248,8 +264,7 @@ function Show-ArrowMenu {
             $IsSelected = ($I -eq $CurrentIndex)
             $IsDisabled = [bool]$Item.Disabled
 
-            # Build the line
-            $Pointer = if ($IsSelected) { [char]0x25B8 } else { ' ' }  # ▸ or space
+            $Pointer = if ($IsSelected) { [char]0x25B8 } else { ' ' }  # ▸ selection indicator
 
             $RoleStr = ''
             if ($Item.RoleTag) {
@@ -261,7 +276,7 @@ function Show-ArrowMenu {
 
             $Desc = if ($Item.Description) { $Item.Description } else { '' }
 
-            # Clear line first
+            # Overwrite line to avoid ghosting from previous render
             $Host.UI.RawUI.CursorPosition = [System.Management.Automation.Host.Coordinates]::new(0, $MenuStartRow + $LinesRendered)
             Write-Host (' ' * ([System.Console]::WindowWidth - 1)) -NoNewline
             $Host.UI.RawUI.CursorPosition = [System.Management.Automation.Host.Coordinates]::new(0, $MenuStartRow + $LinesRendered)
@@ -296,7 +311,7 @@ function Show-ArrowMenu {
             $LinesRendered++
         }
 
-        # Show InfoText for the currently selected item (below the menu)
+        # InfoText for selected item — rendered below the menu list
         $CurrentInfoLines = 0
         $InfoText = $Items[$CurrentIndex].InfoText
         if ($InfoText) {
@@ -314,7 +329,7 @@ function Show-ArrowMenu {
             }
         }
 
-        # Clear any leftover info lines from previous selection
+        # Erase leftover info lines from previous selection (if it had more lines)
         if ($PrevInfoLines -gt $CurrentInfoLines) {
             $ExtraLines = $PrevInfoLines - $CurrentInfoLines
             if (-not $InfoText) { $ExtraLines++ }  # account for the blank line
@@ -325,14 +340,13 @@ function Show-ArrowMenu {
         }
         $PrevInfoLines = $CurrentInfoLines
 
-        # Footer hints — place 1 line below rendered content
+        # Footer hints — positioned below rendered content
         $HintRow = $MenuStartRow + $LinesRendered + 1
-        # Clear the separator line and hint row
         for ($G = $MenuStartRow + $LinesRendered; $G -le $HintRow; $G++) {
             $Host.UI.RawUI.CursorPosition = [System.Management.Automation.Host.Coordinates]::new(0, $G)
             Write-Host (' ' * ([System.Console]::WindowWidth - 1)) -NoNewline
         }
-        # Clear rows from previous taller render (e.g. InfoText removed)
+        # Erase rows from previous taller render (e.g. InfoText removed)
         if ($PrevHintRow -gt $HintRow) {
             for ($G = $HintRow + 1; $G -le $PrevHintRow; $G++) {
                 $Host.UI.RawUI.CursorPosition = [System.Management.Automation.Host.Coordinates]::new(0, $G)
@@ -354,7 +368,6 @@ function Show-ArrowMenu {
         }
         Write-Host "  $($HintParts -join '  |  ')" -ForegroundColor (Get-CLIColor -Role 'Disabled')
 
-        # Read input
         $Key = Read-ArrowKey
 
         switch ($Key.Key) {
@@ -415,7 +428,7 @@ function Show-ResultTable {
         return $null
     }
 
-    # Default widths if not provided
+    # Fall back to 20-char columns when no widths specified
     if (-not $Widths -or $Widths.Count -eq 0) {
         $Widths = @()
         foreach ($H in $Headers) {
@@ -423,9 +436,7 @@ function Show-ResultTable {
         }
     }
 
-    # Pre-extend terminal buffer with empty lines so that Write-Host during
-    # rendering never triggers an automatic scroll that would shift our
-    # absolute row coordinates.
+    # Pre-extend buffer to prevent auto-scroll during rendering
     $TitleLines = if ($Title) { 2 } else { 0 }
     $MaxTableHeight = $TitleLines + 2 + $PageSize + 3
     for ($Pre = 0; $Pre -lt $MaxTableHeight; $Pre++) {
@@ -434,7 +445,7 @@ function Show-ResultTable {
     $TableStartRow = [Math]::Max(0, $Host.UI.RawUI.CursorPosition.Y - $MaxTableHeight)
     $PrevLinesRendered = 0
 
-    # Use absolute row index across all data; derive page from it
+    # Absolute row index — page boundaries derived from this, enabling continuous navigation
     $SelectedAbs = 0
 
     while ($true) {
@@ -461,7 +472,7 @@ function Show-ResultTable {
             $LinesRendered++
         }
 
-        # Header row
+        # Column headers
         $HeaderSB = [System.Text.StringBuilder]::new(120)
         [void]$HeaderSB.Append('  ')
         for ($C = 0; $C -lt $Headers.Count; $C++) {
@@ -474,7 +485,7 @@ function Show-ResultTable {
         Write-Host $HeaderSB.ToString() -ForegroundColor (Get-CLIColor -Role 'Accent')
         $LinesRendered++
 
-        # Separator
+        # Column separator line
         $SepSB = [System.Text.StringBuilder]::new(120)
         [void]$SepSB.Append('  ')
         for ($C = 0; $C -lt $Headers.Count; $C++) {
@@ -487,7 +498,7 @@ function Show-ResultTable {
         Write-Host $SepSB.ToString() -ForegroundColor (Get-CLIColor -Role 'Disabled')
         $LinesRendered++
 
-        # Data rows
+        # Data rows — truncate values that exceed column width
         for ($R = 0; $R -lt $PageData.Count; $R++) {
             $Row = $PageData[$R]
             $IsSelected = ($R -eq $SelectedRow)
@@ -529,7 +540,7 @@ function Show-ResultTable {
             $LinesRendered++
         }
 
-        # Footer
+        # Page info and keyboard hints
         $Host.UI.RawUI.CursorPosition = [System.Management.Automation.Host.Coordinates]::new(0, $TableStartRow + $LinesRendered)
         Write-Host $Blank -NoNewline
         $Host.UI.RawUI.CursorPosition = [System.Management.Automation.Host.Coordinates]::new(0, $TableStartRow + $LinesRendered)
@@ -554,7 +565,7 @@ function Show-ResultTable {
         Write-Host "  $($Hints -join '  |  ')" -ForegroundColor (Get-CLIColor -Role 'Disabled')
         $LinesRendered++
 
-        # Clear excess lines from previous render (e.g., last page had fewer rows)
+        # Erase excess lines from previous render (e.g., last page had fewer rows)
         if ($PrevLinesRendered -gt $LinesRendered) {
             for ($E = $LinesRendered; $E -lt $PrevLinesRendered; $E++) {
                 $Host.UI.RawUI.CursorPosition = [System.Management.Automation.Host.Coordinates]::new(0, $TableStartRow + $E)
@@ -563,7 +574,6 @@ function Show-ResultTable {
         }
         $PrevLinesRendered = $LinesRendered
 
-        # Input
         $Key = Read-ArrowKey
 
         switch ($Key.Key) {

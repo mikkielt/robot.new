@@ -4,19 +4,27 @@
     history logging.
 
     .DESCRIPTION
-    This file contains Invoke-PlayerCharacterPUAssignment - the core monthly
+    This file contains Invoke-PlayerCharacterPUAssignment — the core monthly
     admin workflow that awards PU (Player Units) to characters based on
     session participation.
 
     Computation pipeline:
     1. Determine date range from Year/Month or MinDate/MaxDate parameters.
+       Default: 2-month lookback (sessions are sometimes documented late).
     2. Optimize file scanning via Get-GitChangeLog -NoPatch to identify only
        files changed in the date range, then pass those to Get-Session.
+       Falls back to full directory scan if git optimization fails.
     3. Filter to sessions with PU entries.
-    4. Exclude already-processed session headers via Get-AdminHistoryEntries.
-    5. Resolve characters via Get-PlayerCharacter (merges Gracze.md + entities.md).
-    6. For each character, compute PU with overflow/underflow handling.
-    7. Optionally apply side effects gated by switches.
+    4. Exclude already-processed session headers via Get-AdminHistoryEntries
+       (pu-sessions.md tracks processed headers to prevent double-awarding).
+    5. Resolve characters via Get-PlayerCharacter (merges Gracze.md +
+       entities.md). Includes alias expansion for name matching.
+    6. Fail-early: ALL character names must resolve before any writes. Partial
+       assignments would corrupt state, so unresolved names produce a
+       ThrowTerminatingError with structured ErrorRecord (TargetObject carries
+       the unresolved list for callers to inspect).
+    7. For each character, compute PU with overflow/underflow handling.
+    8. Optionally apply side effects gated by switches.
 
     PU calculation algorithm (per pu-unification-logic.md):
     - BasePU = 1 + Sum(session PU for this character)
@@ -24,14 +32,18 @@
     - If BasePU > 5: excess goes to overflow pool
     - Granted PU capped at 5 per month
     - PUExceeded updated: (Original - Used) + NewOverflow
-    - Unresolved character names cause fail-early abort (throw)
 
-    Dot-sources admin-state.ps1 and admin-config.ps1 for state file handling
-    and config resolution.
-    Supports -WhatIf via SupportsShouldProcess.
+    Side effects (all switch-gated, all ShouldProcess-guarded):
+    - -UpdatePlayerCharacters: writes PU values to entities.md via Set-PlayerCharacter
+    - -SendToDiscord: sends PU notification messages via player webhooks
+    - -AppendToLog: records processed session headers to pu-sessions.md
+    - -ReconcileCurrency: runs currency reconciliation checks
+
+    Module-level data:
+    - $script:MultiSpacePattern: precompiled regex from admin-state.ps1
+    - $script:SuppressWarnings: warning suppression flag (managed by -Quiet)
 #>
 
-# Dot-source helpers
 . "$script:ModuleRoot/private/admin-state.ps1"
 . "$script:ModuleRoot/private/admin-config.ps1"
 
@@ -83,12 +95,12 @@ function Invoke-PlayerCharacterPUAssignment {
     $Config = Get-AdminConfig
 
     # Year/Month takes priority; otherwise default to a 2-month lookback
-    # because sessions are sometimes documented with a delay
+    # because sessions are sometimes documented after the fact
     if ($Year -and $Month) {
         $MinDate = [datetime]::new($Year, $Month, 1)
         $MaxDate = $MinDate.AddMonths(1).AddDays(-1)
     } elseif (-not $PSBoundParameters.ContainsKey('MinDate') -or -not $PSBoundParameters.ContainsKey('MaxDate')) {
-        # Default: 2-month lookback (sessions are sometimes documented late)
+        # Default range: first day of 2 months ago through end of last month
         $Now = [datetime]::Now
         $TwoMonthsAgo = $Now.AddMonths(-2)
         if (-not $PSBoundParameters.ContainsKey('MinDate')) {
@@ -102,7 +114,7 @@ function Invoke-PlayerCharacterPUAssignment {
     $MinDateStr = $MinDate.ToString('yyyy-MM-dd')
     $MaxDateStr = $MaxDate.ToString('yyyy-MM-dd')
 
-    # Narrow Get-Session's file scope via git history to avoid full-repo scan
+    # Narrow Get-Session's file scope via git history to avoid scanning the entire repo
     $ChangedFiles = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
 
     try {
@@ -121,7 +133,7 @@ function Invoke-PlayerCharacterPUAssignment {
         Write-RobotWarning "[WARN Invoke-PlayerCharacterPUAssignment] Git optimization failed, falling back to full scan: $_"
     }
 
-    # Use git-scoped files when available, otherwise full directory scan as fallback
+    # Git-scoped files avoid full-repo scan; fallback to Get-Session without -File
     $Sessions = if ($ChangedFiles.Count -gt 0) {
         $SessionResults = [System.Collections.Generic.List[object]]::new()
         foreach ($FilePath in $ChangedFiles) {
@@ -143,7 +155,7 @@ function Invoke-PlayerCharacterPUAssignment {
         Get-Session -MinDate $MinDate -MaxDate $MaxDate -ExcludeDirectory $ExcludeDirectory
     }
 
-    # Only sessions with PU entries are relevant for assignment
+    # Sessions without PU entries have no character awards to process
     $SessionsWithPU = [System.Collections.Generic.List[object]]::new()
     foreach ($Session in $Sessions) {
         if ($Session.PU -and $Session.PU.Count -gt 0) {
@@ -156,7 +168,7 @@ function Invoke-PlayerCharacterPUAssignment {
         return @()
     }
 
-    # Prevent double-awarding: pu-sessions.md tracks which headers have been processed
+    # pu-sessions.md tracks processed headers to prevent double-awarding
     $PUSessionsPath = [System.IO.Path]::Combine($Config.ResDir, 'pu-sessions.md')
     $ProcessedHeaders = Get-AdminHistoryEntries -Path $PUSessionsPath
 
@@ -164,7 +176,7 @@ function Invoke-PlayerCharacterPUAssignment {
     foreach ($Session in $SessionsWithPU) {
         $NormalizedHeader = $Session.Header.Trim()
         $NormalizedHeader = $script:MultiSpacePattern.Replace($NormalizedHeader, ' ')
-        # Strip leading ### if present for comparison
+        # Compare without "### " prefix — pu-sessions.md stores bare headers
         $CompareHeader = if ($NormalizedHeader.StartsWith('### ')) { $NormalizedHeader.Substring(4) } else { $NormalizedHeader }
 
         if (-not $ProcessedHeaders.Contains($CompareHeader) -and -not $ProcessedHeaders.Contains($NormalizedHeader)) {
@@ -177,7 +189,7 @@ function Invoke-PlayerCharacterPUAssignment {
         return @()
     }
 
-    # Group by character for per-character PU calculation (sum sessions, apply cap)
+    # Group PU entries by character for per-character cap and overflow logic
     $PUByCharacter = [System.Collections.Generic.Dictionary[string, System.Collections.Generic.List[object]]]::new(
         [System.StringComparer]::OrdinalIgnoreCase
     )
@@ -196,7 +208,7 @@ function Invoke-PlayerCharacterPUAssignment {
         }
     }
 
-    # Build character lookup including aliases for fail-early name verification
+    # Build character lookup including aliases — needed for fail-early name verification
     $AllCharacters = Get-PlayerCharacter
     $CharacterLookup = [System.Collections.Generic.Dictionary[string, object]]::new([System.StringComparer]::OrdinalIgnoreCase)
     foreach ($Char in $AllCharacters) {
@@ -212,7 +224,7 @@ function Invoke-PlayerCharacterPUAssignment {
         }
     }
 
-    # All names must resolve before any writes — partial assignments corrupt state
+    # Fail-early: ALL names must resolve before any writes — partial assignments corrupt state
     $UnresolvedCharacters = [System.Collections.Generic.List[object]]::new()
     foreach ($Entry in $PUByCharacter.GetEnumerator()) {
         $CharName = $Entry.Key
@@ -236,7 +248,7 @@ function Invoke-PlayerCharacterPUAssignment {
         $PSCmdlet.ThrowTerminatingError($ErrorRecord)
     }
 
-    # Apply the PU algorithm per character: base + overflow pool, capped at 5/month
+    # PU algorithm per character: BasePU = 1 + sum, with overflow pool and 5/month cap
     $AssignmentResults = [System.Collections.Generic.List[object]]::new()
 
     foreach ($Entry in $PUByCharacter.GetEnumerator()) {
@@ -244,7 +256,7 @@ function Invoke-PlayerCharacterPUAssignment {
         $PUEntries = $Entry.Value
         $Character = $CharacterLookup[$CharName]
 
-        # Apply player name filter if specified
+        # Player name filter allows scoping to specific players (e.g. for testing)
         if ($PlayerName -and $PlayerName.Count -gt 0) {
             $Matched = $false
             foreach ($Filter in $PlayerName) {
@@ -256,7 +268,7 @@ function Invoke-PlayerCharacterPUAssignment {
             if (-not $Matched) { continue }
         }
 
-        # Sum raw session PU before cap and overflow logic
+        # Sum raw session PU values before applying cap and overflow
         $SessionPUSum = [decimal]0
         foreach ($PUItem in $PUEntries) {
             if ($null -ne $PUItem.Value) {
@@ -264,33 +276,32 @@ function Invoke-PlayerCharacterPUAssignment {
             }
         }
 
-        # PU calculation (per pu-unification-logic.md §4)
-        $BasePU = [decimal]1 + $SessionPUSum
+        # PU calculation per pu-unification-logic.md section 4
+        $BasePU = [decimal]1 + $SessionPUSum  # base participation bonus of 1
         $OriginalPUExceeded = if ($null -ne $Character.PUExceeded) { [decimal]$Character.PUExceeded } else { [decimal]0 }
         $UsedExceeded = [decimal]0
         $OverflowPU = [decimal]0
 
-        # Supplement from overflow pool when at or under cap
+        # Supplement from overflow pool when under cap to use accumulated excess
         if ($BasePU -le 5 -and $OriginalPUExceeded -gt 0) {
             $UsedExceeded = [math]::Min(5 - $BasePU, $OriginalPUExceeded)
         }
 
-        # Excess above cap goes to overflow pool
+        # Excess above cap goes to overflow pool for future months
         if ($BasePU -gt 5) {
             $OverflowPU = $BasePU - 5
         }
 
-        # Cap at 5
-        $GrantedPU = [math]::Min($BasePU + $UsedExceeded, [decimal]5)
+        $GrantedPU = [math]::Min($BasePU + $UsedExceeded, [decimal]5)  # 5 PU/month cap
         $RemainingPUExceeded = ($OriginalPUExceeded - $UsedExceeded) + $OverflowPU
 
-        # Compute new totals
+        # Running totals: PUSum is lifetime, PUTaken is total granted (for charfile)
         $CurrentPUSum = if ($null -ne $Character.PUSum) { [decimal]$Character.PUSum } else { [decimal]0 }
         $CurrentPUTaken = if ($null -ne $Character.PUTaken) { [decimal]$Character.PUTaken } else { [decimal]0 }
         $NewPUSum = [math]::Round($CurrentPUSum + $GrantedPU, 2)
         $NewPUTaken = [math]::Round($CurrentPUTaken + $GrantedPU, 2)
 
-        # Compose player notification from templates (base + optional overflow/remaining parts)
+        # Compose notification from templates: base message + optional overflow/remaining parts
         $MsgVars = @{
             CharacterName = $Character.Name
             PlayerName    = $Character.PlayerName
@@ -329,7 +340,7 @@ function Invoke-PlayerCharacterPUAssignment {
         })
     }
 
-    # Side effects (gated by switches)
+    # Side effects — each gated by its own switch and ShouldProcess
 
     if ($UpdatePlayerCharacters) {
         foreach ($Item in $AssignmentResults) {
@@ -345,7 +356,7 @@ function Invoke-PlayerCharacterPUAssignment {
     }
 
     if ($SendToDiscord) {
-        # Group by player to send one message per player
+        # Group by player — one consolidated message per player, not per character
         $ByPlayer = [System.Collections.Generic.Dictionary[string, System.Collections.Generic.List[object]]]::new(
             [System.StringComparer]::OrdinalIgnoreCase
         )
@@ -392,7 +403,7 @@ function Invoke-PlayerCharacterPUAssignment {
         }
     }
 
-    # Currency reconciliation (step 6.5)
+    # Currency reconciliation: detects balance discrepancies across sessions
     $ReconciliationResult = $null
     if ($ReconcileCurrency) {
         $ReconciliationResult = Test-CurrencyReconciliation -Sessions @($Sessions)
@@ -406,7 +417,7 @@ function Invoke-PlayerCharacterPUAssignment {
         }
     }
 
-    # Return results with optional reconciliation
+    # Attach reconciliation result as a note property when present
     if ($ReconciliationResult) {
         $AssignmentResults | Add-Member -NotePropertyName 'CurrencyReconciliation' -NotePropertyValue $ReconciliationResult -PassThru | Out-Null
     }

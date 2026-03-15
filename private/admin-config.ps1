@@ -18,20 +18,30 @@
     - $script:CachedManifest:    session-scoped cache for the parsed data manifest hashtable
     - $script:CachedManifestDir: directory path corresponding to the cached manifest
 
-    Config resolution priority:
+    Config resolution uses a four-tier priority chain to determine each value:
     1. Explicit parameter value (caller passes directly)
     2. Environment variable (e.g. $env:NERTHUS_REPO_WEBHOOK)
     3. Local config file (.robot.new/local.config.psd1, git-ignored)
-    4. Fail with clear error message
+    4. Return $null (caller decides whether to fail or use a default)
 
-    Data manifest (.robot/robot-data.psd1) provides path overrides relative to its location.
-    Located at a fixed path {RepoRoot}/.robot/robot-data.psd1, cached per session.
+    Data manifest (.robot/robot-data.psd1) provides path overrides relative
+    to its own directory. Located at a fixed path {RepoRoot}/.robot/robot-data.psd1
+    and cached per session via $script:CachedManifest to avoid repeated
+    Import-PowerShellDataFile calls. The -Force switch on Find-DataManifest
+    bypasses the cache for test scenarios. All manifest-resolved paths are
+    validated by Test-PathUnderRoot to prevent path traversal attacks (e.g.
+    a manifest entry like "../../../etc/passwd" is rejected).
+
+    Get-AdminConfig merges manifest-resolved file paths (EntitiesFile,
+    ResDir, CharactersDir, PlayersFile) with priority-chain values
+    (RepoWebhook, BotUsername) and any additional caller-supplied overrides
+    into a single hashtable consumed by admin commands.
 
     Templates live in .robot.new/templates/ as standalone .md.template files.
-    Rendering uses simple {VariableName} placeholder substitution.
+    Rendering uses simple {Placeholder} token replacement via String.Replace,
+    iterating the caller-supplied Variables hashtable.
 #>
 
-# Resolve a single config value through the priority chain
 function Resolve-ConfigValue {
     param(
         [string]$ExplicitValue,
@@ -40,12 +50,10 @@ function Resolve-ConfigValue {
         [hashtable]$LocalConfig
     )
 
-    # 1. Explicit parameter
     if (-not [string]::IsNullOrWhiteSpace($ExplicitValue)) {
         return $ExplicitValue
     }
 
-    # 2. Environment variable
     if (-not [string]::IsNullOrWhiteSpace($EnvVarName)) {
         $EnvVal = [System.Environment]::GetEnvironmentVariable($EnvVarName)
         if (-not [string]::IsNullOrWhiteSpace($EnvVal)) {
@@ -53,7 +61,6 @@ function Resolve-ConfigValue {
         }
     }
 
-    # 3. Local config file
     if ($LocalConfig -and $ConfigKey -and $LocalConfig.ContainsKey($ConfigKey)) {
         $Val = $LocalConfig[$ConfigKey]
         if (-not [string]::IsNullOrWhiteSpace($Val)) {
@@ -64,7 +71,6 @@ function Resolve-ConfigValue {
     return $null
 }
 
-# Validates that a resolved path is under the repository root (prevents path traversal)
 function Test-PathUnderRoot {
     param(
         [Parameter(Mandatory)] [string]$Path,
@@ -73,20 +79,16 @@ function Test-PathUnderRoot {
 
     $FullPath = [System.IO.Path]::GetFullPath($Path)
     $FullRoot = [System.IO.Path]::GetFullPath($Root)
-    # Ensure root ends with separator for prefix matching
+    # Append separator so "/repo" doesn't match "/repo-backup"
     if (-not $FullRoot.EndsWith([System.IO.Path]::DirectorySeparatorChar)) {
         $FullRoot = $FullRoot + [System.IO.Path]::DirectorySeparatorChar
     }
     return $FullPath.StartsWith($FullRoot, [System.StringComparison]::OrdinalIgnoreCase)
 }
 
-# Session-scoped cache for data manifest
 $script:CachedManifest = $null
 $script:CachedManifestDir = $null
 
-# Checks for .robot/robot-data.psd1 at a fixed path within RepoRoot.
-# Returns @{ Manifest = hashtable; ManifestDir = string } or $null.
-# Result is cached per session.
 function Find-DataManifest {
     [CmdletBinding()] param(
         [Parameter(HelpMessage = "Override the repo root for testing")]
@@ -122,7 +124,6 @@ function Find-DataManifest {
     }
 }
 
-# Returns a hashtable with all resolved admin config values
 function Get-AdminConfig {
     param(
         [Parameter(HelpMessage = "Explicit overrides hashtable (key -> value)")]
@@ -131,7 +132,6 @@ function Get-AdminConfig {
 
     $ModuleRoot = [System.IO.Path]::GetDirectoryName($PSScriptRoot)
 
-    # Load local config file if it exists
     $LocalConfigPath = [System.IO.Path]::Combine($ModuleRoot, 'local.config.psd1')
     $LocalConfig = if ([System.IO.File]::Exists($LocalConfigPath)) {
         try { Import-PowerShellDataFile -Path $LocalConfigPath } catch { @{} }
@@ -139,7 +139,6 @@ function Get-AdminConfig {
 
     $RepoRoot = Get-RepoRoot
 
-    # Try to load data manifest for path overrides
     $ManifestResult = Find-DataManifest
     $ManifestPaths = @{}
     if ($ManifestResult) {
@@ -149,7 +148,6 @@ function Get-AdminConfig {
             $RelPath = $Manifest[$Key]
             if ($RelPath -is [string]) {
                 $Resolved = [System.IO.Path]::GetFullPath([System.IO.Path]::Combine($ManifestDir, $RelPath))
-                # Security: prevent path traversal outside repository root
                 if (-not (Test-PathUnderRoot -Path $Resolved -Root $RepoRoot)) {
                     [System.Console]::Error.WriteLine(
                         "[WARN Get-AdminConfig] Manifest path '$Key' resolves to '$Resolved' outside repository root - skipping")
@@ -182,7 +180,6 @@ function Get-AdminConfig {
             -LocalConfig $LocalConfig
     }
 
-    # Merge any additional overrides
     foreach ($Key in $Overrides.Keys) {
         if (-not $Config.ContainsKey($Key)) {
             $Config[$Key] = $Overrides[$Key]
@@ -192,7 +189,6 @@ function Get-AdminConfig {
     return $Config
 }
 
-# Loads a template file and renders it by replacing {Placeholder} tokens
 function Get-AdminTemplate {
     param(
         [Parameter(Mandatory, HelpMessage = "Template filename (e.g. 'player-character-file.md.template')")]

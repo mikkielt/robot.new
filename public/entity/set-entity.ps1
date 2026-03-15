@@ -9,15 +9,18 @@
 
     If the entity is not found and -Type is provided, creates it via
     Resolve-EntityTarget (auto-create). Throws if not found and no -Type
-    is given (cannot determine which section to create under).
+    is given, because the target section cannot be determined without an
+    explicit type.
 
-    Tags receive a (YYYY-MM:) temporal suffix when -ValidFrom is provided.
+    Tags receive a (YYYY-MM:) temporal suffix when -ValidFrom is provided,
+    enabling downstream temporal resolution (e.g. Get-EntityState filters
+    by date to determine which tag value was active at a given point).
 
-    Dot-sources entity-writehelpers.ps1 and admin-config.ps1.
+    Dot-sources entity-writehelpers.ps1 (file I/O and tag manipulation)
+    and admin-config.ps1 (entities file path resolution).
     Supports -WhatIf via SupportsShouldProcess.
 #>
 
-# Dot-source helpers
 . "$script:ModuleRoot/private/entity-writehelpers.ps1"
 . "$script:ModuleRoot/private/admin-config.ps1"
 
@@ -57,7 +60,7 @@ function Set-Entity {
     $File = Read-EntityFile -Path $EntitiesFilePath
     $LinesArray = $File.Lines.ToArray()
 
-    # Find the entity - search in specific section or across all sections
+    # Search scoped to -Type when given, otherwise scan all sections sequentially
     $FoundSection = $null
     $FoundBullet = $null
 
@@ -71,7 +74,6 @@ function Set-Entity {
             }
         }
     } else {
-        # Search all sections
         $AllTypes = @('NPC', 'Grupa', 'Lokacja', 'Mapa', 'Przedmiot', 'Gracz', 'Postać')
         foreach ($SearchType in $AllTypes) {
             $Section = Find-EntitySection -Lines $LinesArray -EntityType $SearchType
@@ -101,7 +103,8 @@ function Set-Entity {
         $ChildStart = $FoundBullet.ChildrenStartIdx
     }
 
-    # Apply tags with optional temporal suffix
+    # Temporal suffix ensures tag value is scoped to a date range for
+    # downstream consumers that resolve history (e.g. Get-EntityState)
     foreach ($Key in $Tags.Keys) {
         $Value = $Tags[$Key]
         if (-not [string]::IsNullOrWhiteSpace($ValidFrom)) {

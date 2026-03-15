@@ -7,12 +7,19 @@
     (entity-writehelpers.ps1, set-session.ps1) and plugin functions.
     Not auto-loaded by robot.psm1 (non-Verb-Noun filename).
 
-    Contains:
+    Helpers:
     - Invoke-PluginHook:  dispatches to registered hook handlers in priority order
     - Test-PluginScope:   advisory RBAC scope check for plugin data access
 
-    Hook invocation is designed for zero overhead when no hooks are registered.
-    The $script:HookRegistry variable is managed by robot.psm1 during plugin loading.
+    Module-level data:
+    - $script:CachedRbacConfig:     session-scoped cache for local.config.psd1 RBAC data
+    - $script:CachedRbacConfigPath: path of the cached config (invalidation key)
+    - $script:HookCommandCache:     per-function-name command resolution cache (avoids repeated Get-Command)
+
+    Hook invocation is designed for zero overhead when no hooks are registered:
+    three early-return guards (no registry, no key, no handlers) exit before any
+    work. When hooks exist, handlers are resolved once per function name and cached
+    with [DBNull]::Value as a negative-lookup sentinel.
 
     Hook phases:
     - BeforeWrite:  can reject by throwing, can mutate data in-place
@@ -20,14 +27,14 @@
     - AfterCreate:  side effects only, errors logged but don't abort
 
     RBAC is advisory (not a security boundary). When no role configuration exists,
-    all access is permitted. Designed for trusted small-team environments.
+    all access is permitted. Designed for trusted small-team environments. User
+    identity resolves from $env:ROBOT_USER first, then falls back to git config
+    user.name. Scopes support hierarchical matching (entity:read:own matches
+    entity:read) and a wildcard admin:all scope.
 #>
 
-# Session-scoped cache for RBAC config (local.config.psd1 with Roles/RoleScopes)
 $script:CachedRbacConfig     = $null
 $script:CachedRbacConfigPath = $null
-
-# Cached command lookups for hook handlers — avoids repeated Get-Command per invocation
 $script:HookCommandCache = @{}
 
 function Invoke-PluginHook {
@@ -55,14 +62,13 @@ function Invoke-PluginHook {
     foreach ($Handler in $Handlers) {
         $FuncName = $Handler.Handler
 
-        # Cached command lookup — resolve once per function name, reuse on subsequent invocations
         if ($script:HookCommandCache.ContainsKey($FuncName)) {
             $Cmd = $script:HookCommandCache[$FuncName]
-            if ($Cmd -is [System.DBNull]) { continue }
+            if ($Cmd -is [System.DBNull]) { continue }  # negative-lookup sentinel
         } else {
             $Cmd = Get-Command $FuncName -ErrorAction SilentlyContinue
             if (-not $Cmd) {
-                $script:HookCommandCache[$FuncName] = [DBNull]::Value
+                $script:HookCommandCache[$FuncName] = [DBNull]::Value  # negative-lookup sentinel
                 [System.Console]::Error.WriteLine(
                     "[WARN Invoke-PluginHook] Handler '$FuncName' from plugin '$($Handler.Plugin)' not found - skipping")
                 continue
@@ -92,9 +98,6 @@ function Invoke-PluginHook {
     }
 }
 
-# Advisory RBAC scope check.
-# Returns $true if the current user has the required scope, or if no RBAC is configured.
-# User identity resolved from $env:ROBOT_USER or git config user.name.
 function Test-PluginScope {
     param(
         [Parameter(Mandatory)]
@@ -106,6 +109,7 @@ function Test-PluginScope {
     if (-not $User) {
         $User = [System.Environment]::GetEnvironmentVariable('ROBOT_USER')
         if (-not $User) {
+            # Use .NET Process to avoid pipeline overhead and module-internal git wrapper dependency
             $GitProc = $null
             try {
                 $GitProc = [System.Diagnostics.Process]::new()
@@ -128,7 +132,6 @@ function Test-PluginScope {
     # No user identity -> permissive (trusted environment)
     if (-not $User) { return $true }
 
-    # Load role config from core local.config.psd1
     if (-not $script:ModuleRoot) { return $true }
 
     $CoreLocalPath = [System.IO.Path]::Combine($script:ModuleRoot, 'local.config.psd1')
@@ -155,13 +158,10 @@ function Test-PluginScope {
     $Scopes = $CoreLocal.RoleScopes[$Role]
     if (-not $Scopes) { return $false }
 
-    # Check for wildcard admin scope
-    if ('admin:all' -in $Scopes) { return $true }
-
-    # Exact scope match
+    if ('admin:all' -in $Scopes) { return $true }  # wildcard admin bypass
     if ($RequiredScope -in $Scopes) { return $true }
 
-    # Hierarchical match: entity:read:own matches entity:read
+    # Hierarchical match: progressively shorten scope (entity:read:own -> entity:read)
     $Parts = $RequiredScope.Split(':')
     for ($i = $Parts.Count; $i -ge 2; $i--) {
         $Partial = ($Parts[0..($i-1)]) -join ':'

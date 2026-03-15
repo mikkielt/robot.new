@@ -178,7 +178,7 @@ function Get-Player {
                         $PropertyName = $PUInfoMap[$PartKey]
                         if (-not $PropertyName) { continue }
 
-                        # "BRAK" means the value is not set
+                        # "BRAK" is a sentinel in Gracze.md for explicitly absent values
                         $Character.$PropertyName = if ($PartValue -eq "BRAK") {
                             $null
                         } else {
@@ -210,6 +210,8 @@ function Get-Player {
         # HashSet provides O(1) Contains() for name resolution lookups
         $Names = [System.Collections.Generic.HashSet[string]]::new($Names, [System.StringComparer]::OrdinalIgnoreCase)
 
+        # Player object aggregates Gracze.md metadata; entity overlay (Phase 2)
+        # may extend it further with aliases, PU overrides, or new characters
         $Player = [PSCustomObject]@{
             Name       = $PlayerName
             Names      = $Names
@@ -222,8 +224,10 @@ function Get-Player {
         $Players.Add($Player)
     }
 
-    # Phase 2: overlay entity data onto Gracze.md-parsed players so that
-    # new players/characters registered only in entities.md also appear
+    # Phase 2: overlay entity data so players/characters registered only
+    # in entities.md also appear, preserving backward compatibility with
+    # the legacy Gracze.md database while allowing entities.md to be the
+    # sole source of truth for new registrations
     if (-not $Entities) {
         $Entities = Get-Entity
     }
@@ -237,7 +241,7 @@ function Get-Player {
         # Characters reference their player via @należy_do (Owner); Gracz entities
         # are their own player. Orphaned characters without either are skipped.
         $TargetPlayerName = if ($Entity.Owner) { $Entity.Owner } elseif ($Entity.Type -eq 'Gracz') { $Entity.Name } else { $null }
-        if (-not $TargetPlayerName) { continue }
+        if (-not $TargetPlayerName) { continue }  # orphaned character entity, skip
 
         $TargetPlayer = $null
         foreach ($ExistingPlayer in $Players) {
@@ -277,7 +281,7 @@ function Get-Player {
             if ($Entity.Overrides.ContainsKey("trigger")) {
                 $TargetPlayer.Triggers = @($Entity.Overrides["trigger"])
             }
-            continue # Done with player-level overrides
+            continue  # Gracz entities carry player-level data only
         }
 
         # Character-level: match by name or create a stub for entity-only characters

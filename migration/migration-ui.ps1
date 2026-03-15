@@ -563,7 +563,7 @@ function Show-ProgressSummary {
 
         $MigrationHelp = @(
             'Wybierz fazę migracji do uruchomienia.'
-            'Fazy są wykonywane sekwencyjnie (0-6).'
+            'Fazy są wykonywane sekwencyjnie (0-8).'
             'Każda faza jest idempotentna — można ją uruchomić wielokrotnie.'
             ''
             'Szybka diagnostyka — przegląd stanu migracji'
@@ -584,14 +584,14 @@ function Show-ProgressSummary {
 
     # Progress indicator (fallback)
     $CompletedCount = 0
-    $TotalCount = if ($script:PhaseRegistry) { $script:PhaseRegistry.Count } else { 7 }
-    for ($I = 0; $I -le 6; $I++) {
+    $TotalCount = if ($script:PhaseRegistry) { $script:PhaseRegistry.Count } else { 9 }
+    for ($I = 0; $I -le 8; $I++) {
         if ((Get-PhaseStatus -State $State -Phase $I) -eq 'Completed') { $CompletedCount++ }
     }
     Write-Host "  Postęp: $CompletedCount/$TotalCount faz ukończonych" -ForegroundColor $AccentColor
     Write-Host ''
 
-    for ($I = 0; $I -le 6; $I++) {
+    for ($I = 0; $I -le 8; $I++) {
         $PhaseStatus = Get-PhaseStatus -State $State -Phase $I
         $StatusInfo = $script:StatusDisplay[$PhaseStatus]
         $Name = Get-PhaseName -Phase $I

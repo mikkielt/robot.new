@@ -8,17 +8,23 @@
 
     Helpers:
     - Format-ValidityRange: formats temporal range as "YYYY-MM-DD – YYYY-MM-DD"
-    - Show-EntityCard:      renders entity detail card with tags and history
+      with Polish "od"/"do" prefixes for open-ended ranges
+    - Show-EntityCard:      renders entity detail card with all entity fields
+      in a fixed vertical layout (core fields, info override, groups, doors,
+      contains, aliases with temporal ranges, custom @tags, location history,
+      group history). Waits for Escape before returning.
 
     Design:
-    - Show-EntityCard renders all entity fields in a fixed vertical layout:
-      core fields, info override, groups, doors, contains, aliases (with
-      temporal ranges), custom @tags, location history (capped at 5), and
-      group history (capped at 5). Waits for Escape before returning.
-    - Used by entity browse and search workflows for quick entity inspection
-      without the full engine lifecycle overhead.
+    - Show-EntityCard accepts either an Entity parameter or a Row parameter
+      (aliased for backward compatibility with detail-card call sites).
+    - History lists (LocationHistory, GroupHistory) are capped at 5 entries
+      to keep the card within a single terminal screen. Overflow is indicated
+      with a "... i N więcej" line.
+    - This file uses direct console rendering (Write-Host, Console.Clear)
+      rather than the TUI engine, so it can be used from legacy workflows
+      without engine lifecycle overhead.
 
-    Dependencies: cli-primitives.ps1
+    Dependencies: cli-primitives.ps1 (Get-CLIColor, Write-CLILine)
 #>
 
 # ── Format-ValidityRange ───────────────────────────────────────────────────
@@ -48,7 +54,7 @@ function Show-EntityCard {
     $AccentColor   = Get-CLIColor -Role 'Accent'
     $DisabledColor = Get-CLIColor -Role 'Disabled'
     $InfoColor     = Get-CLIColor -Role 'Info'
-    $Sep = [string][char]0x2500 * 50
+    $Sep = [string][char]0x2500 * 50  # 50-char horizontal rule
 
     [System.Console]::Clear()
 
@@ -56,7 +62,7 @@ function Show-EntityCard {
     Write-CLILine -Text "$($Entity.Name)" -Color $AccentColor
     Write-Host ''
 
-    # Core fields
+    # Core fields — Type, Status, Location, Owner, Quantity (always shown if present)
     Write-Host "  $('Typ'.PadRight(22))" -NoNewline -ForegroundColor $InfoColor
     Write-Host "$($Entity.Type)"
     Write-Host "  $('Status'.PadRight(22))" -NoNewline -ForegroundColor $InfoColor
@@ -77,7 +83,7 @@ function Show-EntityCard {
         Write-Host "$($Entity.Quantity)"
     }
 
-    # Info (surfaced from @info override)
+    # @info override — last-active-wins for list values (consistent with entity model)
     if ($Entity.Overrides -and $Entity.Overrides.ContainsKey('info')) {
         $InfoValues = $Entity.Overrides['info']
         $InfoText = if ($InfoValues -is [System.Collections.IList]) { $InfoValues[-1] } else { [string]$InfoValues }
@@ -85,25 +91,22 @@ function Show-EntityCard {
         Write-Host $InfoText
     }
 
-    # Groups
     if ($Entity.Groups -and $Entity.Groups.Count -gt 0) {
         Write-Host "  $('Grupy'.PadRight(22))" -NoNewline -ForegroundColor $InfoColor
         Write-Host ($Entity.Groups -join ', ')
     }
 
-    # Doors
     if ($Entity.Doors -and $Entity.Doors.Count -gt 0) {
         Write-Host "  $('Drzwi'.PadRight(22))" -NoNewline -ForegroundColor $InfoColor
         Write-Host ($Entity.Doors -join ', ')
     }
 
-    # Contains
     if ($Entity.Contains -and $Entity.Contains.Count -gt 0) {
         Write-Host "  $('Zawiera'.PadRight(22))" -NoNewline -ForegroundColor $InfoColor
         Write-Host ($Entity.Contains -join ', ')
     }
 
-    # Aliases - format as "Text (ValidFrom-ValidTo)" or just "Text"
+    # Aliases — format as "Text (range)" for temporal, plain text for scalar
     if ($Entity.Aliases -and $Entity.Aliases.Count -gt 0) {
         Write-Host ''
         Write-CLILine -Text 'Aliasy' -Color $InfoColor
@@ -118,7 +121,7 @@ function Show-EntityCard {
         }
     }
 
-    # Overrides (custom @tags)
+    # Custom @tags — skip 'info' (already rendered above)
     if ($Entity.Overrides -and $Entity.Overrides.Count -gt 0) {
         Write-Host ''
         Write-CLILine -Text 'Tagi' -Color $InfoColor
@@ -136,11 +139,10 @@ function Show-EntityCard {
         }
     }
 
-    # Location history
     if ($Entity.LocationHistory -and $Entity.LocationHistory.Count -gt 0) {
         Write-Host ''
         Write-CLILine -Text "Historia lokalizacji ($($Entity.LocationHistory.Count))" -Color $InfoColor
-        $ShowMax = [Math]::Min($Entity.LocationHistory.Count, 5)  # cap at 5 to keep card readable
+        $ShowMax = [Math]::Min($Entity.LocationHistory.Count, 5)  # keep card within single screen
         for ($I = 0; $I -lt $ShowMax; $I++) {
             $H = $Entity.LocationHistory[$I]
             $Loc = if ($H.Location) { $H.Location } else { '?' }
@@ -153,7 +155,6 @@ function Show-EntityCard {
         }
     }
 
-    # Group history
     if ($Entity.GroupHistory -and $Entity.GroupHistory.Count -gt 0) {
         Write-Host ''
         Write-CLILine -Text "Historia grup ($($Entity.GroupHistory.Count))" -Color $InfoColor

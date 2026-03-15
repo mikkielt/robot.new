@@ -3,12 +3,30 @@
     Returns a comprehensive session participation profile for an entity.
 
     .DESCRIPTION
-    High-level convenience function that aggregates session graph data for a
-    single entity into a summary profile. Combines Sessions and CoParticipants
-    modes of Get-SessionGraph into one call.
+    Get-EntitySessionProfile is a high-level convenience function that
+    aggregates session graph data for a single entity into a summary
+    profile, combining Sessions and CoParticipants modes of
+    Get-SessionGraph into one call.
 
-    Returns: total sessions, date range, tier breakdown, PU weight sum,
-    top co-participants, and monthly activity trend.
+    Processing pipeline:
+    1. Fetch all sessions via Get-SessionGraph -Mode Sessions
+    2. Compute tier breakdown (Tier0=filesystem, Tier1=metadata,
+       Tier2=bodytext) from EntityTier on each session result
+    3. Sum EntityWeight across all sessions for total PU weight
+    4. Parse session dates via ConvertTo-SessionDate, sort to find
+       first/last activity dates
+    5. Build monthly activity histogram (ordered hashtable of yyyy-MM
+       keys to session counts)
+    6. Fetch top 5 co-participants via Get-SessionGraph -Mode CoParticipants
+
+    Returns a PSCustomObject with TotalSessions, DateFirst/DateLast
+    (yyyy-MM-dd strings), TierBreakdown hashtable, TotalPUWeight
+    (rounded to 2 decimals), TopCoParticipants array, and
+    ActivityByMonth ordered hashtable.
+
+    Returns an empty profile (TotalSessions=0, nulled dates, zeroed
+    counters) when the entity has no session participation, rather than
+    $null, so callers can safely access properties without null checks.
 #>
 
 function Get-EntitySessionProfile {
@@ -33,7 +51,7 @@ function Get-EntitySessionProfile {
     if ($Quiet) { $script:SuppressWarnings = $true }
     try {
 
-    # Get all sessions for the entity
+    # Fetch session graph entries at the requested tier ceiling
     $Sessions = @(Get-SessionGraph -EntityName $EntityName -MinTier $MinTier -Mode Sessions -Quiet)
 
     if ($Sessions.Count -eq 0) {
@@ -49,14 +67,14 @@ function Get-EntitySessionProfile {
         }
     }
 
-    # Tier breakdown
+    # Count sessions by evidence tier (how the entity was detected in each session)
     $TierBreakdown = @{ Tier0 = 0; Tier1 = 0; Tier2 = 0 }
     foreach ($S in $Sessions) {
         $Key = "Tier$($S.EntityTier)"
         if ($TierBreakdown.ContainsKey($Key)) { $TierBreakdown[$Key]++ }
     }
 
-    # PU weight sum
+    # Aggregate PU weight: higher weight = stronger participation evidence
     $TotalPUWeight = 0.0
     foreach ($S in $Sessions) {
         if ($null -ne $S.EntityWeight) {
@@ -64,7 +82,7 @@ function Get-EntitySessionProfile {
         }
     }
 
-    # Date range
+    # Parse and sort session dates to determine activity window
     $Dates = [System.Collections.Generic.List[datetime]]::new()
     foreach ($S in $Sessions) {
         if ($S.Date) {
@@ -78,7 +96,7 @@ function Get-EntitySessionProfile {
     $DateFirst = if ($Dates.Count -gt 0) { $Dates[0].ToString('yyyy-MM-dd') } else { $null }
     $DateLast  = if ($Dates.Count -gt 0) { $Dates[$Dates.Count - 1].ToString('yyyy-MM-dd') } else { $null }
 
-    # Activity by month
+    # Build monthly histogram: ordered hashtable ensures chronological key order
     $ActivityByMonth = [ordered]@{}
     foreach ($D in $Dates) {
         $MonthKey = $D.ToString('yyyy-MM')
@@ -88,7 +106,7 @@ function Get-EntitySessionProfile {
         $ActivityByMonth[$MonthKey]++
     }
 
-    # Top co-participants
+    # Fetch entities that most frequently share sessions with this entity
     $CoParticipants = @(Get-SessionGraph -EntityName $EntityName -MinTier $MinTier -Mode CoParticipants -Quiet)
     $TopCoParticipants = @($CoParticipants | Select-Object -First 5)
 

@@ -17,7 +17,18 @@
         - Lists:     flat list of all list items across the file
         - Links:     list of link objects (MarkdownLink with Text+Url, or PlainUrl with Url)
 
-    Parsing strategy:
+    Two parsing paths:
+    1. C# fast path (Robot.MarkdownScanner): pre-loaded by get-markdown.ps1 before
+       RunspacePool workers start. Uses struct-based output with index-based parent
+       tracking. The PowerShell wrapper reconstructs actual object references
+       (ParentHeader, ParentListItem, SectionHeader) from the flat index arrays
+       returned by the C# scanner.
+    2. PowerShell fallback: used when Robot.MarkdownScanner is not available
+       (restricted environments, direct script invocation from tests without
+       pre-loading). Uses precompiled regex patterns and stack-based hierarchy
+       tracking.
+
+    Parsing strategy (both paths):
     - Single-pass line-by-line scan, accumulating content into the current section
     - Code blocks (``` fences) are tracked to avoid treating their contents as Markdown
     - Headers are tracked in a stack to maintain parent-child hierarchy
@@ -29,6 +40,85 @@
 
 param([string]$FilePath)
 
+$Lines = [System.IO.File]::ReadAllLines($FilePath)
+
+# C# path: compiled scanner with struct output, then reconstruct object references.
+# Robot.MarkdownScanner is pre-loaded by get-markdown.ps1 before RunspacePool workers start.
+# In sequential mode, the type may not be loaded (direct script invocation from tests);
+# PSTypeName check handles both cases.
+if (([System.Management.Automation.PSTypeName]'Robot.MarkdownScanner').Type) {
+    $CsResult = [Robot.MarkdownScanner]::Parse($Lines)
+
+    # Reconstruct header objects with actual ParentHeader references (not indices)
+    $HeaderObjs = [System.Collections.Generic.List[object]]::new($CsResult.Headers.Length)
+    foreach ($H in $CsResult.Headers) {
+        $ParentRef = if ($H.ParentIndex -ge 0) { $HeaderObjs[$H.ParentIndex] } else { $null }
+        $HeaderObjs.Add([PSCustomObject]@{
+            Level        = $H.Level
+            Text         = $H.Text
+            ParentHeader = $ParentRef
+            LineNumber   = $H.LineNumber
+        })
+    }
+
+    # Reconstruct list items with actual ParentListItem and SectionHeader references
+    $AllListItems = [System.Collections.Generic.List[object]]::new($CsResult.Lists.Length)
+    foreach ($L in $CsResult.Lists) {
+        $ParentRef = if ($L.ParentIndex -ge 0) { $AllListItems[$L.ParentIndex] } else { $null }
+        $SectionRef = if ($L.SectionHeaderIndex -ge 0) { $HeaderObjs[$L.SectionHeaderIndex] } else { $null }
+        $AllListItems.Add([PSCustomObject]@{
+            Type           = $L.Type
+            Text           = $L.Text
+            Indent         = $L.Indent
+            ParentListItem = $ParentRef
+            SectionHeader  = $SectionRef
+        })
+    }
+
+    # Reconstruct sections with Header reference and per-section Lists slice
+    $SectionObjs = [System.Collections.Generic.List[object]]::new($CsResult.Sections.Length)
+    foreach ($S in $CsResult.Sections) {
+        $HeaderRef = if ($S.HeaderIndex -ge 0) { $HeaderObjs[$S.HeaderIndex] } else { $null }
+        $SectionLists = [System.Collections.Generic.List[object]]::new($S.ListCount)
+        for ($J = $S.ListStartIndex; $J -lt ($S.ListStartIndex + $S.ListCount); $J++) {
+            $SectionLists.Add($AllListItems[$J])
+        }
+        $SectionObjs.Add([PSCustomObject]@{
+            Header  = $HeaderRef
+            Content = $S.Content
+            Lists   = $SectionLists
+        })
+    }
+
+    # Reconstruct links
+    $LinkObjs = [System.Collections.Generic.List[object]]::new($CsResult.Links.Length)
+    foreach ($Lk in $CsResult.Links) {
+        if ($Lk.Type -eq 'MarkdownLink') {
+            $LinkObjs.Add([PSCustomObject]@{
+                Type = 'MarkdownLink'
+                Text = $Lk.Text
+                Url  = $Lk.Url
+            })
+        } else {
+            $LinkObjs.Add([PSCustomObject]@{
+                Type = 'PlainUrl'
+                Url  = $Lk.Url
+            })
+        }
+    }
+
+    return [PSCustomObject]@{
+        FilePath = $FilePath
+        Headers  = $HeaderObjs
+        Sections = $SectionObjs
+        Lists    = $AllListItems
+        Links    = $LinkObjs
+    }
+}
+
+# PowerShell fallback - used when Robot.MarkdownScanner is not available
+# (restricted environments, direct script invocation without pre-loading)
+
 # Precompiled patterns - reused on every line, avoids per-line regex compilation
 $MdLinkPattern    = [regex]'\[(.+?)\]\((.+?)\)'
 $PlainUrlPattern  = [regex]'https?:\/\/[^\s\)\]]+'
@@ -36,8 +126,6 @@ $CodeFencePattern = [regex]'^```'
 $HeaderPattern    = [regex]'^(#+)\s*(.+)$'
 $ListItemPattern  = [regex]'^(\s*)(\d+\.|[-\*\+])\s+(.+)$'
 $MarkerNumPattern = [regex]'^\d+\.'
-
-$Lines = [System.IO.File]::ReadAllLines($FilePath)
 
 # Result collections
 $Sections  = [System.Collections.Generic.List[object]]::new()

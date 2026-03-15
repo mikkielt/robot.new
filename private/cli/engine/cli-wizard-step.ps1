@@ -7,17 +7,29 @@
     label, and contextual help hint. Used by the wizard orchestration system
     to display each parameter input within the engine's content region.
 
+    Supports five step types, each with its own rendering and key handling:
+    - text:      free-form text input with cursor indicator and overflow ellipsis
+    - number:    same as text (validation happens in the wizard orchestrator)
+    - date:      same as text (expects YYYY-MM-DD, validated externally)
+    - decimal:   same as text (validated externally)
+    - selection: arrow-navigable option list with pointer indicator
+    - yesno:     two-option toggle (Tak/Nie)
+
+    Text-type steps set TextInputMode so Route-KeyPress sends printable
+    characters as TextInput actions (rather than triggering filter mode).
+    Selection and yesno steps handle navigation via Up/Down arrow keys.
+
+    When StepNumber and TotalSteps are both 0, the step counter header
+    is hidden to support standalone input dialogs outside wizard flows.
+
     Helpers:
-    - New-WizardStepComponent:  creates a step component for text/number/date input
+    - New-WizardStepComponent:  creates a step component for text/number/date/selection/yesno input
 
     Component contract:
     - Render:    draws bordered input box with step counter and label in Content region
-    - HandleKey: Navigate (not used), Select (returns current input value)
+    - HandleKey: Navigate (selection/yesno), Select (returns current input value),
+                 TextInput/TextBackspace (text types)
     - Filterable: false (wizard steps don't support inline filtering)
-
-    This component handles the visual rendering of wizard steps. The actual
-    input collection and step type dispatch remain in cli-wizard.ps1 and
-    cli-wizard-steps.ps1 (Phase C migration will wire them together).
 
     Dependencies:
     - cli-engine.ps1:  Get-Region, Get-RegionHeight, Get-CLIColor, $script:ScreenWidth
@@ -38,8 +50,7 @@ function New-WizardStepComponent {
         [switch]$Required
     )
 
-    # Text input types set TextInputMode so Route-KeyPress sends printable chars
-    # as TextInput actions instead of starting filter mode
+    # Non-selection types need TextInputMode to route printable chars as TextInput
     $IsTextType = $StepType -notin @('selection', 'yesno')
 
     $Component = @{
@@ -83,13 +94,12 @@ function New-WizardStepComponent {
             $BorderBL = [char]0x2514
             $BorderBR = [char]0x2518
 
-            $BoxLeft = 3   # left margin for visual centering
+            $BoxLeft = 3       # left margin for visual centering
             $BoxInnerWidth = [Math]::Min(($script:ScreenWidth - 10), 60)  # cap at 60 — wizard inputs are shorter than help overlays
-            $BoxInnerWidth = [Math]::Max($BoxInnerWidth, 20)  # floor to prevent collapsed boxes
+            $BoxInnerWidth = [Math]::Max($BoxInnerWidth, 20)              # floor to prevent collapsed boxes
             $BoxWidth = $BoxInnerWidth + 4
 
-            # Step counter — hidden when both are 0 to support standalone inputs
-            # (e.g., filter dialogs) that don't belong to a multi-step wizard
+            # Hidden when both are 0 to support standalone input dialogs
             if ($ComponentRef.StepNumber -gt 0 -and $ComponentRef.TotalSteps -gt 0) {
                 $StepLabel = "Krok $($ComponentRef.StepNumber)/$($ComponentRef.TotalSteps)"
                 Set-BufferLine -Buffer $script:BackBuffer -Row $Row -Segments @(
@@ -111,10 +121,8 @@ function New-WizardStepComponent {
             )
             $Row++
 
-            # Input area depends on step type
             switch ($ComponentRef.StepType) {
                 'selection' {
-                    # Render options list
                     $Opts = $ComponentRef.Options
                     if ($Opts) {
                         for ($I = 0; $I -lt $Opts.Count; $I++) {
@@ -136,7 +144,6 @@ function New-WizardStepComponent {
                 }
 
                 'yesno' {
-                    # Yes/No toggle
                     $YesSelected = ($ComponentRef.SelectedOption -eq 0)
                     $YesText = if ($YesSelected) { "$([char]0x25B8) Tak" } else { '  Tak' }
                     $NoText  = if (-not $YesSelected) { "$([char]0x25B8) Nie" } else { '  Nie' }
@@ -159,11 +166,10 @@ function New-WizardStepComponent {
                 }
 
                 default {
-                    # Text/number/date/decimal — single input line with cursor
                     $InputText = $ComponentRef.InputBuffer.ToString()
-                    $DisplayText = "$InputText$([char]0x2502)"  # cursor indicator
+                    $DisplayText = "$InputText$([char]0x2502)"  # vertical bar as cursor indicator
                     if ($DisplayText.Length -gt $BoxInnerWidth) {
-                        # Show end of input with ellipsis at start
+                        # Show the end of input (most recent chars) with leading ellipsis
                         $VisibleLen = $BoxInnerWidth - 4
                         $DisplayText = "...$($InputText.Substring($InputText.Length - $VisibleLen))$([char]0x2502)"
                     }
@@ -176,7 +182,7 @@ function New-WizardStepComponent {
                     )
                     $Row++
 
-                    # Empty line for spacing
+                    # Visual separation between input line and bottom border
                     $EmptyLine = ' ' * $BoxInnerWidth
                     Set-BufferLine -Buffer $script:BackBuffer -Row $Row -Segments @(
                         (New-Segment -Text "$(' ' * $BoxLeft)$BorderV " -Color $DisabledColor -Dim)
@@ -194,7 +200,6 @@ function New-WizardStepComponent {
             )
             $Row++
 
-            # Error message
             if ($ComponentRef.ErrorMessage -and ($Row - $Region.StartRow) -lt ($ContentHeight - 1)) {
                 $Row++
                 $ErrorColor = Get-CLIColor -Role 'Error'
@@ -204,7 +209,6 @@ function New-WizardStepComponent {
                 $Row++
             }
 
-            # Help hint below box
             if ($ComponentRef.HelpBrief -and ($Row - $Region.StartRow) -lt ($ContentHeight - 1)) {
                 $Row++  # blank line
                 foreach ($HLine in $ComponentRef.HelpBrief) {
@@ -216,7 +220,6 @@ function New-WizardStepComponent {
                 }
             }
 
-            # Required field indicator
             if ($ComponentRef.Required -and ($Row - $Region.StartRow) -lt $ContentHeight) {
                 Set-BufferLine -Buffer $script:BackBuffer -Row $Row -Segments @(
                     (New-Segment -Text '    * pole wymagane' -Color $WarningColor)
@@ -282,7 +285,7 @@ function New-WizardStepComponent {
                 }
 
                 'FilterStart' {
-                    # Legacy: in case component is used outside TextInputMode
+                    # Fallback for cases where component is used outside TextInputMode
                     if ($ComponentRef.StepType -notin @('selection', 'yesno')) {
                         [void]$ComponentRef.InputBuffer.Append($Action.Value)
                     }

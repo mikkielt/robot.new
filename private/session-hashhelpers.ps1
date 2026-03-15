@@ -8,7 +8,7 @@
     Test-SessionIntegrity via dot-sourcing. Not auto-loaded by robot.psm1
     (non-Verb-Noun filename).
 
-    Contains:
+    Helpers:
     - Get-ContentHash:        SHA256 hash of whitespace-stripped content
     - Get-FileHeaderHashes:   compute hash map for all headers in a parsed Markdown file
     - Read-SessionHashFile:   load stored hashes from a JSON sidecar file
@@ -17,6 +17,10 @@
     - Write-SessionHashMeta:  persist operational metadata
     - Get-HashableFiles:      enumerate .md files respecting exclusion rules
     - Get-RelativeHashPath:   compute repo-relative path with forward slashes
+
+    Module-level data:
+    - $script:WSPattern:  precompiled whitespace stripping regex (PowerShell fallback path)
+    - $script:UTF8NoBOM:  shared UTF-8 no BOM encoding instance for all hash/JSON I/O
 
     Hash algorithm:
     - Concatenate the full header line (e.g. "### 2024-06-15, Title, Narrator")
@@ -28,7 +32,37 @@
     This normalization ensures formatting-only changes (extra blank lines,
     trailing spaces) do not cause false positives while genuine content
     changes are detected.
+
+    Persistence uses JSON sidecar files alongside the original .md files,
+    stored in the hash directory (.robot/hashes/). Each .md file maps to
+    a .json sidecar with the same repo-relative path. A _meta.json file
+    tracks operational metadata (last update timestamps, format version).
+
+    All JSON I/O uses Robot.JsonHelper (System.Text.Json) when available,
+    with ConvertTo-Json/ConvertFrom-Json as a PowerShell fallback.
+    Hashing uses Robot.ContentHasher (ArrayPool-based zero-alloc) when
+    available, with SHA256.Create() as a fallback.
 #>
+
+# Compiled C# content hasher with ArrayPool<byte> zero-allocation inner loop.
+# Replaces per-call SHA256.Create(), regex whitespace strip, and multi-step
+# hex formatting with a single-pass C# implementation. Source: lib/ContentHasher.cs
+if (-not ([System.Management.Automation.PSTypeName]'Robot.ContentHasher').Type) {
+    $CsPath = [System.IO.Path]::Combine($script:ModuleRoot, 'lib', 'ContentHasher.cs')
+    if ([System.IO.File]::Exists($CsPath)) {
+        Add-Type -TypeDefinition ([System.IO.File]::ReadAllText($CsPath)) -Language CSharp
+    }
+}
+
+# Compiled C# JSON helper using System.Text.Json for fast serialization/deserialization.
+# Replaces ConvertTo-Json/ConvertFrom-Json in hash sidecar and metadata files.
+# Source: lib/JsonHelper.cs
+if (-not ([System.Management.Automation.PSTypeName]'Robot.JsonHelper').Type) {
+    $CsPath = [System.IO.Path]::Combine($script:ModuleRoot, 'lib', 'JsonHelper.cs')
+    if ([System.IO.File]::Exists($CsPath)) {
+        Add-Type -TypeDefinition ([System.IO.File]::ReadAllText($CsPath)) -Language CSharp
+    }
+}
 
 # Precompiled whitespace stripping pattern
 $script:WSPattern = [regex]::new('\s+', [System.Text.RegularExpressions.RegexOptions]::Compiled)
@@ -46,6 +80,12 @@ function Get-ContentHash {
         [string]$Content
     )
 
+    # C# path: single-pass whitespace strip + UTF-8 encode + SHA256, zero-alloc via ArrayPool
+    if (([System.Management.Automation.PSTypeName]'Robot.ContentHasher').Type) {
+        return [Robot.ContentHasher]::Hash($Content)
+    }
+
+    # PowerShell fallback
     $Stripped = $script:WSPattern.Replace($Content, '')
     $Bytes = $script:UTF8NoBOM.GetBytes($Stripped)
 
@@ -106,6 +146,12 @@ function Read-SessionHashFile {
     }
 
     try {
+        # C# path: System.Text.Json with direct Dictionary<string,string> output
+        if (([System.Management.Automation.PSTypeName]'Robot.JsonHelper').Type) {
+            return [Robot.JsonHelper]::ReadAsStringDictionary($JsonPath)
+        }
+
+        # PowerShell fallback
         $RawJson = [System.IO.File]::ReadAllText($JsonPath, $script:UTF8NoBOM)
         $Parsed = $RawJson | ConvertFrom-Json
         foreach ($Prop in $Parsed.PSObject.Properties) {
@@ -129,6 +175,13 @@ function Write-SessionHashFile {
         [System.Collections.Generic.Dictionary[string, string]]$Hashes
     )
 
+    # C# path: sorted serialization with native JSON writer
+    if (([System.Management.Automation.PSTypeName]'Robot.JsonHelper').Type) {
+        [Robot.JsonHelper]::WriteSortedJson($JsonPath, $Hashes, 1)
+        return
+    }
+
+    # PowerShell fallback
     $Dir = [System.IO.Path]::GetDirectoryName($JsonPath)
     if (-not [System.IO.Directory]::Exists($Dir)) {
         [void][System.IO.Directory]::CreateDirectory($Dir)
@@ -165,9 +218,15 @@ function Read-SessionHashMeta {
     }
 
     try {
-        $RawJson = [System.IO.File]::ReadAllText($MetaPath, $script:UTF8NoBOM)
-        # Use -AsHashtable to prevent automatic DateTime conversion of ISO 8601 strings
-        $Parsed = $RawJson | ConvertFrom-Json -AsHashtable
+        # C# path: System.Text.Json (no DateTime auto-conversion)
+        if (([System.Management.Automation.PSTypeName]'Robot.JsonHelper').Type) {
+            $Parsed = [Robot.JsonHelper]::ReadAsHashtable($MetaPath)
+        } else {
+            # PowerShell fallback — use -AsHashtable to prevent DateTime conversion
+            $RawJson = [System.IO.File]::ReadAllText($MetaPath, $script:UTF8NoBOM)
+            $Parsed = $RawJson | ConvertFrom-Json -AsHashtable
+        }
+
         if ($Parsed.ContainsKey('LastFullUpdate') -and $null -ne $Parsed['LastFullUpdate']) {
             $Defaults['LastFullUpdate'] = [string]$Parsed['LastFullUpdate']
         }
@@ -194,6 +253,13 @@ function Write-SessionHashMeta {
         [hashtable]$Meta
     )
 
+    # C# path: sorted serialization with native JSON writer
+    if (([System.Management.Automation.PSTypeName]'Robot.JsonHelper').Type) {
+        [Robot.JsonHelper]::WriteSortedJson($MetaPath, $Meta, 1)
+        return
+    }
+
+    # PowerShell fallback
     $Dir = [System.IO.Path]::GetDirectoryName($MetaPath)
     if (-not [System.IO.Directory]::Exists($Dir)) {
         [void][System.IO.Directory]::CreateDirectory($Dir)

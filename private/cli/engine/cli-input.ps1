@@ -7,6 +7,20 @@
     routes keys to the active component or global handlers (command palette,
     filter, navigation), and manages the render cycle.
 
+    The key routing is modal: the same physical key produces different
+    actions depending on current mode (filter active, command palette,
+    text input, or normal navigation). Route-KeyPress encodes this
+    four-way dispatch and returns typed action objects that the input
+    loop dispatches to the active component's HandleKey scriptblock.
+
+    Paste detection prevents accidental "select on Enter" when the user
+    pastes multi-line text — terminal emulators send pasted characters
+    as rapid keystrokes (< 5ms apart vs 50-200ms for human typing).
+
+    The fuzzy debounce mechanism defers expensive stage-3 BK-tree and
+    declension searches until the user pauses typing for 300ms, avoiding
+    redundant work during rapid filter input.
+
     Helpers:
     - Start-InputLoop:       main loop — reads keys, routes, renders, handles resize
     - Route-KeyPress:        decides action based on key + current mode (filter/command/text/normal)
@@ -58,7 +72,6 @@ $script:FilterPrefixRegex = [regex]::new('^([a-zA-Z\u0105\u0107\u0119\u0142\u014
 
 # ── Action Types ─────────────────────────────────────────────────────────────
 
-# Action objects returned by Route-KeyPress
 function New-InputAction {
     param(
         [Parameter(Mandatory)] [string]$Type,
@@ -95,7 +108,6 @@ function Split-FilterQuery {
         [hashtable]$FilterPrefixes
     )
 
-    # Polish-aware prefix pattern: "prefix:query"
     $M = $script:FilterPrefixRegex.Match($RawInput)
     if ($M.Success) {
         $PrefixKey = $M.Groups[1].Value
@@ -136,7 +148,7 @@ function Route-KeyPress {
     $KeyEnum = $Key.Key
     $KeyChar = $Key.KeyChar
 
-    # ── Command mode: / was typed ──
+    # ── Command mode ──
     if ($script:CommandMode) {
         switch ($KeyEnum) {
             'Escape' {
@@ -320,7 +332,6 @@ function Invoke-SlashCommand {
 
     $Cmd = $Command.Trim().ToLowerInvariant()
 
-    # Help commands
     if ($Cmd -eq 'h') {
         return (New-InputAction -Type 'Help')
     }
@@ -335,33 +346,27 @@ function Invoke-SlashCommand {
         return (New-InputAction -Type 'HelpExtended')
     }
 
-    # Status dashboard
     if ($Cmd -eq 's') {
         return (New-InputAction -Type 'HealthDashboard')
     }
 
-    # Refresh data
     if ($Cmd -eq 'r') {
         return (New-InputAction -Type 'Refresh')
     }
 
-    # Back
     if ($Cmd -eq 'b') {
         return (New-InputAction -Type 'Back')
     }
 
-    # Quit
     if ($Cmd -eq 'q') {
         return (New-InputAction -Type 'Quit')
     }
 
-    # Unknown command
     return (New-InputAction -Type 'None')
 }
 
 # ── Fuzzy Debounce ──────────────────────────────────────────────────────────
 
-# Waits up to FuzzyDebounceMs for keystroke silence, then triggers stage 3
 function Invoke-FuzzyDebounce {
     param(
         [object]$Component,
@@ -379,7 +384,7 @@ function Invoke-FuzzyDebounce {
         $Elapsed += 50
     }
 
-    # No keys for 300ms — run stage 3 fuzzy search
+    # Silence threshold reached — trigger expensive fuzzy/BK-tree search
     $FilterText = Get-FilterText
     Invoke-MenuFuzzyExtend -Component $Component -FilterText $FilterText
     if ($RenderCallback) { & $RenderCallback $State $Component }
@@ -414,7 +419,7 @@ function Start-InputLoop {
         $Key = [System.Console]::ReadKey($true)
         $Now = [datetime]::Now
 
-        # Paste detection: ignore Enter during rapid keystrokes
+        # Ignore Enter during rapid keystrokes to prevent accidental selection on paste
         $IsPaste = Test-PasteSequence -Now $Now
         $script:LastKeyTimestamp = $Now
 
@@ -453,7 +458,7 @@ function Start-InputLoop {
                 if ($RenderCallback) { & $RenderCallback $State $Component }
                 Render-BufferDiff
 
-                # Stage 3 fuzzy debounce
+                # Defer stage-3 fuzzy search until keystroke silence
                 Invoke-FuzzyDebounce -Component $Component -State $State -RenderCallback $RenderCallback
             }
 
@@ -464,7 +469,7 @@ function Start-InputLoop {
                 if ($RenderCallback) { & $RenderCallback $State $Component }
                 Render-BufferDiff
 
-                # Stage 3 fuzzy debounce
+                # Defer stage-3 fuzzy search until keystroke silence
                 Invoke-FuzzyDebounce -Component $Component -State $State -RenderCallback $RenderCallback
             }
 
@@ -481,8 +486,7 @@ function Start-InputLoop {
                 if ($CmdAction.Type -eq 'Back') { return '__back__' }
                 if ($CmdAction.Type -eq 'Quit') { return '__quit__' }
 
-                # Route command to handler or component
-                try {
+                    try {
                     if ($CommandHandler) {
                         $CmdResult = & $CommandHandler $CmdAction $State $Component $RenderCallback
                         if ($CmdResult -eq '__quit__') { return '__quit__' }

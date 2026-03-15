@@ -7,17 +7,36 @@
     This file contains workflow functions for reporting and diagnostics, consumed
     by the CLI menu registry (Mode = 'Workflow'). Dot-sourced on demand.
 
-    Workflows:
-    - Invoke-IntelPreviewWorkflow:           Intel targeting matrix (read-only)
-    - Invoke-NameSearchWorkflow:             standalone name search via fuzzy picker
-    - Invoke-FetchLogsWorkflow:              mass log fetch with CDN-safe throttling
-    - Invoke-LogLocationReportWorkflow:      log location resolution analysis
-    - Invoke-LocationGraphWorkflow:          location connection graph analysis
-    - Invoke-SessionGraphWorkflow:           session participation graph queries
-    - Invoke-CompareParticipationWorkflow:   cross-entity session overlap analysis
-    - Invoke-SessionLeaderboardWorkflow:     session participation ranking table
-    - Invoke-MigrationQuickCheck:            migration quick diagnostics
-    - Invoke-MigrationFullReport:            migration full report
+    Helpers:
+    - Invoke-IntelPreviewWorkflow:           Intel targeting matrix (session/target/message table)
+    - Invoke-NameSearchWorkflow:             standalone name search via fuzzy picker + entity card
+    - Invoke-FetchLogsWorkflow:              mass log fetch with 500ms CDN-safe throttling
+    - Invoke-LogLocationReportWorkflow:      log location resolution analysis with near-match details
+    - Invoke-LocationGraphWorkflow:          location connection graph (containment, door, route, movement edges)
+    - Invoke-SessionGraphWorkflow:           session participation graph with 4 query modes
+    - Invoke-CompareParticipationWorkflow:   cross-entity session overlap matrix (min 2 entities)
+    - Invoke-SessionLeaderboardWorkflow:     session participation ranking with tier breakdown
+    - Invoke-MigrationQuickCheck:            migration quick diagnostics (loads migration-shared.ps1)
+    - Invoke-MigrationFullReport:            migration full report (loads migration-shared.ps1)
+
+    Intel preview: collects @Intel entries from sessions with optional date
+    filter, flattens them into a session/target/message table for review.
+
+    Log fetch: enumerates sessions with @Logi URLs, confirms the download
+    count, then delegates to Invoke-SessionLogFetch which throttles at 500ms
+    per request to avoid CDN rate limiting.
+
+    Log location report: runs Get-SessionLog over fetched logs, then
+    Get-NamedLogLocationReport to resolve location names. Unresolved
+    locations show NearMatches (BK-tree candidates) in the detail card.
+
+    Session graph workflow: supports 4 modes mapped from Polish labels:
+    Sessions (entity's sessions), CoParticipants (entities sharing sessions),
+    EntityTimeline (participants in a single session), Summary (global stats).
+    Warns when the Tier-2 (text-based) index is stale.
+
+    Migration workflows: attempt to load migration-shared.ps1 at runtime;
+    if unavailable, they show a "not available" message.
 
     Dependencies: cli-primitives.ps1, cli-fuzzy.ps1, cli-wizard.ps1, cli-wf-entity.ps1
 #>
@@ -33,7 +52,7 @@ function Invoke-IntelPreviewWorkflow {
     Write-CLILine -Text 'Podgląd Intel' -Color $AccentColor
     Write-Host ''
 
-    # Date range
+    # Optional date floor to limit session scanning
     $MinDateStep = New-WizardDateStep -Name 'MinDate' -Label 'Od daty'
     $MinDate = Invoke-WizardStep -Step $MinDateStep -State $State
     if ($MinDate -eq '__back__') { return }
@@ -119,7 +138,7 @@ function Invoke-FetchLogsWorkflow {
     Write-CLILine -Text 'Pobierz logi sesji' -Color $AccentColor
     Write-Host ''
 
-    # Date range steps
+    # Optional date range to scope the log fetch
     $MinDateStep = New-WizardDateStep -Name 'MinDate' -Label 'Od daty (opcjonalne)'
     $MinDate = Invoke-WizardStep -Step $MinDateStep -State $State
     if ($MinDate -eq '__back__') { return }
@@ -131,7 +150,7 @@ function Invoke-FetchLogsWorkflow {
     $LogProg = New-ProgressState -Title 'Pobieranie logów' -TotalSteps 2
     Start-ProgressStep -State $LogProg -Label 'Sesje'
 
-    # Get sessions
+    # Fetch sessions in the date range as input for log enumeration
     $SessionParams = @{}
     if ($MinDate) { $SessionParams['MinDate'] = $MinDate }
     if ($MaxDate) { $SessionParams['MaxDate'] = $MaxDate }
@@ -159,7 +178,7 @@ function Invoke-FetchLogsWorkflow {
         Write-CLILine -Text "Znaleziono $($WithLogs.Count) sesji z $TotalUrls URL logów." -Color $AccentColor
         Write-Host ''
 
-        # Confirmation
+        # Warn about CDN throttling before starting the fetch
         Write-CLILine -Text 'CDN może ograniczać liczbę żądań. Pobieranie odbywa się z opóźnieniem 500ms.' -Color $WarningColor
         Write-Host ''
 
@@ -208,7 +227,7 @@ function Invoke-LogLocationReportWorkflow {
     Write-CLILine -Text 'Raport lokacji z logów' -Color $AccentColor
     Write-Host ''
 
-    # Date range
+    # Optional date floor for session scope
     $MinDateStep = New-WizardDateStep -Name 'MinDate' -Label 'Od daty (opcjonalne)'
     $MinDate = Invoke-WizardStep -Step $MinDateStep -State $State
     if ($MinDate -eq '__back__') { return }
@@ -238,7 +257,7 @@ function Invoke-LogLocationReportWorkflow {
             return
         }
 
-        # Get sessions that had logs for cross-referencing
+        # Cross-reference sessions with logs to build the report input
         $SessionsWithLogs = [System.Collections.Generic.List[object]]::new()
         foreach ($S in $Sessions) {
             if ($null -ne $S.Logs -and $S.Logs.Count -gt 0) { $SessionsWithLogs.Add($S) }
@@ -249,7 +268,7 @@ function Invoke-LogLocationReportWorkflow {
             -Session $SessionsWithLogs `
             -Index $State.NameIndex
 
-        # Build flat table rows
+        # Flatten per-session location entries into a single table
         $TableData = [System.Collections.Generic.List[PSCustomObject]]::new()
         foreach ($ReportEntry in $Report) {
             foreach ($Loc in $ReportEntry.Locations) {
@@ -272,7 +291,7 @@ function Invoke-LogLocationReportWorkflow {
         if ($TableData.Count -eq 0) {
             Write-CLILine -Text 'Brak lokacji w logach.' -Color $DisabledColor
         } else {
-            # Summary
+            # Resolution stats across all report entries
             $TotalResolved = 0; $TotalAll = 0; $TotalInMeta = 0
             foreach ($R in $Report) {
                 $TotalResolved += $R.Summary.Resolved
@@ -292,7 +311,7 @@ function Invoke-LogLocationReportWorkflow {
 
                 if (-not $Selected -or $Selected -eq '__back__' -or $Selected -eq '__quit__') { break }
 
-                # Show detail card with near-matches if any
+                # Append BK-tree near-matches to the detail card when available
                 if ($Selected.NearMatches -and $Selected.NearMatches.Count -gt 0) {
                     $NearParts = [System.Collections.Generic.List[string]]::new()
                     foreach ($NM in $Selected.NearMatches) { $NearParts.Add("$($NM.Name) (odl. $($NM.Distance))") }
@@ -319,7 +338,7 @@ function Invoke-LogLocationReportWorkflow {
 function Invoke-MigrationQuickCheck {
     param([object]$State, [hashtable]$Entry)
 
-    # Try to load migration shared helpers
+    # Attempt runtime load of migration helpers (may not be present in all deployments)
     $SharedPath = [System.IO.Path]::Combine($script:ModuleRoot, 'migration', 'migration-shared.ps1')
     if ([System.IO.File]::Exists($SharedPath)) {
         . $SharedPath
@@ -369,12 +388,12 @@ function Invoke-LocationGraphWorkflow {
     Write-CLILine -Text 'Graf lokacji' -Color $AccentColor
     Write-Host ''
 
-    # Date range (optional)
+    # Optional date floor to limit edge data
     $MinDateStep = New-WizardDateStep -Name 'MinDate' -Label 'Od daty (opcjonalne)'
     $MinDate = Invoke-WizardStep -Step $MinDateStep -State $State
     if ($MinDate -eq '__back__') { return }
 
-    # Include movement edges?
+    # Movement edges add log-derived traversal data (heavier computation)
     $IncludeMovement = $false
     $MoveStep = New-WizardChoiceStep -Name 'IncludeMovement' -Label 'Dołączyć krawędzie ruchu z logów?' -Options @('Nie', 'Tak') -Default 'Nie'
     $MoveChoice = Invoke-WizardStep -Step $MoveStep -State $State
@@ -401,7 +420,7 @@ function Invoke-LocationGraphWorkflow {
             return
         }
 
-        # Display summary
+        # Node/edge stats with resolution and type breakdowns
         $S = $Graph.Summary
         Write-Host ''
         Write-CLILine -Text "  Węzły:  $($S.NodeCount) (rozwiązane: $($S.ResolvedNodes), nierozwiązane: $($S.UnresolvedNodes))" -Color $AccentColor
@@ -412,7 +431,7 @@ function Invoke-LocationGraphWorkflow {
         }
         Write-Host ''
 
-        # Show nodes in table
+        # Nodes sorted by total degree (most-connected first)
         $NodeData = $Graph.Nodes | Sort-Object -Property { $_.InDegree + $_.OutDegree } -Descending
         $TableData = $NodeData | ForEach-Object {
             [PSCustomObject]@{
@@ -455,7 +474,7 @@ function Invoke-CompareParticipationWorkflow {
     Write-CLILine -Text 'Porównanie uczestnictwa' -Color $AccentColor
     Write-Host ''
 
-    # Collect entity names (at least 2)
+    # Collect at least 2 entity names for pairwise overlap analysis
     $EntityNames = [System.Collections.Generic.List[string]]::new()
     while ($true) {
         $Label = if ($EntityNames.Count -lt 2) { "Encja $($EntityNames.Count + 1) (wymagana)" } else { "Encja $($EntityNames.Count + 1) (Enter = koniec)" }
@@ -530,7 +549,7 @@ function Invoke-SessionLeaderboardWorkflow {
     Write-CLILine -Text 'Ranking uczestnictwa' -Color $AccentColor
     Write-Host ''
 
-    # Optional entity type filter
+    # Optional entity type filter narrows ranking to a single entity category
     $TypeStep = New-WizardChoiceStep -Name 'EntityType' -Label 'Typ encji (opcjonalny)' `
         -Options @('Wszystkie', 'Postać', 'NPC', 'Lokacja', 'Grupa') -Default 'Wszystkie'
     $TypeChoice = Invoke-WizardStep -Step $TypeStep -State $State
@@ -600,8 +619,8 @@ function Invoke-SessionGraphWorkflow {
     Write-CLILine -Text 'Graf sesji' -Color $AccentColor
     Write-Host ''
 
-    # Warn if the session graph's Tier 2 (text-based) index is stale,
-    # meaning entity changes occurred since the last full rebuild.
+    # Check Tier-2 staleness: entity changes since the last Set-SessionGraph -Full
+    # mean text-based matches may be outdated (new aliases, renamed entities).
     try {
         if (-not (Get-Command 'Read-SessionGraphMeta' -ErrorAction SilentlyContinue)) {
             . "$script:ModuleRoot/private/session-graphhelpers.ps1"
@@ -626,13 +645,13 @@ function Invoke-SessionGraphWorkflow {
         # Ignore meta read failures in CLI
     }
 
-    # Mode selection
+    # Query mode selection (Polish labels mapped to Get-SessionGraph -Mode values)
     $ModeStep = New-WizardChoiceStep -Name 'Mode' -Label 'Tryb zapytania' -Required `
         -Options @('Sesje encji', 'Współuczestnicy', 'Uczestnicy sesji', 'Podsumowanie') -Default 'Sesje encji'
     $ModeChoice = Invoke-WizardStep -Step $ModeStep -State $State
     if ($ModeChoice -eq '__back__') { return }
 
-    # Map Polish menu labels to Get-SessionGraph -Mode parameter values
+    # Polish UI labels -> internal Mode enum values
     $ModeMap = @{
         'Sesje encji'        = 'Sessions'
         'Współuczestnicy'    = 'CoParticipants'
@@ -641,7 +660,7 @@ function Invoke-SessionGraphWorkflow {
     }
     $Mode = $ModeMap[$ModeChoice]
 
-    # Entity name (required for Sessions/CoParticipants)
+    # Entity name is required for entity-centric queries (Sessions, CoParticipants)
     $EntityName = $null
     if ($Mode -in @('Sessions', 'CoParticipants')) {
         $NameStep = New-WizardTextStep -Name 'EntityName' -Label 'Nazwa encji' -Required
@@ -649,7 +668,7 @@ function Invoke-SessionGraphWorkflow {
         if ($EntityName -eq '__back__') { return }
     }
 
-    # Session header (required for EntityTimeline)
+    # Session header identifies which session to show participants for
     $SessionHeader = $null
     if ($Mode -eq 'EntityTimeline') {
         $HeaderStep = New-WizardTextStep -Name 'SessionHeader' -Label 'Nagłówek sesji (### YYYY-MM-DD, Tytuł, Narrator)' -Required

@@ -1,6 +1,6 @@
 <#
     .SYNOPSIS
-    Entity file writing helpers - append, update, and create entity
+    Entity file writing helpers -- append, update, and create entity
     entries in entities.md and *-NNN-ent.md files.
 
     .DESCRIPTION
@@ -9,40 +9,51 @@
     (non-Verb-Noun filename).
 
     Helpers:
-    - Set-EntityTag:                  adds or updates a @tag: value under an entity
-    - New-EntityBullet:               creates a new * EntityName entry with optional tags
-    - ConvertFrom-EntityTemplate:     parses a rendered entity template into name + tags
-    - Invoke-EnsureEntityFile:        ensures entities.md exists with required sections
-    - Write-EntityFile:               writes updated lines to file (UTF-8 no BOM)
-    - Read-EntityFile:                reads entity file into lines and detects newline style
-    - Resolve-EntityTarget:           ensures entity exists, creating section/bullet as needed
-    - Set-SessionGraphStale:          flags Tier 2 session graph as stale after entity mutations
+    - Set-EntityTag:              adds or updates a @tag: value under an entity bullet
+    - New-EntityBullet:           creates a new * EntityName entry with optional tags
+    - ConvertFrom-EntityTemplate: parses a rendered entity template into name + tags
+    - Invoke-EnsureEntityFile:    ensures entities.md exists with required sections
+    - Write-EntityFile:           writes updated lines to file (UTF-8 no BOM, plugin hooks)
+    - Read-EntityFile:            reads entity file into lines and detects newline style
+    - Resolve-EntityTarget:       ensures entity exists, creating section/bullet as needed
+    - Set-SessionGraphStale:      flags Tier 2 session graph as stale after entity mutations
 
     Module-level data:
     - $script:HasOpCtx: whether operation-context helpers (Add-OperationChange etc.) are available
 
     Find helpers (Find-EntitySection, Find-EntityBullet, Find-EntityTag) and
-    script-scope patterns/maps are in entity-findhelpers.ps1 (dot-sourced below).
+    script-scope patterns/maps are in entity-findhelpers.ps1 (dot-sourced at
+    the top of this file). Migration helper (ConvertTo-EntitiesFromPlayers)
+    is in entity-migrationhelpers.ps1, dot-sourced separately by phase0-setup.ps1.
 
-    Migration helper (ConvertTo-EntitiesFromPlayers) is in
-    entity-migrationhelpers.ps1, dot-sourced separately by phase0-setup.ps1.
+    All functions operate on in-memory List[string] line arrays (same approach
+    as Set-Session). The read-modify-write pipeline is:
+    1. Read-EntityFile loads file into List[string] + detects NL style
+    2. Find-* helpers locate boundaries by index scanning
+    3. Set-EntityTag / New-EntityBullet modify the list via Insert/indexer
+    4. Write-EntityFile joins with the detected NL and writes UTF-8 no BOM
 
-    All functions operate on raw line arrays (same approach as Set-Session).
-    Parse boundaries by scanning lines, manipulate via List[string], write
-    with [System.IO.File]::WriteAllText.
+    Set-EntityTag records property changes through operation-context when
+    available ($script:HasOpCtx). Write-EntityFile fires BeforeWrite/AfterWrite
+    plugin hooks and registers the path via Add-OperationFile.
+
+    Resolve-EntityTarget orchestrates the full "ensure entity exists" workflow:
+    it creates the file (via Invoke-EnsureEntityFile), creates the section
+    (appends ## Header at EOF), and creates the bullet (via New-EntityBullet)
+    as needed, re-scanning after each insertion to get updated indices.
+
+    Set-SessionGraphStale is a best-effort helper called after entity mutations
+    that affect session graph resolution (e.g. location or group changes). It
+    loads session-graphhelpers.ps1 on demand and sets Tier2Stale in _meta.json.
 #>
 
-# Load find helpers (patterns, type maps, Find-EntitySection/Bullet/Tag)
 . "$PSScriptRoot/entity-findhelpers.ps1"
 
-# Load operation context if available (non-fatal if missing)
+# Operation context is optional; allows tracking changes without hard dependency
 $OpCtxPath = [System.IO.Path]::Combine($PSScriptRoot, 'operation-context.ps1')
 if ([System.IO.File]::Exists($OpCtxPath)) { . $OpCtxPath }
 $script:HasOpCtx = $null -ne (Get-Command 'Add-OperationChange' -ErrorAction SilentlyContinue)
 
-# Helper: add or update a @tag: value line under an entity
-# Operates on a List[string] of file lines, modifying in-place.
-# Returns the updated children end index.
 function Set-EntityTag {
     [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '',
         Justification = 'Internal helper modifying in-memory List[string], not system state')]
@@ -67,19 +78,14 @@ function Set-EntityTag {
     }
 
     if ($Existing) {
-        # Update existing tag (replace the line)
         $Lines[$Existing.TagIdx] = $TagLine
         return $ChildrenEnd
     } else {
-        # Append new tag at end of children
         $Lines.Insert($ChildrenEnd, $TagLine)
         return $ChildrenEnd + 1
     }
 }
 
-# Helper: create a new * EntityName entry with optional @tag children
-# Inserts at the end of the section (before section end).
-# Returns the new children end index.
 function New-EntityBullet {
     [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '',
         Justification = 'Internal helper modifying in-memory List[string], not system state')]
@@ -92,7 +98,7 @@ function New-EntityBullet {
 
     $InsertIdx = $SectionEnd
 
-    # Ensure a blank line before the new entity if the previous line isn't blank
+    # Maintain blank-line separation between entity bullets
     if ($InsertIdx -gt 0 -and -not [string]::IsNullOrWhiteSpace($Lines[$InsertIdx - 1])) {
         $Lines.Insert($InsertIdx, '')
         $InsertIdx++
@@ -101,13 +107,12 @@ function New-EntityBullet {
     $Lines.Insert($InsertIdx, "* $EntityName")
     $InsertIdx++
 
-    # Add tags in deterministic order
+    # Deterministic tag order for reproducible diffs
     $SortedKeys = [System.Collections.Generic.List[string]]::new()
     foreach ($K in $Tags.Keys) { $SortedKeys.Add($K) }
     $SortedKeys.Sort()
     foreach ($Key in $SortedKeys) {
         $TagValues = $Tags[$Key]
-        # Support both single value and array of values
         if ($TagValues -is [System.Collections.IEnumerable] -and $TagValues -isnot [string]) {
             foreach ($Val in $TagValues) {
                 $Lines.Insert($InsertIdx, "    - @${Key}: $Val")
@@ -122,9 +127,6 @@ function New-EntityBullet {
     return $InsertIdx
 }
 
-# Parses a rendered entity template string into entity name and tag hashtable.
-# Template format: first line is "* EntityName", subsequent lines are "    - @tag: value".
-# Returns @{ Name = string; Tags = [ordered]hashtable }.
 function ConvertFrom-EntityTemplate {
     param(
         [Parameter(Mandatory, HelpMessage = "Rendered template content")]
@@ -146,7 +148,7 @@ function ConvertFrom-EntityTemplate {
         if ($TagMatch.Success) {
             $TagName = $TagMatch.Groups[1].Value.Trim()
             $TagValue = $TagMatch.Groups[2].Value.Trim()
-            # Support multiple values for the same tag
+            # Multi-valued tags (e.g. multiple @alias) promote to List[string]
             if ($Tags.Contains($TagName)) {
                 $Existing = $Tags[$TagName]
                 if ($Existing -is [System.Collections.Generic.List[string]]) {
@@ -169,9 +171,6 @@ function ConvertFrom-EntityTemplate {
     }
 }
 
-# Helper: ensures entities.md exists with required type sections.
-# Loads the skeleton from entities-skeleton.md.template when creating a new file.
-# Returns the file path.
 function Invoke-EnsureEntityFile {
     param(
         [Parameter(HelpMessage = "Path to entities.md")]
@@ -183,7 +182,6 @@ function Invoke-EnsureEntityFile {
     }
 
     if (-not [System.IO.File]::Exists($Path)) {
-        # Load admin-config helpers if not already available
         if (-not (Get-Command 'Get-AdminTemplate' -ErrorAction SilentlyContinue)) {
             . "$PSScriptRoot/admin-config.ps1"
         }
@@ -197,8 +195,6 @@ function Invoke-EnsureEntityFile {
     return $Path
 }
 
-# Helper: write updated lines to file (UTF-8 no BOM, preserve newline style)
-# Invokes BeforeWrite/AfterWrite plugin hooks when the plugin system is loaded.
 function Write-EntityFile {
     param(
         [string]$Path,
@@ -233,8 +229,6 @@ function Write-EntityFile {
     }
 }
 
-# Helper: read entity file into lines and detect newline style
-# Returns hashtable with Lines (List[string]) and NL (newline string)
 function Read-EntityFile {
     param([string]$Path)
 
@@ -250,8 +244,6 @@ function Read-EntityFile {
     }
 }
 
-# High-level: ensure an entity exists in the file, creating section/bullet as needed.
-# Returns hashtable with Lines (List[string]), NL, BulletIdx, ChildrenStart, ChildrenEnd, FilePath, Created (bool)
 function Resolve-EntityTarget {
     param(
         [string]$FilePath,
@@ -266,14 +258,11 @@ function Resolve-EntityTarget {
     $NL = $File.NL
     $Created = $false
 
-    # Find or create section
     $Section = Find-EntitySection -Lines $Lines.ToArray() -EntityType $EntityType
     if (-not $Section) {
-        # Add section at end of file
         $HeaderText = $script:TypeToHeader[$EntityType]
         if (-not $HeaderText) { $HeaderText = $EntityType }
 
-        # Ensure trailing newline before new section
         if ($Lines.Count -gt 0 -and -not [string]::IsNullOrWhiteSpace($Lines[$Lines.Count - 1])) {
             $Lines.Add('')
         }
@@ -283,13 +272,12 @@ function Resolve-EntityTarget {
         $Section = Find-EntitySection -Lines $Lines.ToArray() -EntityType $EntityType
     }
 
-    # Find or create entity bullet
     $Bullet = Find-EntityBullet -Lines $Lines.ToArray() -SectionStart $Section.StartIdx -SectionEnd $Section.EndIdx -EntityName $EntityName
     if (-not $Bullet) {
         $null = New-EntityBullet -Lines $Lines -SectionEnd $Section.EndIdx -EntityName $EntityName -Tags $InitialTags
         $Created = $true
 
-        # Re-find after insertion
+        # Re-scan after insertion shifted all indices
         $Section = Find-EntitySection -Lines $Lines.ToArray() -EntityType $EntityType
         $Bullet = Find-EntityBullet -Lines $Lines.ToArray() -SectionStart $Section.StartIdx -SectionEnd $Section.EndIdx -EntityName $EntityName
     }
@@ -324,6 +312,6 @@ function Set-SessionGraphStale {
             Write-SessionGraphMeta -MetaPath $MetaPath -Meta $GraphMeta
         }
     } catch {
-        # Best-effort; do not fail the entity write
+        # Non-fatal: staleness tracking must not abort the entity write
     }
 }

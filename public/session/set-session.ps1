@@ -10,21 +10,36 @@
     Split-SessionSection, ConvertTo-Gen4FromRawBlock, ConvertFrom-ItalicLocation,
     ConvertFrom-PlainTextLog, Get-FormatFromSplit).
 
-    Set-Session locates a session section in one or more Markdown files and
-    replaces metadata blocks (Locations, PU, Logs, Zmiany, Intel) and/or body
-    content. Supports -WhatIf via ShouldProcess.
+    Processing pipeline:
+    1. Resolve target session: pipeline Session objects carry the exact header
+       and FilePaths; explicit -Date + -File mode scans a single file by date.
+    2. Resolve effective values: explicit params take priority over -Properties
+       hashtable over null (leave unchanged). This three-level priority chain
+       allows both direct parameter binding and bulk property bags from CLI.
+    3. Guard: fail early if no modifications were actually specified.
+    4. Per file: read content, detect newline style (CRLF/LF), find the session
+       section via Find-SessionInFile, decompose via Split-SessionSection.
+    5. Format safety: metadata writes on pre-Gen4 sessions require -UpgradeFormat
+       to prevent accidental format mixing.
+    6. Build replacement: new metadata blocks (Gen4), body content, and preserved
+       blocks (Objaśnienia, Efekty) are reassembled with consistent spacing.
+    7. Splice: replace the session's lines in the original file array, write
+       via ShouldProcess gate, fire BeforeWrite/AfterWrite plugin hooks.
+    8. Eager graph refresh: after non-batch writes, update the session graph
+       index for Tiers 0+1 so the graph stays current without a full rebuild.
 
-    Session identification: either pipeline input (Session object from Get-Session)
-    or explicit -Date + -File parameters.
+    Metadata replacement is always full-replace (not merge). Pass @() to clear
+    a block. Pass $null (or omit) to leave a block unchanged.
 
-    Metadata replacement is always full-replace (not merge). Pass @() to clear a block.
-    Pass $null (or omit) to leave a block unchanged.
-
-    Format upgrade (-UpgradeFormat) converts Gen2/Gen3 metadata to Gen4 @-prefixed syntax.
+    Format upgrade (-UpgradeFormat) converts Gen2/Gen3 metadata to Gen4
+    @-prefixed syntax. During upgrade, narrator normalization is injected from
+    migration/narrator-normalization.ps1 when no explicit narrator is provided.
     Non-metadata blocks (Objaśnienia, Efekty) are preserved as-is.
+
+    Module-level data:
+    - $script:HasOpCtx: operation context flag (from admin-config.ps1)
 #>
 
-# Dot-source shared helpers
 . "$script:ModuleRoot/private/temporal-helpers.ps1"
 . "$script:ModuleRoot/private/format-sessionblock.ps1"
 . "$script:ModuleRoot/private/log-fetchhelpers.ps1"
@@ -81,8 +96,8 @@ function Set-Session {
     process {
         if ($script:HasOpCtx) { Clear-OperationContext }
 
-        # Pipeline sessions provide the exact header and all file copies;
-        # explicit mode requires scanning a single file by date.
+        # Pipeline sessions carry all file copies (multi-file sessions);
+        # explicit mode scans a single file by date match.
         if ($PSCmdlet.ParameterSetName -eq 'Pipeline') {
             $TargetHeader = $Session.Header
             $TargetFiles = if ($Session.FilePaths) {
@@ -147,7 +162,7 @@ function Set-Session {
 
         $UTF8NoBOM = [System.Text.UTF8Encoding]::new($false)
 
-        # Log directory needed to convert remote URLs to local paths during format upgrade
+        # Upgrade rewrites remote log URLs to local res/logs/ paths via ConvertFrom-PlainTextLog
         $LogDir = $null
         if ($UpgradeFormat) {
             try {
@@ -156,8 +171,9 @@ function Set-Session {
             } catch { }
         }
 
-        # Unified config table drives the upgrade/preserve/replace logic per metadata block.
-        # OrigKeys lists all aliases a block may have in older formats (e.g. 'logs-plain' for Gen2).
+        # Table-driven dispatch: each entry maps a metadata concept to its Gen4 tag,
+        # its legacy format aliases, and the caller's effective value. This avoids
+        # per-block if/else chains and makes adding new metadata blocks a one-line change.
         $MetaConfig = @(
             @{ Key = 'narrator';  Gen4Tag = 'Narrator'; OrigKeys = @('narrator');                      Effective = $EffNarrator }
             @{ Key = 'data';      Gen4Tag = 'Data';     OrigKeys = @('data');                          Effective = if ($EffDateOverride) { @($EffDateOverride) } else { $null } }
@@ -168,10 +184,8 @@ function Set-Session {
             @{ Key = 'intel';     Gen4Tag = 'Intel';     OrigKeys = @('intel');                         Effective = $EffIntel }
         )
 
-        # Loaded only once on first UpgradeFormat write, then reused across files
+        # Lazy-loaded: narrator normalization data is expensive to import, so defer until first use
         $NarratorMappings = $null
-
-        # Process each file
 
         foreach ($FilePath in $TargetFiles) {
             try {
@@ -184,7 +198,6 @@ function Set-Session {
                 $NL = if ($FileContent.Contains("`r`n")) { "`r`n" } else { "`n" }
                 $FileLines = $FileContent.Split([string[]]@("`r`n", "`n"), [System.StringSplitOptions]::None)
 
-                # Find session section
                 $Found = if ($TargetHeader) {
                     Find-SessionInFile -Lines $FileLines -TargetHeader $TargetHeader
                 } else {
@@ -202,12 +215,12 @@ function Set-Session {
 
                 $Match = $Found[0]
 
-                # Isolate the session's lines for decomposition into body/meta/preserved blocks
+                # Extract just the session's content lines (between header and next header/EOF)
                 $SecStart = $Match.SectionStartIdx
                 $SecEnd   = $Match.SectionEndIdx - 1
                 $SectionLines = if ($SecStart -le $SecEnd) { $FileLines[$SecStart..$SecEnd] } else { @() }
 
-                # Split into body text, metadata blocks, and preserved blocks (Efekty/Objaśnienia)
+                # Decompose into body, metadata, and preserved blocks (Efekty/Objaśnienia)
                 $Split = Split-SessionSection -Lines $SectionLines
 
                 # Format safety guard: require -UpgradeFormat when modifying metadata on pre-Gen4 sessions
@@ -247,15 +260,13 @@ function Set-Session {
                     }
                 }
 
-                # Build new section content
-
                 $MetaOutput = [System.Collections.Generic.List[string]]::new(5)
 
                 foreach ($MC in $MetaConfig) {
                     $BlockText = $null
 
                     if ($null -ne $MC.Effective) {
-                        # User provided new values -> always Gen4
+                        # Caller-provided values always render as Gen4 regardless of source format
                         $BlockText = ConvertTo-Gen4MetadataBlock -Tag $MC.Gen4Tag -Items $MC.Effective -NL $NL
                     }
                     elseif ($UpgradeFormat) {
@@ -302,7 +313,7 @@ function Set-Session {
                     if ($BLines.Count -gt 0) { $BLines -join $NL } else { '' }
                 }
 
-                # Non-metadata blocks (Objaśnienia, Efekty) are kept verbatim
+                # Objaśnienia/Efekty blocks are legacy hand-written content; preserve as-is
                 $PreservedText = ''
                 if ($Split.PreservedBlocks.Count -gt 0) {
                     $PBParts = [System.Collections.Generic.List[string]]::new()
@@ -312,7 +323,7 @@ function Set-Session {
                     $PreservedText = $PBParts -join $NL
                 }
 
-                # Reassemble with consistent spacing: body → metadata → preserved
+                # Reassemble with double-newline separators between body/meta/preserved
                 $NewSectionSB = [System.Text.StringBuilder]::new(1024)
 
                 $MetaStr = if ($MetaOutput.Count -gt 0) { $MetaOutput -join $NL } else { '' }
@@ -339,30 +350,24 @@ function Set-Session {
 
                 [void]$NewSectionSB.Append($NL)
 
-                # Splice new section back into the original file lines
-
+                # Splice: replace the session's lines while preserving everything else
                 $NewLines = [System.Collections.Generic.List[string]]::new($FileLines.Count)
 
-                # Lines before section (including header)
                 for ($k = 0; $k -lt $Match.SectionStartIdx; $k++) {
                     $NewLines.Add($FileLines[$k])
                 }
 
-                # New section content (appended as raw string, split back to lines)
                 $NewSectionStr = $NewSectionSB.ToString()
                 $NewSectionLines = $NewSectionStr.Split([string[]]@("`r`n", "`n"), [System.StringSplitOptions]::None)
                 foreach ($NSL in $NewSectionLines) {
                     $NewLines.Add($NSL)
                 }
 
-                # Lines after section (from next header onward)
                 for ($k = $Match.SectionEndIdx; $k -lt $FileLines.Count; $k++) {
                     $NewLines.Add($FileLines[$k])
                 }
 
                 $NewFileContent = $NewLines -join $NL
-
-                # Gate all I/O behind ShouldProcess for -WhatIf/-Confirm support
 
                 if ($PSCmdlet.ShouldProcess($FilePath, "Set-Session: modify session '$($Match.HeaderText)'")) {
                     $HasHooks = Get-Command 'Invoke-PluginHook' -ErrorAction SilentlyContinue
@@ -388,9 +393,8 @@ function Set-Session {
                         }
                     }
 
-                    # Eager graph refresh for Tiers 0+1
-                    # Skip during batch format upgrades — caller rebuilds
-                    # the full graph afterward, so per-session refresh is O(n²) waste.
+                    # Skip eager graph refresh during batch upgrades — caller rebuilds
+                    # the full graph afterward, so per-session refresh would be O(n^2) waste.
                     if (-not $UpgradeFormat) {
                         try {
                             if (-not (Get-Command 'Read-SessionGraphMeta' -ErrorAction SilentlyContinue)) {

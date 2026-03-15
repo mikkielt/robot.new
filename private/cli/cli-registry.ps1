@@ -10,8 +10,10 @@
     Adding a new feature = adding one hashtable to $script:MenuRegistry.
 
     Module-level data:
-    - $script:MenuOrder:    ordered list of top-level menu category names
-    - $script:MenuRegistry: flat array of menu item definitions
+    - $script:MenuOrder:              ordered list of top-level menu category names
+    - $script:MenuRegistry:           flat array of menu item definitions
+    - $script:MenuRegistryByID:       O(1) lookup dictionary keyed by entry ID
+    - $script:MenuRegistryByCategory: O(1) lookup dictionary keyed by category name, values are List[hashtable]
 
     Entry schema:
     - ID:               unique string identifier
@@ -1218,7 +1220,8 @@ $script:MenuRegistry = @(
 )
 
 # ── Registry Indexes (built once, updated by Merge-PluginMenuItems) ─────────
-# O(1) lookups by ID and category instead of linear scans.
+# Pre-built dictionaries avoid linear scans in Get-RegistryEntry and
+# Get-MenuItems; Merge-PluginMenuItems keeps them in sync when plugins add items.
 
 $script:MenuRegistryByID = [System.Collections.Generic.Dictionary[string,hashtable]]::new(
     [System.StringComparer]::OrdinalIgnoreCase)

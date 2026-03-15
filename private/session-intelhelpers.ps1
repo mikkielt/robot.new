@@ -4,7 +4,9 @@
 
     .DESCRIPTION
     This file contains helpers extracted from get-session.ps1 that handle
-    notification routing and entity mention extraction:
+    notification routing and entity mention extraction. Dot-sourced by
+    get-session.ps1 and not auto-loaded by the module loader (non-Verb-Noun
+    filename).
 
     Helpers:
     - Resolve-EntityWebhook: resolves Discord webhook URL for any entity, with
@@ -17,9 +19,29 @@
                              stages 1/2/2b of name resolution (no fuzzy), excluding
                              metadata list items
 
-    These helpers are dot-sourced by get-session.ps1 and are not auto-loaded
-    by the module loader. Resolve-IntelTargets uses Test-TemporalActivity from
-    temporal-helpers.ps1 (available via module scope).
+    Module-level data:
+    - $script:MentionListLineRegex:    compiled regex for list item line detection
+    - $script:MentionLogiPlainRegex:   compiled regex for Gen1/2 "Logi:" plain text lines
+    - $script:MentionMdLinkRegex:      compiled regex for Markdown link text extraction
+    - $script:MentionPunctuationRegex: compiled regex for punctuation stripping during tokenization
+
+    Resolve-IntelTargets supports three fan-out directives:
+    - "Grupa/OrgName": resolves OrgName, then finds all entities with active
+      @grupa membership in that organization (via EntityByGroup pre-built index)
+    - "Lokacja/LocName": resolves LocName, BFS-walks the location containment
+      tree (via EntityByLocation), and collects all non-Mapa entities located
+      within the tree
+    - Direct (bare name or comma-separated): resolves each name individually
+
+    Temporal filtering uses Test-TemporalActivity from temporal-helpers.ps1
+    to ensure only entities active on the session date are included.
+
+    Get-SessionMentions uses a five-phase pipeline:
+    1. Build excluded list-item set (metadata tags and their descendants)
+    2. Extract scannable text from non-excluded list items and paragraph lines
+    3. Tokenize: extract Markdown link display text, strip formatting, split words
+    4. Resolve unique tokens via stages 1/2/2b of Resolve-Name (no fuzzy)
+    5. Build deduplicated mention output with owner references
 #>
 
 # Precompiled regex patterns for Get-SessionMentions (avoids per-session recompilation)
@@ -145,7 +167,7 @@ function Resolve-IntelTargets {
             $Resolved = Resolve-Name -Query $TName -Index $Index -StemIndex $StemIndex -Cache $ResolveCache -NoFuzzy
 
             if (-not $Resolved) {
-                Write-RobotWarning "[WARN @Intel] Unresolved target '$TName'"
+                Write-RobotWarning "[WARN Resolve-IntelTargets] Unresolved target '$TName'"
                 continue
             }
 

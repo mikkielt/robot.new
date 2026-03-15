@@ -6,14 +6,18 @@
     This file contains Remove-CurrencyEntity which marks a currency
     Przedmiot entity as soft-deleted by writing @status: Usunięty (YYYY-MM:).
 
-    Warns if the entity has a non-zero balance (potential data loss).
-    Does not delete the bullet or any files.
+    The entity bullet is never physically removed — soft-delete preserves
+    transaction history for audit and currency reconciliation. Warns if the
+    entity has a non-zero balance (potential data loss from orphaned funds).
 
-    ConfirmImpact is High for safety.
-    Dot-sources entity-writehelpers.ps1 and admin-config.ps1.
+    ConfirmImpact is High because deletion affects currency reconciliation
+    reports. Supports -Quiet to suppress the non-zero balance warning.
+
+    Dot-sources entity-writehelpers.ps1 (Read-EntityFile, Find-EntitySection,
+    Find-EntityBullet, Find-EntityTag, Set-EntityTag, Write-EntityFile)
+    and admin-config.ps1 (Get-AdminConfig).
 #>
 
-# Dot-source helpers
 . "$script:ModuleRoot/private/entity-writehelpers.ps1"
 . "$script:ModuleRoot/private/admin-config.ps1"
 
@@ -53,7 +57,7 @@ function Remove-CurrencyEntity {
         $ValidFrom = (Get-Date).ToString('yyyy-MM')
     }
 
-    # Find the entity
+    # Locate entity bullet under ## Przedmiot
     $EntitiesFilePath = Invoke-EnsureEntityFile -Path $EntitiesFile
     $File = Read-EntityFile -Path $EntitiesFilePath
     $LinesArray = $File.Lines.ToArray()
@@ -68,7 +72,7 @@ function Remove-CurrencyEntity {
         throw "Currency entity '$Name' not found under ## Przedmiot in entities.md"
     }
 
-    # Check for non-zero balance and warn
+    # Non-zero balance warning — soft-deleting orphans funds from reconciliation
     $BalanceTag = Find-EntityTag -Lines $LinesArray -ChildrenStart $Bullet.ChildrenStartIdx -ChildrenEnd $Bullet.ChildrenEndIdx -TagName 'ilość'
     if ($BalanceTag) {
         $QtyText = $BalanceTag.Value

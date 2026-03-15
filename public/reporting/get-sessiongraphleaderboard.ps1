@@ -3,15 +3,32 @@
     Returns entities ranked by session participation count.
 
     .DESCRIPTION
-    Loads the session graph index and counts sessions per participant entity,
-    returning a ranked leaderboard. Supports filtering by entity type and
-    tier threshold.
+    Loads the session graph index built by Set-SessionGraph and counts
+    sessions per participant entity, returning a ranked leaderboard with
+    tier breakdown. Supports filtering by entity type, tier threshold,
+    and date range.
+
+    Pipeline:
+    1. Load _index.json via Read-SessionGraphIndex
+    2. Iterate all index entries, applying date range filter via
+       Test-GraphEntryDateInRange
+    3. For each participant within the tier threshold, accumulate session
+       count and per-tier breakdown in a Dictionary keyed by entity name
+       (OrdinalIgnoreCase)
+    4. Sort by SessionCount descending and take top N entries
+    5. Assign sequential Rank (1-based) to each result
+
+    The tier breakdown (Tier0/Tier1/Tier2) shows the evidence quality
+    distribution: Tier 0 = filesystem (file path contains entity name),
+    Tier 1 = metadata (@Lokacje, @PU), Tier 2 = body text mention.
+    This helps distinguish entities with strong structural evidence from
+    those that only appear in narrative text.
 #>
 
 function Get-SessionGraphLeaderboard {
     <#
         .SYNOPSIS
-        Returns entities ranked by session participation count.
+        Returns a ranked leaderboard of entities by session participation count.
     #>
 
     [CmdletBinding()] param(
@@ -39,7 +56,7 @@ function Get-SessionGraphLeaderboard {
     if ($Quiet) { $script:SuppressWarnings = $true }
     try {
 
-    # Load helpers
+    # Lazy-load helpers to avoid import overhead when called from modules that already loaded them
     if (-not (Get-Command 'Read-SessionGraphIndex' -ErrorAction SilentlyContinue)) {
         . "$PSScriptRoot/../../private/session-graphhelpers.ps1"
     }
@@ -58,14 +75,14 @@ function Get-SessionGraphLeaderboard {
 
     $Index = Read-SessionGraphIndex -IndexPath $IndexPath
 
-    # Accumulate per-entity session counts and tier breakdown
+    # Single-pass accumulation: one dictionary entry per unique entity name
     $EntityStats = [System.Collections.Generic.Dictionary[string, object]]::new(
         [System.StringComparer]::OrdinalIgnoreCase)
 
     foreach ($Header in $Index.Keys) {
         $Entry = $Index[$Header]
 
-        # Date filter
+        # Skip sessions outside the requested date range
         if (($MinDate -or $MaxDate) -and
             -not (Test-GraphEntryDateInRange -Entry $Entry -MinDate $MinDate -MaxDate $MaxDate)) { continue }
 
@@ -98,7 +115,7 @@ function Get-SessionGraphLeaderboard {
         }
     }
 
-    # Sort by session count descending, take top N
+    # Rank by participation frequency, truncate to requested leaderboard size
     $Sorted = [System.Collections.Generic.List[object]]::new($EntityStats.Values)
     $Sorted.Sort([System.Comparison[object]]{
         param($A, $B)

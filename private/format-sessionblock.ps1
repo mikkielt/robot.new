@@ -9,10 +9,24 @@
     Helpers:
     - ConvertTo-Gen4MetadataBlock: renders a single Gen4 @-prefixed metadata block
     - ConvertTo-SessionMetadata:   renders all metadata blocks in canonical order
+
+    ConvertTo-Gen4MetadataBlock handles the tag-specific formatting rules for
+    each Gen4 metadata tag. Most tags render as nested bullets under a "- @Tag:"
+    header, but @Data with a single value renders inline ("- @Data: 2024-01-15")
+    and @PU entries format decimal values with InvariantCulture 'G' specifier.
+    @Zmiany blocks support two-level nesting (entity name + tag children).
+
+    ConvertTo-SessionMetadata orchestrates the canonical rendering order:
+    @Narrator, @Data, @Lokacje, @Logi, @PU, @Zmiany, @Intel. Each block
+    is rendered via ConvertTo-Gen4MetadataBlock and skipped when its input
+    is $null or empty. The blocks are joined with the caller-supplied newline
+    style (NL parameter) to preserve the file's original line endings.
+
+    Both functions use StringBuilder for efficient string assembly. The
+    output is consumed directly by session file writers that splice it
+    into the session section content.
 #>
 
-# Helper: renders a single Gen4 @-prefixed metadata block as a multi-line markdown string.
-# Returns $null if $Items is empty or $null.
 function ConvertTo-Gen4MetadataBlock {
     param(
         [string]$Tag,
@@ -34,7 +48,7 @@ function ConvertTo-Gen4MetadataBlock {
             }
         }
         'Data' {
-            # Single date value - render inline after colon
+            # Single date renders inline; multiple dates use nested bullets
             if ($Items.Count -eq 1) {
                 [void]$SB.Clear()
                 [void]$SB.Append("- @Data: $($Items[0])")
@@ -92,9 +106,6 @@ function ConvertTo-Gen4MetadataBlock {
     return $SB.ToString()
 }
 
-# Helper: renders all metadata blocks in canonical Gen4 order.
-# Skips blocks where the value is $null. Returns a single multi-line string,
-# or empty string if all blocks are empty.
 function ConvertTo-SessionMetadata {
     param(
         [object]$Narrator,

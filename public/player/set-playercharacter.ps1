@@ -5,26 +5,28 @@
     .DESCRIPTION
     This file contains Set-PlayerCharacter which performs dual-target writes:
 
-    Target 1 - entities.md:
+    Target 1 — entities.md:
       @pu_startowe, @pu_nadmiar, @pu_suma, @pu_zdobyte, @alias, @status tags
-      under ## Postać. Auto-creates Przedmiot entities for unknown items.
+      under ## Postać. Auto-creates Przedmiot entities for unknown items so
+      item tracking is available in the entity graph without a separate step.
 
-    Target 2 - Postaci/Gracze/<Name>.md:
+    Target 2 — Postaci/Gracze/<Name>.md:
       CharacterSheet, RestrictedTopics, Condition, SpecialItems,
       Reputation (Positive/Neutral/Negative), AdditionalNotes sections.
 
     If the character has no entity entry yet, one is created with
-    @należy_do: <PlayerName>.
+    @należy_do: <PlayerName> to establish the ownership link.
 
-    Uses Complete-PUData derivation rule (from get-player.ps1):
+    Uses the Complete-PUData derivation rule (from get-player.ps1) so
+    callers can provide either SUMA or ZDOBYTE alone:
     - If SUMA present and ZDOBYTE missing -> derive ZDOBYTE = SUMA - STARTOWE
     - If ZDOBYTE present and SUMA missing -> derive SUMA = STARTOWE + ZDOBYTE
 
-    Dot-sources entity-writehelpers.ps1 and charfile-helpers.ps1.
+    Dot-sources entity-writehelpers.ps1 (file I/O and tag manipulation)
+    and charfile-helpers.ps1 (character file read/write operations).
     Supports -WhatIf via SupportsShouldProcess.
 #>
 
-# Dot-source helpers
 . "$script:ModuleRoot/private/entity-writehelpers.ps1"
 . "$script:ModuleRoot/private/charfile-helpers.ps1"
 
@@ -41,7 +43,7 @@ function Set-PlayerCharacter {
         [Parameter(Mandatory, HelpMessage = "Character name to update")]
         [string]$CharacterName,
 
-        # Entity-level properties (write to entities.md)
+        # --- Entity-level properties (write to entities.md) ---
 
         [Parameter(HelpMessage = "PU overflow value (NADMIAR)")]
         [Nullable[decimal]]$PUExceeded,
@@ -91,7 +93,7 @@ function Set-PlayerCharacter {
         [Parameter(HelpMessage = "Additional notes entries")]
         [string[]]$AdditionalNotes,
 
-        # Paths
+        # --- Paths ---
 
         [Parameter(HelpMessage = "Path to entities.md file")]
         [string]$EntitiesFile,
@@ -116,7 +118,8 @@ function Set-PlayerCharacter {
     }
 
     # Derive the complementary PU value so callers can provide either
-    # SUMA or ZDOBYTE alone (mirrors Complete-PUData in get-player.ps1)
+    # SUMA or ZDOBYTE alone; mirrors Complete-PUData in get-player.ps1
+    # to keep both read and write paths consistent
     $DerivedPUStart = $PUStart
     $DerivedPUSum = $PUSum
     $DerivedPUTaken = $PUTaken
@@ -169,7 +172,7 @@ function Set-PlayerCharacter {
     if ($Aliases) {
         foreach ($Alias in $Aliases) {
             if (-not [string]::IsNullOrWhiteSpace($Alias)) {
-                # Aliases use append-with-dedup semantics
+                # Append-with-dedup: aliases accumulate over time
                 $ExistingAlias = $null
                 for ($i = $Target.ChildrenStart; $i -lt $ChildEnd; $i++) {
                     $AliasMatch = $script:TagPattern.Match($Lines[$i])
@@ -201,13 +204,13 @@ function Set-PlayerCharacter {
         Write-EntityFile -Path $Target.FilePath -Lines $Lines -NL $Target.NL
     }
 
-    # Przedmiot entities enable item tracking in the entity graph;
-    # auto-creating them avoids a separate manual registration step
+    # Auto-create Przedmiot entities so items become trackable in the
+    # entity graph without requiring a separate manual registration step
     if ($SpecialItems) {
         foreach ($ItemName in $SpecialItems) {
             if ([string]::IsNullOrWhiteSpace($ItemName)) { continue }
-            # Re-read the file each iteration because previous writes may
-            # have shifted line indices within the same entities.md
+            # Re-read per iteration: previous Write-EntityFile calls shift
+            # line indices, invalidating cached positions
             $EntFile = Read-EntityFile -Path $Target.FilePath
             $ItemSection = Find-EntitySection -Lines $EntFile.Lines.ToArray() -EntityType 'Przedmiot'
             $ItemExists = $false
@@ -226,8 +229,8 @@ function Set-PlayerCharacter {
         }
     }
 
-    # Character file properties are written separately from entity tags because
-    # they live in a different file (Postaci/Gracze/<Name>.md)
+    # Character file properties live in a separate file from entity tags,
+    # so changes are batched and written in a single pass below
     $HasCharFileChanges = (
         $PSBoundParameters.ContainsKey('CharacterSheet') -or
         $PSBoundParameters.ContainsKey('RestrictedTopics') -or
@@ -240,8 +243,8 @@ function Set-PlayerCharacter {
     )
 
     if ($HasCharFileChanges) {
-        # Character file path comes from the entity's @plik tag (via Get-PlayerCharacter)
-        # or falls back to the conventional Postaci/Gracze/ directory
+        # Resolve path from entity @plik tag (via Get-PlayerCharacter),
+        # falling back to the conventional Postaci/Gracze/ directory
         if (-not $CharacterFile) {
             $Character = Get-PlayerCharacter -PlayerName $PlayerName -CharacterName $CharacterName
             if ($Character -and $Character.Path) {
@@ -287,8 +290,8 @@ function Set-PlayerCharacter {
         if ($PSBoundParameters.ContainsKey('ReputationPositive') -or
             $PSBoundParameters.ContainsKey('ReputationNeutral') -or
             $PSBoundParameters.ContainsKey('ReputationNegative')) {
-            # Unspecified tiers keep their current values so callers can update
-            # a single tier (e.g. Positive) without wiping the others
+            # Unspecified tiers preserve current values, enabling partial
+            # updates (e.g. only Positive) without wiping other tiers
             $ExistingRep = (Read-CharacterFile -Path $CharacterFile).Reputation
             $EffPos = if ($PSBoundParameters.ContainsKey('ReputationPositive')) { $ReputationPositive } else { $ExistingRep.Positive }
             $EffNeu = if ($PSBoundParameters.ContainsKey('ReputationNeutral'))  { $ReputationNeutral }  else { $ExistingRep.Neutral }

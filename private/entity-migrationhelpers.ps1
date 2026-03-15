@@ -1,6 +1,6 @@
 <#
     .SYNOPSIS
-    Entity migration helpers - bootstrap entities.md from legacy Gracze.md
+    Entity migration helpers -- bootstrap entities.md from legacy Gracze.md
     player data.
 
     .DESCRIPTION
@@ -9,16 +9,27 @@
     Gracze.md player data.
 
     Helpers:
-    - ConvertTo-EntitiesFromPlayers: reads Get-Player output and generates
-      entity entries for all players and their characters in entities.md format.
+    - ConvertTo-EntitiesFromPlayers: generates entities.md content from Get-Player output
 
     Separated from entity-writehelpers.ps1 because this function is only
-    needed during migration and has no runtime consumers.
+    needed during one-time migration and has no runtime consumers.
+
+    ConvertTo-EntitiesFromPlayers iterates the Get-Player output twice:
+    first pass emits "## Gracz" section entries with @margonemid,
+    @prfwebhook, and @trigger tags; second pass emits "## Postac" section
+    entries with @nalezy_do (ownership back-link), @plik, @alias, PU fields
+    (@pu_startowe, @pu_nadmiar, @pu_suma, @pu_zdobyte), and @info.
+
+    Character file paths are URI-decoded via [System.Uri]::UnescapeDataString
+    because Gracze.md stores them percent-encoded. PU values are formatted
+    with InvariantCulture 'G' specifier to ensure decimal separators are
+    portable across locales.
+
+    Output is written as UTF-8 no BOM to the target path (defaults to
+    {RepoRoot}/.robot.new/entities.md). The function returns the output
+    file path for caller chaining.
 #>
 
-# Bootstraps entities.md from Gracze.md player data.
-# Reads Get-Player output and generates entity entries for all players
-# and their characters in the entities.md format.
 function ConvertTo-EntitiesFromPlayers {
     [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseSingularNouns', '',
         Justification = 'Plural noun is intentional - converts multiple entities from multiple players')]
@@ -40,7 +51,6 @@ function ConvertTo-EntitiesFromPlayers {
 
     $SB = [System.Text.StringBuilder]::new(4096)
 
-    # Gracz section
     [void]$SB.Append("## Gracz")
     [void]$SB.Append("`n")
 
@@ -71,7 +81,6 @@ function ConvertTo-EntitiesFromPlayers {
         }
     }
 
-    # Postać section
     [void]$SB.Append("`n")
     [void]$SB.Append("## Postać")
     [void]$SB.Append("`n")

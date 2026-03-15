@@ -3,11 +3,36 @@
     Economic timeline report — monthly supply and transaction trends over a date range.
 
     .DESCRIPTION
-    Iterates month boundaries between MinDate and MaxDate, computing economic snapshot
-    data for each month using Get-EntityState with temporal filtering. Returns an array
-    of monthly data points for trend analysis.
+    Get-EconomicTimeline iterates month boundaries between MinDate and MaxDate,
+    computing economic snapshot data for each month using Get-EntityState with
+    temporal filtering. Returns an array of monthly data points for trend
+    analysis of currency supply and transaction volume.
 
-    Dot-sources currency-helpers.ps1, temporal-helpers.ps1, and economy-helpers.ps1.
+    Processing pipeline (per month):
+    1. Determine month boundaries (first day to last day or MaxDate cap)
+    2. Obtain entity state for the month-end date:
+       - Pre-provided entities: in-memory status filter via Get-LastActiveValue
+         (avoids re-parsing entities.md on each iteration — 12x I/O reduction)
+       - No pre-provided entities: full Get-Entity -ActiveOn from disk
+    3. Build entity lookup and extract currency items via
+       Get-CurrencyEntitiesFiltered with owner classification
+    4. Apply optional denomination and entity owner filters
+    5. Count @Transfer directives within the month window
+    6. Delegate aggregation to New-EconomicSnapshotData
+
+    Each data point includes Month (yyyy-MM), TotalSupplyKogi,
+    PhysicalSupplyKogi, VirtualSupplyKogi, SupplyByDenomination breakdown,
+    and TransferCount.
+
+    Supports a ProgressCallback scriptblock for CLI progress reporting,
+    invoked with (Current, Total, ItemDetail) on each month iteration.
+
+    Module-level data:
+    - $script:ProgressMonthIdx: current month iteration counter (for callback)
+    - $script:ProgressMonthTotal: total month count (for callback)
+
+    Dot-sources currency-helpers.ps1, temporal-helpers.ps1,
+    reporting-helpers.ps1, and economy-helpers.ps1.
 #>
 
 . "$script:ModuleRoot/private/currency-helpers.ps1"
@@ -62,7 +87,7 @@ function Get-EconomicTimeline {
 
     $Timeline = [System.Collections.Generic.List[object]]::new()
 
-    # Iterate month boundaries
+    # Walk month-by-month from MinDate to MaxDate (inclusive of partial end month)
     $Current = [datetime]::new($MinDate.Year, $MinDate.Month, 1)
     $EndBoundary = [datetime]::new($MaxDate.Year, $MaxDate.Month, 1).AddMonths(1).AddDays(-1)
 
@@ -78,9 +103,8 @@ function Get-EconomicTimeline {
         $EffectiveDate = if ($MonthEnd -gt $MaxDate) { $MaxDate } else { $MonthEnd }
 
         if ($EntitiesPreProvided) {
-            # Pre-provided entities: filter in-memory by status (avoids re-parsing
-            # entities.md from disk on each month iteration — 12x I/O reduction).
-            # Get-EntityState -ActiveOn handles temporal tag resolution.
+            # Filter in-memory by status history rather than re-parsing entities.md
+            # from disk on each month iteration — typically a 12x I/O reduction
             $MonthEntities = foreach ($E in $Entities) {
                 $Status = Get-LastActiveValue -History $E.StatusHistory -PropertyName 'Status' -ActiveOn $EffectiveDate
                 if ($Status -eq 'Usunięty') { continue }
@@ -88,7 +112,7 @@ function Get-EconomicTimeline {
             }
             $MonthEntities = @($MonthEntities)
         } else {
-            # No pre-provided entities: use Get-Entity -ActiveOn for full temporal filtering
+            # Full disk parse with temporal filtering when no pre-provided entities
             $MonthEntities = Get-Entity -ActiveOn $EffectiveDate -Quiet
             if (-not $MonthEntities) { $MonthEntities = @() }
         }
@@ -99,7 +123,7 @@ function Get-EconomicTimeline {
         }
         if (-not $MonthState) { $MonthState = @() }
 
-        # Build entity lookup
+        # Multi-name lookup for owner type classification (Physical vs Virtual)
         $EntityLookup = [System.Collections.Generic.Dictionary[string, object]]::new([System.StringComparer]::OrdinalIgnoreCase)
         foreach ($E in $MonthState) {
             foreach ($Name in $E.Names) {
@@ -109,14 +133,14 @@ function Get-EconomicTimeline {
             }
         }
 
-        # Get enriched currency items
+        # Extract currency items with owner classification for this month's state
         $CurrencyItems = @()
         if ($MonthState.Count -gt 0) {
             $CurrencyItems = Get-CurrencyEntitiesFiltered -Entities $MonthState -IncludeInactive -EntityLookup $EntityLookup
         }
         if (-not $CurrencyItems) { $CurrencyItems = @() }
 
-        # Apply filters
+        # Narrow to user-specified denomination or entity owner scope
         if ($Denomination) {
             $DenomFilter = Resolve-CurrencyDenomination -Name $Denomination
             if ($DenomFilter) {
@@ -137,14 +161,14 @@ function Get-EconomicTimeline {
             $CurrencyItems = @($Filtered)
         }
 
-        # Count transfers in this month
+        # Scope @Transfer directives to this month's date window
         $MonthStart = $Current
         $TransferEntries = @()
         if ($Sessions -and $Sessions.Count -gt 0) {
             $TransferEntries = @(Get-SessionDirectiveEntries -Sessions $Sessions -DirectiveName 'Transfers' -MinDate $MonthStart -MaxDate $EffectiveDate)
         }
 
-        # Build snapshot data for this month
+        # Delegate aggregation (supply split, Gini, transfer count) to economy-helpers
         $Data = New-EconomicSnapshotData -CurrencyItems $CurrencyItems -TransferEntries $TransferEntries
 
         $Timeline.Add([PSCustomObject]@{

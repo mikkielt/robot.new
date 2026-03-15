@@ -8,26 +8,47 @@
     step-through wizards from function [Parameter] metadata. Dot-sourced
     on demand (not at module import).
 
-    Functions in this file:
-    - Resolve-StepType:    parameter metadata → wizard step type resolution
-    - Invoke-Wizard:       full wizard orchestration from registry entry
+    Helpers:
+    - Resolve-StepType:    inspects a ParameterInfo object's type, attributes,
+      and ValidateSet to determine the wizard step type. Supports override
+      hashtables that let registry entries force a specific step type, label,
+      source, options, substeps, condition, or transform.
+    - Invoke-Wizard:       full wizard orchestration from a registry entry.
+      Auto-generates steps from the target function's parameter metadata,
+      walks them sequentially with back-navigation, then delegates to
+      Show-Preview for parameter review, confirmation, and execution.
 
     Chain-loaded companion files (dot-sourced below):
     - cli-wizard-steps.ps1:   Invoke-WizardStep (individual step executor)
-    - cli-wizard-preview.ps1: Show-Preview (-WhatIf display + confirmation + execution)
+    - cli-wizard-preview.ps1: Show-Preview (preview + confirmation + execution)
 
     Module-level data:
-    - $script:CommonParams: framework parameter names to skip in wizard auto-gen
+    - $script:CommonParams: HashSet of framework parameter names (WhatIf,
+      Confirm, Verbose, Debug, etc.) skipped during wizard auto-generation.
+      Uses OrdinalIgnoreCase comparer for case-insensitive matching.
 
     Design:
-    - No wizard has custom rendering - all go through the same auto-gen pipeline.
+    - No wizard has custom rendering — all go through the same auto-gen
+      pipeline. This eliminates per-operation UI code and ensures consistent
+      UX across all 74+ exported functions.
     - 10 step types: text, number, decimal, date, selection, yesno, multitext,
       fuzzy, multi-entry, multi-entry-nested.
-    - Override format allows registry entries to customize step behavior.
-    - Back-navigation preserves previously entered values.
+    - Override format allows registry entries to customize step behavior
+      (Type, Label, Source, Options, SubSteps, EntrySource, Condition,
+      Transform, Default, Hidden).
+    - Back-navigation preserves previously entered values in $CollectedParams.
+      Going back from the first step cancels the wizard entirely.
+    - Conditional steps (Step.Condition scriptblock) are evaluated against
+      $CollectedParams and silently skipped if the condition returns $false.
+    - Transform scriptblocks are applied after collection, before storage,
+      allowing value normalization (e.g., trimming, case conversion).
+
+    Dependencies: cli-wizard-steps.ps1 (Invoke-WizardStep, Invoke-EngineLifecycle),
+                  cli-wizard-preview.ps1 (Show-Preview),
+                  cli-primitives.ps1 (Write-CLILine, Get-CLIColor, Show-InfoBox)
 #>
 
-# Framework parameters to skip in wizard auto-generation
+# Framework parameters excluded from wizard step generation
 $script:CommonParams = [System.Collections.Generic.HashSet[string]]::new(
     [string[]]@(
         'WhatIf', 'Confirm', 'Verbose', 'Debug', 'ErrorAction',
@@ -57,7 +78,7 @@ function Resolve-StepType {
     $HelpMsg = $Name
     $ValidateSetValues = $null
 
-    # Extract from parameter attributes
+    # Extract Mandatory, HelpMessage, and ValidateSet from parameter attributes
     foreach ($Attr in $ParamInfo.Attributes) {
         if ($Attr -is [System.Management.Automation.ParameterAttribute]) {
             if ($Attr.Mandatory) { $IsMandatory = $true }
@@ -68,7 +89,7 @@ function Resolve-StepType {
         }
     }
 
-    # If override specifies type, use that
+    # Registry override takes precedence over auto-detection
     if ($Override -and $Override.Type) {
         return [PSCustomObject]@{
             Name       = $Name
@@ -85,7 +106,7 @@ function Resolve-StepType {
         }
     }
 
-    # Auto-detect from type
+    # Auto-detect step type from .NET parameter type
     $StepType = 'text'
 
     if ($ValidateSetValues) {
@@ -93,7 +114,7 @@ function Resolve-StepType {
     }
     elseif ($Type -eq [switch] -or $Type -eq [System.Management.Automation.SwitchParameter]) {
         $StepType = 'yesno'
-        $IsMandatory = $false  # switches are never mandatory in wizard context
+        $IsMandatory = $false  # switches always have a default (false) in wizard context
     }
     elseif ($Type -eq [int] -or $Type -eq [System.Nullable[int]]) {
         $StepType = 'number'
@@ -137,12 +158,12 @@ function Invoke-Wizard {
     $Overrides    = if ($RegistryEntry.Overrides) { $RegistryEntry.Overrides } else { @{} }
     $PreChecks    = $RegistryEntry.PreChecks
 
-    # Show pre-checks info box
+    # Pre-checks info box — shows what the wizard will validate
     if ($PreChecks) {
         Show-InfoBox -Checks $PreChecks
     }
 
-    # Auto-generate steps from function parameter metadata
+    # Auto-generate steps from target function's parameter metadata
     $Cmd = Get-Command $FunctionName -ErrorAction SilentlyContinue
     if (-not $Cmd) {
         Write-CLILine -Text "Funkcja '$FunctionName' nie jest dostępna." -Color (Get-CLIColor -Role 'Error')
@@ -158,13 +179,13 @@ function Invoke-Wizard {
         $ParamName = $ParamEntry.Key
         $ParamInfo = $ParamEntry.Value
 
-        # Skip common framework params
+        # Skip framework params (WhatIf, Verbose, etc.)
         if ($script:CommonParams.Contains($ParamName)) { continue }
 
-        # Check if override says to hide this param
+        # Skip params marked as hidden in registry overrides
         if ($Overrides.ContainsKey($ParamName) -and $Overrides[$ParamName].Hidden) { continue }
 
-        # Determine step type
+        # Resolve step type (override or auto-detect)
         $Override = if ($Overrides.ContainsKey($ParamName)) { $Overrides[$ParamName] } else { $null }
         $StepDef = Resolve-StepType -ParamInfo $ParamInfo -Override $Override
         [void]$Steps.Add($StepDef)
@@ -175,14 +196,14 @@ function Invoke-Wizard {
         return $null
     }
 
-    # Walk steps sequentially with back-navigation
+    # Walk steps with back-navigation (previously entered values preserved)
     $CollectedParams = [ordered]@{}
     $StepIndex = 0
 
     while ($StepIndex -lt $Steps.Count) {
         $CurrentStep = $Steps[$StepIndex]
 
-        # Check condition
+        # Evaluate conditional step — skip if condition returns $false
         if ($CurrentStep.Condition) {
             $CondResult = & $CurrentStep.Condition $CollectedParams
             if (-not $CondResult) {
@@ -191,7 +212,7 @@ function Invoke-Wizard {
             }
         }
 
-        # Get current value (for back-navigation pre-fill)
+        # Retrieve previously entered value for back-navigation pre-fill
         $PrevValue = if ($CollectedParams.Contains($CurrentStep.Name)) {
             $CollectedParams[$CurrentStep.Name]
         } else { $null }
@@ -203,22 +224,22 @@ function Invoke-Wizard {
             if ($StepIndex -gt 0) {
                 $StepIndex--
             } else {
-                return $null  # Back from first step = cancel
+                return $null  # back from first step cancels the wizard
             }
             continue
         }
 
-        # null result on required field = retry same step
+        # null on required field — force retry (don't advance)
         if ($null -eq $Result -and $CurrentStep.Required) {
             continue
         }
 
-        # Apply transform if defined
+        # Apply value transform if defined by registry override
         if ($CurrentStep.Transform -and $null -ne $Result) {
             $Result = & $CurrentStep.Transform $Result
         }
 
-        # Store result
+        # Store for splatting and back-navigation pre-fill
         if ($null -ne $Result) {
             $CollectedParams[$CurrentStep.Name] = $Result
         }
@@ -226,7 +247,7 @@ function Invoke-Wizard {
         $StepIndex++
     }
 
-    # Show preview and execute
+    # Delegate to Show-Preview for parameter review, confirmation, and execution
     $PreviewResult = Show-Preview -FunctionName $FunctionName -Parameters $CollectedParams -State $State
     if ($PreviewResult -eq '__quit__') { return '__quit__' }
     return $PreviewResult

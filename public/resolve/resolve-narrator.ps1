@@ -6,7 +6,7 @@
     .DESCRIPTION
     This file contains the Resolve-Narrator function and its helper:
 
-    Helper:
+    Helpers:
     - Resolve-NarratorCandidate: resolves a single name query to a player with confidence level
       (High for exact index match, Medium for declension/fuzzy match)
 
@@ -24,9 +24,6 @@
     entities.md so they can be resolved.
 #>
 
-# Helper: resolve a single name to a player with confidence level
-# Returns PSCustomObject { Player, Confidence } or $null.
-# High confidence = exact index match, Medium = matched via declension/fuzzy.
 function Resolve-NarratorCandidate {
     param(
         [string]$Query,
@@ -35,7 +32,6 @@ function Resolve-NarratorCandidate {
         $BKTree
     )
 
-    # Exact index lookup -> High confidence
     if ($Index.ContainsKey($Query)) {
         $Entry = $Index[$Query]
         if (-not $Entry.Ambiguous -and $Entry.OwnerType -eq 'Player') {
@@ -43,7 +39,8 @@ function Resolve-NarratorCandidate {
         }
     }
 
-    # Full resolution (declension + fuzzy) -> Medium confidence
+    # Declension/fuzzy match yields lower confidence because the
+    # match is approximate — callers may want to flag it for review
     $Player = Resolve-Name -Query $Query -Index $Index -StemIndex $StemIndex -BKTree $BKTree -OwnerType "Player"
     if ($Player) {
         return [PSCustomObject]@{ Player = $Player; Confidence = 'Medium' }
@@ -77,9 +74,8 @@ function Resolve-Narrator {
 
     $Results = [System.Collections.Generic.List[object]]::new()
 
-    # Cache narrator resolution results by raw text - many sessions share the same narrator.
-    # When a shared cache is passed from the caller, narrator resolution is amortized across
-    # all files instead of repeated per-file (saves ~200s on large repos).
+    # Many sessions share the same narrator, so caching by raw text avoids
+    # redundant resolution. Shared cross-file caches save ~200s on large repos.
     if (-not $NarratorCache) {
         $NarratorCache = [System.Collections.Generic.Dictionary[string, object]]::new([System.StringComparer]::OrdinalIgnoreCase)
     }
@@ -88,15 +84,14 @@ function Resolve-Narrator {
         $HeaderText = if ($Session.Header -is [string]) { $Session.Header } else { $Session.Header.Text }
         $RawNarrator = $null
 
-        # Extract narrator candidate from last comma-delimited segment.
-        # Header format: "yyyy-MM-dd, Title, Narrator" - requires at least 2 commas.
-        # With only 1 comma (date + title), there is no narrator field.
+        # Header format: "yyyy-MM-dd, Title, Narrator" — the narrator
+        # occupies the last segment, but only when at least 2 commas exist
+        # (single-comma headers are date+title with no narrator)
         $LastComma = $HeaderText.LastIndexOf(',')
         if ($LastComma -ge 0 -and ($HeaderText.Split(',').Length - 1) -ge 2) {
             $RawNarrator = $HeaderText.Substring($LastComma + 1).Trim()
         }
 
-        # No narrator field in header
         if ([string]::IsNullOrWhiteSpace($RawNarrator)) {
             $Results.Add([PSCustomObject]@{
                 Narrators  = @()
@@ -107,13 +102,12 @@ function Resolve-Narrator {
             continue
         }
 
-        # Check narrator cache - same raw text resolves to the same result
         if ($NarratorCache.ContainsKey($RawNarrator)) {
             $Results.Add($NarratorCache[$RawNarrator])
             continue
         }
 
-        # Council session ("Rada")
+        # "Rada" is a reserved keyword for council sessions with no individual narrator
         if ($RawNarrator.Trim().ToLowerInvariant() -eq "rada") {
             $CachedResult = [PSCustomObject]@{
                 Narrators  = @()
@@ -126,7 +120,8 @@ function Resolve-Narrator {
             continue
         }
 
-        # Single narrator resolution
+        # Try single-name resolution first; co-narrator splitting is more
+        # expensive and only needed when the single match fails
         $SingleMatch = Resolve-NarratorCandidate -Query $RawNarrator -Index $Index -StemIndex $StemIndex -BKTree $BKTree
         if ($SingleMatch) {
             $CachedResult = [PSCustomObject]@{
@@ -144,8 +139,8 @@ function Resolve-Narrator {
             continue
         }
 
-        # Co-narrator detection: split on Polish conjunctions, plus signs, and parentheses
-        # Handles patterns like "Sandro i Solmyr", "Gelu + Kyrre", "X (autorstwo: Rada)"
+        # Co-narrator patterns use Polish conjunctions ("i", "oraz"), plus signs,
+        # or parenthetical attribution ("autorstwo: Rada")
         if ($RawNarrator -match ' i | oraz | \+ |\(') {
             $Parts = $RawNarrator -split ' i | oraz | \+ |\(|\)'
             $Narrators = [System.Collections.Generic.List[object]]::new()
@@ -153,7 +148,6 @@ function Resolve-Narrator {
 
             foreach ($Part in $Parts) {
                 $CleanPart = $Part.Trim()
-                # Strip "autorstwo:" prefix for patterns like "(autorstwo: Rada)"
                 if ($CleanPart -match '^autorstwo\s*:\s*(.+)$') {
                     $CleanPart = $Matches[1].Trim()
                 }
@@ -175,7 +169,8 @@ function Resolve-Narrator {
             }
 
             if ($Narrators.Count -gt 0 -or $HasCouncil) {
-                # Overall confidence = lowest among resolved narrators (High if all High)
+                # Confidence floor: overall confidence degrades to the lowest individual
+                # confidence to reflect that any approximate match reduces trust
                 $OverallConfidence = "High"
                 foreach ($N in $Narrators) {
                     if ($N.Confidence -ne "High") { $OverallConfidence = $N.Confidence }
@@ -193,7 +188,6 @@ function Resolve-Narrator {
             }
         }
 
-        # Unresolved - no match found at any stage
         $UnresolvedResult = [PSCustomObject]@{
             Narrators  = @()
             IsCouncil  = $false

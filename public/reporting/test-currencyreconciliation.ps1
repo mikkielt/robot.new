@@ -3,17 +3,42 @@
     Currency reconciliation checks - flags discrepancies in currency tracking.
 
     .DESCRIPTION
-    Runs seven validation checks against currency entities:
-    1. Negative balance detection
-    2. Stale balance warning (no changes in >3 months for owned currencies)
-    3. Orphaned currency (owner entity is Nieaktywny/Usunięty)
-    4. Symmetric transaction check (per-session denomination deltas sum to zero)
-    5. Total supply tracking per denomination
-    6. Physical supply tracking per denomination (Postać-owned)
-    7. Virtual supply tracking per denomination (NPC/Grupa/Gracz-owned)
+    Runs seven validation checks against currency entities and session
+    transaction data:
 
-    Designed to run as part of the monthly PU assignment workflow or standalone.
-    Dot-sources currency-helpers.ps1 for denomination constants and identification.
+    1. NegativeBalance:        active currency with quantity < 0 (Error)
+    2. StaleBalance:           owned currency with no quantity change in
+                               >3 months (Warning)
+    3. OrphanedCurrency:       active currency whose owner entity is
+                               Nieaktywny or Usunięty (Warning; physical
+                               items flagged for coordinator return)
+    4. AsymmetricTransaction:  per-session per-denomination @ilość deltas
+                               that don't sum to zero, indicating an
+                               unbalanced manual edit (Warning)
+    5. TotalSupplyTracking:    aggregate supply per denomination (Info)
+    6. PhysicalSupplyTracking: Postać-owned supply per denomination (Info)
+    7. VirtualSupplyTracking:  NPC/Grupa/Gracz-owned supply per
+                               denomination (Info)
+
+    Pipeline:
+    1. Build entity name lookup for owner type classification
+    2. Collect all currency entities via Get-CurrencyEntitiesFiltered
+       (including inactive/deleted for per-check filtering)
+    3. Run checks 1-3 against currency entities
+    4. Run check 4 by scanning session Changes for @ilość delta patterns,
+       using a pre-built O(1) name-to-currency dictionary
+    5. Run checks 5-7 by aggregating quantities into supply dictionaries
+
+    The O(1) CurrencyByName dictionary (check 4) avoids O(n*m) nested
+    scanning where n=sessions and m=currency items. Only explicit delta
+    values (+N/-N) are counted; absolute values are ignored because they
+    represent balance snapshots, not transfers.
+
+    @Transfer directives are inherently symmetric by construction and are
+    not included in the asymmetric check.
+
+    Designed to run as part of the monthly PU assignment workflow or
+    standalone via CLI.
 #>
 
 . "$script:ModuleRoot/private/currency-helpers.ps1"
@@ -21,7 +46,7 @@
 function Test-CurrencyReconciliation {
     <#
         .SYNOPSIS
-        Report command that flags currency discrepancies.
+        Validates currency entity integrity and flags balance discrepancies.
     #>
 
     [CmdletBinding()] param(
@@ -55,7 +80,7 @@ function Test-CurrencyReconciliation {
     $Warnings = [System.Collections.Generic.List[object]]::new()
     $Now = [datetime]::Now
 
-    # Build entity lookup for owner type classification
+    # O(1) name-to-entity lookup for classifying currency owners by type
     $EntityLookup = [System.Collections.Generic.Dictionary[string, object]]::new([System.StringComparer]::OrdinalIgnoreCase)
     foreach ($Entity in $Entities) {
         foreach ($Name in $Entity.Names) {
@@ -65,10 +90,10 @@ function Test-CurrencyReconciliation {
         }
     }
 
-    # Collect all currency entities with enriched data (include all statuses for per-check filtering)
+    # Include all statuses so each check can apply its own status filter
     $CurrencyItems = Get-CurrencyEntitiesFiltered -Entities $Entities -IncludeInactive -IncludeDeleted -EntityLookup $EntityLookup
 
-    # Build entity status lookup for orphan check
+    # Separate status lookup keyed by primary name for orphan detection
     $EntityStatusByName = [System.Collections.Generic.Dictionary[string, string]]::new([System.StringComparer]::OrdinalIgnoreCase)
     foreach ($Entity in $Entities) {
         $Status = if ($Entity.Status) { $Entity.Status } else { 'Aktywny' }
@@ -90,7 +115,7 @@ function Test-CurrencyReconciliation {
     }
 
     # Check 2: Stale balance warning
-    $StaleThreshold = $Now.AddMonths(-3)
+    $StaleThreshold = $Now.AddMonths(-3)  # 3-month inactivity threshold for owned currencies
     foreach ($Item in $CurrencyItems) {
         if ($Item.Status -ne 'Aktywny') { continue }
         if (-not $Item.Owner) { continue }
@@ -111,7 +136,7 @@ function Test-CurrencyReconciliation {
         }
     }
 
-    # Check 3: Orphaned currency (enhanced with owner category detail)
+    # Check 3: Orphaned currency — physical items need explicit coordinator return
     foreach ($Item in $CurrencyItems) {
         if ($Item.Status -ne 'Aktywny') { continue }
         if (-not $Item.Owner) { continue }
@@ -135,8 +160,8 @@ function Test-CurrencyReconciliation {
         }
     }
 
-    # Check 4: Symmetric transaction check (per-session per-denomination deltas should sum to zero)
-    # Pre-build O(1) lookup from entity name → currency item (avoids O(n²) nested loop)
+    # Check 4: Symmetric transaction check — manual @ilość deltas should net to zero per denomination
+    # Pre-build O(1) lookup from entity name to currency item (avoids O(n*m) nested scan)
     $CurrencyByName = [System.Collections.Generic.Dictionary[string, object]]::new([System.StringComparer]::OrdinalIgnoreCase)
     foreach ($Item in $CurrencyItems) {
         if (-not $CurrencyByName.ContainsKey($Item.Entity.Name)) {
@@ -161,18 +186,18 @@ function Test-CurrencyReconciliation {
         $DenomDeltas = [System.Collections.Generic.Dictionary[string, int]]::new([System.StringComparer]::OrdinalIgnoreCase)
 
         foreach ($Change in $Session.Changes) {
-            # Find matching enriched currency item via pre-built dictionary (O(1))
+            # O(1) currency item lookup by entity name
             $MatchItem = $null
             if ($Change.EntityName -and $CurrencyByName.ContainsKey($Change.EntityName)) {
                 $MatchItem = $CurrencyByName[$Change.EntityName]
             }
             if (-not $MatchItem) { continue }
 
-            # Find @ilość tag in changes
+            # Scan for @ilość delta tags (+N/-N pattern only)
             foreach ($TagEntry in $Change.Tags) {
                 if ($TagEntry.Tag -ne '@ilość') { continue }
                 $ValText = $TagEntry.Value.Trim()
-                # Only count explicit deltas (+N/-N), not absolute values
+                # Absolute values are balance snapshots, not transfers — skip them
                 if ($ValText -match '^[+-]\d+$') {
                     $Delta = [int]$ValText
                     if (-not $DenomDeltas.ContainsKey($MatchItem.Denomination.Name)) {
@@ -183,9 +208,7 @@ function Test-CurrencyReconciliation {
             }
         }
 
-        # Also check @Transfer directives (these are inherently symmetric by construction,
-        # but included for completeness if transfers exist alongside manual deltas)
-        # Transfers are +N/-N by design, so they always net to 0 - skip checking them.
+        # @Transfer directives always net to zero by construction — not checked here
 
         foreach ($Entry in $DenomDeltas.GetEnumerator()) {
             if ($Entry.Value -ne 0) {
@@ -210,7 +233,7 @@ function Test-CurrencyReconciliation {
         $Supply[$Item.Denomination.Name] += $Item.Quantity
     }
 
-    # Check 6: Physical supply tracking per denomination (Info)
+    # Check 6: Physical supply — Postać-owned currencies (player characters)
     $PhysicalSupply = [System.Collections.Generic.Dictionary[string, int]]::new([System.StringComparer]::OrdinalIgnoreCase)
     foreach ($Item in $CurrencyItems) {
         if ($Item.Status -eq 'Usunięty') { continue }
@@ -230,7 +253,7 @@ function Test-CurrencyReconciliation {
         })
     }
 
-    # Check 7: Virtual supply tracking per denomination (Info)
+    # Check 7: Virtual supply — NPC/Grupa/Gracz-owned currencies
     $VirtualSupply = [System.Collections.Generic.Dictionary[string, int]]::new([System.StringComparer]::OrdinalIgnoreCase)
     foreach ($Item in $CurrencyItems) {
         if ($Item.Status -eq 'Usunięty') { continue }

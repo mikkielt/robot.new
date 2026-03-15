@@ -7,18 +7,26 @@
     consumed by the menu routing layer when the user presses H.
 
     Helpers:
-    - Show-HelpScreen: renders a help page for a given context key
+    - Show-HelpScreen: renders a help page for a given context key, with
+      full-screen clear, title/separator, body lines, and any-key dismiss
 
     Module-level data:
-    - $script:HelpContent: hashtable mapping context keys to help page definitions
+    - $script:HelpContent: hashtable mapping context keys to help page
+      definitions. Each entry is @{ Title = [string]; Body = [string[]] }.
+      Keys: 'root' (main menu), plus one per category name matching
+      $script:MenuOrder values (Sesje, Gracze i Postacie, Encje, Waluta,
+      PU, Raporty i Narzędzia, Migracja).
 
     Design:
-    - Help content is pure data (Polish text). Each entry has a Title and a
-      Body (string array of lines).
-    - Show-HelpScreen clears the screen, renders the help page, and waits
-      for any keypress before returning. No navigation state is changed.
-    - Context keys: 'root' for main menu, category names (matching
-      $script:MenuOrder values) for submenus.
+    - Help content is pure data (Polish text), entirely decoupled from
+      rendering logic. Adding a new help page requires only a new hashtable
+      entry — no code changes in Show-HelpScreen.
+    - Show-HelpScreen falls back to 'root' when a requested key is missing,
+      so unknown contexts always produce a valid help screen.
+    - No navigation state is changed — the caller redraws its own screen
+      after the help screen is dismissed.
+
+    Dependencies: cli-primitives.ps1 (Get-CLIColor, Write-CLILine)
 #>
 
 # ── Help Content ────────────────────────────────────────────────────────────

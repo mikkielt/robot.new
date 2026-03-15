@@ -3,26 +3,43 @@
     Reports all location names found across recorded sessions.
 
     .DESCRIPTION
-    Scans all sessions for location references and produces a structured
-    report for guiding manual creation of Lokacja entities.
+    Get-NamedLocationReport scans all sessions for location references
+    and produces a structured report for guiding manual creation of
+    Lokacja entities and detecting naming inconsistencies.
 
     Processing pipeline:
     1. Extract raw location strings from session metadata (@Lokalizacje)
     2. Split route separators (-> and - patterns) into individual locations
-       and record route edges between consecutive segments
-    3. Parse slash paths (Parent/Child) into atomic segments with hierarchy
+       and record route edges between consecutive segments for
+       Get-LocationGraph consumption
+    3. Parse slash paths (Parent/Child) into atomic segments with parent-child
+       hierarchy tracking via ParentOf/ChildOf dictionaries
     4. Normalize and group by case-insensitive key, pick canonical spelling
-    5. Levenshtein fuzzy matching (O(n^2) with length-difference pruning)
-    6. Optional file/line reference scanning (IncludeReferences)
-    7. Three-stage entity resolution: exact index, Resolve-Name with Lokacja
-       filter, Resolve-Name without type filter (catches mis-typed entities)
-    8. Conflict detection: CaseVariant, TrailingArtifact, AmbiguousStandalone,
-       InconsistentHierarchy, NearDuplicate
+       (most frequently used raw form wins)
+    5. Levenshtein fuzzy matching — two paths:
+       - C# fast path: Robot.BKTree.FindFuzzyPairs with ArrayPool zero-alloc
+         inner loop for batch pairwise distance computation
+       - PowerShell fallback: O(n^2) with length-difference pruning
+       Both paths skip slash paths and names shorter than 3 characters.
+    6. Optional file/line reference scanning (IncludeReferences): reads
+       session files via .NET File.ReadAllLines with per-file caching to
+       find exact line numbers for each occurrence
+    7. Three-stage entity resolution:
+       - Stage 1: Direct index lookup (case-insensitive exact, Lokacja only)
+       - Stage 2: Full Resolve-Name with OwnerType='Lokacja' filter
+       - Stage 3: Resolve-Name without type filter (catches entities
+         registered under wrong type)
+    8. Conflict detection: CaseVariant (multiple raw spellings),
+       TrailingArtifact (whitespace/asterisk remnants), AmbiguousStandalone
+       (bare name also in qualified slash paths), InconsistentHierarchy
+       (same child under different parents), NearDuplicate (Levenshtein)
+
+    Returns a PSCustomObject with Locations (sorted by OccurrenceCount
+    descending) and RouteEdges (for Get-LocationGraph edge sourcing).
 
     Dot-sources string-helpers.ps1 for Get-LevenshteinDistance.
 #>
 
-# Dot-source shared helpers
 . "$script:ModuleRoot/private/string-helpers.ps1"
 
 function Get-NamedLocationReport {
@@ -72,8 +89,7 @@ function Get-NamedLocationReport {
         $Sessions = Get-Session @GetSessionArgs
     }
 
-    # 2. Extract raw location data
-    # Each occurrence: raw string + session metadata
+    # 2. Extract raw location strings from session @Lokalizacje metadata
     $RawOccurrences = [System.Collections.Generic.List[object]]::new()
     $RouteEdges     = [System.Collections.Generic.List[object]]::new()
     $RouteSplitRegex = [regex]::new('\s*->\s*|\s+- \s*')
@@ -86,10 +102,10 @@ function Get-NamedLocationReport {
         foreach ($RawLoc in $Session.Locations) {
             if ([string]::IsNullOrWhiteSpace($RawLoc)) { continue }
 
-            # Split route separators (-> and  -  patterns) into individual locations
+            # Split route notation into individual locations for atomic tracking
             $Segments = $RouteSplitRegex.Split($RawLoc)
 
-            # Extract route edges from consecutive segments
+            # Record directional edges between consecutive route segments
             $CleanedSegments = [System.Collections.Generic.List[string]]::new()
             foreach ($Seg in $Segments) {
                 $Cleaned = $Seg.Trim().TrimEnd('*').Trim()
@@ -123,15 +139,15 @@ function Get-NamedLocationReport {
 
     if ($RawOccurrences.Count -eq 0) { return [PSCustomObject]@{ Locations = @(); RouteEdges = @() } }
 
-    # Parse slash paths & build hierarchy
-    # ParentOf: normalized-child -> Set of normalized-parent names
-    # ChildOf:  normalized-parent -> Set of normalized-child names
+    # Parse slash paths into atomic segments and track parent-child relationships
+    # ParentOf: normalized-child -> Set of observed parent names
+    # ChildOf:  normalized-parent -> Set of observed child names
     $ParentOf = [System.Collections.Generic.Dictionary[string, System.Collections.Generic.HashSet[string]]]::new(
         [System.StringComparer]::OrdinalIgnoreCase)
     $ChildOf = [System.Collections.Generic.Dictionary[string, System.Collections.Generic.HashSet[string]]]::new(
         [System.StringComparer]::OrdinalIgnoreCase)
 
-    # Expanded occurrences: after splitting slash paths, each atomic segment is an occurrence
+    # After splitting slash paths, each atomic segment becomes a separate occurrence
     $AtomicOccurrences = [System.Collections.Generic.List[object]]::new()
 
     foreach ($Occ in $RawOccurrences) {
@@ -142,7 +158,7 @@ function Get-NamedLocationReport {
             continue
         }
 
-        # Split slash path into segments
+        # Decompose "Parent/Child/Grandchild" into individual segments with hierarchy edges
         $Parts = $Raw.Split('/')
         for ($i = 0; $i -lt $Parts.Length; $i++) {
             $PartTrimmed = $Parts[$i].Trim()
@@ -155,7 +171,7 @@ function Get-NamedLocationReport {
                 Header      = $Occ.Header
             })
 
-            # Register parent/child
+            # Track hierarchical relationships from slash path structure
             if ($i -gt 0) {
                 $ParentName = $Parts[$i - 1].Trim()
                 if ($ParentName.Length -eq 0) { continue }
@@ -174,7 +190,7 @@ function Get-NamedLocationReport {
             }
         }
 
-        # Also register the full slash path as a separate entry for reference tracking
+        # Keep full slash path as a separate entry for reference tracking and QualifiedPath resolution
         $AtomicOccurrences.Add([PSCustomObject]@{
             Raw         = $Raw
             FilePath    = $Occ.FilePath
@@ -183,8 +199,7 @@ function Get-NamedLocationReport {
         })
     }
 
-    # 4. Normalize and group
-    # Group by normalized name; track raw variants and occurrences
+    # 4. Group by normalized (lowercased) name; track raw spelling variants and occurrences
     $Groups = [System.Collections.Generic.Dictionary[string, object]]::new(
         [System.StringComparer]::OrdinalIgnoreCase)
 
@@ -211,7 +226,7 @@ function Get-NamedLocationReport {
         $Group.Occurrences.Add($Occ)
     }
 
-    # Pick canonical name: most frequent raw form
+    # Canonical name = most frequently observed raw spelling (preserves intended casing)
     $CanonicalNames = [System.Collections.Generic.Dictionary[string, string]]::new(
         [System.StringComparer]::OrdinalIgnoreCase)
     foreach ($KV in $Groups.GetEnumerator()) {
@@ -226,10 +241,11 @@ function Get-NamedLocationReport {
         $CanonicalNames[$KV.Key] = $BestForm
     }
 
-    # 5. Fuzzy match - cross-location resolution
+    # 5. Fuzzy match: detect near-duplicate location names across the corpus
     $NormalizedKeys = [System.Collections.Generic.List[string]]::new($Groups.Keys)
 
-    # Pre-build: for each normalized name, which qualified slash paths contain it as leaf
+    # Map standalone names to qualified slash paths that contain them as leaf segments
+    # (enables QualifiedPath resolution: "Tavern" -> "Ithan/Tavern")
     $QualifiedPaths = [System.Collections.Generic.Dictionary[string, System.Collections.Generic.List[string]]]::new(
         [System.StringComparer]::OrdinalIgnoreCase)
     foreach ($Key in $NormalizedKeys) {
@@ -242,14 +258,14 @@ function Get-NamedLocationReport {
         $QualifiedPaths[$Leaf].Add($CanonicalNames[$Key])
     }
 
-    # Build LikelyResolvesTo per location
+    # Build resolution candidates: QualifiedPath matches for standalone names
     $Resolutions = [System.Collections.Generic.Dictionary[string, System.Collections.Generic.List[object]]]::new(
         [System.StringComparer]::OrdinalIgnoreCase)
 
     foreach ($Key in $NormalizedKeys) {
         $ResList = [System.Collections.Generic.List[object]]::new()
 
-        # QualifiedPath: standalone name matches leaf of a slash path
+        # High-confidence resolution: standalone name is a leaf of a qualified slash path
         if (-not $Key.Contains('/') -and $QualifiedPaths.ContainsKey($Key)) {
             foreach ($QP in $QualifiedPaths[$Key]) {
                 $ResList.Add([PSCustomObject]@{
@@ -263,57 +279,88 @@ function Get-NamedLocationReport {
         $Resolutions[$Key] = $ResList
     }
 
-    # Levenshtein fuzzy matching (O(n²) over unique keys, skip slash paths for performance)
+    # Filter to simple (non-slash) keys for pairwise comparison
     $SimpleKeys = [System.Collections.Generic.List[string]]::new()
     foreach ($Key in $NormalizedKeys) {
         if (-not $Key.Contains('/')) { $SimpleKeys.Add($Key) }
     }
 
-    # Track pairs already processed to avoid duplicates
-    $FuzzyPairs = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::Ordinal)
+    # C# fast path: batch pairwise distance via Robot.BKTree.FindFuzzyPairs
+    if (([System.Management.Automation.PSTypeName]'Robot.BKTree').Type -and $SimpleKeys.Count -ge 2) {
+        $KeyArray = [string[]]$SimpleKeys.ToArray()
+        $Pairs = [Robot.BKTree]::FindFuzzyPairs($KeyArray, $MaxEditDistance)
+        foreach ($Pair in $Pairs) {
+            $KeyA = $KeyArray[$Pair[0]]
+            $KeyB = $KeyArray[$Pair[1]]
+            $Dist = $Pair[2]
 
-    for ($i = 0; $i -lt $SimpleKeys.Count; $i++) {
-        $KeyA = $SimpleKeys[$i]
-        if ($KeyA.Length -lt 3) { continue }
-        for ($j = $i + 1; $j -lt $SimpleKeys.Count; $j++) {
-            $KeyB = $SimpleKeys[$j]
-            if ($KeyB.Length -lt 3) { continue }
-            # Quick length-difference pruning
-            if ([Math]::Abs($KeyA.Length - $KeyB.Length) -gt $MaxEditDistance) { continue }
+            $Reason = "EditDistance$Dist"
+            $Conf = if ($Dist -eq 1) { 'Medium' } else { 'Low' }
 
-            $Dist = Get-LevenshteinDistance -Source $KeyA -Target $KeyB
-            if ($Dist -gt 0 -and $Dist -le $MaxEditDistance) {
-                $PairKey = if ($KeyA -lt $KeyB) { "$KeyA|$KeyB" } else { "$KeyB|$KeyA" }
-                if ($FuzzyPairs.Contains($PairKey)) { continue }
-                [void]$FuzzyPairs.Add($PairKey)
+            $NameA = $CanonicalNames[$KeyA]
+            $NameB = $CanonicalNames[$KeyB]
 
-                $Reason = "EditDistance$Dist"
-                $Conf = if ($Dist -eq 1) { 'Medium' } else { 'Low' }
+            if (-not $Resolutions.ContainsKey($KeyA)) {
+                $Resolutions[$KeyA] = [System.Collections.Generic.List[object]]::new()
+            }
+            $Resolutions[$KeyA].Add([PSCustomObject]@{
+                Target = $NameB; Reason = $Reason; Confidence = $Conf
+            })
 
-                $NameA = $CanonicalNames[$KeyA]
-                $NameB = $CanonicalNames[$KeyB]
+            if (-not $Resolutions.ContainsKey($KeyB)) {
+                $Resolutions[$KeyB] = [System.Collections.Generic.List[object]]::new()
+            }
+            $Resolutions[$KeyB].Add([PSCustomObject]@{
+                Target = $NameA; Reason = $Reason; Confidence = $Conf
+            })
+        }
+    } else {
+        # PowerShell fallback: O(n^2) with length-difference pruning
+        $FuzzyPairs = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::Ordinal)
 
-                if (-not $Resolutions.ContainsKey($KeyA)) {
-                    $Resolutions[$KeyA] = [System.Collections.Generic.List[object]]::new()
+        for ($i = 0; $i -lt $SimpleKeys.Count; $i++) {
+            $KeyA = $SimpleKeys[$i]
+            if ($KeyA.Length -lt 3) { continue }
+            for ($j = $i + 1; $j -lt $SimpleKeys.Count; $j++) {
+                $KeyB = $SimpleKeys[$j]
+                if ($KeyB.Length -lt 3) { continue }
+                # Quick length-difference pruning
+                if ([Math]::Abs($KeyA.Length - $KeyB.Length) -gt $MaxEditDistance) { continue }
+
+                $Dist = Get-LevenshteinDistance -Source $KeyA -Target $KeyB
+                if ($Dist -gt 0 -and $Dist -le $MaxEditDistance) {
+                    $PairKey = if ($KeyA -lt $KeyB) { "$KeyA|$KeyB" } else { "$KeyB|$KeyA" }
+                    if ($FuzzyPairs.Contains($PairKey)) { continue }
+                    [void]$FuzzyPairs.Add($PairKey)
+
+                    $Reason = "EditDistance$Dist"
+                    $Conf = if ($Dist -eq 1) { 'Medium' } else { 'Low' }
+
+                    $NameA = $CanonicalNames[$KeyA]
+                    $NameB = $CanonicalNames[$KeyB]
+
+                    if (-not $Resolutions.ContainsKey($KeyA)) {
+                        $Resolutions[$KeyA] = [System.Collections.Generic.List[object]]::new()
+                    }
+                    $Resolutions[$KeyA].Add([PSCustomObject]@{
+                        Target = $NameB; Reason = $Reason; Confidence = $Conf
+                    })
+
+                    if (-not $Resolutions.ContainsKey($KeyB)) {
+                        $Resolutions[$KeyB] = [System.Collections.Generic.List[object]]::new()
+                    }
+                    $Resolutions[$KeyB].Add([PSCustomObject]@{
+                        Target = $NameA; Reason = $Reason; Confidence = $Conf
+                    })
                 }
-                $Resolutions[$KeyA].Add([PSCustomObject]@{
-                    Target = $NameB; Reason = $Reason; Confidence = $Conf
-                })
-
-                if (-not $Resolutions.ContainsKey($KeyB)) {
-                    $Resolutions[$KeyB] = [System.Collections.Generic.List[object]]::new()
-                }
-                $Resolutions[$KeyB].Add([PSCustomObject]@{
-                    Target = $NameA; Reason = $Reason; Confidence = $Conf
-                })
             }
         }
     }
 
-    # 6. Scan references (opt-in)
+    # 6. Scan session files for exact line references (opt-in, I/O-heavy)
     $RefsByNormalized = @{}
     if ($IncludeReferences) {
-        # Build file->lines cache to avoid reading files multiple times
+        # Per-file line cache: avoids re-reading the same session file for multiple occurrences
         $FileLines = [System.Collections.Generic.Dictionary[string, string[]]]::new(
             [System.StringComparer]::OrdinalIgnoreCase)
         $RepoRoot = Get-RepoRoot
@@ -340,11 +387,10 @@ function Get-NamedLocationReport {
                 $Lines = $FileLines[$FP]
                 $SearchText = $Occ.Raw
                 $FoundLine = -1
-                # Search near session header for efficiency
+                # Linear scan for the first matching line (sufficient for reference tracking)
                 for ($ln = 0; $ln -lt $Lines.Length; $ln++) {
                     if ($Lines[$ln].Contains($SearchText)) {
-                        # Verify it's near a matching session header
-                        $FoundLine = $ln + 1
+                        $FoundLine = $ln + 1  # 1-based line number for editor navigation
                         break
                     }
                 }
@@ -361,7 +407,7 @@ function Get-NamedLocationReport {
         }
     }
 
-    # 7. Resolve entities
+    # 7. Three-stage entity resolution: exact -> fuzzy+Lokacja -> fuzzy+any type
     $EntityMatches = [System.Collections.Generic.Dictionary[string, object]]::new(
         [System.StringComparer]::OrdinalIgnoreCase)
 
@@ -383,7 +429,7 @@ function Get-NamedLocationReport {
         foreach ($Key in $NormalizedKeys) {
             $CanonName = $CanonicalNames[$Key]
 
-            # Stage 1: Direct index lookup (case-insensitive exact)
+            # Stage 1: Direct index lookup (case-insensitive exact match, Lokacja only)
             $MatchStage = $null
             $MatchEntry = $null
 
@@ -395,7 +441,7 @@ function Get-NamedLocationReport {
                 }
             }
 
-            # Stage 2: Full Resolve-Name with Lokacja filter
+            # Stage 2: Full resolution pipeline (declension, stem, fuzzy) scoped to Lokacja
             if (-not $MatchEntry) {
                 try {
                     $Resolved = Resolve-Name -Query $CanonName -Index $NameIdx `
@@ -412,7 +458,7 @@ function Get-NamedLocationReport {
                 } catch { }
             }
 
-            # Stage 3: Resolve-Name without type filter (catch mis-typed entities)
+            # Stage 3: Unscoped resolution — catches entities registered under wrong type
             $AnyTypeMatch = $null
             if (-not $MatchEntry) {
                 try {
@@ -447,7 +493,7 @@ function Get-NamedLocationReport {
         }
     }
 
-    # 8. Detect conflicts
+    # 8. Detect naming conflicts and data quality issues
     $ConflictsByNormalized = [System.Collections.Generic.Dictionary[string, System.Collections.Generic.List[object]]]::new(
         [System.StringComparer]::OrdinalIgnoreCase)
 
@@ -455,7 +501,7 @@ function Get-NamedLocationReport {
         $Conflicts = [System.Collections.Generic.List[object]]::new()
         $Group = $Groups[$Key]
 
-        # CaseVariant: multiple raw forms with different casing
+        # CaseVariant: multiple spellings suggest inconsistent data entry
         $DistinctCaseForms = [System.Collections.Generic.HashSet[string]]::new(
             [System.StringComparer]::Ordinal)
         foreach ($RC in $Group.RawCounts.Keys) {
@@ -469,7 +515,7 @@ function Get-NamedLocationReport {
             })
         }
 
-        # TrailingArtifact: check original raw occurrences before cleaning
+        # TrailingArtifact: whitespace or asterisk remnants from copy-paste errors
         foreach ($Occ in $RawOccurrences) {
             $TestRaw = $Occ.Raw
             if ($TestRaw.ToLowerInvariant().TrimEnd('*').Trim() -eq $Key) {
@@ -483,7 +529,7 @@ function Get-NamedLocationReport {
             }
         }
 
-        # AmbiguousStandalone: bare name exists AND qualified Parent/Name exists
+        # AmbiguousStandalone: bare name could refer to multiple qualified locations
         if (-not $Key.Contains('/') -and $QualifiedPaths.ContainsKey($Key)) {
             $Paths = ($QualifiedPaths[$Key] | Sort-Object) -join "', '"
             $Conflicts.Add([PSCustomObject]@{
@@ -492,7 +538,7 @@ function Get-NamedLocationReport {
             })
         }
 
-        # InconsistentHierarchy: same child under different parents
+        # InconsistentHierarchy: conflicting parent assignments from different slash paths
         if ($ParentOf.ContainsKey($Key) -and $ParentOf[$Key].Count -gt 1) {
             $Parents = ($ParentOf[$Key] | Sort-Object) -join "', '"
             $Conflicts.Add([PSCustomObject]@{
@@ -504,7 +550,7 @@ function Get-NamedLocationReport {
         $ConflictsByNormalized[$Key] = $Conflicts
     }
 
-    # NearDuplicate: add from fuzzy pairs
+    # NearDuplicate: add Levenshtein-based conflicts from fuzzy pair detection
     foreach ($Pair in $FuzzyPairs) {
         $SplitIdx = $Pair.IndexOf('|')
         $KeyA = $Pair.Substring(0, $SplitIdx)
@@ -531,7 +577,7 @@ function Get-NamedLocationReport {
         })
     }
 
-    # 9. Assemble report
+    # 9. Assemble final report objects with all enrichment data
     $Report = [System.Collections.Generic.List[object]]::new()
 
     foreach ($KV in $Groups.GetEnumerator()) {
@@ -543,13 +589,13 @@ function Get-NamedLocationReport {
 
         $CanonName = $CanonicalNames[$Norm]
 
-        # Variants: all raw forms except the canonical one
+        # Non-canonical raw forms (case-sensitive comparison to preserve variants)
         $Variants = [System.Collections.Generic.List[string]]::new()
         foreach ($RC in $Group.RawCounts.Keys) {
             if ($RC -cne $CanonName) { $Variants.Add($RC) }
         }
 
-        # Inferred hierarchy
+        # Resolve inferred parents/children from slash path hierarchy
         $InfParents = if ($ParentOf.ContainsKey($Norm)) {
             @($ParentOf[$Norm] | ForEach-Object { if ($CanonicalNames.ContainsKey($_)) { $CanonicalNames[$_] } else { $_ } })
         } else { @() }
@@ -558,18 +604,18 @@ function Get-NamedLocationReport {
             @($ChildOf[$Norm] | ForEach-Object { if ($CanonicalNames.ContainsKey($_)) { $CanonicalNames[$_] } else { $_ } })
         } else { @() }
 
-        # LikelyResolvesTo
+        # Resolution candidates from QualifiedPath and fuzzy matching
         $LRT = if ($Resolutions.ContainsKey($Norm)) { @($Resolutions[$Norm]) } else { @() }
 
-        # References
+        # File/line references (only populated when -IncludeReferences is set)
         $Refs = if ($IncludeReferences -and $RefsByNormalized.ContainsKey($Norm)) {
             @($RefsByNormalized[$Norm])
         } else { @() }
 
-        # EntityMatch
+        # Three-stage entity resolution result (if any)
         $EM = if ($EntityMatches.ContainsKey($Norm)) { $EntityMatches[$Norm] } else { $null }
 
-        # Conflicts
+        # Detected naming conflicts and data quality issues
         $Conf = if ($ConflictsByNormalized.ContainsKey($Norm)) {
             @($ConflictsByNormalized[$Norm])
         } else { @() }
@@ -588,11 +634,11 @@ function Get-NamedLocationReport {
         })
     }
 
-    # Sort by occurrence count descending
+    # Most-referenced locations first for coordinator prioritization
     $Sorted = $Report | Sort-Object -Property OccurrenceCount -Descending
     $Result = @($Sorted)
 
-    # Attach RouteEdges as a property on the result array for backward compatibility
+    # Bundle route edges alongside locations for Get-LocationGraph edge sourcing
     $Result = [PSCustomObject]@{
         Locations  = $Result
         RouteEdges = @($RouteEdges)

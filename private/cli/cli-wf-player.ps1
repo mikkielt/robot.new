@@ -6,24 +6,27 @@
     This file contains workflow functions for player and character management,
     consumed by the CLI menu registry (Mode = 'Workflow'). Dot-sourced on demand.
 
-    Workflows:
+    Helpers:
     - Invoke-NewPlayerWorkflow:       new player + optional inline character onboarding
-    - Invoke-NewCharacterWorkflow:    new character + optional starting currency
-    - Invoke-EditCharacterWorkflow:   diff review pattern for character edits
-    - Invoke-CharacterCardWorkflow:   formatted character card view
-
-    Display helpers:
+    - Invoke-NewCharacterWorkflow:    new character + optional starting currency loop
+    - Invoke-EditCharacterWorkflow:   diff review with step-by-step parameter walk
+    - Invoke-CharacterCardWorkflow:   fuzzy-pick character then show detail card
     - Show-CharacterCard:             renders character detail card (PU, aliases, info)
     - Show-PlayerCard:                renders player detail card (characters, triggers)
 
-    Design:
-    - New-Player and New-Character workflows chain together: creating a
-      player can optionally inline-create a first character, and creating
-      a character can optionally inline-create starting currency entries.
-      Each stage re-uses Invoke-Wizard with override hashtables that hide
-      irrelevant parameters.
-    - Show-CharacterCard and Show-PlayerCard accept a $Row parameter for
-      compatibility with the engine detail card callback pattern.
+    New-Player and New-Character workflows chain together: creating a player
+    can optionally inline-create a first character, and creating a character
+    can optionally inline-create starting currency entries in a loop. Each
+    stage re-uses Invoke-Wizard with override hashtables that hide internal
+    parameters (EntitiesFile, NoCharacterFile) and type-hint user-facing ones
+    (fuzzy source for PlayerName, multitext for Triggers/SpecialItems).
+
+    Edit-Character walks Set-PlayerCharacter parameters one by one, skipping
+    Hidden overrides and pre-filling PlayerName/CharacterName from the fuzzy
+    pick. Empty values are omitted so only changed fields are submitted.
+
+    Show-CharacterCard and Show-PlayerCard accept a $Row parameter for
+    compatibility with the engine's DetailFunction callback pattern.
 
     Dependencies: cli-primitives.ps1, cli-fuzzy.ps1, cli-wizard.ps1
 #>
@@ -35,7 +38,7 @@ function Invoke-NewPlayerWorkflow {
 
     $AccentColor = Get-CLIColor -Role 'Accent'
 
-    # Step 1: Player basics via New-Player wizard (auto-gen)
+    # Step 1: Player basics via auto-generated wizard (hides character sub-params)
     $PlayerEntry = @{
         Function = 'New-Player'
         Overrides = @{
@@ -52,7 +55,7 @@ function Invoke-NewPlayerWorkflow {
     if ($PlayerResult -eq '__quit__') { return '__quit__' }
     if (-not $PlayerResult) { return }
 
-    # Step 2: Ask "Add first character?"
+    # Step 2: Optional inline character creation (chains into New-Character workflow)
     [System.Console]::Clear()
     Write-CLILine -Text "$([char]0x2713) Gracz utworzony pomyślnie." -Color (Get-CLIColor -Role 'Success')
     Write-Host ''
@@ -74,7 +77,7 @@ function Invoke-NewCharacterWorkflow {
 
     $AccentColor = Get-CLIColor -Role 'Accent'
 
-    # Step 1: Character basics via New-PlayerCharacter wizard
+    # Step 1: Character basics via auto-generated wizard (hides file/reputation params)
     $CharEntry = @{
         Function = 'New-PlayerCharacter'
         Overrides = @{
@@ -94,7 +97,7 @@ function Invoke-NewCharacterWorkflow {
     if ($CharResult -eq '__quit__') { return '__quit__' }
     if (-not $CharResult) { return }
 
-    # Step 2: Ask "Add starting currency?"
+    # Step 2: Optional starting currency loop (creates New-CurrencyEntity entries)
     [System.Console]::Clear()
     Write-CLILine -Text "$([char]0x2713) Postać utworzona pomyślnie." -Color (Get-CLIColor -Role 'Success')
     Write-Host ''
@@ -104,7 +107,7 @@ function Invoke-NewCharacterWorkflow {
     if ($AddCurrencyChoice -eq '__quit__') { return '__quit__' }
 
     if ($AddCurrencyChoice -eq $true) {
-        # Loop: add currency entries
+        # Repeat until user declines "add another" prompt
         while ($true) {
             $CurrEntry = @{
                 Function = 'New-CurrencyEntity'
@@ -143,14 +146,14 @@ function Invoke-EditCharacterWorkflow {
     Write-CLILine -Text 'Edycja postaci' -Color $AccentColor
     Write-Host ''
 
-    # Pick player then character
+    # Two-stage fuzzy pick: player first, then character within that player
     $Player = Invoke-EngineFuzzySearch -Prompt 'Wybierz gracza' -Source 'players' -State $State
     if (-not $Player) { return }
 
     $Character = Invoke-EngineFuzzySearch -Prompt 'Wybierz postać' -Source 'characters' -State $State
     if (-not $Character) { return }
 
-    # Auto-gen wizard for Set-PlayerCharacter with pre-filled values
+    # Override hashtable hides pre-filled and internal params from the wizard
     $EditEntry = @{
         Function = 'Set-PlayerCharacter'
         Overrides = @{
@@ -168,7 +171,7 @@ function Invoke-EditCharacterWorkflow {
         }
     }
 
-    # Pre-fill mandatory params
+    # Resolve Set-PlayerCharacter command metadata to build wizard steps dynamically
     $Cmd = Get-Command 'Set-PlayerCharacter' -ErrorAction SilentlyContinue
     if (-not $Cmd) {
         Write-CLILine -Text "Funkcja 'Set-PlayerCharacter' nie jest dostępna." -Color (Get-CLIColor -Role 'Error')
@@ -176,7 +179,7 @@ function Invoke-EditCharacterWorkflow {
         return
     }
 
-    # Build wizard steps manually, pre-setting player/character
+    # Build wizard steps from command parameters, excluding pre-filled and hidden ones
     $Steps = [System.Collections.Generic.List[PSCustomObject]]::new()
     $Overrides = $EditEntry.Overrides
     $CollectedParams = [ordered]@{
@@ -196,7 +199,7 @@ function Invoke-EditCharacterWorkflow {
         [void]$Steps.Add($StepDef)
     }
 
-    # Walk steps
+    # Walk steps with back-navigation support (stepIndex-- on __back__)
     Write-Host ''
     Write-CLILine -Text "Edycja: $($Character.Name) ($($Player.Name))" -Color $AccentColor
     Write-CLILine -Text 'Pomiń pola Enter aby nie zmieniać.' -Color $DisabledColor
@@ -218,7 +221,7 @@ function Invoke-EditCharacterWorkflow {
         $StepIndex++
     }
 
-    # Filter out null values (only send changed fields)
+    # Only send fields the user actually modified (null = unchanged)
     $FinalParams = [ordered]@{
         'PlayerName'    = $Player.Name
         'CharacterName' = $Character.Name
@@ -265,7 +268,7 @@ function Show-CharacterCard {
         [object]$Row
     )
 
-    # Support detail-card Row parameter
+    # $Row fallback supports the engine's DetailFunction callback pattern
     if (-not $Character -and $Row) { $Character = $Row }
 
     $AccentColor   = Get-CLIColor -Role 'Accent'
@@ -285,14 +288,14 @@ function Show-CharacterCard {
         Write-Host $PlayerType
     }
 
-    # Active status
+    # Activity flag (Tak/Nie)
     if ($null -ne $Character.IsActive) {
         Write-Host "  $('Aktywna'.PadRight(22))" -NoNewline -ForegroundColor $InfoColor
         $ActiveText = if ($Character.IsActive) { 'Tak' } else { 'Nie' }
         Write-Host $ActiveText
     }
 
-    # PU stats
+    # PU stats: show only fields present on the character object
     $PUFields = @(
         @{ Name = 'PUSum';      Label = 'PU Suma' }
         @{ Name = 'PUTaken';    Label = 'PU Zdobyte' }
@@ -312,7 +315,7 @@ function Show-CharacterCard {
         }
     }
 
-    # Aliases
+    # Alias list (may contain plain strings or objects with .Text property)
     if ($Character.Aliases -and $Character.Aliases.Count -gt 0) {
         Write-Host ''
         Write-CLILine -Text 'Aliasy' -Color $InfoColor
@@ -324,7 +327,7 @@ function Show-CharacterCard {
         }
     }
 
-    # Additional info
+    # Free-text notes from the character file
     if ($Character.AdditionalInfo -and $Character.AdditionalInfo.Count -gt 0) {
         Write-Host ''
         Write-CLILine -Text 'Dodatkowe informacje' -Color $InfoColor
@@ -374,7 +377,7 @@ function Show-PlayerCard {
         Write-Host ($Player.Triggers -join ', ')
     }
 
-    # Characters
+    # Character roster with active/PU summary per character
     if ($Player.Characters -and $Player.Characters.Count -gt 0) {
         Write-Host ''
         Write-CLILine -Text "Postacie ($($Player.Characters.Count))" -Color $InfoColor

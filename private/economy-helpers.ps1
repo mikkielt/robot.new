@@ -23,6 +23,16 @@
     (NPC/Grupa/Gracz owners).
 #>
 
+# Compiled C# economic analyzer for Gini coefficient and top-holder extraction.
+# Eliminates scriptblock comparers and PowerShell accumulation loops.
+# Source: lib/EconomicAnalyzer.cs
+if (-not ([System.Management.Automation.PSTypeName]'Robot.EconomicAnalyzer').Type) {
+    $CsPath = [System.IO.Path]::Combine($script:ModuleRoot, 'lib', 'EconomicAnalyzer.cs')
+    if ([System.IO.File]::Exists($CsPath)) {
+        Add-Type -TypeDefinition ([System.IO.File]::ReadAllText($CsPath)) -Language CSharp
+    }
+}
+
 function New-EconomicSnapshotData {
     param(
         [AllowEmptyCollection()]
@@ -39,7 +49,7 @@ function New-EconomicSnapshotData {
     if (-not $CurrencyItems) { $CurrencyItems = @() }
     if (-not $TransferEntries) { $TransferEntries = @() }
 
-    # Supply breakdown by denomination and owner category
+    # Single-pass accumulation: denomination supply, per-owner wealth, and Physical/Virtual splits
     $SupplyByDenomination = @{}
     $OwnerWealth = [System.Collections.Generic.Dictionary[string, int]]::new([System.StringComparer]::OrdinalIgnoreCase)
     $OwnerCategories = [System.Collections.Generic.Dictionary[string, string]]::new([System.StringComparer]::OrdinalIgnoreCase)
@@ -54,7 +64,6 @@ function New-EconomicSnapshotData {
         $BaseValue = $Item.Quantity * $Item.Denomination.Multiplier
         $Category = if ($Item.OwnerCategory) { $Item.OwnerCategory } else { 'Unknown' }
 
-        # Supply by denomination
         if (-not $SupplyByDenomination.ContainsKey($DenomName)) {
             $SupplyByDenomination[$DenomName] = @{ Total = 0; Physical = 0; Virtual = 0 }
         }
@@ -65,12 +74,10 @@ function New-EconomicSnapshotData {
             $SupplyByDenomination[$DenomName].Virtual += $Item.Quantity
         }
 
-        # Total supply in base unit
         $TotalSupplyKogi += $BaseValue
         if ($Category -eq 'Physical') { $PhysicalSupplyKogi += $BaseValue }
         elseif ($Category -eq 'Virtual') { $VirtualSupplyKogi += $BaseValue }
 
-        # Per-owner wealth accumulation
         if ($Item.Owner) {
             if (-not $OwnerWealth.ContainsKey($Item.Owner)) {
                 $OwnerWealth[$Item.Owner] = 0
@@ -83,58 +90,95 @@ function New-EconomicSnapshotData {
         }
     }
 
-    # Physical ratio
+    # Fraction of total supply backed by Margonem game items (Postac-owned entities)
     $PhysicalRatio = if ($TotalSupplyKogi -gt 0) { [double]$PhysicalSupplyKogi / $TotalSupplyKogi } else { 0.0 }
 
-    # Holder count (owners with balance > 0)
+    # Only positive-balance owners count as active holders
     $HolderCount = 0
     foreach ($Entry in $OwnerWealth.GetEnumerator()) {
         if ($Entry.Value -gt 0) { $HolderCount++ }
     }
 
-    # Top holders — sort by wealth descending, take top N
+    # Top holders and Gini coefficient — C# path when Robot.EconomicAnalyzer is loaded,
+    # PowerShell fallback otherwise (same algorithm, ~3x slower for large holder sets)
     $TopHolders = [System.Collections.Generic.List[object]]::new()
-    $OwnerEntries = [System.Collections.Generic.List[System.Collections.Generic.KeyValuePair[string, int]]]::new()
-    foreach ($Entry in $OwnerWealth.GetEnumerator()) {
-        $OwnerEntries.Add($Entry)
-    }
-    $OwnerEntries.Sort([System.Comparison[System.Collections.Generic.KeyValuePair[string, int]]]{
-        param($A, $B) $B.Value.CompareTo($A.Value)
-    })
-    $TopCount = [math]::Min($Top, $OwnerEntries.Count)
-    for ($J = 0; $J -lt $TopCount; $J++) {
-        $Entry = $OwnerEntries[$J]
-        $Cat = if ($OwnerCategories.ContainsKey($Entry.Key)) { $OwnerCategories[$Entry.Key] } else { 'Unknown' }
-        $TopHolders.Add([PSCustomObject]@{
-            Owner         = $Entry.Key
-            WealthKogi    = $Entry.Value
-            OwnerCategory = $Cat
-        })
-    }
-
-    # Wealth inequality measure — requires sorted positive-wealth values only,
-    # zero-wealth holders skipped to avoid skewing the distribution
-    # G = (2 * Σ(i * w[i])) / (n * Σ(w)) - (n+1)/n
     $GiniCoefficient = 0.0
-    $PositiveWealth = [System.Collections.Generic.List[int]]::new()
-    foreach ($Entry in $OwnerWealth.GetEnumerator()) {
-        if ($Entry.Value -gt 0) { $PositiveWealth.Add($Entry.Value) }
-    }
-    if ($PositiveWealth.Count -gt 1) {
-        $PositiveWealth.Sort()
-        $N = $PositiveWealth.Count
-        [double]$SumW = 0
-        [double]$SumIW = 0
-        for ($I = 0; $I -lt $N; $I++) {
-            $SumW += $PositiveWealth[$I]
-            $SumIW += ($I + 1) * $PositiveWealth[$I]
+
+    if (([System.Management.Automation.PSTypeName]'Robot.EconomicAnalyzer').Type -and $OwnerWealth.Count -gt 0) {
+        # C# interop requires parallel arrays (no Dictionary marshalling)
+        $OwnerNameArr = [string[]]::new($OwnerWealth.Count)
+        $OwnerWealthArr = [int[]]::new($OwnerWealth.Count)
+        $OwnerCatArr = [string[]]::new($OwnerWealth.Count)
+        $Idx = 0
+        foreach ($Entry in $OwnerWealth.GetEnumerator()) {
+            $OwnerNameArr[$Idx] = $Entry.Key
+            $OwnerWealthArr[$Idx] = $Entry.Value
+            $OwnerCatArr[$Idx] = if ($OwnerCategories.ContainsKey($Entry.Key)) { $OwnerCategories[$Entry.Key] } else { 'Unknown' }
+            $Idx++
         }
-        if ($SumW -gt 0) {
-            $GiniCoefficient = (2.0 * $SumIW) / ($N * $SumW) - ($N + 1.0) / $N
+
+        # GetTopHolders sorts by wealth descending and returns top N via out-ref arrays
+        $TopNames = $null; $TopWealth = $null; $TopCats = $null
+        [Robot.EconomicAnalyzer]::GetTopHolders($OwnerNameArr, $OwnerWealthArr, $OwnerCatArr, $Top,
+            [ref]$TopNames, [ref]$TopWealth, [ref]$TopCats)
+        for ($J = 0; $J -lt $TopNames.Length; $J++) {
+            $TopHolders.Add([PSCustomObject]@{
+                Owner         = $TopNames[$J]
+                WealthKogi    = $TopWealth[$J]
+                OwnerCategory = $TopCats[$J]
+            })
+        }
+
+        # Gini only meaningful with 2+ positive-wealth holders
+        $PosArr = [System.Collections.Generic.List[int]]::new()
+        for ($J = 0; $J -lt $OwnerWealthArr.Length; $J++) {
+            if ($OwnerWealthArr[$J] -gt 0) { $PosArr.Add($OwnerWealthArr[$J]) }
+        }
+        if ($PosArr.Count -gt 1) {
+            $GiniCoefficient = [Robot.EconomicAnalyzer]::ComputeGini([int[]]$PosArr.ToArray())
+        }
+    } else {
+        # PowerShell fallback — identical logic without compiled C# dependency
+        $OwnerEntries = [System.Collections.Generic.List[System.Collections.Generic.KeyValuePair[string, int]]]::new()
+        foreach ($Entry in $OwnerWealth.GetEnumerator()) {
+            $OwnerEntries.Add($Entry)
+        }
+        $OwnerEntries.Sort([System.Comparison[System.Collections.Generic.KeyValuePair[string, int]]]{
+            param($A, $B) $B.Value.CompareTo($A.Value)
+        })
+        $TopCount = [math]::Min($Top, $OwnerEntries.Count)
+        for ($J = 0; $J -lt $TopCount; $J++) {
+            $Entry = $OwnerEntries[$J]
+            $Cat = if ($OwnerCategories.ContainsKey($Entry.Key)) { $OwnerCategories[$Entry.Key] } else { 'Unknown' }
+            $TopHolders.Add([PSCustomObject]@{
+                Owner         = $Entry.Key
+                WealthKogi    = $Entry.Value
+                OwnerCategory = $Cat
+            })
+        }
+
+        # Gini: G = (2 * Sum(i * w[i])) / (n * Sum(w)) - (n+1)/n
+        # Zero-wealth holders skipped to avoid skewing the distribution
+        $PositiveWealth = [System.Collections.Generic.List[int]]::new()
+        foreach ($Entry in $OwnerWealth.GetEnumerator()) {
+            if ($Entry.Value -gt 0) { $PositiveWealth.Add($Entry.Value) }
+        }
+        if ($PositiveWealth.Count -gt 1) {
+            $PositiveWealth.Sort()
+            $N = $PositiveWealth.Count
+            [double]$SumW = 0
+            [double]$SumIW = 0
+            for ($I = 0; $I -lt $N; $I++) {
+                $SumW += $PositiveWealth[$I]
+                $SumIW += ($I + 1) * $PositiveWealth[$I]
+            }
+            if ($SumW -gt 0) {
+                $GiniCoefficient = (2.0 * $SumIW) / ($N * $SumW) - ($N + 1.0) / $N
+            }
         }
     }
 
-    # Transaction metrics from @Transfer directives — converted to Kogi for cross-denomination totalling
+    # @Transfer directives converted to Kogi for cross-denomination totalling
     $TransactionVolume = 0
     $TransactionValueKogi = 0
     if ($TransferEntries) {

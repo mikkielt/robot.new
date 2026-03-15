@@ -4,8 +4,9 @@
 
     .DESCRIPTION
     This file contains helpers used by Set-Session to locate, decompose, and
-    upgrade session sections within Markdown files. It is dot-sourced by
-    set-session.ps1 alongside format-sessionblock.ps1.
+    upgrade session sections within Markdown files. Dot-sourced by
+    set-session.ps1 alongside format-sessionblock.ps1. Not auto-loaded
+    by the module loader (non-Verb-Noun filename).
 
     Helpers:
     - Find-SessionInFile:         locates session section boundaries by header text or date
@@ -13,7 +14,21 @@
     - ConvertTo-Gen4FromRawBlock: converts existing Gen3 metadata block lines to Gen4 format
     - ConvertFrom-ItalicLocation: converts Gen2 italic location line to Gen4 block
     - ConvertFrom-PlainTextLog:   converts Gen1/2 plain text log lines to Gen4 block
+    - Resolve-LogUrlToLocalPath:  replaces a log URL with a local path if the cached file exists
     - Get-FormatFromSplit:        derives format generation from Split-SessionSection MetaBlocks dictionary
+
+    Session format generations (oldest to newest):
+    - Gen1: bare session text, optional "Logi: <url>" plain text lines
+    - Gen2: italic location line (*Lokalizacja: X, Y*), plain text logs
+    - Gen3: structured list items (- PU:, - Lokalizacje:, - Logi:, - Zmiany:)
+    - Gen4: @-prefixed list items (- @PU:, - @Lokacje:, - @Logi:, - @Zmiany:)
+
+    Split-SessionSection is the core decomposition function. It classifies
+    root-level list items into metadata blocks (PU, Logi, Lokacje, etc.),
+    preserved blocks (Objaśnienia, Efekty, etc.), or body text. Metadata
+    blocks are keyed by canonical name (e.g. 'locations' for both
+    'Lokalizacje' and 'Lokacje'). The conversion functions then upgrade
+    older formats to Gen4 syntax for Set-Session to write back.
 #>
 
 # Helper: finds session section boundaries in a file's lines by matching header

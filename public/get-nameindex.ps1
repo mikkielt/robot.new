@@ -29,12 +29,10 @@
     - BKTree:    BK-tree root node for O(log N) fuzzy matching (stage 3)
 #>
 
-# Dot-source shared helpers
 . "$script:ModuleRoot/private/string-helpers.ps1"
 
-# Compiled C# BK-tree with integrated Levenshtein distance (early-exit threshold).
-# Eliminates PowerShell interpretation overhead on the hottest path (16,500+ calls
-# per Get-Session run). Source: lib/BKTree.cs
+# C# BK-tree eliminates PowerShell interpretation overhead on the hottest path
+# (16,500+ calls per Get-Session run for fuzzy name resolution)
 if (-not ([System.Management.Automation.PSTypeName]'Robot.BKTree').Type) {
     $CsPath = [System.IO.Path]::Combine($script:ModuleRoot, 'lib', 'BKTree.cs')
     if ([System.IO.File]::Exists($CsPath)) {
@@ -42,10 +40,7 @@ if (-not ([System.Management.Automation.PSTypeName]'Robot.BKTree').Type) {
     }
 }
 
-# Legacy PowerShell BK-tree helpers — kept for fallback if Add-Type fails
-# and for backward compatibility with test code.
-
-# Helper: insert a key into a BK-tree node
+# Legacy PowerShell BK-tree — fallback when Add-Type fails (e.g. no C# compiler)
 function Add-BKTreeNode {
     param(
         [hashtable]$Node,
@@ -53,7 +48,7 @@ function Add-BKTreeNode {
     )
 
     $Distance = Get-LevenshteinDistance -Source $Node.Key -Target $Key
-    if ($Distance -eq 0) { return }  # duplicate key, skip
+    if ($Distance -eq 0) { return }  # duplicate — BK-tree nodes are unique
 
     if ($Node.Children.ContainsKey($Distance)) {
         Add-BKTreeNode -Node $Node.Children[$Distance] -Key $Key
@@ -62,7 +57,6 @@ function Add-BKTreeNode {
     }
 }
 
-# Helper: search BK-tree for all keys within a Levenshtein threshold
 function Search-BKTree {
     param(
         [hashtable]$Tree,
@@ -72,6 +66,7 @@ function Search-BKTree {
 
     if ($null -eq $Tree -or $null -eq $Tree.Key) { return @() }
 
+    # Iterative traversal — triangle inequality prunes branches outside [d-t, d+t] range
     $Results = [System.Collections.Generic.List[object]]::new()
     $Stack   = [System.Collections.Generic.Stack[hashtable]]::new()
     $Stack.Push($Tree)
@@ -97,10 +92,6 @@ function Search-BKTree {
     return $Results
 }
 
-# Helper: insert a single token into the index, handling priority-based collisions
-# Priority 1 beats priority 2. Same-priority same-owner keeps higher priority.
-# Same-priority different-owner marks the entry as Ambiguous (except Gracz vs Player dedup).
-# Also builds the stem index inline - maps declension-stripped stems to original token keys.
 function Add-IndexToken {
     param(
         [string]$Token,
@@ -117,7 +108,7 @@ function Add-IndexToken {
     if ($Index.ContainsKey($Token)) {
         $Existing = $Index[$Token]
 
-        # Same owner - keep the higher-priority (lower number) entry, no ambiguity
+        # Same owner — keep higher-priority (lower number) entry, no ambiguity
         if ($Existing.Owner -and $Existing.Owner.Name -eq $Owner.Name -and $Existing.OwnerType -eq $OwnerType) {
             if ($Priority -lt $Existing.Priority) {
                 $Index[$Token] = [PSCustomObject]@{
@@ -131,7 +122,7 @@ function Add-IndexToken {
             return
         }
 
-        # Different owner, incoming has strictly higher priority - it wins
+        # Incoming has strictly higher priority — it wins
         if ($Priority -lt $Existing.Priority) {
             $Index[$Token] = [PSCustomObject]@{
                 Owner     = $Owner
@@ -143,14 +134,13 @@ function Add-IndexToken {
             return
         }
 
-        # Existing has strictly higher priority - existing wins, skip
+        # Existing has strictly higher priority — skip incoming
         if ($Priority -gt $Existing.Priority) {
             return
         }
 
-        # Same priority, different owner - Gracz entities defer to Player entries
-        # (they represent the same logical person). Postać entities are more specific
-        # than the Player who owns them and take precedence for character names.
+        # Gracz defers to Player (same logical person); Postać wins over Player
+        # (character name is more specific than the owning player)
         if ($OwnerType -eq 'Gracz' -and $Existing.OwnerType -eq 'Player') {
             return
         }
@@ -178,7 +168,7 @@ function Add-IndexToken {
             return
         }
 
-        # Genuine ambiguity - same priority, different owner, no type dedup
+        # No type-based dedup applies — genuine ambiguity
         $AllOwners = if ($Existing.Ambiguous) { $Existing.Owners } else { @($Existing.Owner) }
         $AllOwners = @($AllOwners) + @($Owner)
 
@@ -191,7 +181,6 @@ function Add-IndexToken {
             Ambiguous = $true
         }
     } else {
-        # New token - straightforward insert
         $Index[$Token] = [PSCustomObject]@{
             Owner     = $Owner
             OwnerType = $OwnerType
@@ -200,7 +189,7 @@ function Add-IndexToken {
             Ambiguous = $false
         }
 
-        # Build stem index inline - only needed for newly inserted keys
+        # Stem index built inline to avoid a second pass over all keys
         $Stem = Get-DeclensionStem -Text $Token
         if (-not $StemIndex.ContainsKey($Stem)) {
             $StemIndex[$Stem] = [System.Collections.Generic.List[string]]::new()
@@ -209,9 +198,6 @@ function Add-IndexToken {
     }
 }
 
-# Helper: index all names of a player or entity
-# Full names and aliases at priority 1, individual word tokens at priority 2.
-# Word tokens shorter than $MinTokenLength are skipped to avoid noise from "de", "IV", etc.
 function Add-NamedObjectTokens {
     param(
         [object]$NamedObject,
@@ -221,12 +207,12 @@ function Add-NamedObjectTokens {
         [int]$MinTokenLength
     )
 
-    # Priority 1: Full names and aliases
+    # Priority 1: full names and aliases — exact registered entries
     foreach ($FullName in $NamedObject.Names) {
         Add-IndexToken -Token $FullName -Owner $NamedObject -OwnerType $OwnerType -Source $FullName -Priority 1 -Index $Index -StemIndex $StemIndex
     }
 
-    # Priority 2: Individual word tokens from multi-word names
+    # Priority 2: word tokens from multi-word names (partial matches)
     foreach ($FullName in $NamedObject.Names) {
         $Words = $FullName.Split(" ", [System.StringSplitOptions]::RemoveEmptyEntries)
 
@@ -260,32 +246,30 @@ function Get-NameIndex {
         $Players = Get-Player
     }
 
-    # Case-insensitive dictionary: token string -> index entry
+    # Token -> index entry, case-insensitive for Polish name matching
     $Index = [System.Collections.Generic.Dictionary[string, object]]::new([System.StringComparer]::OrdinalIgnoreCase)
 
-    # Stem index built inline during token insertion (avoids second pass over all keys).
-    # Maps each declension-stripped stem -> list of original token keys that share it.
+    # Declension-stripped stem -> original token keys (built inline during insertion)
     $StemIndex = [System.Collections.Generic.Dictionary[string, System.Collections.Generic.List[string]]]::new([System.StringComparer]::OrdinalIgnoreCase)
 
-    # Index all players
+    # Players indexed first — Gracz/Postać dedup rules depend on Player entries existing
     foreach ($Player in $Players) {
         Add-NamedObjectTokens -NamedObject $Player -OwnerType "Player" -Index $Index -StemIndex $StemIndex -MinTokenLength $MinTokenLength
     }
 
-    # Index all entities (NPCs, groups, locations) if provided
+    # Entity tokens added after players — Add-IndexToken handles priority collisions
     if ($Entities) {
         foreach ($Entity in $Entities) {
             Add-NamedObjectTokens -NamedObject $Entity -OwnerType $Entity.Type -Index $Index -StemIndex $StemIndex -MinTokenLength $MinTokenLength
         }
     }
 
-    # Build BK-tree from all index keys for O(log N) fuzzy matching in Resolve-Name Stage 3
-    # Fisher-Yates shuffle prevents degenerate tree shape from sorted insertion order.
-    # Deterministic seed (42) ensures reproducible tree shape across runs.
+    # Fisher-Yates shuffle with deterministic seed prevents degenerate tree depth
+    # from sorted insertion order while keeping results reproducible across runs
     $BKTree = $null
     $AllKeys = [string[]]$Index.Keys
     if ($AllKeys.Count -gt 0) {
-        $Rng = [System.Random]::new(42)
+        $Rng = [System.Random]::new(42)  # deterministic seed for reproducibility
         for ($k = $AllKeys.Count - 1; $k -gt 0; $k--) {
             $j = $Rng.Next($k + 1)
             $Temp = $AllKeys[$k]
@@ -293,13 +277,12 @@ function Get-NameIndex {
             $AllKeys[$j] = $Temp
         }
 
-        if (([System.Management.Automation.PSTypeName]'Robot.BKTree').Type) {
+        if (([System.Management.Automation.PSTypeName]'Robot.BKTree').Type) {  # C# path — O(log N) search
             $BKTree = [Robot.BKTree]::new($AllKeys[0])
             for ($k = 1; $k -lt $AllKeys.Count; $k++) {
                 [void]$BKTree.Add($AllKeys[$k])
             }
         } else {
-            # Fallback: PowerShell hashtable BK-tree
             $BKTree = @{ Key = $AllKeys[0]; Children = @{} }
             for ($k = 1; $k -lt $AllKeys.Count; $k++) {
                 Add-BKTreeNode -Node $BKTree -Key $AllKeys[$k]

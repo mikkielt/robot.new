@@ -9,30 +9,39 @@
     (non-Verb-Noun filename).
 
     Helpers:
-    - Clear-OperationContext:   resets all three accumulators
-    - Add-OperationChange:     pushes a property change record
-    - Add-OperationWarning:    pushes a warning record with severity
-    - Add-OperationFile:       registers a touched file path (deduped)
-    - New-OperationResult:     drains accumulators into Robot.OperationResult
+    - Clear-OperationContext:  resets all three accumulators to empty
+    - Add-OperationChange:     pushes a property change record (old/new value pair)
+    - Add-OperationWarning:    pushes a warning record with severity and optional action hint
+    - Add-OperationFile:       registers a touched file path (case-insensitive dedup via HashSet)
+    - New-OperationResult:     drains accumulators into a Robot.OperationResult PSCustomObject
 
     Module-level data:
-    - $script:OpChanges:   List of change records { Property, OldValue, NewValue }
-    - $script:OpWarnings:  List of warning records { Message, Severity, ActionHint }
-    - $script:OpFiles:     HashSet of file paths (case-insensitive dedup)
+    - $script:OpChanges:   List[PSCustomObject] of change records { Property, OldValue, NewValue }
+    - $script:OpWarnings:  List[PSCustomObject] of warning records { Message, Severity, ActionHint }
+    - $script:OpFiles:     HashSet[string] of file paths (OrdinalIgnoreCase dedup)
 
-    Write helpers (Set-EntityTag, Write-EntityFile, Write-RobotWarning)
-    push records as side effects. Calling commands drain via
-    New-OperationResult at completion.
+    The three accumulators form a write-side sidecar: write helpers
+    (Set-EntityTag, Write-EntityFile, Write-RobotWarning) push records as
+    side effects during a write operation. The calling command drains all
+    accumulated data at completion via New-OperationResult, which snapshots
+    the accumulators into a Robot.OperationResult object and resets them
+    in a finally block to guarantee cleanup even on errors.
+
+    All Add-* functions are null-safe: if the accumulators have not been
+    initialized (e.g. when operation-context.ps1 was not dot-sourced),
+    they return silently. This allows write helpers to call them
+    unconditionally.
+
+    New-OperationResult collapses OpFiles into a scalar when only one file
+    was touched (common case for single-entity operations), an array for
+    multi-file operations, or $null when no files were written. The
+    Timestamp field captures [datetime]::Now at drain time.
 #>
-
-# ── Accumulators ──────────────────────────────────────────────────────────────
 
 $script:OpChanges  = [System.Collections.Generic.List[PSCustomObject]]::new()
 $script:OpWarnings = [System.Collections.Generic.List[PSCustomObject]]::new()
 $script:OpFiles    = [System.Collections.Generic.HashSet[string]]::new(
                          [System.StringComparer]::OrdinalIgnoreCase)
-
-# ── Functions ─────────────────────────────────────────────────────────────────
 
 function Clear-OperationContext {
     if ($null -eq $script:OpChanges) { return }
@@ -90,7 +99,7 @@ function New-OperationResult {
         $Changes  = @($script:OpChanges)
         $Warnings = @($script:OpWarnings)
 
-        # FilePath: scalar when 1 file, array when multiple, $null when none
+        # Collapse to scalar for the common single-file case
         $FileCount = $script:OpFiles.Count
         $FilePath = if ($FileCount -eq 0) { $null }
                     elseif ($FileCount -eq 1) { @($script:OpFiles)[0] }

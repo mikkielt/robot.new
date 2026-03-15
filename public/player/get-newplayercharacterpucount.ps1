@@ -53,7 +53,8 @@ function Get-NewPlayerCharacterPUCount {
         throw "Player '$PlayerName' not found."
     }
 
-    # Without entity data, deleted characters cannot be excluded from the sum
+    # Entity data is needed to identify deleted characters; without it,
+    # all characters contribute to the sum (backward-compatible behavior)
     $EntityStatusLookup = $null
     if ($Entities) {
         $EntityStatusLookup = [System.Collections.Generic.Dictionary[string, string]]::new([System.StringComparer]::OrdinalIgnoreCase)

@@ -8,20 +8,39 @@
     to produce four output modes:
 
     - Sessions:       for an entity, all sessions with participation details
-    - CoParticipants: for an entity, all co-participating entities ranked by shared count
-    - EntityTimeline: for a session header, all participants with tier/source metadata
-    - Summary:        global stats with tier coverage breakdown by format generation
+    - CoParticipants: for an entity, all co-participating entities ranked
+                      by shared session count
+    - EntityTimeline: for a session header, all participants with
+                      tier/source metadata
+    - Summary:        global stats with tier coverage breakdown by format
+                      generation
+
+    Pipeline:
+    1. Load _index.json via Read-SessionGraphIndex
+    2. Apply date range filter across all index entries using
+       Test-GraphEntryDateInRange (shared helper from session-graphhelpers)
+    3. Dispatch to mode-specific logic:
+       - Summary: aggregate FormatBreakdown and TierCounts across all entries
+       - EntityTimeline: exact header match, list participants within tier
+       - Sessions: scan all entries for EntityName match, collect full entries
+       - CoParticipants: from Sessions results, build co-occurrence counts
+         via Dictionary and sort descending by SharedSessions
 
     Sessions and CoParticipants modes require -EntityName. EntityTimeline
     requires -SessionHeader. Summary operates on the full filtered set.
 
-    Returns empty array @() with a warning if the index does not exist.
+    Returns empty array @() with a warning when the index does not exist
+    or is empty, rather than throwing, so callers can handle gracefully.
+
+    MinTier acts as an upper bound on participant tier: only participants
+    with Tier <= MinTier are included. Tier 0 = filesystem evidence,
+    Tier 1 = metadata, Tier 2 = body text mention.
 #>
 
 function Get-SessionGraph {
     <#
         .SYNOPSIS
-        Query the session participation graph for entity involvement and co-participation.
+        Queries the session participation graph for entity involvement and co-participation.
     #>
 
     [CmdletBinding()] param(
@@ -56,7 +75,7 @@ function Get-SessionGraph {
     if ($Quiet) { $script:SuppressWarnings = $true }
     try {
 
-    # Load helpers
+    # Lazy-load helpers to avoid import overhead when called from modules that already loaded them
     if (-not (Get-Command 'Read-SessionGraphIndex' -ErrorAction SilentlyContinue)) {
         . "$PSScriptRoot/../../private/session-graphhelpers.ps1"
     }
@@ -79,7 +98,7 @@ function Get-SessionGraph {
         return @()
     }
 
-    # Filter sessions by date range
+    # Pre-filter all index entries by date range before mode dispatch
     $FilteredHeaders = [System.Collections.Generic.List[string]]::new()
     foreach ($Header in $Index.Keys) {
         $Entry = $Index[$Header]
@@ -166,13 +185,13 @@ function Get-SessionGraph {
         return @($Result)
     }
 
-    # --- Sessions and CoParticipants modes: require EntityName ---
+    # --- Sessions and CoParticipants modes: both scan for EntityName matches ---
     if (-not $EntityName) {
         Write-RobotWarning "[WARN Get-SessionGraph] Sessions and CoParticipants modes require -EntityName."
         return @()
     }
 
-    # Find all sessions where EntityName is a participant (within tier threshold)
+    # Linear scan for EntityName across all filtered sessions (index is not keyed by participant)
     $MatchingSessions = [System.Collections.Generic.List[object]]::new()
 
     foreach ($Header in $FilteredHeaders) {
@@ -209,7 +228,7 @@ function Get-SessionGraph {
     }
 
     # --- CoParticipants mode ---
-    # Build co-participation counts
+    # Accumulate co-occurrence counts from the matched sessions' participant lists
     $CoPartCounts = [System.Collections.Generic.Dictionary[string, object]]::new(
         [System.StringComparer]::OrdinalIgnoreCase)
 
@@ -236,7 +255,7 @@ function Get-SessionGraph {
         }
     }
 
-    # Sort by shared session count descending
+    # Most frequently co-occurring entities first
     $CoPartList = [System.Collections.Generic.List[object]]::new($CoPartCounts.Values)
     $CoPartList.Sort([System.Comparison[object]]{
         param($A, $B)

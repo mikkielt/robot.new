@@ -4,13 +4,23 @@
 
     .DESCRIPTION
     This file contains Send-DiscordMessage which POSTs a message to a Discord
-    webhook URL. It validates the webhook URL format, builds a JSON payload
-    with content and optional username, and sends via .NET HttpClient.
+    webhook URL via .NET HttpClient.
 
-    No retry logic at this level - retry and delivery tracking are handled
+    Processing pipeline:
+    1. Validate webhook URL format against the Discord API prefix to prevent
+       accidental data leaks to non-Discord endpoints.
+    2. Build JSON payload with 'content' and optional 'username' fields.
+    3. Pre-encode to UTF-8 bytes for ByteArrayContent (avoids double-encoding
+       that would occur with StringContent + default encoding).
+    4. ShouldProcess gate: -WhatIf returns a result object without HTTP I/O.
+    5. POST via HttpClient with application/json content type.
+    6. Return structured result with Webhook, StatusCode, Success, WhatIf fields.
+
+    No retry logic at this level — retry and delivery tracking are handled
     by the queue system (Invoke-DiscordMessageQueue, Phase 3).
 
-    Supports -WhatIf via SupportsShouldProcess.
+    HttpClient, ByteArrayContent, and Response are disposed in a finally block
+    to prevent socket exhaustion during batch sends.
 #>
 
 function Send-DiscordMessage {
@@ -30,12 +40,12 @@ function Send-DiscordMessage {
         [string]$Username
     )
 
-    # Guard against non-Discord URLs to prevent accidental data leaks
+    # Reject non-Discord URLs to prevent accidental data leaks to arbitrary endpoints
     if ($Webhook -notlike "https://discord.com/api/webhooks/*") {
         throw "Invalid webhook URL format. Must match 'https://discord.com/api/webhooks/*'. Got: $Webhook"
     }
 
-    # Discord webhook API expects JSON with 'content' and optional 'username'
+    # Discord webhook API contract: 'content' is required, 'username' is optional override
     $Payload = [ordered]@{
         content = $Message
     }
@@ -43,7 +53,8 @@ function Send-DiscordMessage {
         $Payload['username'] = $Username
     }
 
-    # Pre-encode to bytes for ByteArrayContent (avoids double-encoding)
+    # Pre-encode to bytes: ByteArrayContent avoids the double-encoding
+    # that StringContent applies when the string contains non-ASCII characters
     $JsonBytes = [System.Text.Encoding]::UTF8.GetBytes(
         ($Payload | ConvertTo-Json -Depth 4 -Compress)
     )
@@ -57,7 +68,7 @@ function Send-DiscordMessage {
         }
     }
 
-    # Use .NET HttpClient directly — no Invoke-WebRequest dependency
+    # .NET HttpClient: avoids Invoke-WebRequest's IE-engine dependency on Windows PS 5.1
     $Client = $null
     $Content = $null
     $Response = $null

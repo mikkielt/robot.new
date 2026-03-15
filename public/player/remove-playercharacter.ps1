@@ -7,15 +7,20 @@
     soft-deleted by writing @status: Usunięty (YYYY-MM:) to the character's
     entity entry in entities.md under ## Postać.
 
-    Does not delete the character file or remove the entity entry.
-    Characters with status Usunięty are filtered out by
-    Get-PlayerCharacter -IncludeState unless -IncludeDeleted is set.
+    Does not delete the character file or remove the entity entry —
+    preserving referential integrity for session references and
+    historical PU data. Characters with status Usunięty are filtered out
+    by Get-PlayerCharacter -IncludeState unless -IncludeDeleted is set.
 
-    ConfirmImpact is High for safety.
-    Dot-sources entity-writehelpers.ps1.
+    If the character has no entity entry yet, one is created first
+    (the bullet must exist before @status can be attached).
+
+    ConfirmImpact is High because the operation removes the character
+    from active play across all downstream consumers.
+
+    Dot-sources entity-writehelpers.ps1 (file I/O and tag manipulation).
 #>
 
-# Dot-source helpers
 . "$script:ModuleRoot/private/entity-writehelpers.ps1"
 
 function Remove-PlayerCharacter {
@@ -50,8 +55,8 @@ function Remove-PlayerCharacter {
         $ValidFrom = (Get-Date).ToString('yyyy-MM')
     }
 
-    # If the character has no entity entry yet, create one so the @status
-    # tag has a place to live (the bullet must exist before tags can be set)
+    # @należy_do is required as the initial tag so the newly created entity
+    # (if one does not already exist) links to the correct player
     $InitialTags = [ordered]@{
         'należy_do' = $PlayerName
     }

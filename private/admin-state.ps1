@@ -12,36 +12,39 @@
     - Add-AdminHistoryEntry:  appends new entries with timestamp to a state file
 
     Module-level data:
-    - $script:HistoryEntryPattern:           indented history entry line "    - ### ..."
-    - $script:MultiSpacePattern:             whitespace collapse pattern
-    - $script:AdminHistoryTimestampPattern:  timestamp lines "- YYYY-MM-dd HH:mm (timezone):"
+    - $script:HistoryEntryPattern:           precompiled regex for indented history entry lines "    - ### ..."
+    - $script:MultiSpacePattern:             precompiled regex for collapsing multiple whitespace runs
+    - $script:AdminHistoryTimestampPattern:  precompiled regex for timestamp lines "- YYYY-MM-dd HH:mm (timezone):"
 
-    State files (`.robot/res/*.md`) use an append-only format:
+    State files (`.robot/res/*.md`) use an append-only Markdown format:
 
         - YYYY-MM-dd HH:mm (timezone):
             - ### session header 1
             - ### session header 2
 
-    Header normalization: trim whitespace, collapse multiple spaces, strip
-    leading `### ` prefix before comparison. Returns a HashSet for O(1)
-    lookups when checking whether a session has already been processed.
+    Get-AdminHistoryEntries scans lines with HistoryEntryPattern to extract
+    "### header" entries, normalizes each (trim + collapse whitespace), and
+    returns a HashSet[string] (OrdinalIgnoreCase) for O(1) membership checks.
+    This lets PU assignment detect already-processed sessions without scanning
+    the full history on each comparison.
+
+    Add-AdminHistoryEntry appends new entries at the end of the file with a
+    UTC-offset timestamp line. If the file does not exist, it creates it from
+    the pu-sessions-header.md.template via Get-AdminTemplate. Headers are
+    sorted alphabetically (chronological since they start with YYYY-MM-DD)
+    and normalized with a "### " prefix if absent.
+
+    AdminHistoryTimestampPattern is additionally consumed by Get-PUAssignmentLog
+    and Get-VotingEligibility to parse historical assignment timestamps.
 #>
 
-# Precompiled pattern matching indented history entry lines: "    - ### ..."
 $script:HistoryEntryPattern = [regex]::new('^\s+-\s+###\s+(.+)$', [System.Text.RegularExpressions.RegexOptions]::Compiled)
-
-# Precompiled pattern for collapsing multiple whitespace
 $script:MultiSpacePattern = [regex]::new('\s{2,}', [System.Text.RegularExpressions.RegexOptions]::Compiled)
-
-# Admin history timestamp line pattern - matches "- YYYY-MM-dd HH:mm (timezone):" entries
-# in pu-sessions.md. Used by Get-PUAssignmentLog and Get-VotingEligibility.
 $script:AdminHistoryTimestampPattern = [regex]::new(
     '^\s*-\s+(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2})\s+\(([^)]+)\)\s*:\s*$',
     [System.Text.RegularExpressions.RegexOptions]::Compiled
 )
 
-# Reads all processed session headers from a state file.
-# Returns a HashSet[string] (OrdinalIgnoreCase) of normalized header strings.
 function Get-AdminHistoryEntries {
     param(
         [Parameter(Mandatory, HelpMessage = "Path to the state file")]
@@ -63,7 +66,6 @@ function Get-AdminHistoryEntries {
         if (-not $Match.Success) { continue }
 
         $Header = $Match.Groups[1].Value.Trim()
-        # Normalize: collapse multiple spaces
         $Header = $script:MultiSpacePattern.Replace($Header, ' ')
 
         if ($Header.Length -gt 0) {
@@ -74,8 +76,6 @@ function Get-AdminHistoryEntries {
     return , $Result
 }
 
-# Appends new processed session headers to a state file with a timestamp line.
-# Creates the file with a standard preamble if it does not exist.
 function Add-AdminHistoryEntry {
     param(
         [Parameter(Mandatory, HelpMessage = "Path to the state file")]
@@ -90,14 +90,13 @@ function Add-AdminHistoryEntry {
 
     $UTF8NoBOM = [System.Text.UTF8Encoding]::new($false)
 
-    # Ensure file exists with preamble
+    # Create file with template preamble on first use
     if (-not [System.IO.File]::Exists($Path)) {
         $Dir = [System.IO.Path]::GetDirectoryName($Path)
         if (-not [System.IO.Directory]::Exists($Dir)) {
             [void][System.IO.Directory]::CreateDirectory($Dir)
         }
 
-        # Load admin-config helpers if not already available
         if (-not (Get-Command 'Get-AdminTemplate' -ErrorAction SilentlyContinue)) {
             . ([System.IO.Path]::Combine($PSScriptRoot, 'admin-config.ps1'))
         }
@@ -106,10 +105,7 @@ function Add-AdminHistoryEntry {
         [System.IO.File]::WriteAllText($Path, $Preamble, $UTF8NoBOM)
     }
 
-    # Build entry block
     $SB = [System.Text.StringBuilder]::new(512)
-
-    # Timestamp line matching legacy format: "- YYYY-MM-dd HH:mm (timezone):"
     $Now = [datetime]::Now
     $TimezoneOffset = [System.TimeZoneInfo]::Local.GetUtcOffset($Now)
     $Sign = if ($TimezoneOffset -ge [System.TimeSpan]::Zero) { '+' } else { '-' }
@@ -119,13 +115,12 @@ function Add-AdminHistoryEntry {
     [void]$SB.Append("- $Timestamp ($TzStr):")
     [void]$SB.Append("`n")
 
-    # Sort headers chronologically (they contain dates as first element)
+    # Headers start with YYYY-MM-DD, so ordinal sort yields chronological order
     $SortedHeaders = [System.Collections.Generic.List[string]]::new($Headers)
     $SortedHeaders.Sort([System.StringComparer]::Ordinal)
 
     foreach ($Header in $SortedHeaders) {
         $Normalized = $Header.Trim()
-        # Ensure header has ### prefix for the state file format
         if (-not $Normalized.StartsWith('### ')) {
             $Normalized = "### $Normalized"
         }

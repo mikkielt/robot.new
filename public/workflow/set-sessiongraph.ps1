@@ -5,24 +5,33 @@
     .DESCRIPTION
     This file contains Set-SessionGraph, which builds a participation index
     mapping sessions to their involved entities across three tiers:
-    - Tier 0 (Filesystem): session file placed in entity directory
-    - Tier 1 (Structured): entity in PU, @Zmiany, @Transfer, @Intel metadata
-    - Tier 2 (Body Text): entity name mentioned in session body
+    - Tier 0 (Filesystem): session file placed in entity's directory
+    - Tier 1 (Structured): entity referenced in PU, @Zmiany, @Transfer, @Intel metadata
+    - Tier 2 (Body Text): entity name mentioned in session body text
 
     The index is stored as a single JSON file at {ResDir}/session-graph/_index.json
-    (not per-file sidecars, because sessions span multiple files).
+    (not per-file sidecars, because sessions span multiple files and the
+    index must deduplicate across them).
 
-    Supports three modes:
+    Three operating modes:
     - Full (-Full): processes all sessions, rebuilds Tier 2 mentions,
-      clears Tier2Stale flag on completion
+      clears Tier2Stale flag on completion. Forced automatically when the
+      NameIndex version changes (entity name set changed, so Tier 2 matches
+      may differ).
     - Incremental (default): uses Get-GitChangeLog to find changed files,
-      then processes only sessions whose FilePaths overlap
-    - EagerOnly (-EagerOnly): refreshes only Tiers 0+1 for changed sessions
-      (no mention resolution), used by Set-Session eager refresh
+      then processes only sessions whose FilePaths overlap. Falls back to
+      full scan when git changelog fails or no previous timestamp exists.
+    - EagerOnly (-EagerOnly): refreshes only Tiers 0+1 for sessions already
+      in the index (no mention resolution). Used by Set-Session's per-write
+      eager refresh to keep structured data current without O(n) name scans.
 
     Tier 2 mention cache (_mentions.json) stores resolved mentions keyed by
-    NameIndexVersion + content hash, avoiding redundant name resolution on
-    repeated full rebuilds.
+    NameIndexVersion + content hash. Cache hits avoid redundant name resolution
+    on repeated full rebuilds when body content hasn't changed.
+
+    Metadata (_meta.json) tracks LastFullUpdate, LastIncrementalUpdate,
+    LastEagerRefresh, EagerRefreshCount, NameIndexVersion, SessionCount,
+    and Tier2Stale flag.
 
     Helpers:
     - Dot-sources private/session-graphhelpers.ps1 for classification/I/O
@@ -59,7 +68,7 @@ function Set-SessionGraph {
 
     if ($script:HasOpCtx) { Clear-OperationContext }
 
-    # Load helpers
+    # Lazy-load helpers: only dot-source if not already loaded (avoids re-parsing on repeated calls)
     if (-not (Get-Command 'Get-FilePathInvolvement' -ErrorAction SilentlyContinue)) {
         . "$PSScriptRoot/../../private/session-graphhelpers.ps1"
     }
@@ -77,11 +86,11 @@ function Set-SessionGraph {
     $MetaPath = [System.IO.Path]::Combine($GraphDir, '_meta.json')
     $MentionCachePath = [System.IO.Path]::Combine($GraphDir, '_mentions.json')
 
-    # Read existing metadata
+    # Metadata carries state between runs (last update times, name version, etc.)
     $Meta = Read-SessionGraphMeta -MetaPath $MetaPath
     $StoredNameVersion = $Meta['NameIndexVersion']
 
-    # Determine scope: full vs incremental
+    # Determine scope: full rebuild vs incremental delta vs eager-only refresh
     $IsFullScan = $Full.IsPresent
     $IsEagerOnly = $EagerOnly.IsPresent
     $ChangedFilePaths = $null
@@ -112,12 +121,12 @@ function Set-SessionGraph {
                 $IsFullScan = $true
             }
         } else {
-            # No previous timestamp — full scan needed
+            # No previous timestamp — first run requires full scan
             $IsFullScan = $true
         }
     }
 
-    # Fetch sessions (with or without mentions depending on mode)
+    # EagerOnly skips mention resolution (Tier 2) to avoid O(n) name scanning
     $GetSessionArgs = @{}
     if (-not $IsEagerOnly) {
         $GetSessionArgs['IncludeMentions'] = $true
@@ -135,7 +144,8 @@ function Set-SessionGraph {
         }
     }
 
-    # Compute NameIndex version to detect entity name set changes
+    # NameIndex version hash detects when the entity name set changes,
+    # which invalidates Tier 2 matches (different names = different mentions)
     $AllEntityNames = [System.Collections.Generic.List[string]]::new()
     $NameIdx = Get-NameIndex
     foreach ($Key in $NameIdx.Index.Keys) {
@@ -143,7 +153,7 @@ function Set-SessionGraph {
     }
     $CurrentNameVersion = Get-NameIndexVersion -Names @($AllEntityNames)
 
-    # If name set changed and not EagerOnly, force full rebuild (Tier 2 matches may differ)
+    # Name set change forces full rebuild — Tier 2 matches may differ with new entity names
     $NameSetChanged = $false
     if ($StoredNameVersion -and -not [string]::Equals($StoredNameVersion, $CurrentNameVersion, [System.StringComparison]::OrdinalIgnoreCase)) {
         $NameSetChanged = $true
@@ -152,7 +162,7 @@ function Set-SessionGraph {
         }
     }
 
-    # Determine which sessions to process
+    # Scope selection: full takes all, eager takes indexed-only, incremental takes changed-only
     $SessionsToProcess = [System.Collections.Generic.List[object]]::new()
 
     if ($IsFullScan) {
@@ -194,10 +204,10 @@ function Set-SessionGraph {
         }
     }
 
-    # Load existing index for incremental/eager merge
+    # Full mode starts fresh; incremental/eager merge into the existing index
     $Index = if ($IsFullScan) { @{} } else { Read-SessionGraphIndex -IndexPath $IndexPath }
 
-    # Load mention cache for full rebuilds (Tier 2 speedup)
+    # Mention cache avoids redundant Tier 2 name resolution when content hasn't changed
     $MentionCache = $null
     $MentionCacheUpdated = $false
     if ($IsFullScan -and -not $IsEagerOnly) {
@@ -217,16 +227,16 @@ function Set-SessionGraph {
 
         $Idx++
 
-        # Progress reporting for full rebuilds
+        # Progress bar only for full rebuilds (incremental is usually fast enough)
         if ($IsFullScan -and $Total -gt 10) {
             Write-Progress -Activity 'Budowanie grafu sesji' -Status "Sesja $Idx z $Total" -PercentComplete (($Idx / $Total) * 100)
         }
 
         if ($IsEagerOnly) {
-            # EagerOnly: use Update-SessionGraphEntry (preserves Tier 2)
+            # EagerOnly: Update-SessionGraphEntry preserves existing Tier 2 data
             Update-SessionGraphEntry -SessionHeader $Header -Session $Session -Index $Index
 
-            # Count from the updated entry
+            # Tally per-tier counts from the merged entry
             $UpdatedEntry = $Index[$Header]
             if ($UpdatedEntry -and $UpdatedEntry['Participants']) {
                 foreach ($P in $UpdatedEntry['Participants']) {
@@ -240,14 +250,14 @@ function Set-SessionGraph {
                 }
             }
         } else {
-            # Full/Incremental: use mention cache if available
+            # Full/Incremental: check mention cache before expensive name resolution
             if ($MentionCache -and $Session.PSObject.Properties['BodyHash']) {
                 $CachedMentions = Get-CachedMentions -SessionHeader $Header -NameIndexVersion $CurrentNameVersion -ContentHash $Session.BodyHash -Cache $MentionCache
                 if ($null -ne $CachedMentions) {
-                    # Override session mentions with cached data
+                    # Cache hit — reuse previously resolved mentions
                     $Session | Add-Member -NotePropertyName 'Mentions' -NotePropertyValue $CachedMentions -Force
                 } else {
-                    # Cache miss: store resolved mentions for next time
+                    # Cache miss — store resolved mentions for future runs
                     if ($Session.Mentions -and $Session.BodyHash) {
                         $MentionCache[$Header] = @{
                             CacheKey = "${CurrentNameVersion}:$($Session.BodyHash)"
@@ -260,7 +270,7 @@ function Set-SessionGraph {
 
             $Participants = ConvertTo-ParticipantRecord -Session $Session
 
-            # Count by tier
+            # Tally per-tier counts for the summary output
             foreach ($P in $Participants) {
                 $TotalParticipants++
                 switch ($P.Tier) {
@@ -270,11 +280,11 @@ function Set-SessionGraph {
                 }
             }
 
-            # Build index entry
+            # Build index entry with date, format, participants, and file paths
             $DateStr = if ($Session.Date) { $Session.Date.ToString('yyyy-MM-dd') } else { $null }
             $Format = if ($Session.PSObject.Properties['Format']) { $Session.Format } else { $null }
 
-            # Serialize participants for JSON storage
+            # Flatten participant objects to hashtables for JSON serialization
             $ParticipantList = [System.Collections.Generic.List[object]]::new()
             foreach ($P in $Participants) {
                 [void]$ParticipantList.Add(@{
@@ -295,26 +305,26 @@ function Set-SessionGraph {
         }
     }
 
-    # Complete progress bar
+    # Dismiss progress bar
     if ($IsFullScan -and $Total -gt 10) {
         Write-Progress -Activity 'Budowanie grafu sesji' -Completed
     }
 
-    # Write index
+    # Persist index and metadata — both gated by ShouldProcess for -WhatIf
     if ($PSCmdlet.ShouldProcess('_index.json', 'Update session graph index')) {
         Write-SessionGraphIndex -IndexPath $IndexPath -Index $Index
     }
 
-    # Write mention cache if updated
+    # Persist mention cache only when new entries were added (avoid no-op writes)
     if ($MentionCacheUpdated -and $PSCmdlet.ShouldProcess('_mentions.json', 'Update mention cache')) {
         Write-MentionCache -CachePath $MentionCachePath -Cache $MentionCache
     }
 
-    # Update metadata
+    # Update metadata timestamps and counters for next incremental run
     $Now = [datetime]::Now.ToString('yyyy-MM-dd HH:mm:ss')
     if ($IsFullScan) {
         $Meta['LastFullUpdate'] = $Now
-        # Clear Tier2Stale after full rebuild
+        # Full rebuild resolves all mentions — clear staleness flag
         $Meta['Tier2Stale'] = $false
         $Meta['Tier2StaleReason'] = $null
     }

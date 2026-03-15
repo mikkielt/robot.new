@@ -1,6 +1,7 @@
 <#
     .SYNOPSIS
-    Core UI primitives for the Robot CLI - colors, key input, and visual helpers.
+    Core UI primitives for the Robot CLI - colors, key input, progress
+    reporting, and visual helpers.
 
     .DESCRIPTION
     This file contains the lowest-level interactive building blocks consumed
@@ -8,40 +9,50 @@
 
     The interactive menu components (Show-ArrowMenu, Show-ResultTable) live in
     cli-menus.ps1, which is chain-loaded via dot-source at the end of this file.
+    The TUI engine files (engine/*.ps1) are also chain-loaded in dependency
+    order from this file.
 
     Active helpers (NOT deprecated):
-    - Resolve-CLITheme:     background-adaptive Dark/Light detection
-    - Get-CLIColor:         semantic role → ConsoleColor (colorblind-safe)
-    - Write-CLILine:        consistent indented Write-Host wrapper
-    - New-ProgressState:    create Docker-style progress group (title + N steps)
-    - Start-ProgressStep:   begin a step (renders [X/N] ⠿ Label...)
-    - Update-ProgressStep:  update current step in-place (spinner + detail)
-    - Complete-ProgressStep: finish step with ✓/✗ + elapsed time
+    - Resolve-CLITheme:       background-adaptive Dark/Light detection via
+                              Console.BackgroundColor → theme string
+    - Get-CLIColor:           semantic role → ConsoleColor lookup through
+                              $script:CLIColorScheme (colorblind-safe palette)
+    - Write-CLILine:          consistent 2-space-indented Write-Host wrapper
+    - Initialize-WorkflowScreen: common workflow screen setup (clear, title,
+                              separator). Returns color hashtable for caller use.
+    - New-ProgressState:      create Docker-style progress group (title + N steps)
+    - Start-ProgressStep:     begin a step (renders [X/N] ⠿ Label...)
+    - Update-ProgressStep:    update current step in-place (animated spinner + detail)
+    - Complete-ProgressStep:  finish step with ✓/✗ + elapsed time
     - Complete-ProgressGroup: finalize group with total elapsed on title line
+
+    - Show-InfoBox:       simple pre-checks info display for workflow screens
 
     DEPRECATED helpers (use engine equivalents instead):
     - Read-ArrowKey:      → engine input handling (Start-InputLoop)
     - Clear-MenuArea:     → engine buffer (Write-BufferRegion)
-    - Show-Banner:        → engine TopBar chrome
-    - Show-Breadcrumb:    → engine TopBar chrome
-    - Show-InfoBox:       → engine overlay components
 
     Module-level data:
-    - $script:CLIColorScheme: dark/light adaptive color mappings
-    - $script:BannerArt:      ASCII art string
-    - $script:SpinnerFrames:  braille animation frames (8 chars)
-    - $script:SpinnerStatic:  static braille indicator for blocking calls
+    - $script:CLIColorScheme: dark/light adaptive color mappings (7 semantic
+      roles: Accent, Success, Warning, Error, Disabled, Info, RoleTag)
+    - $script:BannerArt:      ASCII art string for CLI launch screen
+    - $script:SpinnerFrames:  8 braille characters cycled by Update-ProgressStep
+    - $script:SpinnerStatic:  static braille indicator (⠿) for blocking calls
 
     Design:
     - Colors never rely on Red/Green (colorblind-safe). Every semantic meaning
-      is reinforced with symbols (checkmark, cross, warning).
+      is reinforced with symbols (checkmark, cross, warning triangle).
     - Per-line SetCursorPosition redraw to avoid flicker (no full Clear).
+    - Progress functions use Stopwatch for sub-second elapsed timing and
+      in-place line updates via SetCursorPosition.
+
+    Dependencies: none (this is the root of the CLI dependency chain)
 #>
 
 # ── Color Scheme ─────────────────────────────────────────────────────────────
 
 # Background-adaptive, colorblind-friendly palette.
-# Red and Green are NEVER used - the most common colorblindness axis.
+# Red and Green are NEVER used — the most common colorblindness axis (protanopia/deuteranopia).
 $script:CLIColorScheme = @{
     Dark = @{
         Accent   = 'Cyan'
@@ -148,7 +159,7 @@ function New-ProgressState {
     $GS = [System.Diagnostics.Stopwatch]::new()
     $GS.Start()
 
-    # Render the title line (no counter, no symbol)
+    # Title line anchors the group — individual steps render below it
     $Clr = Get-CLIColor -Role 'Disabled'
     Write-Host "  $Title" -ForegroundColor $Clr
 
@@ -185,7 +196,7 @@ function Start-ProgressStep {
     }
     [void]$State.Steps.Add($Step)
 
-    # Render: [X/N] ⠿ Label...
+    # Render step line with static spinner indicator
     $Row = $State.StartRow + $State.CurrentStep
     $Width = [System.Console]::WindowWidth
     $Clr = Get-CLIColor -Role 'Disabled'
@@ -211,11 +222,11 @@ function Update-ProgressStep {
     $Step = $State.Steps[$State.Steps.Count - 1]
     if ($Detail) { $Step.Detail = $Detail }
 
-    # Advance spinner
+    # Cycle through braille spinner frames for animation
     $State.SpinnerIdx = ($State.SpinnerIdx + 1) % $script:SpinnerFrames.Count
     $Spinner = $script:SpinnerFrames[$State.SpinnerIdx]
 
-    # Re-render current line in-place
+    # In-place re-render of the current step line
     $Row = $State.StartRow + $State.CurrentStep
     $Width = [System.Console]::WindowWidth
     $Clr = Get-CLIColor -Role 'Disabled'
@@ -224,7 +235,7 @@ function Update-ProgressStep {
 
     $LeftText = "$($Step.Label)..."
     $RightText = if ($Step.Detail) { "  $($Step.Detail)" } else { '' }
-    # Prefix: "  [X/N] S " = 2 + counter + 1 + 2 = varies
+    # Prefix length: "  [X/N] S " varies with step/total digit count
     $PrefixLen = 2 + $Counter.Length + 1 + 2
     $Pad = $Width - $PrefixLen - $LeftText.Length - $RightText.Length
     if ($Pad -lt 0) { $Pad = 0 }
@@ -233,7 +244,7 @@ function Update-ProgressStep {
     Write-Host "  $Counter " -NoNewline -ForegroundColor $Clr
     Write-Host "$Spinner " -NoNewline -ForegroundColor $AccClr
     Write-Host "$LeftText$(' ' * $Pad)$RightText" -NoNewline -ForegroundColor $Clr
-    # Clear any leftover chars from previous longer render
+    # Erase any trailing chars from previous longer render
     $Written = $PrefixLen + $LeftText.Length + $Pad + $RightText.Length
     $Extra = $Width - $Written
     if ($Extra -gt 0) { [System.Console]::Write(' ' * $Extra) }
@@ -255,7 +266,7 @@ function Complete-ProgressStep {
     if ($Detail) { $Step.Detail = $Detail }
     if ($Failed) { $State.Failed = $true }
 
-    $Symbol = if ($Failed) { [char]0x2717 } else { [char]0x2713 }
+    $Symbol = if ($Failed) { [char]0x2717 } else { [char]0x2713 }  # ✗ or ✓
     $SymClr = if ($Failed) { Get-CLIColor -Role 'Error' } else { Get-CLIColor -Role 'Success' }
 
     $ElapsedStr = '{0:F1}s' -f $Step.Elapsed
@@ -277,7 +288,7 @@ function Complete-ProgressStep {
     Write-Host "  $Counter " -NoNewline -ForegroundColor $Clr
     Write-Host "$Symbol " -NoNewline -ForegroundColor $SymClr
     Write-Host "$LabelText$(' ' * $Pad)$RightText" -NoNewline -ForegroundColor $Clr
-    # Clear remainder
+    # Erase remainder of the line
     $Written = $PrefixLen + $LabelText.Length + $Pad + $RightText.Length
     $Extra = $Width - $Written
     if ($Extra -gt 0) { [System.Console]::Write(' ' * $Extra) }
@@ -292,7 +303,7 @@ function Complete-ProgressGroup {
     $State.GroupStart.Stop()
     $TotalElapsed = '{0:F1}s' -f $State.GroupStart.Elapsed.TotalSeconds
 
-    # Update the title line with total elapsed (right-aligned)
+    # Overwrite title line with right-aligned total elapsed time
     $Row = $State.StartRow
     $Width = [System.Console]::WindowWidth
     $Clr = Get-CLIColor -Role 'Disabled'
@@ -304,15 +315,13 @@ function Complete-ProgressGroup {
     [System.Console]::SetCursorPosition(0, $Row)
     Write-Host "$LeftPart$(' ' * $Pad)   $TotalElapsed" -ForegroundColor $Clr
 
-    # Move cursor below the last step + blank line
+    # Position cursor below the completed group for subsequent output
     $FinalRow = $State.StartRow + $State.TotalSteps + 1
     [System.Console]::SetCursorPosition(0, $FinalRow)
     Write-Host ''
 }
 
 # ── Initialize-WorkflowScreen ────────────────────────────────────────────────
-# Common workflow screen setup: clear, title, separator, empty line.
-# Returns hashtable of all standard CLI colors for caller use.
 
 function Initialize-WorkflowScreen {
     param(
@@ -342,7 +351,6 @@ function Initialize-WorkflowScreen {
 
 # ── Read-ArrowKey ────────────────────────────────────────────────────────────
 # DEPRECATED: Use engine input handling (Start-InputLoop) instead.
-# Retained for plugin/migration compatibility. Will be removed in a future version.
 
 function Read-ArrowKey {
     $KeyInfo = [System.Console]::ReadKey($true)
@@ -351,9 +359,6 @@ function Read-ArrowKey {
 
 # ── Clear-MenuArea ───────────────────────────────────────────────────────────
 # DEPRECATED: Use engine buffer (Write-BufferRegion) instead.
-# Retained for plugin/migration compatibility. Will be removed in a future version.
-
-# Overwrites N lines starting at the given row with spaces, without clearing the screen
 function Clear-MenuArea {
     param(
         [int]$StartRow,
@@ -367,101 +372,8 @@ function Clear-MenuArea {
     $Host.UI.RawUI.CursorPosition = [System.Management.Automation.Host.Coordinates]::new(0, $StartRow)
 }
 
-# ── Show-Banner ──────────────────────────────────────────────────────────────
-# DEPRECATED: Banner is now rendered by engine TopBar chrome.
-# Retained for plugin/migration compatibility. Will be removed in a future version.
-
-function Show-Banner {
-    $AccentColor = Get-CLIColor -Role 'Accent'
-
-    # Read version from VERSION file
-    $VersionStr = ''
-    $VersionPath = [System.IO.Path]::Combine($script:ModuleRoot, 'VERSION')
-    if ([System.IO.File]::Exists($VersionPath)) {
-        $VersionStr = "v$([System.IO.File]::ReadAllText($VersionPath).Trim())"
-    }
-
-    Write-Host ''
-    foreach ($Line in $script:BannerArt.Split("`n")) {
-        Write-Host $Line -ForegroundColor $AccentColor
-    }
-
-    # Right-align version string to match the banner ASCII art width
-    $VersionPadded = $VersionStr.PadLeft(38)
-    Write-Host $VersionPadded -ForegroundColor (Get-CLIColor -Role 'Disabled')
-    Write-Host ''
-}
-
-# ── Show-Breadcrumb ──────────────────────────────────────────────────────────
-# DEPRECATED: Breadcrumb is now rendered by engine TopBar chrome.
-# Retained for plugin/migration compatibility. Will be removed in a future version.
-
-function Show-Breadcrumb {
-    param([object]$State)
-
-    $Parts = [System.Collections.Generic.List[string]]::new()
-    # Stack to list (reverse order since Stack is LIFO)
-    $StackArray = $State.BreadcrumbStack.ToArray()
-    [System.Array]::Reverse($StackArray)
-    foreach ($Part in $StackArray) {
-        [void]$Parts.Add($Part)
-    }
-
-    $AccentColor = Get-CLIColor -Role 'Accent'
-    $DisabledColor = Get-CLIColor -Role 'Disabled'
-
-    $SB = [System.Text.StringBuilder]::new()
-    for ($I = 0; $I -lt $Parts.Count; $I++) {
-        if ($I -gt 0) { [void]$SB.Append(' > ') }
-        [void]$SB.Append($Parts[$I])
-    }
-
-    # Health badges (right-aligned after breadcrumb)
-    $BadgeStr = ''
-    if ($State.PSObject.Properties['HealthCache'] -and $State.HealthCache) {
-        $HC = $State.HealthCache
-        $BadgeParts = [System.Collections.Generic.List[string]]::new()
-
-        # PU badge
-        if ($HC.PU) {
-            $PUWarnCount = @($HC.PU | Where-Object { $_.Status -ne 'OK' }).Count
-            if ($PUWarnCount -eq 0) { [void]$BadgeParts.Add("PU:$([char]0x2713)") }
-            else { [void]$BadgeParts.Add("PU:$([char]0x26A0)$PUWarnCount") }
-        }
-
-        # Currency badge
-        if ($HC.Currency) {
-            $CWarnCount = if ($HC.Currency.WarningCount) { $HC.Currency.WarningCount } else { 0 }
-            if ($CWarnCount -eq 0) { [void]$BadgeParts.Add("Waluta:$([char]0x2713)") }
-            else { [void]$BadgeParts.Add("Waluta:$([char]0x26A0)$CWarnCount") }
-        }
-
-        # Integrity badge
-        if ($HC.Integrity) {
-            $IWarnCount = @($HC.Integrity | Where-Object { -not $_.IsValid }).Count
-            if ($IWarnCount -eq 0) { [void]$BadgeParts.Add("Sesje:$([char]0x2713)") }
-            else { [void]$BadgeParts.Add("Sesje:$([char]0x26A0)$IWarnCount") }
-        }
-
-        # Graph badge
-        if ($HC.Graph) {
-            $GWarnCount = if ($HC.Graph.WarningCount) { $HC.Graph.WarningCount } else { 0 }
-            if ($GWarnCount -eq 0) { [void]$BadgeParts.Add("Graf:$([char]0x2713)") }
-            else { [void]$BadgeParts.Add("Graf:$([char]0x26A0)$GWarnCount") }
-        }
-
-        if ($BadgeParts.Count -gt 0) {
-            $BadgeStr = "    [$($BadgeParts -join '  ')]"
-        }
-    }
-
-    Write-Host "  $($SB.ToString())$BadgeStr" -ForegroundColor $AccentColor
-    Write-Host ''
-}
-
 # ── Show-InfoBox ─────────────────────────────────────────────────────────────
-# DEPRECATED: Use engine overlay components instead.
-# Retained for core/plugin compatibility. Will be removed in a future version.
+# Displays a simple pre-checks info list for workflow screens (Write-Host context).
 
 function Show-InfoBox {
     param([string[]]$Checks)
@@ -476,11 +388,11 @@ function Show-InfoBox {
     Write-Host ''
 }
 
-# ── Chain-load interactive menu components ───────────────────────────────────
+# ── Chain-load interactive menu components (deprecated layer) ────────────────
 
 . "$PSScriptRoot/cli-menus.ps1"
 
-# ── Chain-load TUI engine files in dependency order ─────────────────────────
+# ── Chain-load TUI engine files in dependency order ─────────────────────────────
 
 $EngineDir = "$PSScriptRoot/engine"
 if ([System.IO.Directory]::Exists($EngineDir)) {

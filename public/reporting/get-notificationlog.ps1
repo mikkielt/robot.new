@@ -3,13 +3,26 @@
     Extracts all @Intel directives from sessions into a notification audit log.
 
     .DESCRIPTION
-    Scans sessions for Intel entries and returns a flat, chronologically sorted
-    list of notification intents with session context. Supports filtering by
-    target name, directive type, and date range.
+    Scans sessions for @Intel entries and returns a flat, chronologically
+    sorted list of notification intents with session context. Supports
+    filtering by target name, directive type, and date range.
 
-    Reconstructs notification intent from session data. Note: this shows what
-    was intended to be sent, not actual delivery status (delivery logging is
-    not yet implemented).
+    Pipeline:
+    1. Fetch sessions via Get-SessionsForReport (shared reporting helper
+       that handles date filtering and optional pre-fetched session lists)
+    2. Extract Intel directive entries via Get-SessionDirectiveEntries
+    3. Apply directive type filter (Direct/Grupa/Lokacja)
+    4. Apply target name filter against both TargetName and resolved
+       Recipients (OrdinalIgnoreCase), so filtering by a player name
+       finds Intel directed at their group or location
+    5. Sort chronologically by session date
+
+    This shows what was intended to be sent, not actual delivery status.
+    Delivery confirmation is not tracked in the session data model.
+
+    Each output object includes the session context (Date, Title, Narrator)
+    alongside the Intel payload (Directive type, TargetName, Message,
+    Recipients array).
 #>
 
 . "$script:ModuleRoot/private/reporting-helpers.ps1"
@@ -17,7 +30,7 @@
 function Get-NotificationLog {
     <#
         .SYNOPSIS
-        View Intel notification history from sessions.
+        Returns a chronological audit log of @Intel notification intents from sessions.
     #>
 
     [CmdletBinding()] param(
@@ -55,18 +68,19 @@ function Get-NotificationLog {
     foreach ($E in $Entries) {
         $Intel = $E.Directive
 
-        # Directive filter
+        # Skip entries that don't match the requested directive type
         if ($Directive -and -not [string]::Equals($Intel.Directive, $Directive, [System.StringComparison]::OrdinalIgnoreCase)) {
             continue
         }
 
-        # Resolve recipient names
+        # Flatten recipient objects to name strings for target matching and output
         $RecipientNames = @()
         if ($Intel.Recipients) {
             $RecipientNames = @($Intel.Recipients | ForEach-Object { $_.Name })
         }
 
-        # Target filter: match against TargetName or any recipient
+        # Match target against both the direct TargetName and resolved recipients
+        # so filtering by a player name catches group/location-routed Intel too
         if ($Target) {
             $TargetMatch = [string]::Equals($Intel.TargetName, $Target, [System.StringComparison]::OrdinalIgnoreCase)
             if (-not $TargetMatch) {
@@ -93,7 +107,7 @@ function Get-NotificationLog {
         })
     }
 
-    # Sort chronologically
+    # Chronological sort for audit trail readability
     $Report.Sort([System.Comparison[object]]{
         param($a, $b)
         return $a.Date.CompareTo($b.Date)

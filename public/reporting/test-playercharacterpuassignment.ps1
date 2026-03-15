@@ -4,35 +4,53 @@
 
     .DESCRIPTION
     This file contains Test-PlayerCharacterPUAssignment which runs the PU
-    assignment pipeline in compute-only mode (no side-effect switches) and
-    validates:
+    assignment pipeline in compute-only mode (WhatIf) and validates five
+    categories of issues:
 
-    - Unresolved characters: PU entries whose character name didn't match
-      any known character in the player roster.
-    - Malformed PU values: entries with null or non-numeric PU values.
-    - Duplicate entries: same character appearing in multiple PU lines
-      within a single session.
-    - Failed sessions with PU data: sessions that failed date parsing
-      (e.g. wrong date format like "2024-1-5" or "2024-13-01") but whose
-      content contains PU-resolvable sections. These are silently dropped
-      by the normal pipeline - this diagnostic surfaces them.
-    - Stale history entries: headers in pu-sessions.md that no longer
-      match any session found in the repository (renamed/deleted/corrupted).
+    1. UnresolvedCharacters: PU entries whose character name didn't match
+       any known character in the player roster. Caught via
+       ThrowTerminatingError with ErrorId 'UnresolvedPUCharacters' from
+       Invoke-PlayerCharacterPUAssignment.
+    2. MalformedPU:          entries with null or non-numeric PU values.
+    3. DuplicateEntries:     same character appearing in multiple PU lines
+                             within a single session.
+    4. FailedSessionsWithPU: sessions that failed date parsing (e.g.
+                             "2024-1-5") but whose content contains
+                             PU-resolvable sections. The normal pipeline
+                             silently drops these; this diagnostic
+                             surfaces them by scanning raw content.
+    5. StaleHistoryEntries:  headers in pu-sessions.md that no longer
+                             match any session in the repository.
 
-    Returns a structured diagnostic object, not just console output. This
-    allows callers to programmatically inspect results.
+    Module-level data:
+    - $script:PULikePattern: precompiled regex matching PU-like child
+      lines (e.g. "  - CharName: 0,3") for failed session scanning
+    - $script:PUSectionPattern: canonical definition in
+      private/session-parsehelpers.ps1 (available via module scope)
 
-    Default range: last 2 months (matches legacy behavior from
+    Pipeline:
+    1. Run Invoke-PlayerCharacterPUAssignment with -WhatIf to compute
+       assignments without side effects; catch UnresolvedPUCharacters
+       error and extract structured TargetObject
+    2. Fetch all sessions including failed ones with IncludeContent
+    3. For failed sessions: scan raw content for PU section markers and
+       PU-like child lines to detect silently dropped data
+    4. For parsed sessions: check PU entries for null values and
+       duplicate character names within the same session
+    5. Cross-reference pu-sessions.md history against all known session
+       headers to detect stale entries
+
+    Returns a structured diagnostic object with OK boolean and categorized
+    arrays, allowing callers to programmatically inspect results.
+
+    Default range: last 2 months (legacy parity with
     Invoke-PlayerCharacterPUAssignmentCorrectnessCheckup).
-
-    Dot-sources admin-state.ps1 and admin-config.ps1 for state file access.
 #>
 
-# Dot-source helpers
 . "$script:ModuleRoot/private/admin-state.ps1"
 . "$script:ModuleRoot/private/admin-config.ps1"
 
-# Precompiled pattern matching PU-like child lines: "  - CharName: 0,3"
+# Matches indented list items with "Name: numericValue" pattern for PU detection in raw content
 $script:PULikePattern = [regex]::new('^\s+[-\*]\s+(.+?):\s*([\d,\.]+)\s*$', [System.Text.RegularExpressions.RegexOptions]::Compiled)
 
 # $script:PUSectionPattern — canonical definition in private/session-parsehelpers.ps1
@@ -41,7 +59,7 @@ $script:PULikePattern = [regex]::new('^\s+[-\*]\s+(.+?):\s*([\d,\.]+)\s*$', [Sys
 function Test-PlayerCharacterPUAssignment {
     <#
         .SYNOPSIS
-        Validates PU assignment data for unresolved names and inconsistencies.
+        Validates PU assignment data for unresolved character names and data inconsistencies.
     #>
 
     [CmdletBinding()] param(
@@ -74,7 +92,7 @@ function Test-PlayerCharacterPUAssignment {
     if ($Quiet) { $script:SuppressWarnings = $true }
     try {
 
-    # Default: last 2 months (legacy parity)
+    # Default to last 2 months to match legacy Invoke-PlayerCharacterPUAssignmentCorrectnessCheckup behavior
     if (-not $Year -and -not $Month -and -not $PSBoundParameters.ContainsKey('MinDate')) {
         $Now = [datetime]::Now
         $MinDate = [datetime]::new($Now.AddMonths(-1).Year, $Now.AddMonths(-1).Month, 1)
@@ -83,7 +101,7 @@ function Test-PlayerCharacterPUAssignment {
         $MaxDate = [datetime]::Now.AddDays(1)
     }
 
-    # Build params for the assignment call
+    # Mirror the user's date parameters to the assignment pipeline
     $AssignParams = @{}
     if ($Year) { $AssignParams['Year'] = $Year }
     if ($Month) { $AssignParams['Month'] = $Month }
@@ -91,9 +109,8 @@ function Test-PlayerCharacterPUAssignment {
     if ($PSBoundParameters.ContainsKey('MaxDate')) { $AssignParams['MaxDate'] = $MaxDate }
     if ($ExcludeDirectory) { $AssignParams['ExcludeDirectory'] = $ExcludeDirectory }
 
-    # Run compute-only (no switches) - WhatIf:$true prevents any ShouldProcess writes.
-    # Invoke- now throws on unresolved characters (fail-early), so we catch and
-    # extract the structured TargetObject for the diagnostic report.
+    # WhatIf prevents ShouldProcess writes; fail-early throws on unresolved characters
+    # are caught here and converted to diagnostic entries via TargetObject extraction
     $Results = $null
     $UnresolvedCharacters = [System.Collections.Generic.List[object]]::new()
     $MalformedPU = [System.Collections.Generic.List[object]]::new()
@@ -105,7 +122,7 @@ function Test-PlayerCharacterPUAssignment {
         $Results = Invoke-PlayerCharacterPUAssignment @AssignParams -WhatIf
     } catch {
         if ($_.FullyQualifiedErrorId -eq 'UnresolvedPUCharacters,Invoke-PlayerCharacterPUAssignment') {
-            # Extract structured unresolved character data from TargetObject
+            # TargetObject contains the structured unresolved character array
             foreach ($Unresolved in $_.TargetObject) {
                 $UnresolvedCharacters.Add($Unresolved)
             }
@@ -114,8 +131,8 @@ function Test-PlayerCharacterPUAssignment {
         }
     }
 
-    # Get all sessions including failed ones - IncludeContent needed to scan
-    # failed session bodies for PU-like patterns that the pipeline missed
+    # IncludeContent is needed to scan failed session bodies for PU-like patterns
+    # that the normal pipeline silently drops due to date parse failures
     $SessionParams = @{ IncludeFailed = $true; IncludeContent = $true }
     if ($Year -and $Month) {
         $DMinDate = [datetime]::new($Year, $Month, 1)
@@ -141,7 +158,7 @@ function Test-PlayerCharacterPUAssignment {
             & $ProgressCallback $script:ProgressSessIdx $script:ProgressSessTotal $null
         }
 
-        # Failed sessions: scan content for PU data that was silently dropped
+        # Scan failed sessions for PU-like content that was silently dropped
         if ($null -ne $Session.ParseError) {
             if (-not $Session.Content) { continue }
 
@@ -158,7 +175,7 @@ function Test-PlayerCharacterPUAssignment {
                 if ($InPUSection) {
                     $Trimmed = $Line.TrimEnd()
 
-                    # Blank line or non-indented line ends the PU section
+                    # PU sections end at blank lines or non-indented content
                     if ([string]::IsNullOrWhiteSpace($Trimmed)) {
                         $InPUSection = $false
                         continue
@@ -187,7 +204,7 @@ function Test-PlayerCharacterPUAssignment {
             continue
         }
 
-        # Successfully parsed sessions: check for malformed PU and duplicates
+        # Parsed sessions: validate PU values and detect duplicate character entries
         if (-not $Session.PU -or $Session.PU.Count -eq 0) { continue }
 
         $SeenCharacters = [System.Collections.Generic.Dictionary[string, int]]::new([System.StringComparer]::OrdinalIgnoreCase)
@@ -218,16 +235,14 @@ function Test-PlayerCharacterPUAssignment {
         }
     }
 
-    # Cross-reference pu-sessions.md history against actual repository sessions.
-    # Stale entries = headers logged as processed that no longer match any session
-    # (renamed, deleted, or manually corrupted entries in the history file).
+    # Stale detection: headers in pu-sessions.md that no longer match any
+    # repository session (renamed, deleted, or manually corrupted entries)
     $Config = Get-AdminConfig
     $PUSessionsPath = [System.IO.Path]::Combine($Config.ResDir, 'pu-sessions.md')
     $HistoryHeaders = Get-AdminHistoryEntries -Path $PUSessionsPath
 
     if ($HistoryHeaders.Count -gt 0) {
-        # Build a set of all known session headers across the full repo
-        # (not date-filtered - stale detection needs the complete picture)
+        # Stale detection needs ALL headers, not just date-filtered ones
         if ($PSBoundParameters.ContainsKey('AllSessions') -and $AllSessions) {
             $AllRepoSessions = $AllSessions
         }
@@ -240,7 +255,7 @@ function Test-PlayerCharacterPUAssignment {
         foreach ($S in $AllRepoSessions) {
             $H = $S.Header.Trim()
             [void]$KnownHeaders.Add($H)
-            # History entries are stored without ### prefix, so add both forms
+            # History entries are stored without ### prefix — add both forms for matching
             if ($H.StartsWith('### ')) {
                 [void]$KnownHeaders.Add($H.Substring(4))
             }
@@ -256,8 +271,8 @@ function Test-PlayerCharacterPUAssignment {
         }
     }
 
-    # FailedSessionsWithPU and StaleHistoryEntries are informational —
-    # session content fixes belong in Phase 4 (format upgrade + mass review)
+    # OK only reflects actionable issues; FailedSessionsWithPU and StaleHistoryEntries
+    # are informational (fixes belong in Phase 4: format upgrade + mass review)
     $AllOK = $UnresolvedCharacters.Count -eq 0 -and
              $MalformedPU.Count -eq 0 -and
              $DuplicateEntries.Count -eq 0

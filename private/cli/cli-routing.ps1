@@ -7,20 +7,39 @@
     This file connects the menu registry (cli-registry.ps1) with the TUI engine
     (engine/) and wizard system (cli-wizard.ps1). Dot-sourced on demand.
 
+    The routing layer owns the full dispatch lifecycle: looking up a registry
+    entry by ID, choosing the correct execution path (Wizard auto-gen, Query
+    table, or custom Workflow function), and managing breadcrumb navigation.
+    Query-mode entries go through a multi-stage pipeline: optional filter
+    wizard steps, core function call, ColumnResolver transforms, identity-hash
+    mapping for O(1) detail lookups, then the engine table-detail loop.
+
+    Invoke-EngineRender and Invoke-EngineCommand are the standard callbacks
+    shared by all engine-driven views (menus, tables, detail cards). They
+    compose the 4-region layout (TopBar, Content, FilterBar, StatusBar) and
+    handle /h help overlay, /s search, and /r health dashboard commands.
+
+    Refresh-NavState and Refresh-HealthChecks reload mutable state (entities,
+    players, name index, health checks) with progress indicators, keeping
+    the TUI responsive during long-running reloads. $script:SuppressWarnings
+    is toggled during dispatch to prevent Write-RobotWarning stderr output
+    from corrupting the TUI's cursor-positioned rendering.
+
     Helpers:
     - Get-MenuCategories:          returns ordered list of top-level menu names
     - Get-MenuItems:               returns items for a given category
     - Get-RegistryEntry:           finds registry entry by ID
     - Merge-PluginMenuItems:       merges plugin-declared menu items, categories, and help into CLI state
     - Invoke-MenuAction:           dispatches a menu item by ID (Wizard/Query/Workflow)
-    - Invoke-QueryAction:          executes Query-mode: filter → run → table → detail
+    - Invoke-QueryAction:          executes Query-mode: filter → run → table → detail card loop
     - Invoke-EngineRender:         standard engine render callback (TopBar + Content + Filter + StatusBar)
     - Invoke-EngineCommand:        standard command handler for /h, /s, /r palette commands
-    - Invoke-EngineFuzzySearch:    engine-driven fuzzy picker using MenuListComponent
+    - Invoke-EngineFuzzySearch:    engine-driven fuzzy picker using MenuListComponent with Resolve-Name fallback
     - Invoke-EngineDetailCard:     engine-driven detail card for a single data row
-    - Show-SubMenu:                engine-driven items within a category
-    - Show-MainMenu:               engine-driven top-level category loop
-    - Refresh-NavState:            reloads entities, players, and name index (moved from cli-display.ps1)
+    - Show-SubMenu:                engine-driven items within a category (with Migracja phase injection)
+    - Show-MainMenu:               engine-driven top-level category loop with refresh option
+    - Refresh-NavState:            reloads entities, players, name index, and entity type index
+    - Refresh-HealthChecks:        runs PU, currency, session integrity, and graph health checks
     - Get-MigrationMenuItems:      stub (overridden by cli-wizard-migration.ps1)
     - Invoke-MigrationPhaseAction: stub (overridden by cli-wizard-migration.ps1)
 #>
@@ -65,11 +84,11 @@ function Get-RegistryEntry {
 # ── Plugin Menu Merge ────────────────────────────────────────────────────────
 
 function Merge-PluginMenuItems {
-    # Read module-scoped plugin data set during robot.psm1 import.
-    # Each section handles its own empty check - a plugin may provide only
-    # help content, only menu items, or only categories.
+    # Plugins populate $script:PluginMenuCategories, $script:PluginMenuItems,
+    # and $script:PluginHelpContent during robot.psm1 import. Each section
+    # handles its own empty check because a plugin may provide any subset.
 
-    # Merge categories first (so menu items can reference them)
+    # Categories must merge first so new menu items can reference them
     if ($script:PluginMenuCategories -and $script:PluginMenuCategories.Count -gt 0) {
         foreach ($Cat in $script:PluginMenuCategories) {
             if ($Cat -notin $script:MenuOrder) {
@@ -78,10 +97,10 @@ function Merge-PluginMenuItems {
         }
     }
 
-    # Merge menu items
+    # Validate and merge menu items with collision detection
     if ($script:PluginMenuItems -and $script:PluginMenuItems.Count -gt 0) {
 
-    # Build existing ID set for collision detection
+    # Build existing ID set to detect duplicate plugin IDs in O(1)
     $ExistingIDs = [System.Collections.Generic.HashSet[string]]::new(
         [System.StringComparer]::OrdinalIgnoreCase)
     foreach ($Entry in $script:MenuRegistry) {
@@ -91,28 +110,28 @@ function Merge-PluginMenuItems {
     foreach ($Item in $script:PluginMenuItems) {
         $PluginName = $Item['_PluginName']
 
-        # Validate required fields
+        # Skip items missing mandatory schema fields
         if (-not $Item.ID -or -not $Item.Label -or -not $Item.Menu) {
             [System.Console]::Error.WriteLine(
                 "[WARN Merge-PluginMenuItems] Plugin '$PluginName': menu item missing ID, Label, or Menu - skipped")
             continue
         }
 
-        # ID collision
+        # Reject duplicate IDs to prevent silent overwrites
         if ($ExistingIDs.Contains($Item.ID)) {
             [System.Console]::Error.WriteLine(
                 "[WARN Merge-PluginMenuItems] Plugin '$PluginName': menu ID '$($Item.ID)' already exists - skipped")
             continue
         }
 
-        # Category validation
+        # Reject items referencing undefined categories
         if ($Item.Menu -notin $script:MenuOrder) {
             [System.Console]::Error.WriteLine(
                 "[WARN Merge-PluginMenuItems] Plugin '$PluginName': menu category '$($Item.Menu)' not in MenuOrder - skipped")
             continue
         }
 
-        # Mode-specific validation
+        # Each mode has required fields; missing ones prevent runtime errors
         $Mode = if ($Item.Mode) { $Item.Mode } else { 'Wizard' }
         $Valid = $true
         switch ($Mode) {
@@ -147,7 +166,7 @@ function Merge-PluginMenuItems {
 
         $script:MenuRegistry += $Item
         [void]$ExistingIDs.Add($Item.ID)
-        # Update indexes
+        # Keep ByID/ByCategory indexes in sync with the flat array
         $script:MenuRegistryByID[$Item.ID] = $Item
         if (-not $script:MenuRegistryByCategory.ContainsKey($Item.Menu)) {
             $script:MenuRegistryByCategory[$Item.Menu] = [System.Collections.Generic.List[hashtable]]::new()
@@ -157,19 +176,19 @@ function Merge-PluginMenuItems {
 
     } # end if PluginMenuItems
 
-    # Merge help content
+    # Merge help content (appends to existing categories, creates new ones)
     if ($script:PluginHelpContent -and $script:PluginHelpContent.Count -gt 0) {
         foreach ($HelpKey in $script:PluginHelpContent.Keys) {
             foreach ($HelpEntry in $script:PluginHelpContent[$HelpKey]) {
                 if ($script:HelpContent.ContainsKey($HelpKey)) {
-                    # Append body lines to existing category help
+                    # Extend existing help topic with plugin-provided lines
                     if ($HelpEntry.Body) {
                         $script:HelpContent[$HelpKey].Body += @('')
                         $script:HelpContent[$HelpKey].Body += $HelpEntry.Body
                     }
                 }
                 else {
-                    # New category: add full help entry
+                    # New help topic: requires both Title and Body
                     if ($HelpEntry.Title -and $HelpEntry.Body) {
                         $script:HelpContent[$HelpKey] = @{
                             Title = $HelpEntry.Title
@@ -264,7 +283,7 @@ function Invoke-QueryAction {
         return
     }
 
-    # Collect filter parameters if defined
+    # Collect optional filter parameters via wizard steps before running the query
     $FilterParams = @{}
 
     if ($Entry.FilterOverrides) {
@@ -300,7 +319,7 @@ function Invoke-QueryAction {
         $FilterParams['MinDate'] = (Get-Date).AddMonths(-3)
     }
 
-    # Execute query
+    # Execute the core query function with collected parameters
     Write-Host "  Pobieranie danych..." -ForegroundColor (Get-CLIColor -Role 'Disabled')
 
     try {
@@ -318,7 +337,7 @@ function Invoke-QueryAction {
         $Headers = if ($Entry.Headers) { $Entry.Headers } else { $Columns }
         $Widths  = if ($Entry.Widths) { $Entry.Widths } else { $null }
 
-        # Apply DataTransform if defined (extracts sub-array from complex objects)
+        # DataTransform extracts the relevant sub-array from complex return objects
         if ($Entry.DataTransform) {
             $QueryResult = & $Entry.DataTransform $QueryResult
             if (-not $QueryResult -or $QueryResult.Count -eq 0) {
@@ -330,12 +349,12 @@ function Invoke-QueryAction {
             }
         }
 
-        # Keep original data for detail card (before column transformation)
+        # Preserve pre-transform data so detail cards show all fields, not just table columns
         $OriginalData = $QueryResult
 
-        # Apply ColumnResolvers for computed columns
+        # ColumnResolvers produce computed display values (e.g. formatted dates, joined lists)
         if ($Entry.ColumnResolvers -and $Entry.ColumnResolvers.Count -gt 0) {
-            # Pre-split columns into resolved vs. passthrough to avoid per-cell ContainsKey
+            # Partition columns once to avoid per-row dictionary lookups
             $ResolvedCols = [System.Collections.Generic.List[object]]::new()
             $PassthroughCols = [System.Collections.Generic.List[string]]::new()
             foreach ($ColName in $Columns) {
@@ -369,7 +388,7 @@ function Invoke-QueryAction {
             $IdMap[[System.Runtime.CompilerServices.RuntimeHelpers]::GetHashCode($QueryResult[$I])] = $I
         }
 
-        # Engine-driven table → detail card loop
+        # Engine-driven table/detail card loop: Enter on a row opens its detail card
         [void]$State.BreadcrumbStack.Push($Entry.Label)
         $QuitRequested = $false
 
@@ -380,7 +399,7 @@ function Invoke-QueryAction {
                 -ColumnPriority $(if ($Entry.ColumnPriority) { $Entry.ColumnPriority } else { $null }) `
                 -FilterPrefixes $(if ($Entry.FilterPrefixes) { $Entry.FilterPrefixes } else { $null })
 
-            # Wire entry-level help for /h overlay
+            # Attach entry-level help so /h shows context-specific documentation
             if ($Entry.HelpFull) {
                 $TableComponent.HelpContent = $Entry.HelpFull
                 $TableComponent.HelpTitle = $Entry.Label
@@ -410,13 +429,13 @@ function Invoke-QueryAction {
             if ($SelectedRow -eq '__back__') { break }
             if (-not $SelectedRow) { break }
 
-            # Map selected row back to original data via pre-built identity hash map
+            # Reverse-map transformed row to original data via identity hash (O(1))
             $RowIdx = -1
             $SelHash = [System.Runtime.CompilerServices.RuntimeHelpers]::GetHashCode($SelectedRow)
             if ($IdMap.ContainsKey($SelHash)) { $RowIdx = $IdMap[$SelHash] }
             $OriginalRow = if ($RowIdx -ge 0 -and $RowIdx -lt $OriginalData.Count) { $OriginalData[$RowIdx] } else { $SelectedRow }
 
-            # Use custom detail function if defined, otherwise engine detail card
+            # Custom detail functions override the generic key-value card (e.g. entity/player cards)
             if ($Entry.DetailFunction -and (Get-Command $Entry.DetailFunction -ErrorAction SilentlyContinue)) {
                 [void]$State.BreadcrumbStack.Push('Szczegóły')
                 try {
@@ -443,7 +462,7 @@ function Invoke-QueryAction {
 
 # ── Engine Helpers ──────────────────────────────────────────────────────────
 
-# Standard render callback: fills all 4 regions of the engine layout
+# Composes the 4-region engine layout in a single pass for diff-based rendering
 function Invoke-EngineRender {
     param(
         [Parameter(Mandatory)] [object]$State,
@@ -455,8 +474,8 @@ function Invoke-EngineRender {
     Render-StatusBar -Component $Component
 }
 
-# Standard command handler for /h, /s, /r palette commands.
-# Shows help overlays and health dashboard as nested engine views.
+# Handles /h (help), /s (search), /r (health dashboard) palette commands.
+# Each spawns a nested engine view on top of the current component.
 function Invoke-EngineCommand {
     param(
         [Parameter(Mandatory)] [object]$CmdAction,
@@ -465,7 +484,7 @@ function Invoke-EngineCommand {
         [scriptblock]$RenderCallback
     )
 
-    # Shared overlay render callback (skips TopBar — overlays render on top of existing content)
+    # Overlay callback skips TopBar because overlays render on top of existing chrome
     $OverlayCB = {
         param($S, $C)
         & $C.Render $S $C
@@ -487,7 +506,7 @@ function Invoke-EngineCommand {
         }
 
         'HelpSearch' {
-            # Search help topics across registry
+            # Full-text search across all registry help entries
             $Results = Search-HelpTopics -Query $CmdAction.Value -Registry $script:MenuRegistry
             if ($Results -and $Results.Count -gt 0) {
                 $Lines = [System.Collections.Generic.List[string]]::new()
@@ -525,8 +544,9 @@ function Invoke-EngineCommand {
 
 # ── Engine Fuzzy Search ────────────────────────────────────────────────────
 
-# Engine-driven fuzzy picker that reuses MenuListComponent with FuzzyCallback.
-# Returns a candidate object (with Name, Type, DisplayText, Owner) or $null.
+# Fuzzy picker: builds a MenuListComponent from source candidates, with
+# a FuzzyCallback that falls back to Resolve-Name (declension + BK-tree)
+# for matches the engine's prefix/contains filter missed.
 function Invoke-EngineFuzzySearch {
     param(
         [Parameter(Mandatory)] [string]$Prompt,
@@ -537,10 +557,10 @@ function Invoke-EngineFuzzySearch {
     $AllCandidates = Get-FuzzySearchCandidates -Source $Source -State $State
     if ($AllCandidates.Count -eq 0) { return $null }
 
-    # Build a lookup from sequential ID to candidate
+    # Map sequential string IDs to candidate objects for post-selection reverse lookup
     $CandidateMap = @{}
 
-    # Convert candidates to MenuListComponent items
+    # Wrap candidates as MenuListComponent items (ID, Label, Description)
     $MenuItems = [System.Collections.Generic.List[PSCustomObject]]::new()
     for ($I = 0; $I -lt $AllCandidates.Count; $I++) {
         $C = $AllCandidates[$I]
@@ -556,8 +576,8 @@ function Invoke-EngineFuzzySearch {
         })
     }
 
-    # FuzzyCallback: runs Resolve-Name (declension + BK-tree) on items
-    # not already matched by prefix/contains stages in the engine filter.
+    # FuzzyCallback: for items the engine's prefix/contains filter missed,
+    # try Resolve-Name (declension stripping + BK-tree edit distance).
     $FuzzyCB = {
         param([string]$Query, [object[]]$Remaining)
 
@@ -594,7 +614,7 @@ function Invoke-EngineFuzzySearch {
 
     Initialize-Buffers
 
-    # Custom render adds prompt in title area
+    # Standard 4-region render (prompt is shown via TopBar breadcrumb)
     $RenderCB = {
         param($S, $C)
         Render-TopBar -State $S
@@ -618,7 +638,7 @@ function Invoke-EngineFuzzySearch {
         return $null
     }
 
-    # Map ID back to candidate
+    # Reverse-map selected menu ID back to the original candidate object
     if ($CandidateMap.ContainsKey($SelectedID)) {
         return $CandidateMap[$SelectedID]
     }
@@ -628,7 +648,7 @@ function Invoke-EngineFuzzySearch {
 
 # ── Engine Detail Card ─────────────────────────────────────────────────────
 
-# Displays a detail card for a single data row using the engine lifecycle.
+# Shows a read-only key-value card for a data row, managed by the engine lifecycle.
 function Invoke-EngineDetailCard {
     param(
         [Parameter(Mandatory)] [object]$Data,
@@ -677,7 +697,7 @@ function Show-SubMenu {
     while ($true) {
         $Items = Get-MenuItems -Category $Category
 
-        # For Migracja, prepend dynamic phase entries
+        # Migracja category injects dynamic phase items before static registry entries
         if ($Category -eq 'Migracja') {
             $MigrationItems = Get-MigrationMenuItems -State $State
             if ($MigrationItems -and $MigrationItems.Count -gt 0) {
@@ -726,7 +746,7 @@ function Show-SubMenu {
             return '__quit__'
         }
 
-        # Handle migration phase items
+        # Migration phase IDs use a prefix convention to distinguish from registry IDs
         if ($Selected -is [string] -and $Selected.StartsWith('migration-phase-')) {
             Invoke-MigrationPhaseAction -PhaseID $Selected -State $State
             continue
@@ -744,7 +764,7 @@ function Show-MainMenu {
     param([Parameter(Mandatory)] [object]$State)
 
     while ($true) {
-        # Build top-level category items
+        # Build category list with sub-item counts for the main menu display
         $CategoryItems = [System.Collections.Generic.List[PSCustomObject]]::new()
         foreach ($Cat in $script:MenuOrder) {
             $CatList = $null
@@ -759,7 +779,7 @@ function Show-MainMenu {
             })
         }
 
-        # Add refresh option
+        # Append synthetic refresh item (not in registry, handled by ID convention)
         [void]$CategoryItems.Add([PSCustomObject]@{
             ID          = '__refresh__'
             Label       = [string][char]0x21BB + ' Odswiez dane'
@@ -808,7 +828,7 @@ function Show-MainMenu {
             continue
         }
 
-        # Navigate to submenu (bubble up __quit__ if returned)
+        # Navigate into submenu; propagate __quit__ to exit the entire CLI
         $SubResult = Show-SubMenu -Category $Selected -State $State
         if ($SubResult -eq '__quit__') {
             Write-Host ''
@@ -823,7 +843,7 @@ function Show-MainMenu {
 
 function Get-MigrationMenuItems {
     param([object]$State)
-    # This function is replaced by cli-wizard-migration.ps1 if available
+    # Stub: replaced at runtime by cli-wizard-migration.ps1 when the migration module is loaded
     return @()
 }
 
@@ -848,7 +868,7 @@ function Refresh-NavState {
 
     $State.ResolveCache = @{}
 
-    # Rebuild entity type index
+    # Rebuild type-keyed index for O(1) entity filtering by type in CLI workflows
     Start-ProgressStep -State $Progress -Label 'Indeks typów'
     $TypeIdx = @{}
     foreach ($E in $State.Entities) {

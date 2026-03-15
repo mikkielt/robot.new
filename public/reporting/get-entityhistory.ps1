@@ -3,12 +3,30 @@
     Returns a unified chronological timeline of all changes for a single entity.
 
     .DESCRIPTION
-    Given an entity name, collects all temporal history arrays (LocationHistory,
-    StatusHistory, GroupHistory, OwnerHistory, TypeHistory, DoorHistory,
-    QuantityHistory) and merges them into a flat, chronologically sorted timeline.
+    Get-EntityHistory collects all temporal history arrays from a single
+    entity and merges them into a flat, chronologically sorted timeline.
 
-    Supports optional date range filtering. Uses Get-EntityState for pre-fetching
-    if entities are not provided.
+    Merged history arrays:
+    - LocationHistory (@lokacja), StatusHistory (@status),
+      GroupHistory (@grupa), OwnerHistory (@nale¿y_do),
+      TypeHistory (@typ), DoorHistory (@drzwi), QuantityHistory (@ilo¶æ)
+
+    Processing pipeline:
+    1. Fetch entities via Get-EntityState if not pre-provided
+    2. Resolve entity by primary Name, then fall back to alias scanning
+       via the Names collection (covers @alias, @generyczne_nazwy matches)
+    3. Iterate the HistoryMappings table to extract entries from each
+       history array, applying optional MinDate/MaxDate range filter
+    4. Sort the merged timeline with nulls-first ordering (entries without
+       ValidFrom represent initial/default state from entity declaration)
+
+    The HistoryMappings table maps each history array to its display
+    name (Polish) and the property containing the value. This allows
+    uniform iteration without per-array special-casing.
+
+    The sort uses a .NET Comparison delegate for in-place List.Sort().
+    Null dates sort before all dated entries, representing the entity's
+    initial state at declaration time.
 #>
 
 function Get-EntityHistory {
@@ -47,7 +65,7 @@ function Get-EntityHistory {
         $Entities = Get-EntityState @FetchArgs
     }
 
-    # Find entity by name (case-insensitive)
+    # First try exact primary name match, then scan alias collections
     $Entity = $null
     foreach ($E in $Entities) {
         if ([string]::Equals($E.Name, $Name, [System.StringComparison]::OrdinalIgnoreCase)) {
@@ -57,7 +75,7 @@ function Get-EntityHistory {
     }
 
     if (-not $Entity) {
-        # Try matching against Names list (aliases)
+        # Fall back to alias scanning (covers @alias and @generyczne_nazwy)
         foreach ($E in $Entities) {
             if ($E.Names) {
                 foreach ($N in $E.Names) {
@@ -78,7 +96,7 @@ function Get-EntityHistory {
 
     $Timeline = [System.Collections.Generic.List[object]]::new()
 
-    # Property mapping: HistoryArray → (DisplayName, ValueProperty)
+    # Map each history array to its Polish display label and the property holding the value
     $HistoryMappings = @(
         @{ Array = 'LocationHistory'; Display = 'Lokacja';     Prop = 'Location'  }
         @{ Array = 'StatusHistory';   Display = 'Status';      Prop = 'Status'    }
@@ -94,7 +112,6 @@ function Get-EntityHistory {
         if (-not $History -or $History.Count -eq 0) { continue }
 
         foreach ($Entry in $History) {
-            # Date range filtering
             if ($MinDate -and $Entry.ValidFrom -and $Entry.ValidFrom -lt $MinDate) { continue }
             if ($MaxDate -and $Entry.ValidFrom -and $Entry.ValidFrom -gt $MaxDate) { continue }
 
@@ -107,7 +124,7 @@ function Get-EntityHistory {
         }
     }
 
-    # Sort: nulls first, then ascending by Date
+    # Null dates (initial state from entity declaration) sort before dated entries
     $Timeline.Sort([System.Comparison[object]]{
         param($a, $b)
         if ($null -eq $a.Date -and $null -eq $b.Date) { return 0 }

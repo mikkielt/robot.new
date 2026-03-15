@@ -1,33 +1,44 @@
 <#
     .SYNOPSIS
-    Retrieves git commit history with detailed file change information by streaming and
-    parsing git log output.
+    Retrieves git commit history with detailed file change information by
+    streaming and parsing git log output.
 
     .DESCRIPTION
     This file contains Get-GitChangeLog and its helper:
 
-    Helper:
-    - ConvertFrom-CommitLine: parses a COMMIT header line (unit-separator-delimited) into
-      a structured PSCustomObject with hash, date, author name, and email
+    Helpers:
+    - ConvertFrom-CommitLine: parses a COMMIT header line
+      (unit-separator-delimited) into a structured PSCustomObject with
+      hash, date, author name, and email. Uses DateTimeOffset.Parse for
+      ISO 8601 with timezone offset, with DateTime.Parse fallback.
 
-    Get-GitChangeLog executes `git log` and stream-parses stdout line by line to build
-    structured commit objects. It supports two modes:
-    - Patch mode (default): full diff output with hunk-level patch content per file
-    - NoPatch mode (-NoPatch): lightweight --name-status output (file paths + change types only)
+    Get-GitChangeLog executes `git log` via .NET Process and stream-parses
+    stdout line by line to build structured commit objects. Two modes:
+    - Patch mode (default): full diff output with hunk-level patch content
+      per file, supporting optional PatchFilter regex to reduce memory
+    - NoPatch mode (-NoPatch): lightweight --name-status output (file paths
+      + change types only) for callers that need file lists without diffs
+
+    The streaming parser uses a state machine with three levels:
+    commit -> file (diff header) -> patch content (after @@ hunk header).
+    Each level is flushed when the next-level marker is encountered.
 
     Key implementation decisions:
-    - Process execution uses ArgumentList (array-based) instead of Arguments (string-based)
-      to correctly handle paths containing spaces (e.g. "Postaci/Gracze/Zarei Chars.md")
-    - Stderr is read asynchronously via .NET event handler to prevent pipe buffer deadlocks
-    - Stdout is parsed as a stream (ReadLine loop) rather than ReadToEnd + Split to avoid
-      allocating the entire git output (potentially tens of MB) as a single string
-    - Only commits from the current branch are included (no --all flag)
+    - ArgumentList (array-based) instead of Arguments (string-based) to
+      correctly handle paths with spaces (e.g. "Postaci/Gracze/Zarei Chars.md")
+    - Stderr is read asynchronously via Task<string> to prevent pipe buffer
+      deadlocks (ScriptBlock event handlers crash with "no Runspace available"
+      on thread pool threads)
+    - Stdout is parsed as a stream (ReadLine loop) rather than ReadToEnd +
+      Split to avoid allocating the entire git output as a single string
+    - Only current branch commits are included (no --all flag)
     - ISO 8601 date format avoids locale-dependent parsing failures
+    - core.quotepath=false ensures UTF-8 filenames come through unescaped
+    - Git executable is resolved via PATH traversal to avoid UseShellExecute
 #>
 
-# Helper: parse a COMMIT header line into a structured object
-# Input: regex match groups from "COMMIT<US>hash<US>date<US>name<US>email"
-# Uses DateTimeOffset.Parse for ISO 8601 with timezone offset.
+# Parse unit-separator-delimited COMMIT header into structured object.
+# DateTimeOffset handles ISO 8601 timezone offsets; falls back to DateTime.Parse.
 function ConvertFrom-CommitLine {
     param([System.Text.RegularExpressions.Match]$Match)
 
@@ -51,7 +62,7 @@ function ConvertFrom-CommitLine {
 function Get-GitChangeLog {
     <#
         .SYNOPSIS
-        Retrieves git commit history with detailed file change information.
+        Retrieves git commit history with file-level change details via streaming git log parse.
     #>
 
     [CmdletBinding()] param(
@@ -76,17 +87,16 @@ function Get-GitChangeLog {
 
     $RepoRoot = Get-RepoRoot
 
-    # Build git arguments as an array - each element is a separate argument,
-    # which avoids quoting issues with paths containing spaces
+    # Array-based arguments avoid quoting issues with paths containing spaces
     $GitArgs = [System.Collections.Generic.List[string]]::new()
 
-    # Disable quotepath so UTF-8 filenames come through unescaped
+    # Disable quotepath for proper UTF-8 filename handling (Polish characters)
     $GitArgs.Add("-c")
     $GitArgs.Add("core.quotepath=false")
 
     $GitArgs.Add("log")
 
-    # Current branch only - no --all flag to avoid stale results from unmerged branches
+    # Current branch only — --all would include stale results from unmerged branches
     $GitArgs.Add("--date=iso-strict")
     $GitArgs.Add("--pretty=format:COMMIT%x1F%H%x1F%ad%x1F%an%x1F%ae")
     if ($NoPatch) {
@@ -103,7 +113,7 @@ function Get-GitChangeLog {
     if ($MinDate) { $GitArgs.Add("--since=$MinDate") }
     if ($MaxDate) { $GitArgs.Add("--until=$MaxDate") }
 
-    # Pathspec construction from Directory and/or File parameters
+    # Convert Directory/File parameters to git pathspecs (relative to repo root)
     $PathSpecs = [System.Collections.Generic.List[string]]::new()
 
     if ($Directory) {
@@ -132,7 +142,7 @@ function Get-GitChangeLog {
         }
     }
 
-    # Resolve git executable path via PATH (avoids UseShellExecute dependency)
+    # Manual PATH resolution avoids UseShellExecute (which doesn't support redirection)
     $GitPath = $null
     foreach ($Dir in $env:PATH -split [System.IO.Path]::PathSeparator) {
         if (-not [string]::IsNullOrWhiteSpace($Dir)) {
@@ -147,7 +157,7 @@ function Get-GitChangeLog {
         throw "git executable not found in PATH."
     }
 
-    # Process setup - UTF-8 encoding, array-based arguments, async stderr
+    # UTF-8 encoding on both streams; ArgumentList for space-safe argument passing
     $Psi = [System.Diagnostics.ProcessStartInfo]::new()
     $Psi.FileName = $GitPath
     $Psi.RedirectStandardOutput = $true
@@ -167,12 +177,11 @@ function Get-GitChangeLog {
     try {
         [void]$Process.Start()
 
-        # Start async stderr read to prevent pipe buffer deadlock.
-        # Uses .NET Task<string> instead of PowerShell ScriptBlock event handler
-        # to avoid "no Runspace available" crash on thread pool threads.
+        # Async stderr prevents pipe buffer deadlock; Task<string> avoids
+        # "no Runspace available" crash that ScriptBlock event handlers cause
         $StderrTask = $Process.StandardError.ReadToEndAsync()
 
-        # Stream-parse stdout line by line to avoid materializing the entire output
+        # Stream parse avoids materializing entire git output (can be tens of MB)
         $Reader = $Process.StandardOutput
     } catch {
         throw
@@ -184,9 +193,9 @@ function Get-GitChangeLog {
 
     $CurrentCommit = $null
     $CurrentFile   = $null
-    $InPatchContent = $false  # tracks whether we're past the @@ hunk header
+    $InPatchContent = $false  # true after first @@ hunk header within a file diff
 
-    # Precompiled regex patterns for the streaming parser
+    # Precompiled patterns for the three-level state machine (commit/file/patch)
     $CommitRegex     = [regex]'^COMMIT\x1F(.+?)\x1F(.+?)\x1F(.+?)\x1F(.+)$'
     $DiffRegex       = [regex]'^diff --git a/(.+) b/(.+)$'
     $NewFileRegex    = [regex]'^new file mode '
@@ -197,16 +206,16 @@ function Get-GitChangeLog {
     $HunkRegex       = [regex]'^@@\s'
     $NameStatusRegex = [regex]'^([AMDRC])(\d*)\t(.+)$'
 
-    # Streaming parse loop
+    # State machine: COMMIT lines flush previous commit, diff lines flush previous file
     while ($null -ne ($Line = $Reader.ReadLine())) {
         $TrimLine = $Line.TrimEnd()
 
         if ($NoPatch -and [string]::IsNullOrEmpty($TrimLine)) { continue }
 
-        # Commit header: "COMMIT<US>hash<US>date<US>name<US>email"
+        # Level 1: COMMIT header — flush previous commit and start new one
         $CommitMatch = $CommitRegex.Match($TrimLine)
         if ($CommitMatch.Success) {
-            # Flush previous file and commit
+            # Flush any pending file and commit before starting the new one
             if ($CurrentFile -and $CurrentCommit) {
                 $CurrentCommit.Files.Add($CurrentFile)
                 $CurrentFile = $null
@@ -220,7 +229,7 @@ function Get-GitChangeLog {
             continue
         }
 
-        # NoPatch mode: parse --name-status lines (M/A/D/R + tab + path)
+        # NoPatch mode: lightweight --name-status parsing (change type + path)
         if ($NoPatch) {
             if (-not $CurrentCommit) { continue }
             $NsMatch = $NameStatusRegex.Match($TrimLine)
@@ -238,7 +247,7 @@ function Get-GitChangeLog {
                 }
 
                 if ($ChangeCode -eq 'R' -or $ChangeCode -eq 'C') {
-                    # Rename/Copy: old<TAB>new
+                    # Rename/Copy entries have two tab-separated paths: old -> new
                     $TabIdx = $PathPart.IndexOf("`t")
                     if ($TabIdx -ge 0) {
                         $FileObj.OldPath = $PathPart.Substring(0, $TabIdx)
@@ -257,7 +266,7 @@ function Get-GitChangeLog {
             continue
         }
 
-        # Patch mode: diff header "diff --git a/path b/path"
+        # Level 2: diff header — flush previous file and start new one
         $DiffMatch = $DiffRegex.Match($TrimLine)
         if ($DiffMatch.Success) {
             if ($CurrentFile -and $CurrentCommit) {
@@ -278,7 +287,7 @@ function Get-GitChangeLog {
 
         if (-not $CurrentFile) { continue }
 
-        # Diff metadata lines - set properties on $CurrentFile but are NOT added to Patch
+        # Diff metadata lines update $CurrentFile properties but are not patch content
         if ($NewFileRegex.IsMatch($TrimLine)) {
             $CurrentFile.ChangeType = "A"
             continue
@@ -308,7 +317,7 @@ function Get-GitChangeLog {
             continue
         }
 
-        # Pre-hunk metadata (index, ---, +++) is skipped until the first @@ header
+        # Level 3: patch content begins at first @@ hunk header; skip pre-hunk metadata
         if (-not $InPatchContent) {
             if ($HunkRegex.IsMatch($TrimLine)) {
                 $InPatchContent = $true
@@ -317,9 +326,9 @@ function Get-GitChangeLog {
             continue
         }
 
-        # Patch content accumulation - apply filter if specified
+        # Accumulate patch lines, keeping hunk headers for line number mapping
         if ($PatchFilterRegex) {
-            # Always keep hunk headers (needed for line number mapping)
+            # Hunk headers always kept — they provide line number context for filtered patches
             if ($HunkRegex.IsMatch($TrimLine) -or $PatchFilterRegex.IsMatch($TrimLine)) {
                 $CurrentFile.Patch.Add($Line)
             }
@@ -328,7 +337,7 @@ function Get-GitChangeLog {
         }
     }
 
-    # Flush remaining objects
+    # Flush final commit and file after stream ends
     if ($CurrentFile -and $CurrentCommit) {
         $CurrentCommit.Files.Add($CurrentFile)
     }

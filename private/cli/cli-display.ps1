@@ -1,25 +1,35 @@
 <#
     .SYNOPSIS
     Shared display components for the Robot CLI - detail card rendering
-    and validity-range formatting.
+    and validity-range formatting (DEPRECATED).
 
     .DESCRIPTION
     DEPRECATED: Show-DetailCard and Format-DetailValidityRange are deprecated.
     Use Invoke-EngineDetailCard instead.
 
     Retained for plugin compatibility (cli-wf-margoworld.ps1).
-    Will be removed once all callers are ported.
+    Will be removed once all callers are ported to the TUI engine.
 
     Note: Refresh-NavState was moved to cli-routing.ps1.
 
     Helpers:
     - Format-DetailValidityRange: formats temporal range as "YYYY-MM-DD – YYYY-MM-DD"
-    - Show-DetailCard:            generic key-value card for any PSCustomObject
+      with try/catch fallback for non-datetime values
+    - Show-DetailCard:            generic key-value card for any PSCustomObject,
+      with two-phase rendering (pre-render into line buffer, then scroll or
+      single-render based on terminal height)
 
     Design:
-    - Show-DetailCard handles strings, numbers, arrays, nested objects, and nulls.
-    - Temporal objects (with ValidFrom/ValidTo) are formatted smartly.
-    - Returns when the user presses Escape.
+    - Show-DetailCard handles strings, numbers, booleans, arrays, dictionaries,
+      HashSets, nested PSCustomObjects with temporal ranges, and nulls — each
+      type branch produces segment-based line entries for uniform rendering.
+    - Phase 1 builds a LineBuffer of segment objects (Text + Color pairs).
+      Phase 2 either renders all lines at once (if content fits) or enters a
+      scroll loop with Up/Down/Escape navigation.
+    - Complex object lists are capped at 8 entries to keep the card readable;
+      overflow is indicated with a "... i N więcej" line.
+
+    Dependencies: cli-primitives.ps1 (Get-CLIColor, Write-CLILine, Read-ArrowKey)
 #>
 
 # ── Format-DetailValidityRange ───────────────────────────────────────────────
@@ -52,9 +62,9 @@ function Show-DetailCard {
     $AccentColor   = Get-CLIColor -Role 'Accent'
     $DisabledColor = Get-CLIColor -Role 'Disabled'
     $InfoColor     = Get-CLIColor -Role 'Info'
-    $Sep = [string][char]0x2500 * 50
+    $Sep = [string][char]0x2500 * 50  # 50-char horizontal rule
 
-    # ── Phase 1: Pre-render content into a line buffer ──────────────────────
+    # ── Phase 1: Pre-render into segment-based line buffer ──────────────────
     $LineBuffer = [System.Collections.Generic.List[PSCustomObject]]::new()
 
     if ($Title) {
@@ -67,6 +77,7 @@ function Show-DetailCard {
         $PropName = $Prop.Name
         $PropVal  = $Prop.Value
 
+        # Skip internal metadata properties not useful for display
         if ($PropName -eq 'Path' -or $PropName -eq 'CN') { continue }
 
         if ($null -eq $PropVal) {
@@ -163,7 +174,7 @@ function Show-DetailCard {
                 [void]$LineBuffer.Add([PSCustomObject]@{
                     Segments = @( @{ Text = "  $PropName ($($PropVal.Count))"; Color = $InfoColor } )
                 })
-                $ShowCount = [Math]::Min($PropVal.Count, 8)  # cap complex object lists to keep card readable
+                $ShowCount = [Math]::Min($PropVal.Count, 8)  # cap to keep card within single screen
                 for ($I = 0; $I -lt $ShowCount; $I++) {
                     $Obj = $PropVal[$I]
 
@@ -253,13 +264,12 @@ function Show-DetailCard {
         }
     }
 
-    # Footer separator
+    # Footer — close the card visual frame
     [void]$LineBuffer.Add([PSCustomObject]@{ Segments = @( @{ Text = ''; Color = $null } ) })
     [void]$LineBuffer.Add([PSCustomObject]@{ Segments = @( @{ Text = "  $Sep"; Color = $DisabledColor } ) })
 
     # ── Phase 2: Render with optional scrolling ─────────────────────────────
-    # Reserve 3 lines for top padding, footer hint, and cursor positioning
-    $ViewportHeight = [System.Console]::WindowHeight - 3
+    $ViewportHeight = [System.Console]::WindowHeight - 3  # reserve for padding, footer hint, cursor
 
     if ($LineBuffer.Count -le $ViewportHeight) {
         # Content fits — render once, wait for Esc (no scroll needed)

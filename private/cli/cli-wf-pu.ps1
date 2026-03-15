@@ -7,19 +7,28 @@
     This file contains workflow functions for PU (Punkty Umiejętności) management,
     consumed by the CLI menu registry (Mode = 'Workflow'). Dot-sourced on demand.
 
-    Workflows:
-    - Invoke-PUAssignmentWorkflow:  dry-run -> preview -> multi-select -> execute
+    Helpers:
+    - Invoke-PUAssignmentWorkflow:  6-step assignment pipeline with dry-run preview
     - Invoke-PrePUDiagnostics:      composite PU diagnostics with name suggestions
-    - Invoke-PUDiagnosticsDisplay:  formatted PU diagnostic report
+    - Invoke-PUDiagnosticsDisplay:  formatted PU diagnostic report (read-only)
 
-    Design:
-    - Assignment workflow is a 6-step pipeline: (1) year, (2) month,
-      (3) session integrity pre-check with abort/continue, (4) dry-run
-      via -WhatIf, (5) flag selection for sub-operations (Discord, log,
-      currency reconciliation), (6) final confirmation + execute.
-    - Pre-PU diagnostics augments Test-PlayerCharacterPUAssignment results
-      with Resolve-Name suggestions for unresolved character names, helping
-      the coordinator fix typos before the actual assignment run.
+    Assignment workflow pipeline:
+    (1) year, (2) month, (3) session integrity pre-check with abort/continue
+    gate, (4) dry-run via -WhatIf capturing all streams to preview output,
+    (5) flag toggle for sub-operations (UpdatePlayerCharacters, SendToDiscord,
+    AppendToLog, ReconcileCurrency — all default true), (6) final yesno
+    confirmation + execute. Any integrity issues are shown with severity
+    coloring: PU-affected sessions and duplicate markers as errors, modified
+    sessions and malformed headers as warnings.
+
+    Pre-PU diagnostics: augments Test-PlayerCharacterPUAssignment results
+    with Resolve-Name suggestions for unresolved character names, using the
+    same BK-tree + declension pipeline as the CLI fuzzy picker. This helps
+    the coordinator fix typos before the actual assignment run.
+
+    PU diagnostics display: read-only formatted report showing unresolved
+    names, malformed values, duplicates, bad-date sessions, and stale history
+    entries. Stale entries are informational (do not block the operation).
 
     Dependencies: cli-primitives.ps1, cli-wizard.ps1, cli-display.ps1
 #>
@@ -81,7 +90,7 @@ function Invoke-PUAssignmentWorkflow {
             Write-Host ''
             Write-CLILine -Text "$([char]0x26A0) Wykryto problemy integralności sesji:" -Color $WarningColor
 
-            # High-severity issues first
+            # Show PU-blocking issues first (errors), then warnings, then info
             if ($Integrity.PUAffectedSessions -and $Integrity.PUAffectedSessions.Count -gt 0) {
                 Write-CLILine -Text "  $([char]0x2717) Zmodyfikowane sesje z danymi PU: $($Integrity.PUAffectedSessions.Count)" -Color $ErrorColor
                 foreach ($Item in $Integrity.PUAffectedSessions | Select-Object -First 5) {
@@ -98,7 +107,7 @@ function Invoke-PUAssignmentWorkflow {
                 Write-CLILine -Text "  $([char]0x2717) Sesje z przyszłą datą: $($Integrity.FutureDatedSessions.Count)" -Color $ErrorColor
             }
 
-            # Lower-severity issues
+            # Non-blocking warnings (may indicate data quality issues)
             if ($Integrity.ModifiedSessions -and $Integrity.ModifiedSessions.Count -gt 0) {
                 Write-CLILine -Text "  $([char]0x26A0) Zmodyfikowane sesje: $($Integrity.ModifiedSessions.Count)" -Color $WarningColor
             }
@@ -165,7 +174,7 @@ function Invoke-PUAssignmentWorkflow {
 
     # ── Step 5: Flags ──
     # Each flag controls a sub-operation of the PU assignment pipeline.
-    # All default to true; the user can toggle each individually.
+    # All default to true — the coordinator toggles off what's not needed.
     $Flags = [ordered]@{
         'UpdatePlayerCharacters' = $true
         'SendToDiscord'          = $true
@@ -186,7 +195,7 @@ function Invoke-PUAssignmentWorkflow {
         Write-CLILine -Text "  Rok: $Year  Miesiąc: $Month" -Color $DisabledColor
         Write-Host ''
 
-        # Show already-set flags as context
+        # Display previously-set flags above the current prompt for context
         foreach ($SetKey in @($Flags.Keys)) {
             if ($SetKey -eq $FlagKey) { break }
             $SetLabel = $FlagLabels[$SetKey]
@@ -292,7 +301,7 @@ function Invoke-PrePUDiagnostics {
                     $CharName = if ($Unresolved.CharacterName) { $Unresolved.CharacterName } else { [string]$Unresolved }
                     Write-CLILine -Text "  $([char]0x2717) $CharName"
 
-                    # Attempt to suggest matches
+                    # Try Resolve-Name to suggest closest match from the name index
                     if ($State.NameIndex) {
                         $Suggestion = Resolve-Name -Query $CharName `
                             -Index $State.NameIndex.Index `

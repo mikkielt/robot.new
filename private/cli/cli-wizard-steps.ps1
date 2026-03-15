@@ -1,6 +1,7 @@
 <#
     .SYNOPSIS
-    Individual wizard step executor for the Robot CLI wizard system.
+    Individual wizard step executor and step factories for the Robot CLI
+    wizard system.
 
     .DESCRIPTION
     Contains the Invoke-WizardStep function, which handles execution of a single
@@ -11,13 +12,16 @@
     Split out from cli-wizard.ps1 for maintainability. Dot-sourced by
     cli-wizard.ps1 at load time.
 
-    Back-navigation is signalled by returning the sentinel string '__back__'.
-    Uses the TUI engine (WizardStepComponent + Start-InputLoop) for rendering
-    of all step types except multitext (which uses inline ReadKey collection).
-
     Helpers:
-    - Invoke-EngineLifecycle:  runs a component through engine lifecycle
-    - Invoke-WizardStep:       dispatches by StepType using engine components
+    - Invoke-EngineLifecycle:  runs a component through the standard engine
+      lifecycle (Initialize-Screen → Initialize-Buffers → render → Start-InputLoop
+      → Restore-Cursor). Returns '__back__', '__quit__', or the step value.
+    - Invoke-WizardStep:       dispatches by StepType using engine components.
+      Handles validation loops (number/decimal/date retry with error messages),
+      default value pre-fill, and back-navigation via '__back__' sentinel.
+      The 'multitext' type uses inline ReadKey collection because multi-line
+      collection with per-line echo doesn't fit WizardStepComponent's
+      single-value-return model.
 
     Factory functions (reduce boilerplate in workflow files):
     - New-WizardTextStep:      creates a text-input step definition
@@ -25,13 +29,24 @@
     - New-WizardDateStep:      creates a date-input step definition (YYYY-MM-DD)
     - New-WizardChoiceStep:    creates a selection step from option list
     - New-WizardFuzzyStep:     creates a fuzzy-search step bound to a source
+
+    Design:
+    - All factory functions return PSCustomObjects with a uniform 11-property
+      schema (Name, Label, StepType, Required, Source, Options, SubSteps,
+      EntrySource, Condition, Transform, Default) so Invoke-WizardStep can
+      access any field without property-existence checks.
+    - 'multi-entry' and 'multi-entry-nested' types use an "add another?"
+      yesno loop, breaking when the user declines or cancels.
+    - StepNumber/TotalSteps are passed through to WizardStepComponent for
+      progress indicators (e.g., "[2/5]" in the step header).
+
+    Dependencies: engine/ (New-WizardStepComponent, Initialize-Screen,
+                  Initialize-Buffers, Invoke-EngineRender, Render-FullBuffer,
+                  Start-InputLoop, Restore-Cursor, Invoke-EngineFuzzySearch),
+                  cli-primitives.ps1 (Get-CLIColor, Write-CLILine)
 #>
 
 # ── Engine lifecycle helper ──────────────────────────────────────────────────
-
-# Runs a component through the standard engine lifecycle: Initialize-Screen →
-# Initialize-Buffers → render → Start-InputLoop → Restore-Cursor.
-# Returns the value from Start-InputLoop ('__back__', '__quit__', or step value).
 function Invoke-EngineLifecycle {
     param(
         [Parameter(Mandatory)] [object]$Component,
@@ -118,7 +133,7 @@ function Invoke-WizardStep {
                     return $NumVal
                 }
 
-                # Invalid number — retry with error and previous input
+                # Invalid — retry with error message and preserve user input
                 $DefaultVal = $Result
                 $ErrorMsg = "Nieprawidłowa liczba: '$Result'"
             }
@@ -214,9 +229,8 @@ function Invoke-WizardStep {
         }
 
         'multitext' {
-            # Inline ReadKey loop instead of engine component because multi-line
-            # collection with per-line echo doesn't fit WizardStepComponent's
-            # single-value-return model. Used by SpecialItems, Triggers, etc.
+            # Inline ReadKey loop — multi-line collection requires per-line echo
+            # which doesn't fit the engine's single-value-return model
             $AccentColor = Get-CLIColor -Role 'Accent'
             $DisabledColor = Get-CLIColor -Role 'Disabled'
             $ErrorColor = Get-CLIColor -Role 'Error'
@@ -298,7 +312,6 @@ function Invoke-WizardStep {
                 [void]$Items.Add($FuzzyResult.Name)
                 $EntryNum++
 
-                # Ask "add another?" via engine yesno
                 $AddMoreComponent = New-WizardStepComponent -Label 'Dodaj kolejny?' `
                     -StepNumber 0 -TotalSteps 0 -StepType 'yesno'
                 $AddMore = Invoke-EngineLifecycle -Component $AddMoreComponent -State $State
@@ -348,7 +361,6 @@ function Invoke-WizardStep {
                 [void]$Items.Add([PSCustomObject]$EntryData)
                 $EntryNum++
 
-                # Ask "add another?" via engine yesno
                 $AddMoreComponent = New-WizardStepComponent -Label 'Dodaj kolejny?' `
                     -StepNumber 0 -TotalSteps 0 -StepType 'yesno'
                 $AddMore = Invoke-EngineLifecycle -Component $AddMoreComponent -State $State
@@ -356,7 +368,7 @@ function Invoke-WizardStep {
             }
 
             if ($Items.Count -eq 0) { return $null }
-            return @(,$Items.ToArray())
+            return @(,$Items.ToArray())  # @(,) wrapper prevents PS from unwrapping single-element array
         }
 
         default {
@@ -370,7 +382,6 @@ function Invoke-WizardStep {
 }
 
 # ── Wizard step factory functions ────────────────────────────────────────────
-# Reduce boilerplate for inline wizard step definitions in workflow files.
 
 function New-WizardTextStep {
     param(
