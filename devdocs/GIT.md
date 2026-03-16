@@ -1,63 +1,41 @@
 # Git Integration - Technical Reference
 
-**Status**: Reference documentation.
-
 ---
 
-## 1. Scope
+## Scope
 
 This document covers `Get-GitChangeLog` (structured Git history extraction) and `Get-RepoRoot` (repository root detection).
 
 ---
 
-## 2. `Get-RepoRoot`
+## `Get-RepoRoot`
 
 Traverses the directory tree upward from the current working directory to find the nearest `.git` folder.
 
-### 2.1 Implementation Details
+Uses `[System.IO.Directory]` and `[System.IO.Path]` (not PowerShell `$PWD`) for RunspacePool independence -- `$PWD` is not available in worker threads. Stops at filesystem root (`GetPathRoot()` check). Throws if no `.git` directory found in any parent.
 
-- Uses `[System.IO.Directory]` and `[System.IO.Path]` (not PowerShell `$PWD`) for **RunspacePool independence** - `$PWD` is not available in worker threads
-- Stops at filesystem root (`GetPathRoot()` check)
-- Throws if no `.git` directory found in any parent
+`Get-RepoRoot` caches its result in `$script:CachedRepoRoot` after the first successful traversal. Subsequent calls without an explicit `-ModuleRoot` override return the cached value immediately, avoiding repeated filesystem traversal. The cache is populated as a side effect of the directory walk -- when a `.git` directory is found, the result is stored before returning.
 
-### 2.3 Result Caching
+The cache is bypassed when an explicit `-ModuleRoot` parameter is provided (forces fresh traversal from the specified root) or when `$script:DataDirectoryOverride` is set (via `Set-DataDirectory`) -- the override takes absolute priority, returning immediately without consulting or updating the cache.
 
-`Get-RepoRoot` caches its result in `$script:CachedRepoRoot` after the first successful traversal. Subsequent calls without an explicit `-ModuleRoot` override return the cached value immediately, avoiding repeated filesystem traversal. The cache is populated as a side effect of the directory walk — when a `.git` directory is found, the result is stored before returning.
-
-The cache is bypassed when:
-- An explicit `-ModuleRoot` parameter is provided (forces fresh traversal from the specified root)
-- `$script:DataDirectoryOverride` is set (via `Set-DataDirectory`) — the override takes absolute priority, returning immediately without consulting or updating the cache
-
-**Cache priority order**:
+Cache priority order:
 1. `$script:DataDirectoryOverride` (checked first, returns immediately if set)
 2. `$script:CachedRepoRoot` (returned when no `-ModuleRoot` override and no data directory override)
 3. Fresh traversal (when neither cache nor override applies; result cached for future calls)
 
 `Set-DataDirectory -Reset` does not clear the traversal cache (only the manifest cache). The traversal cache persists for the module session. This is intentional: the traversal result is deterministic for a given module location and does not change within a session.
 
-### 2.4 Fallback: Module as Repository Root
-
 If no `.git` directory is found in any parent of the module directory, `Get-RepoRoot` checks whether the module directory itself contains a `.git` directory or file (standalone checkout, e.g., CI environments). If found, the module root is treated as the repository root and cached. Otherwise, throws.
 
-### 2.5 `Get-ParentRepoRoot`
-
-Companion function for submodule environments. Walks upward from `Get-RepoRoot` past the submodule `.git` boundary to find the enclosing parent repository root.
-
-- Starts from `Get-RepoRoot` result (the submodule root)
-- Moves one directory up to exit the submodule
-- Continues upward until a `.git` directory is found (the parent repo root)
-- No longer used by `Find-DataManifest` (which now checks a fixed path); remains available for callers that need the parent repo boundary
-- Not exported by the module (non Verb-Noun name); must be dot-sourced directly for testing
+`Get-ParentRepoRoot` is a companion function for submodule environments. It walks upward from `Get-RepoRoot` past the submodule `.git` boundary to find the enclosing parent repository root. It starts from `Get-RepoRoot` result (the submodule root), moves one directory up to exit the submodule, and continues upward until a `.git` directory is found (the parent repo root). It is not exported by the module (non Verb-Noun name) and must be dot-sourced directly for testing.
 
 ---
 
-## 3. `Get-GitChangeLog`
+## `Get-GitChangeLog`
 
-Wraps `git log` with structured output parsing. Designed for two use cases:
-1. **Full patch mode** (`-p`): Complete diffs with optional content filtering
-2. **Lightweight mode** (`-NoPatch`): File status only (`--name-status`)
+Wraps `git log` with structured output parsing. Designed for two use cases: full patch mode (`-p`) with complete diffs and optional content filtering, and lightweight mode (`-NoPatch`) with file status only (`--name-status`).
 
-### 3.1 Parameters
+Parameters:
 
 | Parameter | Type | Description |
 |---|---|---|
@@ -67,9 +45,7 @@ Wraps `git log` with structured output parsing. Designed for two use cases:
 | `NoPatch` | switch | Lightweight mode (`--name-status` instead of `-p`) |
 | `PatchFilter` | string | Regex pattern to filter patch lines (only matching lines + hunk headers stored) |
 
-### 3.2 Process Execution
-
-Uses `[System.Diagnostics.ProcessStartInfo]` with `ArgumentList` (array-based) to safely handle paths containing spaces.
+Process execution uses `[System.Diagnostics.ProcessStartInfo]` with `ArgumentList` (array-based) to safely handle paths containing spaces.
 
 ```powershell
 $PSI = [System.Diagnostics.ProcessStartInfo]::new()
@@ -82,9 +58,7 @@ $PSI.RedirectStandardError = $true
 $PSI.StandardOutputEncoding = [System.Text.Encoding]::UTF8
 ```
 
-### 3.3 Async Stderr Capture
-
-Stderr is captured via `.NET event handler` to prevent pipe deadlocks:
+Stderr is captured via .NET event handler to prevent pipe deadlocks:
 
 ```powershell
 $ErrorLines = [System.Collections.Generic.List[string]]::new()
@@ -97,33 +71,23 @@ $Process.BeginErrorReadLine()
 
 Without async capture, simultaneous stdout/stderr output can deadlock the process when one buffer fills.
 
-### 3.4 Streaming Parser
+The streaming parser processes `StandardOutput` line-by-line via `ReadLine()` (not `ReadToEnd()`) to avoid materializing large diffs into memory.
 
-Parses `StandardOutput` line-by-line via `ReadLine()` (not `ReadToEnd()`) to avoid materializing large diffs into memory.
-
-**Custom commit format**: Uses `%x1F` (Unit Separator, ASCII 31) as field delimiter:
+Custom commit format uses `%x1F` (Unit Separator, ASCII 31) as field delimiter:
 
 ```
 COMMIT%x1F<hash>%x1F<date>%x1F<author>%x1F<email>
 ```
 
-### 3.5 Commit Parsing (`ConvertFrom-CommitLine`)
+`ConvertFrom-CommitLine` splits on `\x1F` separator. Date is parsed via `[System.DateTimeOffset]::Parse()` with `InvariantCulture` to handle ISO 8601 timezone offsets correctly.
 
-Splits on `\x1F` separator. Date parsed via `[System.DateTimeOffset]::Parse()` with `InvariantCulture` to handle ISO 8601 timezone offsets correctly.
-
-### 3.6 File Change Parsing
-
-**Change types**: `A` (Added), `D` (Deleted), `M` (Modified), `R` (Renamed), `C` (Copied).
-
-Rename detection via `--find-renames`. Renames and copies split old/new paths via tab character:
+Change types: `A` (Added), `D` (Deleted), `M` (Modified), `R` (Renamed), `C` (Copied). Rename detection uses `--find-renames`. Renames and copies split old/new paths via tab character:
 
 ```
 R100    old/path.md    new/path.md
 ```
 
 `RenameScore` is the similarity percentage (e.g., `100` = identical content).
-
-### 3.7 Patch Filtering
 
 Optional `-PatchFilter` parameter compiles a regex and only stores matching patch lines (plus hunk headers starting with `@@`):
 
@@ -133,17 +97,13 @@ $FilterRegex = [regex]::new($PatchFilter, [RegexOptions]::Compiled)
 # Always store hunk headers (lines starting with "@@")
 ```
 
-### 3.8 Encoding
-
-- `StandardOutputEncoding` set to UTF-8
-- Git configured with `core.quotepath=false` to prevent escaping of non-ASCII filenames
-- `-c core.quotepath=false` passed as argument
+Encoding: `StandardOutputEncoding` is set to UTF-8. Git is configured with `core.quotepath=false` to prevent escaping of non-ASCII filenames. `-c core.quotepath=false` is passed as argument.
 
 ---
 
-## 4. Output Objects
+## Output Objects
 
-### Commit Object
+Commit object:
 
 | Property | Type | Description |
 |---|---|---|
@@ -153,7 +113,7 @@ $FilterRegex = [regex]::new($PatchFilter, [RegexOptions]::Compiled)
 | `AuthorEmail` | string | Author email |
 | `Files` | `List[object]` | File change objects |
 
-### File Object
+File object:
 
 | Property | Type | Description |
 |---|---|---|
@@ -165,7 +125,7 @@ $FilterRegex = [regex]::new($PatchFilter, [RegexOptions]::Compiled)
 
 ---
 
-## 5. Integration with PU Workflow
+## Integration with PU Workflow
 
 `Invoke-PlayerCharacterPUAssignment` uses `Get-GitChangeLog -NoPatch` to optimize session scanning:
 
@@ -179,11 +139,11 @@ On failure, the PU workflow falls back to full repository scan via `Get-Session`
 
 ---
 
-## 6. Edge Cases
+## Edge Cases
 
 | Scenario | Behavior |
 |---|---|
-| Paths with spaces | Handled via `ArgumentList` (array-based, not string concatenation) |
+| Paths with spaces | Handled via `ArgumentList` (array-based) |
 | Non-ASCII filenames | `core.quotepath=false` prevents Git escaping |
 | Stderr output | Async capture prevents deadlock |
 | Empty commit (no files) | Produces commit object with empty `Files` list |
@@ -197,7 +157,7 @@ On failure, the PU workflow falls back to full repository scan via `Get-Session`
 
 ---
 
-## 7. Testing
+## Testing
 
 | Test file | Coverage |
 |---|---|
@@ -206,7 +166,7 @@ On failure, the PU workflow falls back to full repository scan via `Get-Session`
 
 ---
 
-## 8. Related Documents
+## Related Documents
 
-- [PU.md](PU.md) - §3.2 Git Optimization in the PU pipeline
-- [MIGRATION.md](MIGRATION.md) - §11 Module Structure
+- [PU.md](PU.md) - Git Optimization in the PU pipeline
+- [MIGRATION.md](MIGRATION.md) - Module Structure

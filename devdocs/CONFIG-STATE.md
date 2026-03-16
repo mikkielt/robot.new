@@ -1,18 +1,16 @@
-# Configuration & State - Technical Reference
+# Configuration & State
 
-**Status**: Reference documentation.
+## Scope
 
----
-
-## 1. Scope
-
-This document covers `private/admin-config.ps1` (configuration resolution, path management, template rendering), `private/admin-state.ps1` (append-only history file management for PU processing), `private/operation-context.ps1` (accumulator-based operation tracking for write commands), and `public/set-datadirectory.ps1` (data directory override for testing and non-standard layouts).
+The configuration and state subsystem comprises `private/admin-config.ps1` (configuration resolution, path management, template rendering), `private/admin-state.ps1` (append-only history file management for PU processing), `private/operation-context.ps1` (accumulator-based operation tracking for write commands), and `public/set-datadirectory.ps1` (data directory override for testing and non-standard layouts).
 
 ---
 
-## 2. Configuration Resolution (`private/admin-config.ps1`)
+## Configuration Resolution
 
-### 2.1 Functions
+Source: `private/admin-config.ps1`.
+
+Functions:
 
 | Function | Purpose |
 |---|---|
@@ -23,9 +21,7 @@ This document covers `private/admin-config.ps1` (configuration resolution, path 
 | `Test-PathUnderRoot` | Validates that a resolved path is under a given root directory (prevents path traversal) |
 | `Set-DataDirectory` | Overrides or resets the lore repository root (in `public/set-datadirectory.ps1`) |
 
-### 2.2 Priority Chain (`Resolve-ConfigValue`)
-
-Resolution order for each config value:
+Resolution order for each config value (`Resolve-ConfigValue`):
 
 | Priority | Source | Example |
 |---|---|---|
@@ -36,7 +32,7 @@ Resolution order for each config value:
 
 The local config file is loaded via `Import-PowerShellDataFile` with try-catch protection. It is git-ignored to keep environment-specific values (webhooks, paths) out of version control.
 
-### 2.3 Resolved Paths (`Get-AdminConfig`)
+Resolved paths (`Get-AdminConfig`):
 
 | Key | Value | Description |
 |---|---|---|
@@ -48,30 +44,22 @@ The local config file is loaded via `Import-PowerShellDataFile` with try-catch p
 | `CharactersDir` | `Postaci/Gracze/` | Character files directory |
 | `PlayersFile` | `Gracze.md` | Legacy player database |
 
-Paths are resolved from `.robot/robot-data.psd1` manifest when available (see §2.5), falling back to the hardcoded values above. This ensures backward compatibility when no manifest exists.
+Paths are resolved from `.robot/robot-data.psd1` manifest when available (see Manifest-Based Data Discovery below), falling back to the hardcoded values above. This ensures backward compatibility when no manifest exists.
 
-Additional config values:
-- `BotUsername` - Discord bot display name (resolved but not used by PU assignment, which hardcodes `"Bothen"`)
-- Webhook URLs - resolved via priority chain
+Additional config values: `BotUsername` is the Discord bot display name (resolved but not used by PU assignment, which hardcodes `"Bothen"`). Webhook URLs are resolved via the priority chain.
 
-### 2.4 Template Rendering (`Get-AdminTemplate`)
-
-Loads template files from `.robot.new/templates/` and performs simple `{Placeholder}` substitution:
+Template rendering (`Get-AdminTemplate`) loads template files from `.robot.new/templates/` and performs simple `{Placeholder}` substitution:
 
 ```powershell
 $Template = Get-AdminTemplate -Name "player-character-file.md.template"
 $Result = $Template.Replace("{CharacterSheetUrl}", $Url)
 ```
 
-No advanced template engine - pure string `.Replace()` calls by the consumer.
+No advanced template engine -- pure string `.Replace()` calls by the consumer. The function validates template file existence before reading and throws on missing file.
 
-**File existence check**: Validates template file exists before reading. Throws on missing file.
+`Find-DataManifest` enables flexible data file placement. The module is a git submodule inside a parent lore repository. Coordinators may place data files in non-default locations. `Find-DataManifest` checks for a `.robot/robot-data.psd1` manifest file at a fixed path inside the repo root.
 
-### 2.5 Manifest-Based Data Discovery (`Find-DataManifest`)
-
-The module is a git submodule inside a parent lore repository. Coordinators may place data files in non-default locations. `Find-DataManifest` enables this flexibility by checking for a `.robot/robot-data.psd1` manifest file at a fixed path inside the repo root.
-
-**Manifest format** (PowerShell data file):
+Manifest format (PowerShell data file):
 
 ```powershell
 @{
@@ -84,52 +72,39 @@ The module is a git submodule inside a parent lore repository. Coordinators may 
 
 Paths in the manifest are relative to the manifest file's directory. The module resolves them to absolute paths at discovery time.
 
-**Discovery algorithm**:
+Discovery algorithm: (1) Resolve `RepoRoot` via `Get-RepoRoot` (or accept override for testing). (2) Construct the fixed path: `{RepoRoot}/.robot/robot-data.psd1`. (3) If the file exists, parse it and cache the result. (4) If not found, fall back to hardcoded paths (backward compatible). (5) Cache the resolved manifest and its directory in `$script:CachedManifest` / `$script:CachedManifestDir`.
 
-1. Resolve `RepoRoot` via `Get-RepoRoot` (or accept override for testing)
-2. Construct the fixed path: `{RepoRoot}/.robot/robot-data.psd1`
-3. If the file exists, parse it and cache the result
-4. If not found, fall back to hardcoded paths (backward compatible)
-5. Cache the resolved manifest and its directory in `$script:CachedManifest` / `$script:CachedManifestDir`
+Caching is per-session. Once discovered, the manifest is not re-scanned. This avoids repeated directory traversal.
 
-**Caching**: Per-session. Once discovered, the manifest is not re-scanned. This avoids repeated directory traversal.
+`Get-ParentRepoRoot` is a companion function in `public/get-reporoot.ps1`. Walks upward from `Get-RepoRoot` past the submodule `.git` to find the enclosing repository root. No longer used by `Find-DataManifest` (which uses a fixed path), but remains available for callers that need the parent repo boundary.
 
-**`Get-ParentRepoRoot`**: Companion function in `public/get-reporoot.ps1`. Walks upward from `Get-RepoRoot` past the submodule `.git` to find the enclosing repository root. No longer used by `Find-DataManifest` (which uses a fixed path), but remains available for callers that need the parent repo boundary.
+When `Find-DataManifest` returns a manifest, `Get-AdminConfig` uses its paths. When no manifest exists, all paths resolve identically to the hardcoded defaults. Zero breaking changes. `Get-AdminConfig` validates each manifest-resolved path via `Test-PathUnderRoot` before accepting it. Paths that resolve outside the repository root are skipped with a warning to stderr. This prevents a misconfigured manifest from directing the module to read/write files outside the repository.
 
-**`Get-AdminConfig` integration**: When `Find-DataManifest` returns a manifest, `Get-AdminConfig` uses its paths. When no manifest exists, all paths resolve identically to the hardcoded defaults. Zero breaking changes.
-
-**Path traversal protection**: `Get-AdminConfig` validates each manifest-resolved path via `Test-PathUnderRoot` before accepting it. Paths that resolve outside the repository root are skipped with a warning to stderr. This prevents a malicious or misconfigured manifest from directing the module to read/write files outside the repository.
-
-### 2.6 Path Validation (`Test-PathUnderRoot`)
-
-Validates that a resolved path is under a given root directory. Used by `Get-AdminConfig` to prevent path traversal attacks from manifest entries.
+`Test-PathUnderRoot` validates that a resolved path is under a given root directory:
 
 | Parameter | Type | Description |
 |---|---|---|
-| `Path` | string | **Mandatory**. The path to validate. |
-| `Root` | string | **Mandatory**. The root directory the path must be under. |
+| `Path` | string | Mandatory. The path to validate. |
+| `Root` | string | Mandatory. The root directory the path must be under. |
 
-**Algorithm**:
-1. Resolve both `Path` and `Root` to absolute form via `[System.IO.Path]::GetFullPath()`
-2. Ensure `Root` ends with `DirectorySeparatorChar` for correct prefix matching
-3. Return `$Path.StartsWith($Root, OrdinalIgnoreCase)`
+Algorithm: (1) Resolve both `Path` and `Root` to absolute form via `[System.IO.Path]::GetFullPath()`. (2) Ensure `Root` ends with `DirectorySeparatorChar` for correct prefix matching. (3) Return `$Path.StartsWith($Root, OrdinalIgnoreCase)`.
 
 Returns `$true` if the path is under the root, `$false` otherwise.
 
 ---
 
-## 3. State Management (`private/admin-state.ps1`)
+## State Management
 
-### 3.1 Functions
+Source: `private/admin-state.ps1`.
+
+Functions:
 
 | Function | Purpose |
 |---|---|
 | `Get-AdminHistoryEntries` | Reads processed session headers from a state file |
 | `Add-AdminHistoryEntry` | Appends new entries with timestamp |
 
-### 3.2 State File Format
-
-Append-only Markdown files in `.robot/res/`:
+State files are append-only Markdown files in `.robot/res/`:
 
 ```markdown
 W tym pliku znajduje się lista sesji przetworzonych przez system.
@@ -143,22 +118,9 @@ W tym pliku znajduje się lista sesji przetworzonych przez system.
     - ### 2025-07-01, July Session, Narrator
 ```
 
-### 3.3 Reading History (`Get-AdminHistoryEntries`)
+`Get-AdminHistoryEntries` parses entry lines matching the precompiled pattern `^\s+-\s+###\s+(.+)$`. The normalization pipeline: (1) Trim leading/trailing whitespace. (2) Collapse multiple spaces to single space (via precompiled `\s{2,}` regex). (3) Strip leading `### ` prefix. Output is a `HashSet[string]` with `OrdinalIgnoreCase` comparer for O(1) membership testing. Both stripped and unstripped forms are available for comparison. The hash set provides efficient deduplication lookups when filtering sessions in the PU pipeline.
 
-Parses entry lines matching the precompiled pattern `^\s+-\s+###\s+(.+)$`.
-
-**Normalization pipeline**:
-1. Trim leading/trailing whitespace
-2. Collapse multiple spaces to single space (via precompiled `\s{2,}` regex)
-3. Strip leading `### ` prefix
-
-**Output**: `HashSet[string]` with `OrdinalIgnoreCase` comparer for O(1) membership testing.
-
-Both stripped and unstripped forms are available for comparison. The hash set provides efficient deduplication lookups when filtering sessions in the PU pipeline.
-
-### 3.4 Writing History (`Add-AdminHistoryEntry`)
-
-Appends new entries with a timestamped header:
+`Add-AdminHistoryEntry` appends new entries with a timestamped header:
 
 ```markdown
 - YYYY-MM-dd HH:mm (UTC±HH:MM):
@@ -166,39 +128,21 @@ Appends new entries with a timestamped header:
     - ### session header 2
 ```
 
-**Timestamp format**: Uses `DateTimeOffset.Now` for timezone-aware timestamps. Handles negative UTC offsets.
+Timestamp format uses `DateTimeOffset.Now` for timezone-aware timestamps. Handles negative UTC offsets. Session headers are sorted chronologically using `[StringComparer]::Ordinal` (works because headers start with `YYYY-MM-DD`). The `### ` prefix is added automatically if not already present. If the state file doesn't exist, it is created with a preamble. Parent directory is created if missing.
 
-**Header sorting**: Session headers sorted chronologically using `[StringComparer]::Ordinal` (works because headers start with `YYYY-MM-DD`).
-
-**`### ` prefix**: Added automatically if not already present.
-
-**File creation**: If the state file doesn't exist, it is created with the preamble:
-```
-W tym pliku znajduje się lista sesji przetworzonych przez system.
-
-## Historia
-
-```
-
-**Directory creation**: Parent directory created if missing.
-
-### 3.5 State File Location
-
-`$Config.ResDir` -> `<RepoRoot>/.robot/res/pu-sessions.md`
-
-This is separate from the module directory (`.robot.new/`) and lives in `.robot/res/` for historical compatibility with the legacy system.
+State file location: `$Config.ResDir` resolves to `<RepoRoot>/.robot/res/pu-sessions.md`. This is separate from the module directory (`.robot.new/`) and lives in `.robot/res/` for historical compatibility with the legacy system.
 
 ---
 
-## 4. Operation Context (`private/operation-context.ps1`)
+## Operation Context
 
-### 4.1 Purpose
+Source: `private/operation-context.ps1`.
 
 Accumulator-based operation tracking for write commands. Provides a structured way to collect changes, warnings, and touched files during a write operation, then drain them into a single `Robot.OperationResult` object at completion.
 
 Dot-sourced by `private/entity-writehelpers.ps1` (non-fatal if missing) and checked by `private/charfile-helpers.ps1`. Not auto-loaded by `robot.psm1`.
 
-### 4.2 Accumulators
+Accumulators:
 
 | Variable | Type | Purpose |
 |---|---|---|
@@ -206,7 +150,7 @@ Dot-sourced by `private/entity-writehelpers.ps1` (non-fatal if missing) and chec
 | `$script:OpWarnings` | `List[PSCustomObject]` | Warning records `{ Message, Severity, ActionHint }` |
 | `$script:OpFiles` | `HashSet[string]` | Touched file paths (case-insensitive deduplication) |
 
-### 4.3 Functions
+Functions:
 
 | Function | Purpose |
 |---|---|
@@ -216,33 +160,33 @@ Dot-sourced by `private/entity-writehelpers.ps1` (non-fatal if missing) and chec
 | `Add-OperationFile` | Registers a touched file path (deduplicated via `HashSet`). Called by `Write-EntityFile` and `Write-CharacterFile`. |
 | `New-OperationResult` | Drains all accumulators into a `Robot.OperationResult` object and resets them via `Clear-OperationContext`. |
 
-### 4.4 `Add-OperationChange`
+`Add-OperationChange` parameters:
 
 | Parameter | Type | Description |
 |---|---|---|
-| `Property` | string | **Mandatory**. The property or tag that changed (e.g. `@status`). |
+| `Property` | string | Mandatory. The property or tag that changed (e.g. `@status`). |
 | `OldValue` | any | Previous value (`$null` for new tags). |
 | `NewValue` | any | New value being set. |
 
-### 4.5 `Add-OperationWarning`
+`Add-OperationWarning` parameters:
 
 | Parameter | Type | Description |
 |---|---|---|
-| `Message` | string | **Mandatory**. Warning message text. |
+| `Message` | string | Mandatory. Warning message text. |
 | `Severity` | string | Severity level, defaults to `'Info'`. |
 | `ActionHint` | string | Optional suggested remediation action. |
 
-### 4.6 `New-OperationResult`
+`New-OperationResult` parameters:
 
 | Parameter | Type | Description |
 |---|---|---|
-| `Success` | bool | **Mandatory**. Whether the operation succeeded. |
-| `Action` | string | **Mandatory**. The action performed (e.g. `'Set'`, `'New'`, `'Remove'`). |
-| `TargetType` | string | **Mandatory**. Entity type targeted (e.g. `'Postać'`, `'NPC'`). |
-| `TargetName` | string | **Mandatory**. Entity name targeted. |
+| `Success` | bool | Mandatory. Whether the operation succeeded. |
+| `Action` | string | Mandatory. The action performed (e.g. `'Set'`, `'New'`, `'Remove'`). |
+| `TargetType` | string | Mandatory. Entity type targeted (e.g. `'Postać'`, `'NPC'`). |
+| `TargetName` | string | Mandatory. Entity name targeted. |
 | `UndoHint` | string | Optional undo guidance text. |
 
-**Return object** (`Robot.OperationResult`):
+Return object (`Robot.OperationResult`):
 
 | Property | Type | Description |
 |---|---|---|
@@ -256,49 +200,34 @@ Dot-sourced by `private/entity-writehelpers.ps1` (non-fatal if missing) and chec
 | `UndoHint` | string | Undo guidance |
 | `Timestamp` | datetime | Time of result creation |
 
-**Context cleanup**: `Clear-OperationContext` is called in a `finally` block within `New-OperationResult`, ensuring accumulators are always reset even if result construction throws. The return statement is inside the `try` block so the result object is built before cleanup occurs.
+`Clear-OperationContext` is called in a `finally` block within `New-OperationResult`, ensuring accumulators are always reset even if result construction throws. The return statement is inside the `try` block so the result object is built before cleanup occurs.
 
-**Note**: Has `SuppressMessageAttribute` for `PSUseShouldProcessForStateChangingFunctions` — drains in-memory accumulators, not system state.
+Has `SuppressMessageAttribute` for `PSUseShouldProcessForStateChangingFunctions` -- drains in-memory accumulators, not system state.
 
-### 4.7 Integration Points
-
-Write helpers push records as side effects:
-- `Set-EntityTag` -> `Add-OperationChange` (tag name, old value, new value)
-- `Write-EntityFile` -> `Add-OperationFile` (file path)
-- `Write-CharacterFile` -> `Add-OperationFile` (file path)
-
-Availability is checked via `$script:HasOpCtx` flag, set at dot-source time by probing for `Add-OperationChange` (in entity-writehelpers.ps1) or `Add-OperationFile` (in charfile-helpers.ps1).
+Write helpers push records as side effects: `Set-EntityTag` calls `Add-OperationChange` (tag name, old value, new value); `Write-EntityFile` calls `Add-OperationFile` (file path); `Write-CharacterFile` calls `Add-OperationFile` (file path). Availability is checked via `$script:HasOpCtx` flag, set at dot-source time by probing for `Add-OperationChange` (in entity-writehelpers.ps1) or `Add-OperationFile` (in charfile-helpers.ps1).
 
 ---
 
-## 5. `Set-DataDirectory` (`public/set-datadirectory.ps1`)
+## Set-DataDirectory
 
-### 5.1 Purpose
+Source: `public/set-datadirectory.ps1`.
 
 Overrides or resets the data directory used as the lore repository root. Useful for testing and non-standard layouts where the lore repository is not the git ancestor of the module.
 
-### 5.2 Parameters
-
 | Parameter | Type | ParameterSet | Description |
 |---|---|---|---|
-| `Path` | string | `Path` | **Mandatory**. Absolute path to the directory to use as the data root. Must exist. |
-| `Reset` | switch | `Reset` | **Mandatory**. Clears the override and reverts to git-based detection. |
+| `Path` | string | `Path` | Mandatory. Absolute path to the directory to use as the data root. Must exist. |
+| `Reset` | switch | `Reset` | Mandatory. Clears the override and reverts to git-based detection. |
 
-### 5.3 Behavior
-
-- **Path mode**: Validates directory existence, stores `[System.IO.Path]::GetFullPath($Path)` in `$script:DataDirectoryOverride`. Subsequent `Get-RepoRoot` calls return this path instead of performing git traversal.
-- **Reset mode**: Sets `$script:DataDirectoryOverride` to `$null`.
-- **Both modes**: Clears `$script:CachedManifest` and `$script:CachedManifestDir` so that `Find-DataManifest` re-scans from the new root on next use.
+Path mode validates directory existence, stores `[System.IO.Path]::GetFullPath($Path)` in `$script:DataDirectoryOverride`. Subsequent `Get-RepoRoot` calls return this path instead of performing git traversal. Reset mode sets `$script:DataDirectoryOverride` to `$null`. Both modes clear `$script:CachedManifest` and `$script:CachedManifestDir` so that `Find-DataManifest` re-scans from the new root on next use.
 
 ---
 
-## 6. Warning Suppression (`robot.psm1`)
+## Warning Suppression
 
-### 6.1 Overview
+Source: `robot.psm1`.
 
 Module-scoped warning suppression prevents `[System.Console]::Error.WriteLine` output from corrupting interactive CLI menus. All warning/info emission routes through centralized helpers that check a boolean flag before writing.
-
-### 6.2 Components
 
 | Component | Location | Purpose |
 |---|---|---|
@@ -307,8 +236,6 @@ Module-scoped warning suppression prevents `[System.Console]::Error.WriteLine` o
 | `Write-RobotInfo` | `robot.psm1` | Emits `[INFO ...]` to stderr if flag is `$false` |
 
 Both helpers are module-internal (not exported). Available to all dot-sourced functions via module scope.
-
-### 6.3 `-Quiet` Parameter Pattern
 
 Public functions that emit warnings expose a `[switch]$Quiet` parameter. When set, the function saves the current flag, sets it to `$true`, and restores in `finally`:
 
@@ -323,18 +250,11 @@ finally {
 }
 ```
 
-Nested calls inherit the suppressed state automatically — inner functions do not need `-Quiet` threading.
+Nested calls inherit the suppressed state automatically -- inner functions do not need `-Quiet` threading.
 
-### 6.4 CLI Integration
+The CLI suppresses warnings at two levels: (1) Startup (`Invoke-RobotCLI`) uses `Get-Entity -Quiet` for pre-loading. (2) Dispatch (`Invoke-MenuAction` in `cli-routing.ps1`) wraps all Wizard/Query/Workflow dispatch with `$script:SuppressWarnings = $true` / `finally { $false }`. CLI-internal warnings (plugin validation in `Merge-PluginMenuItems`, plugin load errors) fire before the menu loop starts and are unaffected by overlay rendering.
 
-The CLI suppresses warnings at two levels:
-
-1. **Startup** (`Invoke-RobotCLI`): `Get-Entity -Quiet` for pre-loading
-2. **Dispatch** (`Invoke-MenuAction` in `cli-routing.ps1`): wraps all Wizard/Query/Workflow dispatch with `$script:SuppressWarnings = $true` / `finally { $false }`
-
-CLI-internal warnings (plugin validation in `Merge-PluginMenuItems`, plugin load errors) are **not** suppressed — they fire before the menu loop starts and are unaffected by overlay rendering.
-
-### 6.5 Scope of Conversion
+Scope of conversion:
 
 | Category | Converted | Reason |
 |---|---|---|
@@ -346,7 +266,7 @@ CLI-internal warnings (plugin validation in `Merge-PluginMenuItems`, plugin load
 
 ---
 
-## 7. Environment Variables
+## Environment Variables
 
 | Variable | Purpose |
 |---|---|
@@ -355,7 +275,7 @@ CLI-internal warnings (plugin validation in `Merge-PluginMenuItems`, plugin load
 
 ---
 
-## 8. Local Config File
+## Local Config File
 
 Path: `.robot.new/local.config.psd1` (git-ignored)
 
@@ -368,11 +288,11 @@ PowerShell data file format:
 }
 ```
 
-Loaded via `Import-PowerShellDataFile` with error handling. Missing file is not an error - the priority chain falls through to the next source.
+Loaded via `Import-PowerShellDataFile` with error handling. Missing file is not an error -- the priority chain falls through to the next source.
 
 ---
 
-## 9. Edge Cases
+## Edge Cases
 
 | Scenario | Behavior |
 |---|---|
@@ -395,7 +315,7 @@ Loaded via `Import-PowerShellDataFile` with error handling. Missing file is not 
 
 ---
 
-## 10. Testing
+## Testing
 
 | Test file | Coverage |
 |---|---|
@@ -408,9 +328,9 @@ Fixtures: `local.config.psd1`, `pu-sessions.md`, template files in `tests/fixtur
 
 ---
 
-## 11. Related Documents
+## Related Documents
 
-- [PU.md](PU.md) - PU pipeline uses history entries for deduplication
-- [ENTITY-WRITES.md](ENTITY-WRITES.md) - Write commands consume `Get-AdminConfig` and operation context
-- [CHARFILE.md](CHARFILE.md) - Character file writing uses operation context (`Write-CharacterFile`)
-- [DISCORD.md](DISCORD.md) - Webhook config resolution
+- [PU.md](PU.md) -- PU pipeline uses history entries for deduplication
+- [ENTITY-WRITES.md](ENTITY-WRITES.md) -- Write commands consume `Get-AdminConfig` and operation context
+- [CHARFILE.md](CHARFILE.md) -- Character file writing uses operation context (`Write-CharacterFile`)
+- [DISCORD.md](DISCORD.md) -- Webhook config resolution

@@ -1,85 +1,78 @@
 # Plugin System - Technical Reference
 
-**Status**: Reference documentation.
-
 ---
 
-## 1. Scope
+## Scope
 
 This document covers the plugin system for extending Robot module functionality without modifying core code: `private/plugin-loader.ps1` (discovery, manifest validation, dependency resolution, function loading), `private/plugin-hooks.ps1` (hook registry, invocation, handler contract), the plugin loading phase in `robot.psm1`, and the exported management functions `Get-PluginConfig` and `Get-LoadedPlugins` (defined inline in `robot.psm1`).
 
-**Not covered**: Individual plugin implementations. Core entity write operations - see [ENTITY-WRITES.md](ENTITY-WRITES.md). Configuration resolution for the core module - see [CONFIG-STATE.md](CONFIG-STATE.md).
+Individual plugin implementations are documented separately. Core entity write operations are in [ENTITY-WRITES.md](ENTITY-WRITES.md). Configuration resolution for the core module is in [CONFIG-STATE.md](CONFIG-STATE.md).
 
 ---
 
-## 2. Architecture Overview
+## Architecture Overview
 
 ```
 robot.psm1 (module entry point)
-    │
-    ├── Core functions loaded (public/, private/)
-    │
-    ├── Plugin Discovery & Loading (private/plugin-loader.ps1)
-    │       │
-    │       ├── Scan plugins/ for plugin.psd1 manifests
-    │       ├── Validate manifests, version-gate
-    │       ├── Topological sort by DependsOn
-    │       └── Per plugin:
-    │           ├── Resolve config (env -> local -> core -> manifest default)
-    │           ├── Load public/ functions (collision detection)
-    │           ├── Load private/ helpers
-    │           └── Register hooks (private/plugin-hooks.ps1)
-    │
-    ├── Sort hooks by priority
-    │
-    └── Single Export-ModuleMember (core + all plugin functions)
+    |
+    +-- Core functions loaded (public/, private/)
+    |
+    +-- Plugin Discovery & Loading (private/plugin-loader.ps1)
+    |       |
+    |       +-- Scan plugins/ for plugin.psd1 manifests
+    |       +-- Validate manifests, version-gate
+    |       +-- Topological sort by DependsOn
+    |       +-- Per plugin:
+    |           +-- Resolve config (env -> local -> core -> manifest default)
+    |           +-- Load public/ functions (collision detection)
+    |           +-- Load private/ helpers
+    |           +-- Register hooks (private/plugin-hooks.ps1)
+    |
+    +-- Sort hooks by priority
+    |
+    +-- Single Export-ModuleMember (core + all plugin functions)
 
 Hook Registry (private/plugin-hooks.ps1)
-    │
-    ├── Write-EntityFile ──► BeforeWrite / AfterWrite
-    ├── Set-Session ────────► BeforeWrite / AfterWrite
-    ├── New-Entity ─────────► AfterCreate
-    └── New-PlayerCharacter ► AfterCreate
+    |
+    +-- Write-EntityFile --> BeforeWrite / AfterWrite
+    +-- Set-Session ------> BeforeWrite / AfterWrite
+    +-- New-Entity -------> AfterCreate
+    +-- New-PlayerCharacter -> AfterCreate
 ```
 
 Core functions are loaded first. Plugins are discovered, validated, and loaded in dependency order. Plugin public functions are exported alongside core functions via a single `Export-ModuleMember` call at the end of `robot.psm1`. The hook registry connects plugin handlers to core write operations.
 
 ---
 
-## 3. Plugin Structure
+## Plugin Structure
 
-### 3.1 Directory Layout
+Directory layout:
 
 ```
 plugins/
-└── my-plugin/
-    ├── plugin.psd1              # Mandatory: plugin manifest
-    ├── public/                  # Optional: exported functions
-    │   ├── Export-MyData.ps1
-    │   └── Get-MyReport.ps1
-    ├── private/                 # Optional: internal helpers (not exported)
-    │   └── Format-MyOutput.ps1
-    ├── cli/                     # Optional: CLI workflow files (dot-sourced at Layer 6.5)
-    │   └── cli-wf-myplugin.ps1
-    ├── templates/               # Optional: template files
-    │   └── my-report.md.template
-    ├── tests/                   # Optional: Pester test files
-    │   └── my-plugin.Tests.ps1
-    └── local.config.psd1        # Optional: plugin-specific config (git-ignored)
++-- my-plugin/
+    +-- plugin.psd1              # Mandatory: plugin manifest
+    +-- public/                  # Optional: exported functions
+    |   +-- Export-MyData.ps1
+    |   +-- Get-MyReport.ps1
+    +-- private/                 # Optional: internal helpers (not exported)
+    |   +-- Format-MyOutput.ps1
+    +-- cli/                     # Optional: CLI workflow files (dot-sourced at Layer 6.5)
+    |   +-- cli-wf-myplugin.ps1
+    +-- templates/               # Optional: template files
+    |   +-- my-report.md.template
+    +-- tests/                   # Optional: Pester test files
+    |   +-- my-plugin.Tests.ps1
+    +-- local.config.psd1        # Optional: plugin-specific config (git-ignored)
 ```
 
-### 3.2 Conventions
-
-- Plugins are git submodules under `plugins/`. This enables independent versioning and clean separation from the core module.
-- Each plugin directory **must** contain a `plugin.psd1` manifest. Directories without a manifest are silently skipped.
-- Public functions in `public/` follow the same `Verb-Noun` naming convention as core functions.
-- Private helpers in `private/` are dot-sourced into the module scope but not exported.
+Plugins are git submodules under `plugins/`. This enables independent versioning and clean separation from the core module. Each plugin directory must contain a `plugin.psd1` manifest. Directories without a manifest are silently skipped. Public functions in `public/` follow the same `Verb-Noun` naming convention as core functions. Private helpers in `private/` are dot-sourced into the module scope but not exported.
 
 ---
 
-## 4. Plugin Manifest Schema (`plugin.psd1`)
+## Plugin Manifest Schema (`plugin.psd1`)
 
-### 4.1 Required Fields
+Required fields:
 
 | Field | Type | Description |
 |---|---|---|
@@ -88,21 +81,21 @@ plugins/
 | `Description` | string | Human-readable summary |
 | `Author` | string | Plugin author |
 
-### 4.2 Optional Fields
+Optional fields:
 
 | Field | Type | Default | Description |
 |---|---|---|---|
 | `MinCoreVersion` | string | `$null` | Minimum Robot module version required |
 | `ExportedFunctions` | string[] | All `public/*.ps1` | Explicit list of functions to export |
-| `Hooks` | hashtable[] | `@()` | Hook registrations with `Operation`, `Phase`, `Handler`, `Priority` (see SS 6) |
-| `Config` | hashtable | `@{}` | Declared configuration keys (see SS 7) |
-| `Scopes` | string[] | `@()` | RBAC scopes required by this plugin (see SS 8) |
+| `Hooks` | hashtable[] | `@()` | Hook registrations with `Operation`, `Phase`, `Handler`, `Priority` (see the Lifecycle Hook System section) |
+| `Config` | hashtable | `@{}` | Declared configuration keys (see the Plugin Config System section) |
+| `Scopes` | string[] | `@()` | RBAC scopes required by this plugin (see the RBAC section) |
 | `DependsOn` | string[] | `@()` | Plugin names that must load first |
-| `MenuItems` | hashtable[] | `@()` | CLI menu entries to register (see SS 10.7) |
+| `MenuItems` | hashtable[] | `@()` | CLI menu entries to register (see the CLI Menu Items section under Creating a Plugin) |
 | `MenuCategories` | string[] | `@()` | New CLI top-level categories to add to `MenuOrder` |
-| `HelpContent` | hashtable | `@{}` | CLI help entries keyed by category name (see SS 10.7) |
+| `HelpContent` | hashtable | `@{}` | CLI help entries keyed by category name (see the CLI Menu Items section under Creating a Plugin) |
 
-### 4.3 Complete Example
+Complete example:
 
 ```powershell
 @{
@@ -162,46 +155,33 @@ plugins/
 
 ---
 
-## 5. Plugin Discovery & Loading (`robot.psm1`)
+## Plugin Discovery and Loading
 
-### 5.1 Loading Process
+Step-by-step sequence executed during module import in `robot.psm1`:
 
-Step-by-step sequence executed during module import:
+1. Scan `plugins/` directory for subdirectories containing `plugin.psd1`
+2. Parse each manifest via `Import-PowerShellDataFile` with error handling
+3. Validate required fields (`Name`, `Version`, `Description`, `Author`)
+4. Version-gate -- skip plugin if `MinCoreVersion` exceeds current module version (warn to stderr)
+5. Topological sort by `DependsOn` via `Resolve-PluginLoadOrder` (detect circular dependencies)
+6. Per plugin (in dependency order): resolve config via `Resolve-PluginConfig` (see the Plugin Config System section); dot-source `public/*.ps1` Verb-Noun functions into module scope (private helpers are loaded on-demand by plugin functions, same as core); collision detection skips conflicting function names with a warning to stderr; register hooks from manifest `Hooks` array (see the Lifecycle Hook System section); extract CLI metadata into `$script:PluginMenuItems`, `$script:PluginMenuCategories`, `$script:PluginHelpContent` (each item tagged with `_PluginName`)
+7. Sort all registered hooks by priority (ascending, lower = earlier)
+8. Single `Export-ModuleMember` at end of `robot.psm1` exports core functions + all plugin public functions
 
-1. **Scan** `plugins/` directory for subdirectories containing `plugin.psd1`
-2. **Parse** each manifest via `Import-PowerShellDataFile` with error handling
-3. **Validate** required fields (`Name`, `Version`, `Description`, `Author`)
-4. **Version-gate** - skip plugin if `MinCoreVersion` exceeds current module version (warn to stderr)
-5. **Topological sort** by `DependsOn` via `Resolve-PluginLoadOrder` (detect circular dependencies)
-6. **Per plugin** (in dependency order):
-   - Resolve config via `Resolve-PluginConfig` (see SS 7)
-   - Dot-source `public/*.ps1` Verb-Noun functions into module scope (private helpers are loaded on-demand by plugin functions, same as core)
-   - **Collision detection**: if a function name already exists (core or prior plugin), warn to stderr and skip the conflicting function
-   - Register hooks from manifest `Hooks` array (see SS 6)
-   - Extract CLI metadata: `MenuItems` → `$script:PluginMenuItems`, `MenuCategories` → `$script:PluginMenuCategories`, `HelpContent` → `$script:PluginHelpContent` (each item tagged with `_PluginName`)
-7. **Sort** all registered hooks by priority (ascending, lower = earlier)
-8. **Single `Export-ModuleMember`** at end of `robot.psm1` exports core functions + all plugin public functions
+CLI metadata is stored in module-scoped lists and merged later by `Merge-PluginMenuItems` when `Invoke-RobotCLI` starts (see [CLI.md](CLI.md)).
 
-CLI metadata is not merged into the live registry at import time. It is stored in module-scoped lists and merged later by `Merge-PluginMenuItems` when `Invoke-RobotCLI` starts (see [CLI.md](CLI.md) SS 8.1).
-
-### 5.2 Functions
+Functions:
 
 | Function | Purpose |
 |---|---|
 | `Resolve-PluginLoadOrder` | Topological sort of plugins by `DependsOn`. Returns ordered list. Warns and skips plugins with missing or circular dependencies. |
-| `Resolve-PluginConfig` | Resolves all config keys for a plugin through the priority chain (see SS 7). Returns hashtable. |
+| `Resolve-PluginConfig` | Resolves all config keys for a plugin through the priority chain (see the Plugin Config System section). Returns hashtable. |
 
-### 5.3 `Resolve-PluginLoadOrder`
+`Resolve-PluginLoadOrder` takes an array of parsed manifests and returns manifests sorted so that dependencies load before dependents. Algorithm: Kahn's topological sort. If a cycle is detected, warns to stderr and skips the cycled plugins. If a dependency references an undiscovered plugin, warns to stderr and skips the dependent plugin. Independent plugins always load regardless of other plugins' dependency issues.
 
-Input: array of parsed manifests. Output: manifests sorted so that dependencies load before dependents.
+`Resolve-PluginConfig` resolves all declared config keys for a single plugin through the priority chain.
 
-Algorithm: Kahn's topological sort. If a cycle is detected, warns to stderr and skips the cycled plugins. If a dependency references a plugin that was not discovered, warns to stderr and skips the dependent plugin. Independent plugins are always loaded regardless of other plugins' dependency issues.
-
-### 5.4 `Resolve-PluginConfig`
-
-Resolves all declared config keys for a single plugin through the priority chain.
-
-**Parameters**:
+Parameters:
 
 | Parameter | Type | Description |
 |---|---|---|
@@ -209,26 +189,20 @@ Resolves all declared config keys for a single plugin through the priority chain
 | `PluginDir` | string | Absolute path to the plugin's directory |
 | `ModuleRoot` | string | Absolute path to the `.robot.new/` module root |
 
-**Algorithm**:
-
+Algorithm:
 1. Return empty `@{}` if manifest has no `Config` section
 2. Load plugin-level `local.config.psd1` (if exists)
 3. Load core `local.config.psd1` (if exists)
-4. For each declared config key:
-   - Priority 1: Environment variable (`$Def.EnvVar`)
-   - Priority 2: Plugin's own `local.config.psd1` (direct key match)
-   - Priority 3: Core `local.config.psd1` with namespaced key (`PluginName.Key`)
-   - Priority 4: Manifest default value (`$Def.Default`)
-   - Priority 5: If `Required = $true` and no value resolved, warn to stderr
+4. For each declared config key: Priority 1 is the environment variable (`$Def.EnvVar`), Priority 2 is the plugin's own `local.config.psd1` (direct key match), Priority 3 is the core `local.config.psd1` with namespaced key (`PluginName.Key`), Priority 4 is the manifest default value (`$Def.Default`), Priority 5 warns to stderr if `Required = $true` and no value resolved
 5. Return resolved hashtable mapping config keys to their values
 
-**Return value**: `[hashtable]` — keys are config key names, values are resolved config values (or `$null` if unresolved).
+Return value: `[hashtable]` -- keys are config key names, values are resolved config values (or `$null` if unresolved).
 
 ---
 
-## 6. Lifecycle Hook System
+## Lifecycle Hook System
 
-### 6.1 Hook Points
+Hook points:
 
 | Operation | Phase | Can Reject? | Data Passed | Use Case |
 |---|---|---|---|---|
@@ -239,7 +213,7 @@ Resolves all declared config keys for a single plugin through the priority chain
 | `New-Entity` | `AfterCreate` | No | `Name`, `Type`, `Tags`, `FilePath` | Side-effects: logging, external sync |
 | `New-PlayerCharacter` | `AfterCreate` | No | `PlayerName`, `CharacterName`, `FilePath`, `CharacterFile` | Side-effects: logging, external sync |
 
-### 6.2 Hook Invocation (`Invoke-PluginHook`)
+`Invoke-PluginHook` invocation:
 
 ```powershell
 Invoke-PluginHook -Operation 'Write-EntityFile' -Phase 'BeforeWrite' -Context @{
@@ -250,22 +224,20 @@ Invoke-PluginHook -Operation 'Write-EntityFile' -Phase 'BeforeWrite' -Context @{
 }
 ```
 
-**Fast path**: When no handlers are registered for a hook point, `Invoke-PluginHook` returns immediately with zero overhead. The hook registry is a `Dictionary[string, List[handler]]` - a missing key means no work.
+When no handlers are registered for a hook point, `Invoke-PluginHook` returns immediately with zero overhead. The hook registry is a `Dictionary[string, List[handler]]` -- a missing key means no work.
 
-**Cached command lookup**: Handler function names are resolved via `Get-Command` on first invocation and cached in `$script:HookCommandCache` (keyed by function name). Subsequent invocations of the same handler skip the `Get-Command` call entirely. Failed lookups are cached as `[DBNull]::Value` to avoid repeated resolution attempts for missing handlers. The cache also validates that the command is a user-defined `Function` (not a `Cmdlet`, `Alias`, or `Application`) before caching.
+Handler function names are resolved via `Get-Command` on first invocation and cached in `$script:HookCommandCache` (keyed by function name). Subsequent invocations of the same handler skip the `Get-Command` call entirely. Failed lookups are cached as `[DBNull]::Value` to avoid repeated resolution attempts for missing handlers. The cache also validates that the command is a user-defined `Function` (not a `Cmdlet`, `Alias`, or `Application`) before caching.
 
-**Priority ordering**: Handlers execute in ascending priority order (lower number = earlier). Default priority is `100`. Handlers from different plugins at the same priority execute in plugin load order.
+Handlers execute in ascending priority order (lower number = earlier). Default priority is `100`. Handlers from different plugins at the same priority execute in plugin load order.
 
-**Error handling by phase**:
+Error handling by phase:
 
 | Phase | On error |
 |---|---|
-| `BeforeWrite` | Handler throws -> operation is **rejected**. Exception propagates to caller. Subsequent handlers are **not** invoked. |
-| `AfterWrite` / `AfterCreate` | Handler throws -> error is **logged to stderr** (`Write-Warning`). Subsequent handlers **continue**. The core operation has already completed. |
+| `BeforeWrite` | Handler throws -> operation is rejected. Exception propagates to caller. Subsequent handlers are not invoked. |
+| `AfterWrite` / `AfterCreate` | Handler throws -> error is logged to stderr (`Write-Warning`). Subsequent handlers continue. The core operation has already completed. |
 
-### 6.3 Handler Contract
-
-**Function signature**:
+Handler contract -- function signature:
 
 ```powershell
 function Invoke-LLMValidation {
@@ -288,7 +260,7 @@ function Invoke-LLMValidation {
 }
 ```
 
-**`HookContext` contents by operation and phase**:
+`HookContext` contents by operation and phase:
 
 | Operation | Phase | Keys |
 |---|---|---|
@@ -299,19 +271,17 @@ function Invoke-LLMValidation {
 | `New-Entity` | `AfterCreate` | `Operation`, `Name`, `Type`, `Tags`, `FilePath` |
 | `New-PlayerCharacter` | `AfterCreate` | `Operation`, `PlayerName`, `CharacterName`, `FilePath`, `CharacterFile` |
 
-**Handler behaviors**:
+Handler behaviors:
 
 | Pattern | Phase | Mechanism |
 |---|---|---|
 | Reject an operation | `BeforeWrite` | `throw` with descriptive message |
 | Enrich content | `BeforeWrite` | Modify `$HookContext.Lines` in-place (it is a `List[string]` reference) |
-| Side-effect only | `AfterWrite` / `AfterCreate` | Log, sync, notify. Do not attempt to modify data. |
+| Side-effect only | `AfterWrite` / `AfterCreate` | Log, sync, notify. Data modification is not applicable. |
 
 ---
 
-## 7. Plugin Config System
-
-### 7.1 Resolution Chain
+## Plugin Config System
 
 For each declared config key, values are resolved in priority order:
 
@@ -325,9 +295,7 @@ For each declared config key, values are resolved in priority order:
 
 Plugin `local.config.psd1` files are git-ignored. The core `local.config.psd1` namespace uses the plugin `Name` as key to avoid collisions between plugins.
 
-### 7.2 Declaring Config Keys
-
-In the manifest `Config` section, each key is a hashtable:
+Declaring config keys in the manifest `Config` section -- each key is a hashtable:
 
 ```powershell
 Config = @{
@@ -352,7 +320,7 @@ Config = @{
 }
 ```
 
-### 7.3 Accessing Config at Runtime
+Accessing config at runtime:
 
 ```powershell
 $Config = Get-PluginConfig -PluginName 'llm-validator'
@@ -364,11 +332,9 @@ $Timeout  = $Config.Timeout
 
 ---
 
-## 8. RBAC (Advisory)
+## RBAC (Advisory)
 
-The RBAC system is **advisory** - it logs warnings but does not block operations by default. This allows gradual adoption without breaking existing workflows.
-
-### 8.1 Role Definitions
+The RBAC system is advisory -- it logs warnings but does not block operations by default. This allows gradual adoption without breaking existing workflows.
 
 Roles and scope assignments are declared in `local.config.psd1`:
 
@@ -391,22 +357,16 @@ Roles and scope assignments are declared in `local.config.psd1`:
 
 User identity is resolved from `$env:ROBOT_USER` or `git config user.name`, then lowercased for lookup in the `Roles` table.
 
-### 8.2 Scope Checking
+`Test-PluginScope -RequiredScope 'entity:write'` resolves the current user identity and checks whether the user's role grants the requested scope.
 
-```powershell
-Test-PluginScope -RequiredScope 'entity:write'
-```
-
-`Test-PluginScope` resolves the current user identity and checks whether the user's role grants the requested scope.
-
-**User identity resolution** (priority order):
+User identity resolution (priority order):
 1. `$env:ROBOT_USER` environment variable
 2. `git config user.name`
-3. Fallback: `$null` (permissive - all scopes granted)
+3. Fallback: `$null` (permissive -- all scopes granted)
 
-**Permissive by default**: If no `Roles` / `RoleScopes` configuration exists, or if user identity cannot be resolved, `Test-PluginScope` returns `$true`. This ensures the plugin system works out of the box without RBAC configuration.
+If no `Roles` / `RoleScopes` configuration exists, or if user identity cannot be resolved, `Test-PluginScope` returns `$true`. This ensures the plugin system works out of the box without RBAC configuration.
 
-### 8.3 Scope Conventions
+Scope conventions:
 
 | Scope | Grants |
 |---|---|
@@ -419,11 +379,11 @@ Test-PluginScope -RequiredScope 'entity:write'
 | `player:read:own` | Read own player data only |
 | `admin:all` | All scopes (superuser) |
 
-**Hierarchical matching**: `admin:all` grants every scope. `player:read` grants `player:read:own`. A scope `a:b` implicitly grants `a:b:*` (any sub-scope).
+`admin:all` grants every scope. `player:read` grants `player:read:own`. A scope `a:b` implicitly grants `a:b:*` (any sub-scope).
 
 ---
 
-## 9. Plugin Management Functions
+## Plugin Management Functions
 
 | Function | Signature | Output |
 |---|---|---|
@@ -434,9 +394,9 @@ Test-PluginScope -RequiredScope 'entity:write'
 
 ---
 
-## 10. Creating a Plugin (Step-by-Step)
+## Creating a Plugin (Step-by-Step)
 
-### 10.1 Create Directory
+Create the directory structure:
 
 ```powershell
 mkdir plugins/my-plugin
@@ -446,9 +406,7 @@ mkdir plugins/my-plugin/cli        # Optional: CLI workflow files
 mkdir plugins/my-plugin/tests
 ```
 
-### 10.2 Write Manifest
-
-Create `plugins/my-plugin/plugin.psd1`:
+Write the manifest as `plugins/my-plugin/plugin.psd1`:
 
 ```powershell
 @{
@@ -459,9 +417,7 @@ Create `plugins/my-plugin/plugin.psd1`:
 }
 ```
 
-### 10.3 Add Public Functions
-
-Create `plugins/my-plugin/public/Get-MyData.ps1`:
+Add public functions in `plugins/my-plugin/public/Get-MyData.ps1`:
 
 ```powershell
 function Get-MyData {
@@ -474,9 +430,7 @@ function Get-MyData {
 }
 ```
 
-### 10.4 Add Private Helpers
-
-Create `plugins/my-plugin/private/Format-MyOutput.ps1`:
+Add private helpers in `plugins/my-plugin/private/Format-MyOutput.ps1`:
 
 ```powershell
 function Format-MyOutput {
@@ -485,9 +439,7 @@ function Format-MyOutput {
 }
 ```
 
-### 10.5 Add Tests
-
-Create `plugins/my-plugin/tests/my-plugin.Tests.ps1`:
+Add tests in `plugins/my-plugin/tests/my-plugin.Tests.ps1`:
 
 ```powershell
 Describe 'my-plugin' {
@@ -501,11 +453,9 @@ Describe 'my-plugin' {
 }
 ```
 
-### 10.6 Add CLI Menu Items (Optional)
+Plugins can register menu items, categories, and help content for the interactive CLI. These are declared in the manifest and merged into the CLI at startup by `Merge-PluginMenuItems` (see [CLI.md](CLI.md)).
 
-Plugins can register menu items, categories, and help content for the interactive CLI. These are declared in the manifest and merged into the CLI at startup by `Merge-PluginMenuItems` (see [CLI.md](CLI.md) SS 8.1).
-
-**Menu items** — each item is a hashtable following the same schema as core registry entries (see [CLI.md](CLI.md) SS 7.1):
+Menu items -- each item is a hashtable following the same schema as core registry entries (see [CLI.md](CLI.md)):
 
 ```powershell
 MenuItems = @(
@@ -526,13 +476,13 @@ MenuItems = @(
 )
 ```
 
-**Categories** — declare new top-level categories before referencing them in menu items:
+Categories -- declare new top-level categories before referencing them in menu items:
 
 ```powershell
 MenuCategories = @('My Tools')
 ```
 
-**Help content** — provide help text for categories. For existing categories, only `Body` is needed (appended). For new categories, both `Title` and `Body` are required:
+Help content -- provide help text for categories. For existing categories, only `Body` is needed (appended). For new categories, both `Title` and `Body` are required:
 
 ```powershell
 HelpContent = @{
@@ -546,13 +496,13 @@ HelpContent = @{
 }
 ```
 
-**Workflow files** — if a menu item uses `Mode = 'Workflow'`, the workflow function must be available at CLI runtime. Place workflow functions in `cli/*.ps1` files inside the plugin directory — these are dot-sourced at Layer 6.5 during CLI startup:
+Workflow files -- if a menu item uses `Mode = 'Workflow'`, the workflow function must be available at CLI runtime. Place workflow functions in `cli/*.ps1` files inside the plugin directory -- these are dot-sourced at Layer 6.5 during CLI startup:
 
 ```
 plugins/my-plugin/cli/cli-wf-myplugin.ps1
 ```
 
-### 10.7 Configure as Git Submodule
+Configure as git submodule:
 
 ```bash
 cd plugins/
@@ -562,13 +512,11 @@ git commit -m "Add my-plugin submodule"
 
 ---
 
-## 11. Example Plugin Sketches
+## Example Plugin Sketches
 
-### 11.1 Standalone Plugin (`custom-export`)
+Standalone plugin (`custom-export`) -- no hooks, purely adds new exported functions.
 
-No hooks - purely adds new exported functions.
-
-**Manifest** (`plugins/custom-export/plugin.psd1`):
+Manifest (`plugins/custom-export/plugin.psd1`):
 
 ```powershell
 @{
@@ -580,7 +528,7 @@ No hooks - purely adds new exported functions.
 }
 ```
 
-**Function** (`plugins/custom-export/public/Export-EntityCSV.ps1`):
+Function (`plugins/custom-export/public/Export-EntityCSV.ps1`):
 
 ```powershell
 function Export-EntityCSV {
@@ -596,11 +544,9 @@ function Export-EntityCSV {
 }
 ```
 
-### 11.2 Hook Plugin (`llm-validator`)
+Hook plugin (`llm-validator`) -- registers a `BeforeWrite` hook to validate entity file content.
 
-Registers a `BeforeWrite` hook to validate entity file content.
-
-**Manifest** (`plugins/llm-validator/plugin.psd1`):
+Manifest (`plugins/llm-validator/plugin.psd1`):
 
 ```powershell
 @{
@@ -628,7 +574,7 @@ Registers a `BeforeWrite` hook to validate entity file content.
 }
 ```
 
-**Handler** (`plugins/llm-validator/private/Invoke-LLMValidation.ps1`):
+Handler (`plugins/llm-validator/private/Invoke-LLMValidation.ps1`):
 
 ```powershell
 function Invoke-LLMValidation {
@@ -652,11 +598,9 @@ function Invoke-LLMValidation {
 }
 ```
 
-### 11.3 Data Source Plugin (`homebrew-datasource`)
+Data source plugin (`homebrew-datasource`) -- adds a function that imports data from an external source.
 
-Adds a function that imports data from an external source.
-
-**Manifest** (`plugins/homebrew-datasource/plugin.psd1`):
+Manifest (`plugins/homebrew-datasource/plugin.psd1`):
 
 ```powershell
 @{
@@ -676,7 +620,7 @@ Adds a function that imports data from an external source.
 }
 ```
 
-**Function** (`plugins/homebrew-datasource/public/Import-HomebrewData.ps1`):
+Function (`plugins/homebrew-datasource/public/Import-HomebrewData.ps1`):
 
 ```powershell
 function Import-HomebrewData {
@@ -704,9 +648,9 @@ function Import-HomebrewData {
 
 ---
 
-## 12. Git Submodule Setup
+## Git Submodule Setup
 
-### 12.1 Adding a Plugin as Submodule
+Adding a plugin as submodule:
 
 ```bash
 cd /path/to/lore-repo/.robot.new
@@ -714,22 +658,16 @@ git submodule add https://github.com/org/my-plugin.git plugins/my-plugin
 git commit -m "Add my-plugin plugin submodule"
 ```
 
-### 12.2 Nested Submodule Considerations
-
 The Robot module is itself a submodule inside a parent lore repository. Plugins as submodules create a nested structure:
 
 ```
 lore-repo/                          # Parent repository
-└── .robot.new/                     # Submodule: Robot module
-    └── plugins/
-        └── my-plugin/              # Submodule: plugin
++-- .robot.new/                     # Submodule: Robot module
+    +-- plugins/
+        +-- my-plugin/              # Submodule: plugin
 ```
 
-This means `.gitmodules` entries exist at two levels:
-- `lore-repo/.gitmodules` references `.robot.new`
-- `.robot.new/.gitmodules` references `plugins/my-plugin`
-
-### 12.3 Clone Instructions
+This means `.gitmodules` entries exist at two levels: `lore-repo/.gitmodules` references `.robot.new`, and `.robot.new/.gitmodules` references `plugins/my-plugin`.
 
 To clone a lore repository with all nested submodules:
 
@@ -743,7 +681,7 @@ If already cloned without `--recursive`:
 git submodule update --init --recursive
 ```
 
-### 12.4 Bumping Plugin Versions
+Bumping plugin versions:
 
 ```bash
 cd .robot.new/plugins/my-plugin
@@ -758,12 +696,12 @@ The parent module tracks a specific commit of each plugin submodule. Bumping req
 
 ---
 
-## 13. Edge Cases
+## Edge Cases
 
 | Scenario | Behavior |
 |---|---|
-| No `plugins/` directory | Not an error; no plugins loaded. Module functions normally. |
-| Empty `plugins/` directory | Not an error; no plugins loaded. |
+| No `plugins/` directory | No plugins loaded. Module functions normally. |
+| Empty `plugins/` directory | No plugins loaded. |
 | Directory without `plugin.psd1` | Silently skipped during discovery. |
 | Invalid manifest (parse error) | Warns to stderr with plugin path and error. Plugin skipped. |
 | `MinCoreVersion` exceeds current | Warns to stderr with version mismatch details. Plugin skipped. |
@@ -781,12 +719,12 @@ The parent module tracks a specific commit of each plugin submodule. Bumping req
 | Workflow item missing `WorkflowFunction` | Warns to stderr. Item skipped. |
 | Query item `Columns`/`Headers` count mismatch | Warns to stderr. Item skipped. |
 | Help entry for new category missing `Title` or `Body` | Warns to stderr. Entry skipped. |
-| Plugin `cli/` directory does not exist | Not an error. No plugin CLI files loaded for that plugin. |
+| Plugin `cli/` directory does not exist | No plugin CLI files loaded for that plugin. |
 | Plugin `cli/*.ps1` file fails to load | Warns to stderr with file path and error. Other CLI files still load. |
 
 ---
 
-## 14. Testing
+## Testing
 
 | Test file | Coverage |
 |---|---|
@@ -807,7 +745,7 @@ Invoke-Pester -Path plugins/*/tests/
 
 ---
 
-## 15. Related Documents
+## Related Documents
 
 - [CONFIG-STATE.md](CONFIG-STATE.md) - Core configuration resolution (priority chain pattern reused by plugin config)
 - [ENTITY-WRITES.md](ENTITY-WRITES.md) - Write operations that invoke `BeforeWrite`/`AfterWrite` hooks

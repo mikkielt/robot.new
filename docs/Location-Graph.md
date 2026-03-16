@@ -1,75 +1,42 @@
 # Location Analysis and Graph
 
-## Purpose
-
-This guide explains how the system analyzes location data across sessions and logs to build a unified picture of the game world's geography. It covers how locations are connected, how movement routes are tracked, and how coordinators can review the location graph for data quality.
-
 ## Scope
 
-**What is included:**
+The system analyzes location data across sessions and logs to build a unified picture of the game world's geography. It covers how locations are connected, how movement routes are tracked, and how Coordinators can review the location graph for data quality.
 
-- How the system discovers location connections from multiple sources
-- How movement routes between locations are extracted from sessions
-- How movement transitions are detected in session logs
-- How map coordinates work for exterior locations
-- How the location graph brings everything together
-- How to use the location graph tool
+This guide covers how the system discovers location connections from multiple sources, how movement routes between locations are extracted from sessions, how movement transitions are detected in session logs, how map coordinates work for exterior locations, how the location graph brings everything together, and how to use the location graph tool.
 
-**What is excluded:**
-
-- How to register location entities (see [World-State.md](World-State.md))
-- How to write session entries with location metadata (see [Sessions.md](Sessions.md))
-- How to include and fetch session logs (see [Session-Logs.md](Session-Logs.md))
+For registering location entities, see [World-State.md](World-State.md). For how location names are matched, see [Name-Resolution.md](Name-Resolution.md). For writing session entries with location metadata, see [Sessions.md](Sessions.md). For including and fetching session logs, see [Session-Logs.md](Session-Logs.md).
 
 ## Actors and Responsibilities
 
-### Coordinator
+The Coordinator reviews the location graph to find missing connections or inconsistencies, maintains map coordinates for exterior locations, uses the graph to identify stale data after location moves, and creates missing location entities identified through the graph.
 
-- Reviews the location graph to find missing connections or inconsistencies
-- Maintains map coordinates for exterior locations
-- Uses the graph to identify stale data after location moves
-- Creates missing location entities identified through the graph
-
-### Narrator
-
-- Ensures location names in session metadata match the entity registry
-- May optionally use `->` notation in `@Lokacje` entries to indicate location transitions within a session
+The Narrator ensures location names in session metadata match the entity registry, and may optionally use `->` notation in `@Lokacje` entries to indicate location transitions within a session.
 
 ## How Locations Are Connected
 
-The system discovers location connections from multiple sources and merges them into a single graph. Each source provides a different kind of relationship:
+The system discovers location connections from multiple sources and merges them into a single graph. Each source provides a different kind of relationship.
 
-### Hierarchy (Parent-Child)
+Hierarchy (parent-child) connections are formed when a location's parent is set (e.g., "Zamek Steadwick belongs to Erathia"), creating a containment relationship. These form the backbone of the location tree.
 
-When a location's parent is set (e.g., "Zamek Steadwick belongs to Erathia"), this creates a containment relationship. These form the backbone of the location tree.
+Door connections are created when a location has physical links to another (e.g., "Zamek Steadwick connects to Komnata Królewska"), creating a direct physical link between two locations.
 
-### Doors
+Session metadata connections come from `@Lokacje` entries, which record where meaningful action took place — they answer the question "in which locations did something important happen during this session?" They are not a physical route map. Characters may traverse many intermediate game locations between the ones listed. When a narrator uses `->` notation (e.g., `Erathia -> Bracada`), this indicates a location transition within the session, and the system extracts these as route connections. This notation is optional and not widely used. Slash-separated paths (e.g., `Erathia/Zamek Steadwick`) are also extracted as inferred parent-child hierarchy.
 
-When a location has door connections (e.g., "Zamek Steadwick connects to Komnata Królewska"), this creates a direct physical link between two locations.
+## Movement in Session Logs
 
-### Session Metadata
+Session logs are the primary source of truth for physical location connectivity. When characters move through the game world, the log transcript records each location they visit as a location header. Consecutive location headers represent actual physical movement between game locations — including intermediate locations that may not appear in the session's `@Lokacje` metadata.
 
-Session `@Lokacje` entries record where meaningful action took place — they answer the question "in which locations did something important happen during this session?" They are **not** a physical route map. Characters may traverse many intermediate game locations between the ones listed.
-
-When a narrator uses `->` notation (e.g., `Erathia -> Bracada`), this indicates a location transition within the session. The system extracts these as route connections. This notation is optional and not widely used.
-
-Slash-separated paths (e.g., `Erathia/Zamek Steadwick`) are also extracted as inferred parent-child hierarchy.
-
-### Movement in Session Logs (Primary Source for Connectivity)
-
-Session logs are the **primary source of truth** for physical location connectivity. When characters move through the game world, the log transcript records each location they visit as a location header. Consecutive location headers represent actual physical movement between game locations — including intermediate locations that may not appear in the session's `@Lokacje` metadata.
-
-> For example, a session's `@Lokacje` might list only "Erathia" and "Bracada" as the meaningful action locations. But the session log might show the character physically passing through "Erathia → Droga przez Puszczę → Przełęcz Gryfów → Bracada", revealing connectivity between all four locations.
+For example, a session's `@Lokacje` might list only "Erathia" and "Bracada" as the meaningful action locations. But the session log might show the character physically passing through "Erathia, Droga przez Puszcze, Przelecz Gryfow, Bracada", revealing connectivity between all four locations.
 
 This source is optional and must be explicitly requested, since it requires fetched and parsed log data. When available, it provides the most granular and accurate connectivity information.
 
-#### Map Suffix Stripping
-
-Game-map names often contain floor numbers, room suffixes, direction labels, or difficulty markers (e.g., "Piekielna Grota p.3 - sala 2" or "Klasztor Różanitów - wieża płn.-wsch. p.1"). When the system resolves a log location header against the entity registry and finds no direct match, it progressively strips these trailing suffixes and retries. This means a log header like "Piekielna Grota p.3" can still resolve to the registered entity "Piekielna Grota" without requiring a separate alias.
+Game-map names often contain floor numbers, room suffixes, direction labels, or difficulty markers (e.g., "Piekielna Grota p.3 - sala 2" or "Klasztor Rozanitow - wieza pln.-wsch. p.1"). When the system resolves a log location header against the entity registry and finds no direct match, it progressively strips these trailing suffixes and retries. This means a log header like "Piekielna Grota p.3" can still resolve to the registered entity "Piekielna Grota" without requiring a separate alias.
 
 ## Map Coordinates
 
-Exterior locations (those visible on the game world map) can have map tile coordinates recorded. These indicate the location's position on the Margonem world map in tile units (32×32 pixels).
+Exterior locations (those visible on the game world map) can have map tile coordinates recorded. These indicate the location's position on the Margonem world map in tile units (32x32 pixels).
 
 Coordinates are recorded in the entity store:
 
@@ -86,78 +53,55 @@ Coordinates support temporal scoping, so when a location moves on the map, the h
     - @koordynaty: 130, 85 (2025-01:)
 ```
 
-Locations without coordinates are classified as **interior** (not directly on the world map). Locations with coordinates are classified as **exterior**.
+Locations without coordinates are classified as interior (not directly on the world map). Locations with coordinates are classified as exterior.
 
 ## The Location Graph
 
-The location graph merges all four connection sources into a unified view of the game world's geography.
+The location graph merges all connection sources into a unified view of the game world's geography.
 
-### What It Shows
+Each entry in the graph represents a location and includes the entity match (whether the location name was found in the entity registry), the RP name (the Nerthus override name, if one exists), coordinates (map position for exterior locations), and connection count (how many connections lead to and from this location).
 
-Each entry in the graph represents a location and includes:
+Each connection includes the type (hierarchy, door, route, or movement), weight (how many times this connection was observed), date range (when the connection was first and last seen), and a staleness flag (whether the connection may be outdated).
 
-- **Entity match** — whether the location name was found in the entity registry
-- **RP name** — the Nerthus override name, if one exists
-- **Coordinates** — map position for exterior locations
-- **Connection count** — how many connections lead to and from this location
+When a location's map coordinates change (e.g., the game world is updated), connections involving that location from before the coordinate change are flagged as possibly stale. This helps Coordinators identify connections that may no longer be geographically accurate. For example, if Zamek Steadwick's coordinates were updated in January 2025, any route connection from December 2024 involving Zamek Steadwick would be flagged as possibly stale.
 
-Each connection includes:
+## Using the Location Graph
 
-- **Type** — hierarchy, door, route, or movement
-- **Weight** — how many times this connection was observed
-- **Date range** — when the connection was first and last seen
-- **Staleness flag** — whether the connection may be outdated
+The location graph is available through the CLI under the Reporting menu. The workflow prompts for a date range (which sessions to include, with start and end dates both optional) and whether to include movement edges (transitions from session logs, which requires fetched logs).
 
-### Staleness Detection
+After processing, the tool displays a summary with counts (total locations, connections by type, resolved vs. unresolved locations, exterior vs. interior, and stale connections) and a location table listing each location with its RP name, coordinates, and connection counts.
 
-When a location's map coordinates change (e.g., the game world is updated), connections involving that location from before the coordinate change are flagged as **possibly stale**. This helps coordinators identify connections that may no longer be geographically accurate.
-
-> For example, if Zamek Steadwick's coordinates were updated in January 2025, any route connection from December 2024 involving Zamek Steadwick would be flagged as possibly stale.
-
-### Using the Location Graph
-
-The location graph is available through the CLI under the Reporting menu. The workflow prompts for:
-
-1. **Date range** — which sessions to include (start and end dates, both optional)
-2. **Movement edges** — whether to include transitions from session logs (requires fetched logs)
-
-After processing, the tool displays:
-
-- A **summary** with counts: total locations, connections by type, resolved vs. unresolved locations, exterior vs. interior, and stale connections
-- A **location table** listing each location with its RP name, coordinates, and connection counts
-
-### Connection Types at a Glance
-
-| Source | What it captures | When it's available |
+| Source | What it captures | When it is available |
 |---|---|---|
-| **Hierarchy** | Parent-child containment from entity registry | Always (from registered locations) |
-| **Doors** | Physical connections between locations | Always (from registered locations) |
-| **Routes** | Location transitions from session metadata | When sessions use `->` notation (optional, uncommon) |
-| **Inferred hierarchy** | Parent-child from slash-separated names | When sessions use `Parent/Child` notation |
-| **Movement** | Physical movement from log location headers | Only when requested and logs are fetched (most accurate connectivity source) |
-| **Teleport** | Non-adjacent log transitions (magical/instant travel) | Detected automatically when movement edges are included |
+| Hierarchy | Parent-child containment from entity registry | Always (from registered locations) |
+| Doors | Physical connections between locations | Always (from registered locations) |
+| Routes | Location transitions from session metadata | When sessions use `->` notation (optional, uncommon) |
+| Inferred hierarchy | Parent-child from slash-separated names | When sessions use `Parent/Child` notation |
+| Movement | Physical movement from log location headers | Only when requested and logs are fetched (most accurate connectivity source) |
+| Teleport | Non-adjacent log transitions (magical/instant travel) | Detected automatically when movement edges are included |
 
 ## Expected Outcomes
 
-1. **Comprehensive location map** — all known location connections from entity data, session metadata, and logs are merged into a single view
-2. **Teleport detection** — transitions between structurally non-adjacent locations are automatically classified as teleports and excluded from physical connectivity analysis
-3. **Data quality insight** — unresolved location names, missing entities, and stale connections are surfaced for coordinator review
-4. **Temporal awareness** — coordinate changes are tracked historically, and connections are checked for currency
-5. **Flexible scope** — date ranges and optional movement edges allow focused or broad analysis
+- Comprehensive location map — all known location connections from entity data, session metadata, and logs are merged into a single view
+- Teleport detection — transitions between structurally non-adjacent locations are automatically classified as teleports and excluded from physical connectivity analysis
+- Data quality insight — unresolved location names, missing entities, and stale connections are surfaced for Coordinator review
+- Temporal awareness — coordinate changes are tracked historically, and connections are checked for currency
+- Flexible scope — date ranges and optional movement edges allow focused or broad analysis
 
 ## Exceptions and Recovery Actions
 
 | Situation | What happens | Recovery |
 |---|---|---|
-| **Location name not in entity registry** | Appears as "unresolved" in the graph | Create the location entity or add an alias |
-| **Session logs not fetched** | Movement edges unavailable | Run the log fetch tool first, or omit movement edges |
-| **Stale connection detected** | Flagged with reason (which location moved and when) | Review the connection and update if no longer valid |
-| **Coordinate format error** | The coordinate entry is skipped; location classified as interior | Fix the coordinate value in the entity store |
-| **No sessions in date range** | Graph shows only entity-based connections (hierarchy, doors) | Expand the date range or omit date filters |
+| Location name not in entity registry | Appears as "unresolved" in the graph | Create the location entity or add an alias |
+| Session logs not fetched | Movement edges unavailable | Run the log fetch tool first, or omit movement edges |
+| Stale connection detected | Flagged with reason (which location moved and when) | Review the connection and update if no longer valid |
+| Coordinate format error | The coordinate entry is skipped; location classified as interior | Fix the coordinate value in the entity store |
+| No sessions in date range | Graph shows only entity-based connections (hierarchy, doors) | Expand the date range or omit date filters |
 
 ## Related Documents
 
-- [World-State.md](World-State.md) - Entity management, location hierarchy, Nerthus names
-- [Sessions.md](Sessions.md) - How to record sessions with location metadata
-- [Session-Logs.md](Session-Logs.md) - Log fetching and location analysis
-- [Auditing.md](Auditing.md) - Other reporting and audit tools
+- [World-State.md](World-State.md) — Entity management, location hierarchy, Nerthus names
+- [Name-Resolution.md](Name-Resolution.md) — How location names are matched
+- [Sessions.md](Sessions.md) — How to record sessions with location metadata
+- [Session-Logs.md](Session-Logs.md) — Log fetching and location analysis
+- [Auditing.md](Auditing.md) — Other reporting and audit tools

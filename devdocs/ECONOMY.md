@@ -1,18 +1,14 @@
-# Economic Analysis Subsystem - Technical Reference
+# Economic Analysis Subsystem
 
-**Status**: Reference documentation.
+## Scope
 
----
+The economic analysis subsystem provides physical vs virtual currency classification, supply breakdown, wealth distribution (Gini coefficient), economic snapshots, monthly timelines, and materialization reporting.
 
-## 1. Scope
-
-This document covers the economic analysis subsystem: physical vs virtual currency classification, supply breakdown, wealth distribution (Gini coefficient), economic snapshots, monthly timelines, and materialization reporting.
-
-**Not covered**: Currency CRUD, denomination constants, @Transfer parsing — see [CURRENCY.md](CURRENCY.md). Entity parsing — see [ENTITIES.md](ENTITIES.md).
+Currency CRUD, denomination constants, and @Transfer parsing are documented in [CURRENCY.md](CURRENCY.md). Entity parsing is documented in [ENTITIES.md](ENTITIES.md).
 
 ---
 
-## 2. Architecture Overview
+## Architecture Overview
 
 ```
 private/currency-helpers.ps1              Owner type classification
@@ -33,25 +29,21 @@ public/reporting/
 
 ---
 
-## 3. Physical vs Virtual Currency Model
+## Physical vs Virtual Currency Model
 
-### 3.1 Classification
-
-Currency entities are classified by their owner's entity type — no new storage tags required:
+Currency entities are classified by their owner's entity type -- no new storage tags required:
 
 | Owner Type | Classification | Meaning |
 |---|---|---|
 | Postać | Physical | Actual Margonem items in player character equipment |
-| NPC | Virtual | RP bookkeeping — narrative-only currency |
+| NPC | Virtual | RP bookkeeping -- narrative-only currency |
 | Grupa | Virtual | Treasury reserves, guild holdings |
 | Gracz | Virtual | Player-level currency (not character-level) |
 | *(not found)* | Unknown | Owner not in entity lookup |
 
-### 3.2 Design Rationale
+Physical currency represents items that actually exist in Margonem player equipment. Virtual currency is pure RP bookkeeping -- narrators can allocate virtual currency to NPCs and groups without needing corresponding game items.
 
-Physical currency represents items that actually exist in Margonem player equipment. Virtual currency is pure RP bookkeeping — narrators can allocate virtual currency to NPCs and groups without needing corresponding game items.
-
-### 3.3 `Resolve-CurrencyOwnerType`
+`Resolve-CurrencyOwnerType` classifies an owner name:
 
 ```powershell
 Resolve-CurrencyOwnerType -OwnerName 'Crag Hack' -EntityLookup $Lookup
@@ -60,18 +52,16 @@ Resolve-CurrencyOwnerType -OwnerName 'Crag Hack' -EntityLookup $Lookup
 
 | Parameter | Type | Description |
 |---|---|---|
-| `OwnerName` | string | **Mandatory**. Entity name to classify. |
-| `EntityLookup` | Dictionary[string,object] | **Mandatory**. Case-insensitive name → entity lookup. |
+| `OwnerName` | string | Mandatory. Entity name to classify. |
+| `EntityLookup` | Dictionary[string,object] | Mandatory. Case-insensitive name to entity lookup. |
 
 Returns: `'Physical'`, `'Virtual'`, or `'Unknown'`.
 
 ---
 
-## 4. `New-EconomicSnapshotData`
+## New-EconomicSnapshotData
 
 Shared helper in `private/economy-helpers.ps1`. Computes supply breakdown, Gini coefficient, top holders, and transaction statistics from enriched currency items. Used by both `Get-EconomicSnapshot` and `Get-EconomicTimeline`.
-
-### 4.1 Parameters
 
 | Parameter | Type | Description |
 |---|---|---|
@@ -79,7 +69,7 @@ Shared helper in `private/economy-helpers.ps1`. Computes supply breakdown, Gini 
 | `TransferEntries` | object[] | Transfer directive entries from `Get-SessionDirectiveEntries`. Allows null/empty. |
 | `Top` | int | Number of top holders to include (default: 10). |
 
-### 4.2 Return Hashtable
+Return hashtable:
 
 | Key | Type | Description |
 |---|---|---|
@@ -94,31 +84,21 @@ Shared helper in `private/economy-helpers.ps1`. Computes supply breakdown, Gini 
 | `TransactionVolume` | int | Number of @Transfer entries |
 | `TransactionValueKogi` | int | Sum of @Transfer amounts in base unit |
 
-### 4.3 Gini Coefficient Formula
-
-Wealth inequality measure using the sorted-values formula:
+Gini coefficient formula using sorted values:
 
 ```
-G = (2 * Σ(i * w[i])) / (n * Σ(w)) - (n+1)/n
+G = (2 * Sigma(i * w[i])) / (n * Sigma(w)) - (n+1)/n
 ```
 
-Where `w[i]` are per-owner wealth values sorted ascending, `i` is 1-indexed position, `n` is the count of owners with positive wealth.
-
-- `G = 0.0`: All owners hold equal wealth
-- `G → 1.0`: One owner holds nearly all wealth
-- Computed only when 2+ owners have positive wealth; otherwise 0.0
-
-### 4.4 Filtering
+Where `w[i]` are per-owner wealth values sorted ascending, `i` is 1-indexed position, `n` is the count of owners with positive wealth. G = 0.0 means all owners hold equal wealth. G approaching 1.0 means one owner holds nearly all wealth. Computed only when 2+ owners have positive wealth; otherwise 0.0.
 
 Entities with status `Usunięty` are excluded from supply calculations. Supply is computed from `Quantity * Denomination.Multiplier` (converting to Kogi base unit).
 
 ---
 
-## 5. `Get-EconomicSnapshot`
+## Get-EconomicSnapshot
 
 Point-in-time economic snapshot with supply breakdown, wealth distribution, and transaction volume.
-
-### 5.1 Parameters
 
 | Parameter | Type | Description |
 |---|---|---|
@@ -130,7 +110,7 @@ Point-in-time economic snapshot with supply breakdown, wealth distribution, and 
 | `Top` | int | Number of top holders (default: 10). |
 | `Quiet` | switch | Suppress warnings to stderr. |
 
-### 5.2 Output Schema
+Output:
 
 | Property | Type | Description |
 |---|---|---|
@@ -142,42 +122,30 @@ Point-in-time economic snapshot with supply breakdown, wealth distribution, and 
 | `PhysicalRatio` | double | Physical / Total |
 | `HolderCount` | int | Distinct owners with balance > 0 |
 | `TopHolders` | object[] | Top N by wealth with OwnerCategory |
-| `GiniCoefficient` | double | Wealth inequality (0–1) |
+| `GiniCoefficient` | double | Wealth inequality (0--1) |
 | `TransactionVolume` | int | @Transfer count in scope |
 | `TransactionValueKogi` | int | @Transfer sum in base unit |
 
-### 5.3 Implementation Flow
-
-1. Auto-fetch entities and sessions if not provided
-2. Build `$EntityLookup` (case-insensitive name → entity dictionary)
-3. `Get-CurrencyEntitiesFiltered -EntityLookup` for enriched currency items with OwnerCategory
-4. Apply denomination and owner filters
-5. `Get-SessionDirectiveEntries -DirectiveName 'Transfers'` for transaction volume
-6. `New-EconomicSnapshotData` for computation
-7. Return PSCustomObject with all snapshot fields
+Implementation flow: (1) Auto-fetch entities and sessions if not provided. (2) Build `$EntityLookup` (case-insensitive name to entity dictionary). (3) `Get-CurrencyEntitiesFiltered -EntityLookup` for enriched currency items with OwnerCategory. (4) Apply denomination and owner filters. (5) `Get-SessionDirectiveEntries -DirectiveName 'Transfers'` for transaction volume. (6) `New-EconomicSnapshotData` for computation. (7) Return PSCustomObject with all snapshot fields.
 
 ---
 
-## 6. `Get-EconomicTimeline`
+## Get-EconomicTimeline
 
 Monthly supply and transaction trends over a date range.
-
-### 6.1 Parameters
 
 | Parameter | Type | Description |
 |---|---|---|
 | `Entities` | object[] | Pre-fetched from `Get-Entity` (auto-fetched if omitted). |
 | `Sessions` | object[] | Pre-fetched from `Get-Session` (auto-fetched if omitted). |
-| `MinDate` | datetime | **Mandatory**. Start date for timeline. |
-| `MaxDate` | datetime | **Mandatory**. End date for timeline. |
+| `MinDate` | datetime | Mandatory. Start date for timeline. |
+| `MaxDate` | datetime | Mandatory. End date for timeline. |
 | `Entity` | string | Scope to a specific owner entity. |
 | `Denomination` | string | Scope to a specific denomination. |
 | `ProgressCallback` | scriptblock | Optional callback for CLI progress reporting. Invoked with `(Current, Total, ItemDetail)` on each month iteration, where `ItemDetail` is the `yyyy-MM` month label. |
 | `Quiet` | switch | Suppress warnings to stderr. |
 
-### 6.2 Output Schema
-
-Array of monthly data points:
+Output is an array of monthly data points:
 
 | Property | Type | Description |
 |---|---|---|
@@ -188,44 +156,17 @@ Array of monthly data points:
 | `SupplyByDenomination` | hashtable | `{ DenomName = @{ Total; Physical; Virtual } }` |
 | `TransferCount` | int | @Transfer count within the month |
 
-### 6.3 Implementation Flow
+Implementation flow: (1) Auto-fetch entities and sessions if not provided. (2) Pre-build `$NameIndex` once via `Get-NameIndex` (shared across all months). (3) Compute total month count for progress reporting. (4) Iterate month boundaries from MinDate to MaxDate. (5) For each month: invoke `ProgressCallback` if provided (sends month index, total, `yyyy-MM` label); compute `$EffectiveDate` = last day of month (capped at MaxDate); obtain month entities (see Pre-Provided Entities Optimization below); `Get-EntityState -NameIndex $NameIndex -Sessions $Sessions -ActiveOn $EffectiveDate -Quiet` with pre-built name index; build entity lookup and `Get-CurrencyEntitiesFiltered -EntityLookup`; apply denomination/entity filters; `Get-SessionDirectiveEntries` scoped to month boundaries for transfer count; `New-EconomicSnapshotData` for supply computation. (6) Return array of monthly PSCustomObjects.
 
-1. Auto-fetch entities and sessions if not provided
-2. Pre-build `$NameIndex` once via `Get-NameIndex` (shared across all months)
-3. Compute total month count for progress reporting
-4. Iterate month boundaries from MinDate to MaxDate
-5. For each month:
-   a. Invoke `ProgressCallback` if provided (sends month index, total, `yyyy-MM` label)
-   b. Compute `$EffectiveDate` = last day of month (capped at MaxDate)
-   c. Obtain month entities (see §6.4 for pre-provided vs auto-fetch paths)
-   d. `Get-EntityState -NameIndex $NameIndex -Sessions $Sessions -ActiveOn $EffectiveDate -Quiet` with pre-built name index
-   e. Build entity lookup -> `Get-CurrencyEntitiesFiltered -EntityLookup`
-   f. Apply denomination/entity filters
-   g. `Get-SessionDirectiveEntries` scoped to month boundaries for transfer count
-   h. `New-EconomicSnapshotData` for supply computation
-6. Return array of monthly PSCustomObjects
+The `NameIndex` is shared across months since the entity roster does not change within a timeline query. Sessions are passed explicitly to avoid redundant re-parsing each month.
 
-**Note**: The `NameIndex` is shared across months since the entity roster does not change within a timeline query. Sessions are passed explicitly to avoid redundant re-parsing each month.
-
-### 6.4 Pre-Provided Entities Optimization
-
-When `-Entities` is provided by the caller, the function avoids re-reading entity files from disk on each month iteration. Instead of calling `Get-Entity -ActiveOn` per month (which re-parses `entities.md`), it filters the pre-provided entities in-memory by status:
-
-- For each entity, `Get-LastActiveValue` checks `StatusHistory` at the effective date
-- Entities with `Usunięty` status at the effective date are excluded
-- All other entities are passed to `Get-EntityState -ActiveOn` for temporal tag resolution
-
-This reduces I/O from N file reads (one per month) to a single file read, which is a significant speedup for long date ranges (e.g., 12+ months).
-
-When `-Entities` is not provided, the original per-month `Get-Entity -ActiveOn` path is used for full temporal filtering including entity-level `ActiveOn` scoping.
+When `-Entities` is provided by the caller, the function avoids re-reading entity files from disk on each month iteration. For each entity, `Get-LastActiveValue` checks `StatusHistory` at the effective date. Entities with `Usunięty` status at the effective date are excluded. All other entities are passed to `Get-EntityState -ActiveOn` for temporal tag resolution. This reduces I/O from N file reads (one per month) to a single file read, a significant speedup for long date ranges (e.g., 12+ months). When `-Entities` is not provided, the original per-month `Get-Entity -ActiveOn` path is used for full temporal filtering including entity-level `ActiveOn` scoping.
 
 ---
 
-## 7. `Get-MaterializationReport`
+## Get-MaterializationReport
 
 Physical vs virtual currency analysis with per-player breakdown and orphan detection.
-
-### 7.1 Parameters
 
 | Parameter | Type | Description |
 |---|---|---|
@@ -234,7 +175,7 @@ Physical vs virtual currency analysis with per-player breakdown and orphan detec
 | `ActiveOn` | datetime | Temporal filter for entity state. |
 | `Quiet` | switch | Suppress warnings to stderr. |
 
-### 7.2 Output Schema
+Output:
 
 | Property | Type | Description |
 |---|---|---|
@@ -243,20 +184,13 @@ Physical vs virtual currency analysis with per-player breakdown and orphan detec
 | `OrphanedPhysical` | object[] | Inactive/deleted Postać with active currency: `EntityName`, `Owner`, `Denomination`, `Quantity`, `OwnerStatus` |
 | `Summary` | hashtable | `TotalPhysical`, `TotalVirtual`, `OrphanedCount` |
 
-### 7.3 Orphaned Physical Currency
+Orphaned physical currency represents currency owned by a Postać entity with status `Nieaktywny` or `Usunięty` but the currency itself is `Aktywny` with balance > 0. These represent physical items that need return to coordinators -- the player character is no longer active but their Margonem items still exist.
 
-Currency owned by a Postać entity with status `Nieaktywny` or `Usunięty` but the currency itself is `Aktywny` with balance > 0. These represent physical items that need return to coordinators — the player character is no longer active but their Margonem items still exist.
-
-### 7.4 Player Breakdown
-
-Uses `Get-Player` to map Postać entities to their owning players. For each player:
-- Lists all characters (Postać entities)
-- Sums total physical currency (Kogi base unit)
-- Breaks down per denomination with quantities
+Player breakdown uses `Get-Player` to map Postać entities to their owning players. For each player: lists all characters (Postać entities), sums total physical currency (Kogi base unit), and breaks down per denomination with quantities.
 
 ---
 
-## 8. CLI Integration
+## CLI Integration
 
 Three workflow functions in `private/cli/cli-wf-economy.ps1`:
 
@@ -270,7 +204,7 @@ Registered in `private/cli/cli-registry.ps1` under the `Waluta` menu category.
 
 ---
 
-## 9. Testing
+## Testing
 
 | Test file | Coverage |
 |---|---|
@@ -279,7 +213,7 @@ Registered in `private/cli/cli-registry.ps1` under the `Waluta` menu category.
 | `tests/get-materializationreport.Tests.ps1` | Denomination breakdown, player mapping, orphaned physical detection, empty entities |
 | `tests/currency-helpers.Tests.ps1` | `Resolve-CurrencyOwnerType` (all entity types), `Get-CurrencyEntitiesFiltered` with EntityLookup |
 
-### 9.1 Fixtures
+Fixtures:
 
 | Fixture | Purpose |
 |---|---|
@@ -289,43 +223,24 @@ Registered in `private/cli/cli-registry.ps1` under the `Waluta` menu category.
 
 ---
 
-## 10. Compiled C# Type: `Robot.EconomicAnalyzer`
+## Compiled C# Type — Robot.EconomicAnalyzer
 
-**Source**: `lib/EconomicAnalyzer.cs` — compiled centrally in `robot.psm1`.
+Source: `lib/EconomicAnalyzer.cs` -- compiled centrally in `robot.psm1`.
 
 `Robot.EconomicAnalyzer` provides economic analysis for snapshot and timeline reporting. Two static operations:
 
-### 10.1 `ComputeGini(int[] positiveWealth)`
+`ComputeGini(int[] positiveWealth)` computes the Gini coefficient from positive-wealth values using the standard formula: `G = (2 * SUM(i * w[i])) / (n * SUM(w)) - (n+1)/n`. O(n log n) from `Array.Sort`, O(n) accumulation. Mutates the input array (sorts ascending in place). Returns `0.0` for `n <= 1` or `sumW == 0`.
 
-Computes the Gini coefficient from positive-wealth values using the standard formula:
-
-```
-G = (2 * SUM(i * w[i])) / (n * SUM(w)) - (n+1)/n
-```
-
-- O(n log n) from `Array.Sort`, O(n) accumulation
-- Mutates the input array (sorts ascending in place)
-- Returns `0.0` for `n <= 1` or `sumW == 0`
-
-### 10.2 `GetTopHolders(string[] ownerNames, int[] ownerWealth, string[] ownerCategories, int top, out string[] topNames, out int[] topWealth, out string[] topCategories)`
-
-Top-N extraction via index-array sort. Uses full sort (simpler than partial sort for typical sizes of 50--200 holders). Returns parallel arrays through `out` parameters for direct PowerShell consumption via `[ref]`.
-
-- Returns empty arrays when input is null/empty or `top <= 0`
-- Sorts by wealth descending via index indirection to preserve parallel array alignment
-
-### 10.3 Type Loading
+`GetTopHolders(string[] ownerNames, int[] ownerWealth, string[] ownerCategories, int top, out string[] topNames, out int[] topWealth, out string[] topCategories)` performs top-N extraction via index-array sort. Uses full sort (simpler than partial sort for typical sizes of 50--200 holders). Returns parallel arrays through `out` parameters for direct PowerShell consumption via `[ref]`. Returns empty arrays when input is null/empty or `top <= 0`. Sorts by wealth descending via index indirection to preserve parallel array alignment.
 
 Compiled centrally in `robot.psm1` at module import time. Consumer code checks availability with `([System.Management.Automation.PSTypeName]'Robot.EconomicAnalyzer').Type` and falls back to an equivalent PowerShell implementation when the type is unavailable.
 
-### 10.4 Consumer
-
-`New-EconomicSnapshotData` (`private/economy-helpers.ps1`) — calls both `ComputeGini` and `GetTopHolders` when the C# type is available, falling back to PowerShell Sort-Object/ScriptBlock comparisons otherwise.
+Consumer: `New-EconomicSnapshotData` (`private/economy-helpers.ps1`) -- calls both `ComputeGini` and `GetTopHolders` when the C# type is available, falling back to PowerShell Sort-Object/ScriptBlock comparisons otherwise.
 
 ---
 
-## 11. Related Documents
+## Related Documents
 
-- [CURRENCY.md](CURRENCY.md) - Currency system (denominations, CRUD, reconciliation, @Transfer)
-- [ENTITIES.md](ENTITIES.md) - Entity system (tags, temporal scoping)
-- [SESSIONS.md](SESSIONS.md) - Session parsing
+- [CURRENCY.md](CURRENCY.md) -- Currency system (denominations, CRUD, reconciliation, @Transfer)
+- [ENTITIES.md](ENTITIES.md) -- Entity system (tags, temporal scoping)
+- [SESSIONS.md](SESSIONS.md) -- Session parsing

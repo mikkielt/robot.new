@@ -1,114 +1,54 @@
 # Troubleshooting
 
-## Purpose
-
-This guide helps coordinators and narrators identify, diagnose, and fix common data quality issues that can affect PU processing, session parsing, and notification delivery.
-
 ## Scope
 
-**What is included:**
+This guide helps Coordinators and Narrators identify, diagnose, and fix common data quality issues that can affect PU processing, session parsing, and notification delivery.
 
-- Common data quality issues and their symptoms
-- How to use the diagnostic tool
-- Step-by-step fixes for each issue type
-- When to escalate vs. fix independently
-
-**What is excluded:**
-
-- Technical implementation details
-- Module development and debugging
+The guide covers common data quality issues and their symptoms, how to use the diagnostic tool, step-by-step fixes for each issue type, and when to escalate versus fix independently.
 
 ## When to Run Diagnostics
 
-Run the diagnostic tool:
+Run the diagnostic tool before each monthly PU assignment (recommended), when a PU assignment fails with unresolved character names, when a session appears to be "missing" from PU processing, and periodically to catch stale data before it becomes a problem.
 
-- **Before** each monthly PU assignment (recommended)
-- When a PU assignment fails with unresolved character names
-- When a session appears to be "missing" from PU processing
-- Periodically, to catch stale data before it becomes a problem
+## Unresolved Character Name
 
-## Common Issues and Fixes
+Symptom: PU assignment stops immediately with an error listing unresolved character names.
 
-### 1. Unresolved Character Name
+This happens when a character name in a session's PU entry does not match any registered character or alias. Common causes include a typo in the character name (e.g., "Crag Hak" instead of "Crag Hack"), a character that has not yet been registered in the system, or a nickname that is not registered as an alias.
 
-**Symptom:** PU assignment stops immediately with an error listing unresolved character names.
+To fix this, check the error message for the exact unresolved name, compare it with the known character roster, and then correct the issue. If it is a typo in the session file, correct the name in the PU entry. If it is a missing alias, ask the Coordinator to register the alias. If the character is unregistered, ask the Coordinator to register the character. Then retry the PU assignment.
 
-**Why it happens:** A character name in a session's PU entry does not match any registered character or alias.
+The system attempts several strategies to match a name before giving up. Exact match checks whether the name matches a registered character name or alias (case-insensitive). Declension accounts for Polish grammatical forms (e.g., "Craga" for "Crag", "Sandry" for "Sandra"). Stem alternation tries common Polish consonant changes (e.g., "k"/"c", "g"/"dz"). Fuzzy match tolerates small typos (1-2 character differences) for longer names.
 
-**Common causes:**
-- Typo in the character name (e.g., `Crag Hak` instead of `Crag Hack`)
-- Character not yet registered in the system
-- Using a nickname that is not registered as an alias
+Matching may fail despite a valid name in certain situations. Very short names (2-3 characters) require the name to be long enough to allow edit distance tolerance. Unusual declension patterns with irregular Polish forms may not be handled automatically. Name collisions where a name closely resembles multiple entities may prevent confident resolution.
 
-**How to fix:**
+If a name form consistently fails to resolve, ask the Coordinator to add it as an alias to the character's entity entry. After the alias is registered, the system will match it exactly on future runs. You can verify the fix by running the diagnostic tool — previously unresolved names should now pass.
 
-1. Check the error message for the exact unresolved name
-2. Compare it with the known character roster
-3. Fix the issue:
-   - **Typo in session file:** Correct the name in the PU entry
-   - **Missing alias:** Ask the coordinator to register the alias
-   - **Unregistered character:** Ask the coordinator to register the character
-4. Retry the PU assignment
+## Session with Broken Date
 
-**Understanding name matching:**
+Symptom: A session is silently skipped during PU processing — no error, but the PU is not awarded.
 
-The system attempts several strategies to match a name before giving up:
-
-1. **Exact match** — the name matches a registered character name or alias exactly (case-insensitive)
-2. **Declension** — Polish grammatical forms are accounted for (e.g., "Craga" for "Crag", "Sandry" for "Sandra")
-3. **Stem alternation** — common Polish consonant changes are tried (e.g., "k" ↔ "c", "g" ↔ "dz")
-4. **Fuzzy match** — small typos (1–2 character differences) are tolerated for longer names
-
-**When matching may fail despite a valid name:**
-
-- **Very short names** (2–3 characters) — fuzzy matching requires the name to be long enough to allow edit distance tolerance
-- **Unusual declension patterns** — some proper names with irregular Polish forms may not be handled automatically
-- **Name collisions** — if a name closely resembles multiple entities, the system may not resolve it confidently
-
-**Adding an alias to fix persistent failures:**
-
-If a name form consistently fails to resolve, ask the coordinator to add it as an alias to the character's entity entry. After the alias is registered, the system will match it exactly on future runs. You can verify the fix by running the diagnostic tool — previously unresolved names should now pass.
-
-### 2. Session with Broken Date
-
-**Symptom:** A session is silently skipped during PU processing - no error, but the PU is not awarded.
-
-**Why it happens:** The session header date is not in the correct `YYYY-MM-DD` format.
-
-**Common mistakes:**
+This happens when the session header date is not in the correct `YYYY-MM-DD` format.
 
 | Wrong format | Correct format |
 |---|---|
 | `2025-6-15` | `2025-06-15` |
 | `15-06-2025` | `2025-06-15` |
 | `2025/06/15` | `2025-06-15` |
-| `2025-13-01` | (invalid month - must be 01–12) |
+| `2025-13-01` | (invalid month — must be 01-12) |
 | `June 15, 2025` | `2025-06-15` |
 
-**How to fix:**
+To fix this, run the diagnostic tool (it reports sessions with broken dates that contain PU data), find the session in the Markdown file, fix the date in the header to `YYYY-MM-DD` format, and retry the PU assignment.
 
-1. Run the diagnostic tool - it reports sessions with broken dates that contain PU data
-2. Find the session in the Markdown file
-3. Fix the date in the header to `YYYY-MM-DD` format
-4. Retry the PU assignment
+## Duplicate PU Entry
 
-### 3. Duplicate PU Entry
+Symptom: The diagnostic tool flags a character appearing multiple times in the same session's PU block.
 
-**Symptom:** The diagnostic tool flags a character appearing multiple times in the same session's PU block.
+This happens when the same character was listed twice in one session, possibly with different PU values. To fix this, open the session file, find the duplicate entry, and remove the duplicate (keep the correct PU value).
 
-**Why it happens:** The same character was listed twice in one session, possibly with different PU values.
+## Malformed PU Value
 
-**How to fix:**
-
-1. Open the session file
-2. Find the duplicate entry
-3. Remove the duplicate (keep the correct PU value)
-
-### 4. Malformed PU Value
-
-**Symptom:** The diagnostic tool flags PU entries with missing or non-numeric values.
-
-**Common mistakes:**
+Symptom: The diagnostic tool flags PU entries with missing or non-numeric values.
 
 | Wrong | Correct |
 |---|---|
@@ -116,95 +56,70 @@ If a name form consistently fails to resolve, ask the coordinator to add it as a
 | `- Crag Hack: trzy` | `- Crag Hack: 0.3` |
 | `- Crag Hack 0.3` (missing colon) | `- Crag Hack: 0.3` |
 
-**How to fix:**
+To fix this, open the session file, fix the PU entry to include a valid decimal value, and use a period (`.`) as the decimal separator.
 
-1. Open the session file
-2. Fix the PU entry to include a valid decimal value
-3. Use a period (`.`) as the decimal separator
+## Missing Webhook Address
 
-### 5. Missing Webhook Address
+Symptom: PU is calculated and applied correctly, but the player does not receive a Discord notification.
 
-**Symptom:** PU is calculated and applied correctly, but the player does not receive a Discord notification.
+To fix this, ask the Coordinator to add the player's webhook address. The webhook URL must follow the format `https://discord.com/api/webhooks/...`. Once added, the notification can be re-sent manually if needed.
 
-**How to fix:**
+## Stale History Entries
 
-1. Ask the coordinator to add the player's webhook address
-2. The webhook URL must follow the format: `https://discord.com/api/webhooks/...`
-3. Once added, the notification can be re-sent manually if needed
+Symptom: The diagnostic tool reports session headers in the processing history that no longer match any session in the repository.
 
-### 6. Stale History Entries
+This happens when a session was renamed, deleted, or its header was modified after it was already processed. Stale entries do not cause processing errors, but they clutter the history file.
 
-**Symptom:** The diagnostic tool reports session headers in the processing history that no longer match any session in the repository.
+To fix this, review the flagged entries and determine if the session was renamed (find the new header) or genuinely deleted. If the stale entries are harmless, no action is needed. For cleanup, coordinate with the team before modifying the history file.
 
-**Why it happens:** A session was renamed, deleted, or its header was modified after it was already processed.
+## Session Not Appearing in PU Processing
 
-**Impact:** Stale entries do not cause processing errors, but they clutter the history file.
-
-**How to fix:**
-
-1. Review the flagged entries
-2. Determine if the session was renamed (find the new header) or genuinely deleted
-3. If the stale entries are harmless, no action is needed
-4. For cleanup: coordinate with the team before modifying the history file
-
-### 7. Session Not Appearing in PU Processing
-
-**Symptom:** A session exists in the repository but is not picked up during PU assignment.
-
-**Possible causes and checks:**
+Symptom: A session exists in the repository but is not picked up during PU assignment.
 
 | Check | What to look for |
 |---|---|
-| **Date format** | Is the date in `YYYY-MM-DD` format? |
-| **Date range** | Is the session date within the processing period? |
-| **PU block** | Does the session have a `- @PU:` or `- PU:` block? |
-| **Already processed** | Was this session already processed in a previous run? |
-| **File location** | Is the file a `.md` file inside the repository? |
+| Date format | Is the date in `YYYY-MM-DD` format? |
+| Date range | Is the session date within the processing period? |
+| PU block | Does the session have a `- @PU:` or `- PU:` block? |
+| Already processed | Was this session already processed in a previous run? |
+| File location | Is the file a `.md` file inside the repository? |
 
-### 8. Intel Not Delivered
+## Intel Not Delivered
 
-**Symptom:** An Intel message was not received by the intended recipient.
-
-**Possible causes:**
+Symptom: An Intel message was not received by the intended recipient.
 
 | Check | What to look for |
 |---|---|
-| **Target name** | Does the target name resolve to a known entity? |
-| **Targeting syntax** | Is the syntax correct (`Grupa/Name`, `Lokacja/Name`, or bare `Name`)? |
-| **Webhook** | Does the target entity or its owning player have a webhook configured? |
-| **Group membership** | Is the entity a member of the group at the session date? |
-| **Location** | Is the entity present at the location at the session date? |
+| Target name | Does the target name resolve to a known entity? |
+| Targeting syntax | Is the syntax correct (`Grupa/Name`, `Lokacja/Name`, or bare `Name`)? |
+| Webhook | Does the target entity or its owning player have a webhook configured? |
+| Group membership | Is the entity a member of the group at the session date? |
+| Location | Is the entity present at the location at the session date? |
 
 ## Using the Diagnostic Tool
 
-The diagnostic tool validates data quality without making any changes. It checks:
+The diagnostic tool validates data quality without making any changes.
 
 | Check | What it finds |
 |---|---|
-| **Unresolved characters** | PU entries with character names that do not match any known character |
-| **Malformed PU values** | Entries with missing or non-numeric PU values |
-| **Duplicate entries** | Same character listed multiple times in one session's PU block |
-| **Failed sessions with PU data** | Sessions with broken date formats that contain PU data |
-| **Stale history entries** | Processed session headers that no longer match any session |
+| Unresolved characters | PU entries with character names that do not match any known character |
+| Malformed PU values | Entries with missing or non-numeric PU values |
+| Duplicate entries | Same character listed multiple times in one session's PU block |
+| Failed sessions with PU data | Sessions with broken date formats that contain PU data |
+| Stale history entries | Processed session headers that no longer match any session |
 
-The diagnostic produces a clear **pass/fail** result. If any issue is found, resolve it before running the actual PU assignment.
+The diagnostic produces a clear pass/fail result. If any issue is found, resolve it before running the actual PU assignment.
 
 ## When to Escalate
 
-Fix it yourself:
-- Typos in character names or dates
-- Missing PU values
-- Duplicate entries
+Fix it yourself: typos in character names or dates, missing PU values, and duplicate entries.
 
-Ask the coordinator:
-- Registering new characters or aliases
-- Adding or updating webhook addresses
-- Cleaning up the processing history
-- Reactivating removed characters
+Ask the Coordinator: registering new characters or aliases, adding or updating webhook addresses, cleaning up the processing history, and reactivating removed characters.
 
 ## Related Documents
 
-- [PU.md](PU.md) - Monthly PU assignment process
-- [Sessions.md](Sessions.md) - Session recording guide
-- [Players.md](Players.md) - Player and character management
-- [Glossary](Glossary.md) - Term definitions
+- [PU.md](PU.md) — Monthly PU assignment process
+- [Sessions.md](Sessions.md) — Session recording guide
+- [Players.md](Players.md) — Player and character management
+- [Name-Resolution.md](Name-Resolution.md) — How name matching works
+- [Glossary](Glossary.md) — Term definitions

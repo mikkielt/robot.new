@@ -1,35 +1,14 @@
 # Session Logs
 
-## Purpose
+## Overview
 
-This guide explains how session logs (transcripts) are managed: how narrators include log links in sessions, how the system fetches and caches them, and how coordinators can analyze log content for location data quality.
-
-## Scope
-
-**What is included:**
-
-- How to include log URLs in session entries
-- How logs are fetched and cached locally
-- How to use mass-fetch and location analysis tools
-- Supported log formats and their differences
-
-**What is excluded:**
-
-- How to write session entries (see [Sessions.md](Sessions.md))
-- PU processing (see [PU.md](PU.md))
+Session logs (transcripts) are linked from session entries, fetched and cached locally, and optionally analyzed for location data quality. Narrators include log links in sessions, the system fetches and caches them, and Coordinators can run analysis tools against the cached content.
 
 ## Actors and Responsibilities
 
-### Narrator
+The Narrator includes log URL(s) in the session's `@Logi` metadata block after each session and ensures URLs point to publicly accessible text (e.g., Pastebin).
 
-- Includes log URL(s) in the session's `@Logi` metadata block after each session
-- Ensures URLs point to publicly accessible text (e.g., Pastebin)
-
-### Coordinator
-
-- Triggers batch log fetching before analysis runs
-- Reviews location analysis reports to identify data quality issues
-- Retries failed fetches when transient errors are resolved
+The Coordinator triggers batch log fetching before analysis runs, reviews location analysis reports to identify data quality issues, and retries failed fetches when transient errors are resolved.
 
 ## Including Log URLs
 
@@ -52,55 +31,42 @@ The system auto-detects two transcript formats:
 
 | Format | Source | Example |
 |---|---|---|
-| **ChatLog** | Game engine copy-paste with timestamps and channels | `[13:22] [Lokalny] Lord Haart: Proszę!` |
-| **Prose** | Manually written narrative summary | `Lord Haart: Otworzył drzwi z westchnieniem.` |
+| ChatLog | Game engine copy-paste with timestamps and channels | `[13:22] [Lokalny] Lord Haart: Proszę!` |
+| Prose | Manually written narrative summary | `Lord Haart: Otworzył drzwi z westchnieniem.` |
 
-Both formats support **location headers** — standalone short lines (without timestamps or speaker patterns) that divide the log into location segments. These headers are used for location analysis.
+Both formats support location headers — standalone short lines (without timestamps or speaker patterns) that divide the log into location segments. These headers are used for location analysis.
 
 ## Log Caching
 
-When logs are fetched, they are cached on disk:
-
-- **First fetch**: The log is downloaded and saved locally
-- **Subsequent access**: The cached version is used, no network request
-- **Failed fetches**: A failure marker is created so the URL is skipped in future runs (unless retry is explicitly requested)
+When logs are fetched, they are cached on disk. The first fetch downloads the log and saves it locally. Subsequent access uses the cached version with no network request. Failed fetches create a failure marker so the URL is skipped in future runs (unless retry is explicitly requested).
 
 This means the batch fetch only needs to run once per new set of sessions. Previously fetched logs are always available offline.
 
 ## Batch Fetching
 
-The coordinator can fetch all logs for a date range at once. The process:
+The Coordinator can fetch all logs for a date range at once. The process collects all unique log URLs from sessions in the specified period, skips URLs that are already cached, fetches remaining URLs with automatic throttling to avoid rate limits, and reports a summary of how many were fetched, cached, or failed.
 
-1. Collects all unique log URLs from sessions in the specified period
-2. Skips URLs that are already cached
-3. Fetches remaining URLs with automatic throttling to avoid rate limits
-4. Reports a summary: how many were fetched, cached, or failed
-
-Failed URLs are tracked individually. The coordinator can retry only the failed ones in a subsequent run.
+Failed URLs are tracked individually. The Coordinator can retry only the failed ones in a subsequent run.
 
 ## Location Analysis
 
-The location analysis tool cross-references log transcript headers with registered world locations to find:
+The location analysis tool cross-references log transcript headers with registered world locations to find resolved locations (log headers that match a known location name), unresolved locations (headers that could not be matched, indicating potential data quality issues), and near matches (close but inexact matches that suggest typos or missing aliases).
 
-- **Resolved locations** — log headers that match a known location name
-- **Unresolved locations** — headers that could not be matched (potential data quality issues)
-- **Near matches** — close but not exact matches that suggest typos or missing aliases
-
-This helps narrators and coordinators ensure that location names in transcripts are consistent with the entity registry.
+This helps Narrators and Coordinators ensure that location names in transcripts are consistent with the entity registry.
 
 ## Exceptions and Recovery Actions
 
 | Situation | What happens | Recovery |
 |---|---|---|
-| **Log URL returns 404** | Marked as failed, skipped in future runs | Fix the URL in the session entry; retry with the failed-retry option |
-| **Rate limited (429)** | Automatic retry with exponential backoff | Usually self-resolving; increase throttle delay if persistent |
-| **Server error (5xx)** | Retried up to the configured limit, then marked as failed | Retry later when the server is available |
-| **Pastebin short URL** | Automatically normalized to raw format | No action needed |
-| **Log format not detected** | Falls back to Prose format | No action needed; all content is still parsed |
-| **Location header not recognized** | Appears as "unresolved" in the analysis report | Add an alias to the location entity, or verify the header text |
+| Log URL returns 404 | Marked as failed, skipped in future runs | Fix the URL in the session entry; retry with the failed-retry option |
+| Rate limited (429) | Automatic retry with exponential backoff | Usually self-resolving; increase throttle delay if persistent |
+| Server error (5xx) | Retried up to the configured limit, then marked as failed | Retry later when the server is available |
+| Pastebin short URL | Automatically normalized to raw format | No action needed |
+| Log format not detected | Falls back to Prose format | No action needed; all content is still parsed |
+| Location header not recognized | Appears as "unresolved" in the analysis report | Add an alias to the location entity, or verify the header text |
 
 ## Related Documents
 
-- [Sessions.md](Sessions.md) - How to write session entries with log URLs
-- [Location-Graph.md](Location-Graph.md) - Location graph and movement analysis
-- [Troubleshooting.md](Troubleshooting.md) - General data quality diagnostics
+- [Sessions.md](Sessions.md) — How to write session entries with log URLs
+- [Location-Graph.md](Location-Graph.md) — Location graph and movement analysis
+- [Troubleshooting.md](Troubleshooting.md) — General data quality diagnostics

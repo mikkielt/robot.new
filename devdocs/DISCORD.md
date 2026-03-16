@@ -1,18 +1,16 @@
 # Discord Messaging - Technical Reference
 
-**Status**: Reference documentation.
-
 ---
 
-## 1. Scope
+## Scope
 
 This document covers `Send-DiscordMessage` (webhook sender), PU notification message construction in `Invoke-PlayerCharacterPUAssignment`, and Intel message dispatch via `Resolve-EntityWebhook`.
 
 ---
 
-## 2. `Send-DiscordMessage`
+## `Send-DiscordMessage`
 
-### 2.1 Parameters
+Parameters:
 
 | Parameter | Type | Description |
 |---|---|---|
@@ -20,11 +18,9 @@ This document covers `Send-DiscordMessage` (webhook sender), PU notification mes
 | `Message` | string | Message content |
 | `Username` | string | Optional bot display name |
 
-### 2.2 Implementation
+Webhook validation uses a regex check against the `https://discord.com/api/webhooks/*` pattern.
 
-**Webhook validation**: Regex check against `https://discord.com/api/webhooks/*` pattern.
-
-**JSON payload construction**:
+JSON payload construction:
 
 ```powershell
 $Payload = [ordered]@{ content = $Message }
@@ -32,7 +28,7 @@ if ($Username) { $Payload.username = $Username }
 $JSON = $Payload | ConvertTo-Json -Compress
 ```
 
-**HTTP POST**: Uses `[System.Net.Http.HttpClient]` with UTF-8 encoded `StringContent`:
+HTTP POST uses `[System.Net.Http.HttpClient]` with UTF-8 encoded `StringContent`:
 
 ```powershell
 $Content = [System.Net.Http.StringContent]::new($JSON, [System.Text.Encoding]::UTF8, "application/json")
@@ -41,13 +37,13 @@ $Response = $HttpClient.PostAsync($Webhook, $Content).GetAwaiter().GetResult()
 
 `.GetAwaiter().GetResult()` provides synchronous execution within PowerShell.
 
-**`SupportsShouldProcess`**: Returns a preview object when `-WhatIf` is used:
+`SupportsShouldProcess` returns a preview object when `-WhatIf` is used:
 
 ```powershell
 [PSCustomObject]@{ Webhook = $Webhook; StatusCode = $null; Success = $true; WhatIf = $true }
 ```
 
-### 2.3 Return Object
+Return object:
 
 | Property | Type | Description |
 |---|---|---|
@@ -56,20 +52,13 @@ $Response = $HttpClient.PostAsync($Webhook, $Content).GetAwaiter().GetResult()
 | `Success` | bool | Whether the message was sent successfully |
 | `WhatIf` | bool | True if this was a preview |
 
-### 2.4 Error Handling
-
-- URL format validation before attempting POST
-- HTTP status code checking with response body on error
-- Resource cleanup in `finally` block (`HttpClient`, `StringContent`, `Response` all disposed)
-- No retry logic at this level - delegated to future queue system
+Error handling: URL format is validated before attempting POST. HTTP status code is checked with response body on error. Resource cleanup runs in a `finally` block (`HttpClient`, `StringContent`, `Response` all disposed). Retry logic is delegated to a future queue system.
 
 ---
 
-## 3. PU Notification Messages
+## PU Notification Messages
 
-### 3.1 Message Construction
-
-In `Invoke-PlayerCharacterPUAssignment`, notifications are **grouped per player**:
+In `Invoke-PlayerCharacterPUAssignment`, notifications are grouped per player:
 
 ```powershell
 $PlayerGroups = Dictionary[string, List[object]] (OrdinalIgnoreCase)
@@ -78,30 +67,26 @@ $PlayerGroups = Dictionary[string, List[object]] (OrdinalIgnoreCase)
 
 Characters without a `PlayerName` are skipped.
 
-### 3.2 Message Format (Polish, mandatory)
-
-Per character:
+Message format (Polish, mandatory) per character:
 
 ```
-Postać "<CharacterName>" (Gracz "<PlayerName>") otrzymuje <GrantedPU> PU.
+Postac "<CharacterName>" (Gracz "<PlayerName>") otrzymuje <GrantedPU> PU.
 Aktualna suma PU tej Postaci: <NewPUSum>
 ```
 
-**Conditional suffixes** (appended to second line, comma-separated):
+Conditional suffixes (appended to second line, comma-separated):
 - If `UsedExceeded > 0`: `, wykorzystano PU nadmiarowe: <UsedExceeded>`
-- If `RemainingPUExceeded > 0`: `, pozostałe PU nadmiarowe: <RemainingPUExceeded>`
+- If `RemainingPUExceeded > 0`: `, pozostale PU nadmiarowe: <RemainingPUExceeded>`
 
-**Numeric formatting**: `F2` format with `InvariantCulture` (period decimal separator, two decimal places).
+Numeric formatting uses `F2` format with `InvariantCulture` (period decimal separator, two decimal places).
 
 Multiple characters for the same player are separated by `\n\n` (blank line).
 
-### 3.3 Message Assembly
+Message assembly uses `Get-AdminTemplate` with template files for each character's message:
 
-Uses `Get-AdminTemplate` with template files for each character's message:
-
-- `pu-notification-base.txt.template` — base message with `{CharacterName}`, `{PlayerName}`, `{GrantedPU}`, `{NewPUSum}` placeholders
-- `pu-notification-overflow.txt.template` — appended when `UsedExceeded > 0`, with `{UsedExceeded}` placeholder
-- `pu-notification-remaining.txt.template` — appended when `RemainingPUExceeded > 0`, with `{RemainingPUExceeded}` placeholder
+- `pu-notification-base.txt.template` -- base message with `{CharacterName}`, `{PlayerName}`, `{GrantedPU}`, `{NewPUSum}` placeholders
+- `pu-notification-overflow.txt.template` -- appended when `UsedExceeded > 0`, with `{UsedExceeded}` placeholder
+- `pu-notification-remaining.txt.template` -- appended when `RemainingPUExceeded > 0`, with `{RemainingPUExceeded}` placeholder
 
 Multiple characters for the same player are joined with `\n\n`:
 
@@ -109,53 +94,39 @@ Multiple characters for the same player are joined with `\n\n`:
 $FullMessage = ($Items | ForEach-Object { $_.Message }) -join "`n`n"
 ```
 
-### 3.4 Bot Username
+Bot username is hardcoded as `"Bothen"` in the PU assignment pipeline. `Get-AdminConfig` resolves a `BotUsername` from config, but only the hardcoded value is used by PU assignment.
 
-Hardcoded as `"Bothen"` in the PU assignment pipeline.
+Webhook is resolved from `$Items[0].Character.Player.PRFWebhook` (first result's Character -> Player -> PRFWebhook path). If a player has no `PRFWebhook`, the notification is skipped with a `[WARN]` to stderr. Other players' notifications are still sent.
 
-Note: `Get-AdminConfig` resolves a `BotUsername` from config, but it is **not used** by PU assignment - only the hardcoded value applies.
-
-### 3.5 Webhook Resolution
-
-Taken from `$Items[0].Character.Player.PRFWebhook` (first result's Character -> Player -> PRFWebhook path).
-
-**Missing webhook**: If a player has no `PRFWebhook`, the notification is skipped with a `[WARN]` to stderr. This does **not** prevent other players' notifications from being sent.
-
-### 3.6 Failure Handling
-
-Individual `Send-DiscordMessage` failures are caught and logged to stderr as `[WARN]`. They do **not** abort the remaining notifications.
+Individual `Send-DiscordMessage` failures are caught and logged to stderr as `[WARN]`. They do not abort the remaining notifications.
 
 ---
 
-## 4. Intel Message Dispatch
+## Intel Message Dispatch
 
-### 4.1 Webhook Resolution (`Resolve-EntityWebhook`)
-
-Priority chain for resolving a Discord webhook URL for any entity:
+Webhook resolution priority chain (`Resolve-EntityWebhook`):
 
 | Priority | Source |
 |---|---|
 | 1 | Entity's own `@prfwebhook` override (any entity type can have one) |
-| 2 | For `Postać`: owning Player's `PRFWebhook` |
+| 2 | For `Postac`: owning Player's `PRFWebhook` |
 | 3 | `$null` (no webhook available) |
 
-### 4.2 Dispatch Flow
-
 Intel messages are constructed during `Get-Session` processing when `@Intel` blocks are present. Each `Intel` object carries:
-- `RawTarget`: Original targeting string
-- `Message`: Intel content
-- `Recipients[]`: Resolved entities with webhook URLs
+- `RawTarget` -- original targeting string
+- `Message` -- Intel content
+- `Recipients[]` -- resolved entities with webhook URLs
 
-The actual sending is left to the consumer - `Get-Session` only resolves targets and webhooks.
+The actual sending is left to the consumer -- `Get-Session` only resolves targets and webhooks.
 
 ---
 
-## 5. Edge Cases
+## Edge Cases
 
 | Scenario | Behavior |
 |---|---|
 | Invalid webhook URL format | Validation error before POST |
-| HTTP error response | Logged, but does not throw; returns `Success = $false` |
+| HTTP error response | Logged, returns `Success = $false` |
 | Player with no webhook | PU still calculated and applied; notification skipped with warning |
 | Character without PlayerName | Skipped in Discord grouping |
 | Multiple characters, same player | Combined into single message |
@@ -164,7 +135,7 @@ The actual sending is left to the consumer - `Get-Session` only resolves targets
 
 ---
 
-## 6. Testing
+## Testing
 
 | Test file | Coverage |
 |---|---|
@@ -173,8 +144,8 @@ The actual sending is left to the consumer - `Get-Session` only resolves targets
 
 ---
 
-## 7. Related Documents
+## Related Documents
 
-- [PU.md](PU.md) - §6.2 SendToDiscord side effect
+- [PU.md](PU.md) - SendToDiscord side effect
 - [SESSIONS.md](SESSIONS.md) - Intel resolution and webhook lookup
 - [CONFIG-STATE.md](CONFIG-STATE.md) - Webhook configuration resolution

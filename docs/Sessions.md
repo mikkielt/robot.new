@@ -1,37 +1,14 @@
 # Session Recording Guide
 
-## Purpose
+## Overview
 
-This guide explains how narrators document game sessions in the repository. Proper session recording ensures that PU awards, world-state changes, and notifications are processed correctly and automatically.
-
-## Scope
-
-**What is included:**
-
-- How to write a session entry in the current format
-- What metadata fields are required and optional
-- How the system reads session data
-- Common mistakes and how to fix them
-
-**What is excluded:**
-
-- Monthly PU assignment process (see [PU.md](PU.md))
-- Player and character registration (see [Players.md](Players.md))
+Narrators document game sessions in the repository using a structured Markdown format. Proper session recording ensures that PU awards, world-state changes, and notifications are processed correctly and automatically.
 
 ## Actors and Responsibilities
 
-### Narrator
+The Narrator writes the session entry in the designated Markdown file after each session, ensures character names in PU entries match registered names or aliases exactly, records world-state changes (Zmiany) so they are applied automatically, and adds Intel entries when targeted information needs to reach specific recipients.
 
-- Writes the session entry in the designated Markdown file after each session
-- Ensures character names in PU entries match registered names or aliases exactly
-- Records world-state changes (Zmiany) so they are applied automatically
-- Adds Intel entries when targeted information needs to reach specific recipients
-
-### Coordinator
-
-- Reviews session entries for data quality issues (unresolved names, broken dates)
-- Runs diagnostics to catch silent parsing failures
-- Upgrades older session formats if needed
+The Coordinator reviews session entries for data quality issues (unresolved names, broken dates), runs diagnostics to catch silent parsing failures, and upgrades older session formats if needed.
 
 ## Inputs Required
 
@@ -42,9 +19,7 @@ This guide explains how narrators document game sessions in the repository. Prop
 - Any world-state changes resulting from the session
 - Any Intel messages for specific recipients (optional)
 
-## Session Format
-
-### Session Header
+## Session Header
 
 Every session starts with a level-3 header containing the date, title, and narrator name:
 
@@ -52,11 +27,11 @@ Every session starts with a level-3 header containing the date, title, and narra
 ### 2025-06-15, Ucieczka z Erathii, Catherine
 ```
 
-**Date format**: Always `YYYY-MM-DD`. Incorrect formats (like `2025-6-15` or `15-06-2025`) will cause the session to be silently skipped during PU processing.
+The date format is always `YYYY-MM-DD`. Incorrect formats (like `2025-6-15` or `15-06-2025`) are reported as errors.
 
-**Multi-day sessions**: Use a slash for the end day: `### 2025-06-21/22, Weekend Session, Catherine` (must be in the same month).
+For multi-day sessions, use a slash for the end day: `### 2025-06-21/22, Weekend Session, Catherine` (must be in the same month).
 
-### Metadata Blocks (Current Format)
+## Metadata Blocks (Current Format)
 
 All metadata uses `@`-prefixed tags:
 
@@ -86,7 +61,7 @@ but not parsed for metadata.
     - Solmyr: Prywatna wiadomość
 ```
 
-### Metadata Fields
+## Metadata Fields
 
 | Field | Required | Description |
 |---|---|---|
@@ -96,10 +71,10 @@ but not parsed for metadata.
 | `@Logi` | Recommended | Link(s) to the session transcript |
 | `@PU` | Required for PU processing | Character name and PU value (e.g., `Crag Hack: 0.3`) |
 | `@Zmiany` | As needed | World-state changes (entity name + `@tag: value` pairs) |
-| `@Transfer` | As needed | Currency transfers between entities (see [World-State.md](World-State.md)) |
+| `@Transfer` | As needed | Currency transfers between entities (see [Currency.md](Currency.md)) |
 | `@Intel` | As needed | Targeted messages to specific recipients |
 
-### PU Entry Format
+## PU Entry Format
 
 Each PU entry is a character name followed by a colon and a decimal value:
 
@@ -108,11 +83,11 @@ Each PU entry is a character name followed by a colon and a decimal value:
     - Crag Hack: 0.3
 ```
 
-- Use a **period** (`.`) as the decimal separator (commas are also accepted but not preferred)
+- Use a period (`.`) as the decimal separator (commas are also accepted but periods are preferred)
 - PU values are typically between 0.1 and 0.5 per session
-- Character names must match a registered name or alias **exactly** (case-insensitive)
+- Character names must match a registered name or alias exactly (case-insensitive)
 
-### Changes (Zmiany) Format
+## Changes (Zmiany) Format
 
 Changes record permanent updates to the game world:
 
@@ -122,14 +97,11 @@ Changes record permanent updates to the game world:
         - @lokacja: Deyja
 ```
 
-Common tags:
-- `@lokacja: Erathia` - entity permanently moves to a new location
-- `@grupa: Nekromanci` - entity joins a group/faction
-- `@status: Aktywny` / `Nieaktywny` / `Usunięty` - entity status change
+Common tags: `@lokacja: Erathia` moves an entity permanently to a new location; `@grupa: Nekromanci` adds the entity to a group/faction; `@status: Aktywny` / `Nieaktywny` / `Usunięty` changes entity status.
 
 Changes are applied automatically with the session's date as the effective date.
 
-### Intel Format
+## Intel Format
 
 Intel entries send targeted messages to specific recipients via Discord:
 
@@ -141,12 +113,9 @@ Intel entries send targeted messages to specific recipients via Discord:
     - Gem, Vidomina: Message to multiple recipients
 ```
 
-Targeting options:
-- `Grupa/Name` - all entities in the named group
-- `Lokacja/Name` - all entities in the named location and sub-locations
-- `Name` - direct targeting (comma-separated for multiple recipients)
+Targeting options: `Grupa/Name` reaches all entities in the named group, `Lokacja/Name` reaches all entities in the named location and sub-locations, and a direct name (comma-separated for multiple recipients) targets individuals.
 
-### Transfer Format
+## Transfer Format
 
 Transfers record currency movements between entities during a session:
 
@@ -157,82 +126,34 @@ Transfers record currency movements between entities during a session:
 
 The format is: `@Transfer: {amount} {denomination}, {source} -> {destination}`
 
-You can use colloquial denomination names ("koron", "talarów", "kogi") - the system recognizes them automatically. Multiple transfers per session are allowed.
+You can use colloquial denomination names ("koron", "talarów", "kogi") — the system recognizes them automatically. Multiple transfers per session are allowed.
 
-For more details on currency tracking, see [World-State.md](World-State.md).
+For more details on currency tracking, see [Currency.md](Currency.md).
 
 ## Older Format Generations
 
-The system reads four format generations. Sessions written before 2026 do not need to be rewritten - the system auto-detects and parses all formats.
+The system reads four format generations. Sessions written before 2026 do not need to be rewritten — the system auto-detects and parses all formats.
 
 | Period | Format | Example |
 |---|---|---|
 | Before 2022 | Plain text | `Logi: https://...` as plain text, no structured metadata |
-| 2022–2023 | Italic locations | `*Lokalizacja: Erathia, Bracada*` |
-| 2024–2026 | Structured lists | `- Lokalizacje:`, `- PU:` (without `@` prefix) |
+| 2022-2023 | Italic locations | `*Lokalizacja: Erathia, Bracada*` |
+| 2024-2026 | Structured lists | `- Lokalizacje:`, `- PU:` (without `@` prefix) |
 | 2026 onward | Current format | `- @Lokacje:`, `- @PU:` (with `@` prefix) |
 
 When writing new sessions, always use the current format (with `@` prefix).
 
-### Format Comparison (Gen3 → Gen4)
-
-The main difference between Gen3 (2024–2026) and Gen4 (current) is the `@` prefix on metadata tags. Here is the same session in both formats:
-
-**Gen3 (old):**
-
-```markdown
-### 2025-03-15, Oblężenie Steadwick, Catherine
-
-Opis sesji...
-
-- Lokalizacje:
-    - Steadwick
-    - Bracada
-- Logi:
-    - https://pastebin.com/abc123
-- PU:
-    - Crag Hack: 0.3
-    - Gem: 0.5
-- Zmiany:
-    - Crag Hack
-        - @lokacja: Steadwick
-```
-
-**Gen4 (current):**
-
-```markdown
-### 2025-03-15, Oblężenie Steadwick, Catherine
-
-Opis sesji...
-
-- @Lokacje:
-    - Steadwick
-    - Bracada
-- @Logi:
-    - https://pastebin.com/abc123
-- @PU:
-    - Crag Hack: 0.3
-    - Gem: 0.5
-- @Zmiany:
-    - Crag Hack
-        - @lokacja: Steadwick
-```
-
-Key differences: Gen4 uses `@Lokacje` (not `Lokalizacje`), `@Logi` (not `Logi`), `@PU` (not `PU`), and `@Zmiany` (not `Zmiany`). Gen4 also introduces `@Transfer`, `@Intel`, `@Narrator`, and `@Data` metadata blocks. Entity-level tags inside `@Zmiany` always used the `@` prefix in both formats.
+The main difference between Gen3 (2024-2026) and Gen4 (current) is the `@` prefix on metadata tags. Gen4 uses `@Lokacje` (instead of `Lokalizacje`), `@Logi` (instead of `Logi`), `@PU` (instead of `PU`), and `@Zmiany` (instead of `Zmiany`). Gen4 also introduces `@Transfer`, `@Intel`, `@Narrator`, and `@Data` metadata blocks. Entity-level tags inside `@Zmiany` always used the `@` prefix in both formats.
 
 ## Editing Existing Sessions
 
 Coordinators can modify the metadata of an existing session (locations, PU, logs, changes, Intel, and body text) without manually editing the Markdown file. The system locates the session by its header, replaces the specified metadata blocks, and preserves any non-metadata content (such as Objaśnienia or Efekty blocks).
 
-When editing a session written in an older format (Gen2 or Gen3), the coordinator must request a format upgrade at the same time. The system converts all metadata to the current Gen4 `@`-prefixed syntax automatically, while preserving the session's body text and non-metadata blocks.
+When editing a session written in an older format (Gen2 or Gen3), the Coordinator must request a format upgrade at the same time. The system converts all metadata to the current Gen4 `@`-prefixed syntax automatically, while preserving the session's body text and non-metadata blocks.
 
 ## Sessions Across Multiple Files
 
-The same session may appear in multiple Markdown files (e.g., a location log file and a thread file). This is handled automatically:
-
-- Sessions with identical headers are merged - PU is counted only once
-- The instance with the richest metadata is used as the primary source
-- Location lists, log links, and other array fields are combined
+The same session may appear in multiple Markdown files (e.g., a location log file and a thread file). This is handled automatically: sessions with identical headers are merged so PU is counted only once, the instance with the richest metadata is used as the primary source, and location lists, log links, and other array fields are combined.
 
 ## Expected Outcomes
 
@@ -248,19 +169,21 @@ A properly recorded session:
 
 | Situation | What happens | Recovery |
 |---|---|---|
-| **Wrong date format** (e.g., `2025-6-15`) | Session silently skipped during PU processing | Fix to `YYYY-MM-DD` format |
-| **Character name typo in PU** | Entire PU assignment stops | Fix the name to match a registered name or alias |
-| **Missing PU block** | Session processed but no PU awarded | Add `- @PU:` block with entries |
-| **Session in wrong file** | Still found if the file is a `.md` file in the repository | No action needed |
-| **Preserved blocks** (`Objaśnienia`, `Efekty`) | Kept as-is during format upgrades | No action needed |
+| Wrong date format (e.g., `2025-6-15`) | Session silently skipped during PU processing | Fix to `YYYY-MM-DD` format |
+| Character name typo in PU | Entire PU assignment stops | Fix the name to match a registered name or alias |
+| Missing PU block | Session processed but no PU awarded | Add `- @PU:` block with entries |
+| Session in wrong file | Still found if the file is a `.md` file in the repository | No action needed |
+| Preserved blocks (`Objaśnienia`, `Efekty`) | Kept as-is during format upgrades | No action needed |
 
 ## Related Documents
 
-- [PU.md](PU.md) - Monthly PU assignment process
-- [World-State.md](World-State.md) - Entity management and currency transfers
-- [Session-Logs.md](Session-Logs.md) - Session log fetching and location analysis
-- [Session-Graph.md](Session-Graph.md) - Session participation tracking
-- [Session-Integrity.md](Session-Integrity.md) - Session content verification
-- [Location-Graph.md](Location-Graph.md) - Location analysis from session routes
-- [Players.md](Players.md) - Player and character management
-- [Glossary](Glossary.md) - Term definitions
+- [PU.md](PU.md) — Monthly PU assignment process
+- [World-State.md](World-State.md) — Entity management and world-state changes
+- [Currency.md](Currency.md) — Currency tracking and transfers
+- [Session-Logs.md](Session-Logs.md) — Session log fetching and location analysis
+- [Session-Graph.md](Session-Graph.md) — Session participation tracking
+- [Session-Integrity.md](Session-Integrity.md) — Session content verification
+- [Location-Graph.md](Location-Graph.md) — Location analysis from session routes
+- [Players.md](Players.md) — Player and character management
+- [Structures](Structures.md) — What data the system tracks for each concept
+- [Glossary](Glossary.md) — Term definitions

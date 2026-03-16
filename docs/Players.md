@@ -1,44 +1,18 @@
 # Player & Character Management
 
-## Purpose
+## Overview
 
-This guide explains how coordinators register new players, create and update characters, and manage the player roster. It covers the full lifecycle from registration through ongoing updates to character removal.
-
-## Scope
-
-**What is included:**
-
-- Registering new players
-- Creating new characters (including starting PU calculation)
-- Updating player and character data
-- Removing characters (soft-delete)
-- What changes for players after updates
-
-**What is excluded:**
-
-- Monthly PU assignment process (see [PU.md](PU.md))
-- Session recording (see [Sessions.md](Sessions.md))
-- Internal data structures and file formats
+Coordinators register new players, create and update characters, and manage the player roster. This guide covers the full lifecycle from registration through ongoing updates to character removal.
 
 ## Actors and Responsibilities
 
-### Coordinator
+The Coordinator registers new players with their basic information, creates new characters for players, updates player metadata (webhook, triggers), updates character data (PU values, aliases, status, character sheet), and removes characters when needed (soft-delete).
 
-- Registers new players with their basic information
-- Creates new characters for players
-- Updates player metadata (webhook, triggers)
-- Updates character data (PU values, aliases, status, character sheet)
-- Removes characters when needed (soft-delete)
-
-### Player
-
-- Provides their Margonem ID and Discord webhook address
-- Requests new characters or reports issues to the coordinator
-- Receives updates automatically via Discord notifications
+The Player provides their Margonem ID and Discord webhook address, requests new characters or reports issues to the Coordinator, and receives updates automatically via Discord notifications.
 
 ## Adding a New Player
 
-### What is needed
+The following information is used during registration:
 
 | Information | Required | Description |
 |---|---|---|
@@ -47,21 +21,13 @@ This guide explains how coordinators register new players, create and update cha
 | Discord webhook | Recommended | For receiving PU and Intel notifications |
 | First character name | Optional | Can create the first character at the same time |
 
-### What happens
+The Coordinator registers the player in the entity store. The system validates that no duplicate player exists (throws an error if one does). If a first character is requested, it is created at the same time. The player's data becomes available for name resolution, PU processing, and notifications.
 
-1. The coordinator registers the player in the entity store
-2. The system validates that no duplicate player exists (throws an error if one does)
-3. If a first character is requested, it is created at the same time
-4. The player's data becomes available for name resolution, PU processing, and notifications
-
-### What the player sees
-
-- Discord notifications begin arriving when webhook is configured
-- Their character appears in PU reports and session records
+Once registered, the player begins receiving Discord notifications when a webhook is configured, and their character appears in PU reports and session records.
 
 ## Adding a New Character
 
-### What is needed
+The following information is used when creating a character:
 
 | Information | Required | Description |
 |---|---|---|
@@ -70,26 +36,15 @@ This guide explains how coordinators register new players, create and update cha
 | Character sheet URL | Recommended | Link to the character sheet |
 | Starting PU | Optional | Calculated automatically if not specified |
 
-### Starting PU calculation
+When a new character is created without specifying starting PU, the system calculates it automatically. It sums all earned PU (PU zdobyte) across the player's existing characters, then applies the formula: half of the total earned PU plus 20, rounded down. New players with no prior characters start at 20 PU.
 
-When a new character is created without specifying starting PU, the system calculates it automatically:
+Example: A player has two characters with 30 and 10 earned PU. New character starts with: floor((30 + 10) / 2 + 20) = floor(40) = 40 PU.
 
-1. Sum all earned PU (PU zdobyte) across the player's existing characters
-2. Formula: **half of the total earned PU plus 20, rounded down**
-3. New players with no prior characters start at **20 PU**
-
-**Example:** A player has two characters with 30 and 10 earned PU. New character starts with: floor((30 + 10) / 2 + 20) = floor(40) = **40 PU**.
-
-### What happens
-
-1. The character is registered in the entity store with ownership and starting PU
-2. A character file is created from a standard template (unless skipped)
-3. The character becomes available for PU processing and name resolution
-4. If the player doesn't exist yet, a player entry is automatically created
+The character is registered in the entity store with ownership and starting PU. A character file is created from a standard template (unless skipped). The character becomes available for PU processing and name resolution. If the player does not exist yet, a player entry is automatically created.
 
 ## Updating Player Data
 
-### What can be updated
+The following player fields can be updated:
 
 | Field | Description | Example |
 |---|---|---|
@@ -97,33 +52,23 @@ When a new character is created without specifying starting PU, the system calcu
 | Margonem ID | Game platform identifier | `12345` |
 | Triggers | Restricted session topics the player wants to avoid | `spiders`, `heights` |
 
-### Webhook validation
-
-The Discord webhook URL must follow the format `https://discord.com/api/webhooks/...`. Invalid URLs are rejected.
-
-### Trigger replacement
-
-When triggers are updated, all existing triggers are replaced with the new list. To add a trigger, the full list must be provided.
+The Discord webhook URL must follow the format `https://discord.com/api/webhooks/...`. Invalid URLs are rejected. When triggers are updated, all existing triggers are replaced with the new list. To add a trigger, the full list must be provided.
 
 ## Updating Character Data
 
-### Entity-level data
+Character updates affect two targets in a single operation: the entity store and the character file.
 
-These updates affect the character's record in the entity store:
+Entity-level data in the entity store includes:
 
 | Field | Description |
 |---|---|
 | PU values | Sum, earned, overflow, starting PU |
 | Aliases | Alternative names for name resolution |
-| Status | Active (`Aktywny`), Inactive (`Nieaktywny`), or Removed (`Usunięty`) |
+| Status | Active (Aktywny), Inactive (Nieaktywny), or Removed (Usunięty) |
 
-**PU auto-derivation:** When updating PU Sum, the system automatically calculates PU Earned if it's missing (and vice versa), using the formula: Earned = Sum − Starting.
+When updating PU Sum, the system automatically calculates PU Earned if it is missing (and vice versa), using the formula: Earned = Sum - Starting. New aliases are added alongside existing ones — they are additive, not replaced.
 
-**Aliases are additive:** New aliases are added alongside existing ones. They are not replaced.
-
-### Character file data
-
-These updates affect the character's individual file:
+Character file data includes:
 
 | Field | Description |
 |---|---|
@@ -134,58 +79,44 @@ These updates affect the character's individual file:
 | Reputation | Three-tier reputation (positive, neutral, negative) with locations |
 | Additional notes | Free-form notes about the character |
 
-**Unknown special items** are automatically registered as new entities in the system.
-
-### Both targets are updated in a single operation
-
-When the coordinator updates a character, both the entity store and the character file are modified in one step.
+Unknown special items are automatically registered as new entities in the system.
 
 ## Removing a Character
 
-### What happens
+The character is marked as removed (Usunięty) with an effective date. No data is physically deleted — the character remains in the system. Removed characters stop appearing in standard queries and PU processing. This action requires explicit confirmation due to its significance.
 
-1. The character is marked as **removed** (`Usunięty`) with an effective date
-2. No data is physically deleted - the character remains in the system
-3. Removed characters stop appearing in standard queries and PU processing
-4. This action requires explicit confirmation due to its significance
-
-### Reversal
-
-Removed characters can be reactivated by updating their status back to `Aktywny`.
-
-### Viewing removed characters
-
-Removed characters are hidden by default but can be included in queries when needed.
+Removed characters can be reactivated by updating their status back to Aktywny. Removed characters are hidden by default but can be included in queries when needed.
 
 ## Expected Outcomes
 
 After player and character management operations:
 
-1. **Player data is consistent** - webhook, triggers, and Margonem ID are validated and stored
-2. **Characters are properly owned** - each character is linked to its player
-3. **Starting PU is fair** - calculated automatically based on the player's total earned PU
-4. **Name resolution works** - character names and aliases are indexed for automatic matching
-5. **Removed characters are preserved** - soft-delete ensures no historical data is lost
+1. Player data is consistent — webhook, triggers, and Margonem ID are validated and stored
+2. Characters are properly owned — each character is linked to its player
+3. Starting PU is fair — calculated automatically based on the player's total earned PU
+4. Name resolution works — character names and aliases are indexed for automatic matching
+5. Removed characters are preserved — soft-delete ensures no historical data is lost
 
 ## Exceptions and Recovery Actions
 
 | Situation | What happens | Recovery |
 |---|---|---|
-| **Duplicate player name** | Registration fails with an error | Use a different name or check for existing entries |
-| **Duplicate character name** | Creation fails with an error | Use a different name |
-| **Invalid webhook URL** | Update fails with validation error | Provide a valid `https://discord.com/api/webhooks/...` URL |
-| **Character has no player** | Player entry is automatically created | No action needed |
-| **Removed character referenced in session** | Character exists in the data for historical accuracy | No action needed; use include-deleted option to view |
+| Duplicate player name | Registration fails with an error | Use a different name or check for existing entries |
+| Duplicate character name | Creation fails with an error | Use a different name |
+| Invalid webhook URL | Update fails with validation error | Provide a valid `https://discord.com/api/webhooks/...` URL |
+| Character has no player | Player entry is automatically created | No action needed |
+| Removed character referenced in session | Character exists in the data for historical accuracy | No action needed; use include-deleted option to view |
 
-## Audit Trail / Evidence of Completion
+## Audit Trail
 
-- **Entity store changes**: All player and character updates are committed to the repository, providing full Git history
-- **Character files**: Each character's individual file tracks character-level changes (condition, items, reputation)
-- **Discord notifications**: Players receive confirmation of PU updates
+- Entity store changes — all player and character updates are committed to the repository, providing full Git history
+- Character files — each character's individual file tracks character-level changes (condition, items, reputation)
+- Discord notifications — players receive confirmation of PU updates
 
 ## Related Documents
 
-- [PU.md](PU.md) - Monthly PU assignment process
-- [Sessions.md](Sessions.md) - How sessions are recorded
-- [Glossary](Glossary.md) - Term definitions
-- [Migration](Migration.md) - Transition from the legacy system
+- [PU.md](PU.md) — Monthly PU assignment process
+- [Sessions.md](Sessions.md) — How sessions are recorded
+- [Glossary](Glossary.md) — Term definitions
+- [Structures](Structures.md) — What data the system tracks for each concept
+- [Migration](Migration.md) — Transition from the legacy system

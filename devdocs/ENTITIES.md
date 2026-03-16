@@ -1,18 +1,16 @@
-# Entity System - Technical Reference
-
-**Status**: Reference documentation.
+# Entity System
 
 ---
 
-## 1. Scope
+## Scope
 
-This document covers the entity subsystem: `Get-Entity` (registry parsing, multi-file merge, canonical names), `Get-EntityState` (session override merging), and the three-layer character state merge in `Get-PlayerCharacter -IncludeState`.
+The entity subsystem consists of `Get-Entity` (registry parsing, multi-file merge, canonical names), `Get-EntityState` (session override merging), and the three-layer character state merge in `Get-PlayerCharacter -IncludeState`.
 
-**Not covered**: Entity write operations - see [ENTITY-WRITES.md](ENTITY-WRITES.md). Character file format - see [CHARFILE.md](CHARFILE.md).
+Entity write operations are documented in [ENTITY-WRITES.md](ENTITY-WRITES.md). Character file format is documented in [CHARFILE.md](CHARFILE.md).
 
 ---
 
-## 2. Architecture Overview
+## Architecture Overview
 
 ```
 Pass 1:  Get-Entity ──> Entity objects (file data only)
@@ -36,11 +34,9 @@ Pass 3:  Get-PlayerCharacter -IncludeState ──> Three-layer character state
 
 ---
 
-## 3. `Get-Entity` - Registry Parsing
+## `Get-Entity` — Registry Parsing
 
-### 3.1 Helper Functions (`private/temporal-helpers.ps1`)
-
-All temporal helpers live in `private/temporal-helpers.ps1`, which is dot-sourced by consuming files (`get-entity.ps1`, `get-entitystate.ps1`, `get-session.ps1`, etc.) rather than auto-loaded by the module loader.
+All temporal helpers live in `private/temporal-helpers.ps1`, which is dot-sourced by consuming files (`get-entity.ps1`, `get-entitystate.ps1`, `get-session.ps1`, etc.).
 
 | Function | Purpose |
 |---|---|
@@ -55,7 +51,7 @@ All temporal helpers live in `private/temporal-helpers.ps1`, which is dot-source
 | `ConvertFrom-CoordinateString` | Parses `"X, Y"` coordinate strings from `@koordynaty` tag values. Splits on comma, `TryParse`s both parts as `[int]`. Returns `@{ X = [int]; Y = [int] }` on success, `$null` on malformed input. |
 | `Resolve-EntityCN` | Builds hierarchical canonical names for locations via `@lokacja` chain (in `public/get-entity.ps1`) |
 
-**Module-level regex patterns** (defined at `$script:` scope in `temporal-helpers.ps1`):
+Module-level regex patterns (defined at `$script:` scope in `temporal-helpers.ps1`):
 
 | Variable | Purpose |
 |---|---|
@@ -64,39 +60,33 @@ All temporal helpers live in `private/temporal-helpers.ps1`, which is dot-source
 | `$SessionDatePattern` | Matches `YYYY-MM-DD` with optional `/DD` range suffix in session headers |
 | `$SeasonKeywords` | `HashSet[string]` of valid Polish season keywords (`wiosna`, `lato`, `jesień`, `zima`) |
 
-### 3.1a `Resolve-PartialDate`
-
-Accepts partial date strings and expands them to `[datetime]` values. The `-IsEnd` flag controls which boundary is resolved.
+`Resolve-PartialDate` accepts partial date strings and expands them to `[datetime]` values. The `-IsEnd` flag controls which boundary is resolved.
 
 | Parameter | Type | Description |
 |---|---|---|
 | `DateStr` | string | Partial or full date: `YYYY`, `YYYY-MM`, or `YYYY-MM-DD` |
 | `IsEnd` | bool | When `$true`, resolves to last day of period; when `$false`, resolves to first day |
 
-**Expansion rules**:
+Expansion rules:
 - `YYYY` + `IsEnd=$false` -> `YYYY-01-01`; `IsEnd=$true` -> `YYYY-12-31`
 - `YYYY-MM` + `IsEnd=$false` -> `YYYY-MM-01`; `IsEnd=$true` -> `YYYY-MM-{DaysInMonth}`
 - `YYYY-MM-DD` -> used as-is
 - Empty/whitespace -> `$null`
 - Unparseable -> `$null` (caught via `ParseExact` try/catch)
 
-### 3.1b `Resolve-SeasonForDate`
-
-Maps a `[datetime]` to a Polish season name. Supports custom season mappings via `$script:CachedSeasonMapping` (loaded from `local.config.psd1`); falls back to default meteorological seasons.
+`Resolve-SeasonForDate` maps a `[datetime]` to a Polish season name. Supports custom season mappings via `$script:CachedSeasonMapping` (loaded from `local.config.psd1`); falls back to default meteorological seasons.
 
 | Parameter | Type | Description |
 |---|---|---|
-| `Date` | datetime | **Mandatory**. The date to resolve. |
+| `Date` | datetime | Mandatory. The date to resolve. |
 
-**Default mapping** (meteorological seasons):
-- Months 3-5: `wiosna` (spring)
-- Months 6-8: `lato` (summer)
-- Months 9-11: `jesień` (autumn)
-- Months 12, 1-2: `zima` (winter)
+Default mapping (meteorological seasons):
+- Months 3-5 — `wiosna` (spring)
+- Months 6-8 — `lato` (summer)
+- Months 9-11 — `jesień` (autumn)
+- Months 12, 1-2 — `zima` (winter)
 
-### 3.1c `Get-NestedBulletText`
-
-Collects text from child bullets of a parent list item, filtered through `Test-TemporalActivity`.
+`Get-NestedBulletText` collects text from child bullets of a parent list item, filtered through `Test-TemporalActivity`.
 
 | Parameter | Type | Description |
 |---|---|---|
@@ -106,37 +96,37 @@ Collects text from child bullets of a parent list item, filtered through `Test-T
 
 Returns a single newline-joined string of all temporally-active child texts, or `$null` when no children match.
 
-### 3.1d `ConvertTo-SessionDate`
-
-Strict date parser for `yyyy-MM-dd` strings. Uses `[datetime]::TryParseExact` with `InvariantCulture` — no exceptions on malformed input.
+`ConvertTo-SessionDate` is a strict date parser for `yyyy-MM-dd` strings. Uses `[datetime]::TryParseExact` with `InvariantCulture`.
 
 | Parameter | Type | Description |
 |---|---|---|
-| `DateString` | string | **Mandatory**. Date string in `yyyy-MM-dd` format. |
+| `DateString` | string | Mandatory. Date string in `yyyy-MM-dd` format. |
 
 Returns `[datetime]` on success, `$null` on failure. Used by session and reporting code that needs date parsing without try/catch overhead (e.g., batch processing session headers).
 
-### 3.1e `ConvertFrom-CoordinateString`
-
-Parses `@koordynaty` tag values in `"X, Y"` format into a typed hashtable.
+`ConvertFrom-CoordinateString` parses `@koordynaty` tag values in `"X, Y"` format into a typed hashtable.
 
 | Parameter | Type | Description |
 |---|---|---|
-| `Text` | string | **Mandatory**. Coordinate string (e.g., `"15, 23"`). |
+| `Text` | string | Mandatory. Coordinate string (e.g., `"15, 23"`). |
 
 Splits on comma, trims whitespace, and `[int]::TryParse`s both parts. Returns `@{ X = [int]; Y = [int] }` on success, `$null` when the string has fewer than two parts or either part is non-numeric. Called by `Get-Entity` and `Get-EntityState` when processing `@koordynaty` tags.
 
-### 3.2 Multi-File Merge
+---
+
+## Multi-File Merge
 
 Entity registry files: `entities.md` and `*-NNN-ent.md` variants.
 
-**Sorting**: Files sorted by numeric key descending. `entities.md` has sort key `MaxValue` (processed first, lowest primacy). Lower numbers are processed last -> highest override primacy.
+Sorting: Files sorted by numeric key descending. `entities.md` has sort key `MaxValue` (processed first, lowest primacy). Lower numbers are processed last, giving highest override primacy.
 
-**Merge rules**: Same-name entities across files have their histories **concatenated**, not replaced. Names, aliases, overrides, and all history lists are combined.
+Merge rules: Same-name entities across files have their histories concatenated. Names, aliases, overrides, and all history lists are combined.
 
 All files are loaded in a single `Get-Markdown` call for efficiency.
 
-### 3.3 Entity Type Sections
+---
+
+## Entity Type Sections
 
 Level-2 headers define entity type sections, mapped via `$TypeMap`:
 
@@ -150,7 +140,9 @@ Level-2 headers define entity type sections, mapped via `$TypeMap`:
 | `## Postać` | Postać |
 | `## Przedmiot` | Przedmiot |
 
-### 3.4 @Tag Recognition
+---
+
+## @Tag Recognition
 
 | Tag | Type | Property | Behavior |
 |---|---|---|---|
@@ -165,12 +157,14 @@ Level-2 headers define entity type sections, mapped via `$TypeMap`:
 | `@plik` | Temporal | `FilePath`, `FilePathHistory` | Relative path to the entity's file (e.g. character `.md` file). Supports temporal ranges for entities whose file reference changes over time. Populated automatically by `New-PlayerCharacter` and during migration from `Gracze.md` link paths. |
 | `@nazwa_nerthus` | Temporal | `NerthusName`, `NerthusNameHistory` | RP override name for the entity. Active value added to `Names` for resolution. Scalar semantics: last-active-wins (like `@lokacja`). |
 | `@slug` | Temporal | `Names` | Unique disambiguator string. Active value added to `Names` HashSet for resolution. Used to distinguish same-name entities (e.g., multiple "Komnata Rady" under different parents). No dedicated property — resolved via the name index like `@alias`. |
-| `@koordynaty` | Temporal | `Coordinates`, `CoordinateHistory` | Map tile coordinates as `X, Y` (32×32px tile units). Active value: `@{ X = [int]; Y = [int] }` or `$null` for interiors. Presence implies exterior location (has a world-map position). |
+| `@koordynaty` | Temporal | `Coordinates`, `CoordinateHistory` | Map tile coordinates as `X, Y` (32x32px tile units). Active value: `@{ X = [int]; Y = [int] }` or `$null` for interiors. Presence implies exterior location (has a world-map position). |
 | `@zawiera` | Non-temporal | `Contains` | Child containment declaration |
-| `@generyczne_nazwy` | Non-temporal | `GenericNames`, `Names` | Comma-delimited generic names for the entity (e.g. "Strażnik Miasta, Wartownik"). Added to `Names` for resolution. |
+| `@generyczne_nazwy` | Non-temporal | `GenericNames`, `Names` | Comma-delimited generic names for the entity (e.g. "Straznik Miasta, Wartownik"). Added to `Names` for resolution. |
 | Any other `@tag` | Temporal | `Overrides[tag]` | Generic key-value storage |
 
-### 3.5 Temporal Validity Ranges
+---
+
+## Temporal Validity Ranges
 
 Format: `(YYYY-MM:YYYY-MM)`, `(YYYY-MM:)`, `(:YYYY-MM)`, or absent (always active).
 
@@ -178,20 +172,20 @@ Partial dates resolved via `Resolve-PartialDate`:
 - Start bound -> first day of period (`YYYY-01-01`, `YYYY-MM-01`)
 - End bound -> last day of period (`YYYY-12-31`, `YYYY-MM-{DaysInMonth}`)
 
-**Seasonal markers**: `(zima)`, `(lato)`, `(wiosna)`, `(jesień)` — or combined with date ranges: `(2024-01:, zima)`. All history entry objects include a `Season` property (`$null` when not seasonal). `Test-TemporalActivity` checks both date bounds and season match.
-
-### 3.5a Door-Path Name Generation
+Seasonal markers: `(zima)`, `(lato)`, `(wiosna)`, `(jesień)` — or combined with date ranges: `(2024-01:, zima)`. All history entry objects include a `Season` property (`$null` when not seasonal). `Test-TemporalActivity` checks both date bounds and season match.
 
 For Lokacja and Mapa entities with active `@drzwi` entries, path-qualified names are generated and added to `Names`:
 
 ```
-Gwiżdżąca Grota with @drzwi: Steadwick and @drzwi: Czerwona Twierdza
--> Names: { "Gwiżdżąca Grota", "Steadwick/Gwiżdżąca Grota", "Czerwona Twierdza/Gwiżdżąca Grota" }
+Gwizdząca Grota with @drzwi: Steadwick and @drzwi: Czerwona Twierdza
+-> Names: { "Gwizdząca Grota", "Steadwick/Gwizdząca Grota", "Czerwona Twierdza/Gwizdząca Grota" }
 ```
 
-These path-qualified names enable session `@Lokacje` references like "Steadwick/Gwiżdżąca Grota" to resolve to the correct entity via the name index. CN remains single-valued (`Resolve-EntityCN` unchanged).
+These path-qualified names enable session `@Lokacje` references like "Steadwick/Gwizdząca Grota" to resolve to the correct entity via the name index. CN remains single-valued (`Resolve-EntityCN` unchanged).
 
-### 3.6 Parent-Child Lookup Optimization
+---
+
+## Parent-Child Lookup Optimization
 
 Uses `RuntimeHelpers.GetHashCode()` for O(1) identity-based parent lookups:
 
@@ -200,13 +194,17 @@ $ParentId = [RuntimeHelpers]::GetHashCode($LI.ParentListItem)
 $ChildrenOf[$ParentId].Add($LI)
 ```
 
-Single O(n) pass builds the lookup hashtable, avoiding O(n²) repeated `.Where()` filtering.
+Single O(n) pass builds the lookup hashtable, avoiding O(n^2) repeated `.Where()` filtering.
 
-### 3.7 Canonical Name Resolution (`Resolve-EntityCN`)
+---
 
-**Non-location/map entities**: `Type/Name` (e.g., `NPC/Sandro`)
+## Canonical Name Resolution
 
-**Lokacja and Mapa entities**: Hierarchical paths built by walking the `@lokacja` chain upward:
+`Resolve-EntityCN` builds canonical names (CN) for entities.
+
+Non-location/map entities use flat `Type/Name` paths (e.g., `NPC/Sandro`).
+
+Lokacja and Mapa entities use hierarchical paths built by walking the `@lokacja` chain upward:
 
 ```
 Resolve-EntityCN("Zamek Steadwick"):
@@ -219,23 +217,19 @@ Resolve-EntityCN("Zamek Steadwick"):
     -> "Lokacja/Antagarich/Erathia/Zamek Steadwick"
 ```
 
-**Cycle detection**: `HashSet[string]` of visited entity names. Warns to stderr and falls back to flat CN on cycle.
-
-**Memoization**: Cache dictionary prevents recomputation of already-resolved CNs.
+Cycle detection uses a `HashSet[string]` of visited entity names. Warns to stderr and falls back to flat CN on cycle. A memoization cache dictionary prevents recomputation of already-resolved CNs.
 
 ---
 
-## 4. `Get-EntityState` - Session Override Merge
+## `Get-EntityState` — Session Override Merge
 
-### 4.1 Two-Pass Architecture
+The function uses a two-pass architecture:
 
-1. **Input**: Entities from `Get-Entity` + sessions from `Get-Session`
-2. **Filter**: Sessions with `Changes` property and valid dates, sorted chronologically
-3. **Apply**: Each session's Zmiany entries are applied to entity objects
+1. Input — Entities from `Get-Entity` + sessions from `Get-Session`
+2. Filter — Sessions with `Changes` property and valid dates, sorted chronologically
+3. Apply — Each session's Zmiany entries are applied to entity objects
 
-### 4.2 Name Resolution Pipeline
-
-For each entity name in Zmiany blocks:
+For each entity name in Zmiany blocks, the name resolution pipeline applies:
 
 ```
 1. Exact entity lookup (case-insensitive dictionary)
@@ -244,11 +238,7 @@ For each entity name in Zmiany blocks:
 4. If all fail -> warn to stderr, skip change
 ```
 
-### 4.3 Auto-Dating
-
 Tags in `- Zmiany:` without explicit temporal ranges receive the session date as `ValidFrom` (open-ended). Tags with explicit `(YYYY-MM:YYYY-MM)` ranges use those instead.
-
-### 4.4 `@ilość` Arithmetic Deltas
 
 In Zmiany blocks, `@ilość` supports delta syntax:
 - `@ilość: +25` -> adds 25 to the current quantity
@@ -257,24 +247,13 @@ In Zmiany blocks, `@ilość` supports delta syntax:
 
 When a `+N` or `-N` pattern is detected, the system looks up the last active quantity value and computes the new absolute value. If no prior quantity exists, the base is treated as 0. The computed absolute value is stored in `QuantityHistory` so downstream code is unaffected.
 
-### 4.5 Override Application
+For each resolved entity change, the system appends to the appropriate history list (`LocationHistory`, `GroupHistory`, `StatusHistory`, `Overrides[tag]`, etc.) and tracks the entity in the `ModifiedEntities` HashSet.
 
-For each resolved entity change:
-- Append to appropriate history list (`LocationHistory`, `GroupHistory`, `StatusHistory`, `Overrides[tag]`, etc.)
-- Track entity in `ModifiedEntities` HashSet
+After all sessions are processed, for each modified entity: all history lists are sorted by `ValidFrom` (custom comparer: `$null` sorts first so always-active entries are stable at start), and active values are recomputed via `Get-LastActiveValue` / `Get-AllActiveValues`.
 
-### 4.6 History Resorting
-
-After all sessions processed, for each modified entity:
-1. Sort all history lists by `ValidFrom` (custom comparer: `$null` sorts first -> always-active entries stable at start)
-2. Recompute active values via `Get-LastActiveValue` / `Get-AllActiveValues`
-
-### 4.8 Performance Optimizations
-
-- **NameIndex reuse**: Callers processing multiple `Get-EntityState` invocations with the same entity set (e.g., `Get-EconomicTimeline`) can pre-build the name index via `Get-NameIndex` and pass it via `-NameIndex` to avoid repeated BK-tree construction.
-- **Lazy currency loading**: `private/currency-helpers.ps1` is dot-sourced only when the first session with `Transfers` is encountered. A `CurrencyLookup` dictionary (from `Build-CurrencyEntityLookup`) is built once and reused for all `Find-CurrencyEntity` calls within the invocation.
-
-### 4.7 Parameters
+Performance optimizations:
+- NameIndex reuse — Callers processing multiple `Get-EntityState` invocations with the same entity set (e.g., `Get-EconomicTimeline`) can pre-build the name index via `Get-NameIndex` and pass it via `-NameIndex` to avoid repeated BK-tree construction.
+- Lazy currency loading — `private/currency-helpers.ps1` is dot-sourced only when the first session with `Transfers` is encountered. A `CurrencyLookup` dictionary (from `Build-CurrencyEntityLookup`) is built once and reused for all `Find-CurrencyEntity` calls within the invocation.
 
 | Parameter | Type | Description |
 |---|---|---|
@@ -287,7 +266,7 @@ After all sessions processed, for each modified entity:
 
 ---
 
-## 5. Three-Layer Character State Merge
+## Three-Layer Character State Merge
 
 Performed by `Get-PlayerCharacter -IncludeState`.
 
@@ -296,17 +275,17 @@ Performed by `Get-PlayerCharacter -IncludeState`.
 | 1 (Baseline) | Character `.md` file (`Read-CharacterFile`) | Undated - always active, sorts before dated entries |
 | 2+3 (Overrides) | `Get-EntityState` result (entities.md + session Zmiany, already merged) | Temporal ranges parsed via `ConvertFrom-ValidityString` |
 
-**Scalar properties**: Last active value wins (most recent `ValidFrom`).
+Scalar properties: last active value wins (most recent `ValidFrom`).
 
-**Multi-valued properties**: All active values collected.
+Multi-valued properties: all active values collected.
 
-**Merged properties**: `Status`, `CharacterSheet`, `RestrictedTopics`, `Condition`, `SpecialItems`, `Reputation` (Positive/Neutral/Negative), `AdditionalNotes`, `DescribedSessions`.
+Merged properties: `Status`, `CharacterSheet`, `RestrictedTopics`, `Condition`, `SpecialItems`, `Reputation` (Positive/Neutral/Negative), `AdditionalNotes`, `DescribedSessions`.
 
-Characters with `Status = 'Usunięty'` are excluded unless `-IncludeDeleted`.
+Characters with `Status = 'Usuniety'` are excluded unless `-IncludeDeleted`.
 
 ---
 
-## 6. Entity Object Schema
+## Entity Object Schema
 
 | Property | Type | Description |
 |---|---|---|
@@ -338,7 +317,9 @@ Characters with `Status = 'Usunięty'` are excluded unless `-IncludeDeleted`.
 | `TypeHistory` | `List[object]` | Type changes with validity ranges |
 | `OwnerHistory` | `List[object]` | Ownership changes with validity ranges |
 
-### Player Object (`Get-Player`)
+---
+
+## Player Object (`Get-Player`)
 
 | Property | Type | Description |
 |---|---|---|
@@ -349,7 +330,9 @@ Characters with `Status = 'Usunięty'` are excluded unless `-IncludeDeleted`.
 | `Triggers` | string[] | Restricted session topics |
 | `Characters` | `List[object]` | Character objects (see below) |
 
-### Character Object (nested in Player)
+---
+
+## Character Object (nested in Player)
 
 | Property | Type | Description |
 |---|---|---|
@@ -363,7 +346,9 @@ Characters with `Status = 'Usunięty'` are excluded unless `-IncludeDeleted`.
 | `PUTaken` | decimal? | PU earned (derived or explicit) |
 | `AdditionalInfo` | string | Free-form notes |
 
-### PlayerCharacter Object (`Get-PlayerCharacter`)
+---
+
+## PlayerCharacter Object (`Get-PlayerCharacter`)
 
 | Property | Type | Description |
 |---|---|---|
@@ -378,7 +363,7 @@ Characters with `Status = 'Usunięty'` are excluded unless `-IncludeDeleted`.
 | `PUSum` | decimal? | Total PU value |
 | `PUTaken` | decimal? | PU earned (derived or explicit) |
 | `AdditionalInfo` | string | Free-form notes |
-| `Status` | string | Lifecycle status: `Aktywny`/`Nieaktywny`/`Usunięty` (only with `-IncludeState`) |
+| `Status` | string | Lifecycle status: `Aktywny`/`Nieaktywny`/`Usuniety` (only with `-IncludeState`) |
 | `CharacterSheet` | string | Character sheet URL (only with `-IncludeState`) |
 | `RestrictedTopics` | string | Restricted session topics (only with `-IncludeState`) |
 | `Condition` | string | Character condition/health (only with `-IncludeState`) |
@@ -389,25 +374,19 @@ Characters with `Status = 'Usunięty'` are excluded unless `-IncludeDeleted`.
 
 ---
 
-## 6a. Compiled C# Types (`lib/`)
+## Compiled C# Types
 
 Three compiled C# types in the `Robot` namespace replace PowerShell-native `[PSCustomObject]` construction on the entity hot path. All are loaded via a single batch `Add-Type` call in `robot.psm1` at module import time (guarded by `PSTypeName` check to avoid recompilation). PowerShell fallback paths exist for all three when compilation fails.
 
-### 6a.1 `Robot.Entity` (`lib/EntityModel.cs`)
+`Robot.Entity` (`lib/EntityModel.cs`) is the central 27-property entity domain model. Each `Get-Entity` invocation constructs one `Robot.Entity` instance per registered entity. Collection properties (`Names`, `Aliases`, `Groups`, `Doors`, `Coordinates`, all `*History` lists, `Overrides`, `GenericNames`, `Contains`, `UnresolvedTransfers`) are typed as `object` to preserve compatibility with PowerShell's `List[object]` creation pattern and the `Comparison[object]` sort delegates used by `Robot.TemporalSorter`. PowerShell accesses these via dynamic dispatch (`.Count`, `.Add()`, `.Sort()`, indexer).
 
-Central 27-property entity domain model. Each `Get-Entity` invocation constructs one `Robot.Entity` instance per registered entity instead of a `[PSCustomObject]@{}` hashtable.
+Consumers: `Get-Entity` (construction at lines 423/715), `Get-EntityState` (mutation of history lists, resorting), `Get-Player`, `Get-NameIndex`, `Resolve-Name`, `Get-EntityHistory`, CLI entity display, all reporting functions.
 
-**Property typing**: Collection properties (`Names`, `Aliases`, `Groups`, `Doors`, `Coordinates`, all `*History` lists, `Overrides`, `GenericNames`, `Contains`, `UnresolvedTransfers`) are typed as `object` rather than their concrete generic types. This preserves compatibility with PowerShell's `List[object]` creation pattern and the `Comparison[object]` sort delegates used by `Robot.TemporalSorter`. PowerShell accesses these via dynamic dispatch (`.Count`, `.Add()`, `.Sort()`, indexer), which works identically on `object`-typed properties.
+Fallback: When `Robot.Entity` is unavailable, `get-entity.ps1` falls back to `[PSCustomObject]@{}` with identical property names. Downstream code is unaffected because both paths expose the same property surface.
 
-**Consumers**: `Get-Entity` (construction at lines 423/715), `Get-EntityState` (mutation of history lists, resorting), `Get-Player`, `Get-NameIndex`, `Resolve-Name`, `Get-EntityHistory`, CLI entity display, all reporting functions.
+`Robot.TemporalEntry` / `Robot.CoordinateTemporalEntry` (`lib/TemporalEntry.cs`) are lightweight temporal value containers for entity history list entries.
 
-**Fallback**: When `Robot.Entity` is unavailable, `get-entity.ps1` falls back to `[PSCustomObject]@{}` with identical property names. Downstream code is unaffected because both paths expose the same property surface.
-
-### 6a.2 `Robot.TemporalEntry` / `Robot.CoordinateTemporalEntry` (`lib/TemporalEntry.cs`)
-
-Lightweight temporal value containers for entity history list entries.
-
-**`Robot.TemporalEntry`**: Unifies all domain-specific property names (Location, Type, Owner, Group, Status, Quantity, FilePath, NerthusName, alias text) into a single `Value` field. Four properties total:
+`Robot.TemporalEntry` unifies all domain-specific property names (Location, Type, Owner, Group, Status, Quantity, FilePath, NerthusName, alias text) into a single `Value` field:
 
 | Property | Type | Description |
 |---|---|---|
@@ -416,7 +395,7 @@ Lightweight temporal value containers for entity history list entries.
 | `ValidTo` | `DateTime?` | End of validity range (`$null` = open-ended) |
 | `Season` | `string` | Polish season keyword (`$null` when not seasonal) |
 
-**`Robot.CoordinateTemporalEntry`**: Carries `X`/`Y` integer fields instead of a string `Value`. Used exclusively by `@koordynaty` history entries.
+`Robot.CoordinateTemporalEntry` carries `X`/`Y` integer fields instead of a string `Value`. Used exclusively by `@koordynaty` history entries.
 
 | Property | Type | Description |
 |---|---|---|
@@ -430,38 +409,36 @@ Both types provide a default constructor and a parameterized constructor for inl
 
 History lists are sorted by `ValidFrom` via `Robot.TemporalSorter` (see `lib/TemporalSorter.cs`), with `$null` sorting before dated entries so always-active items remain stable at the start.
 
-**Consumers**: `get-entity.ps1` (construction in both C# and PowerShell paths), `get-entitystate.ps1` (session override application, `@Transfer` quantity deltas), `Get-EntityHistory`, `Get-LastActiveValue`, `Get-AllActiveValues`.
+Consumers: `get-entity.ps1` (construction in both C# and PowerShell paths), `get-entitystate.ps1` (session override application, `@Transfer` quantity deltas), `Get-EntityHistory`, `Get-LastActiveValue`, `Get-AllActiveValues`.
 
-### 6a.3 `Robot.EntityTagParser` (`lib/EntityTagParser.cs`)
+`Robot.EntityTagParser` (`lib/EntityTagParser.cs`) is a compiled 14-way entity tag dispatcher that replaces the per-bullet PowerShell tag parsing loop in `get-entity.ps1`.
 
-Compiled 14-way entity tag dispatcher that replaces the per-bullet PowerShell tag parsing loop in `get-entity.ps1`.
+API: `[Robot.EntityTagParser]::Parse($Texts, $ParentIndices, $Indents, $ValidityPattern, $DateRangePattern, $ActiveOn)` — static method accepting flat parallel arrays from `MarkdownScanner` output for a single entity type section.
 
-**API**: `[Robot.EntityTagParser]::Parse($Texts, $ParentIndices, $Indents, $ValidityPattern, $DateRangePattern, $ActiveOn)` — static method accepting flat parallel arrays from `MarkdownScanner` output for a single entity type section.
+Two-phase processing:
 
-**Two-phase processing**:
-
-1. **Phase 1** — Builds a `Dictionary<int, List<int>>` parent-to-children index in O(n) over the flat arrays, identifying root bullets (indent level 0) and child bullets.
-2. **Phase 2** — Iterates root bullets. For each root, dispatches child bullets through a 14-way tag prefix match:
+1. Phase 1 — Builds a `Dictionary<int, List<int>>` parent-to-children index in O(n) over the flat arrays, identifying root bullets (indent level 0) and child bullets.
+2. Phase 2 — Iterates root bullets. For each root, dispatches child bullets through a 14-way tag prefix match:
 
 | Tags (temporal) | Tags (non-temporal) |
 |---|---|
-| `@lokacja`, `@drzwi`, `@typ`, `@należy_do`, `@grupa`, `@status`, `@ilość`, `@alias`, `@plik`, `@nazwa_nerthus`, `@slug`, `@koordynaty` | `@zawiera`, `@generyczne_nazwy` |
+| `@lokacja`, `@drzwi`, `@typ`, `@nalezy_do`, `@grupa`, `@status`, `@ilosc`, `@alias`, `@plik`, `@nazwa_nerthus`, `@slug`, `@koordynaty` | `@zawiera`, `@generyczne_nazwy` |
 
 Unrecognized `@`-prefixed tags fall through to a generic overrides bucket (`Dictionary<string, List<string>>`).
 
-**Inlined logic**: `ConvertFrom-ValidityString` is inlined as the private `ParseValidity` method, handling four syntactic forms: plain value, date range, season keyword, and combined date+season. `ResolvePartialDate` expands `YYYY`/`YYYY-MM` abbreviations to full `DateTime` bounds. Non-temporal parentheticals (no colon, not a season keyword) are preserved as literal name parts for backward compatibility with entity names like "Rada (Ithan)".
+Inlined logic: `ConvertFrom-ValidityString` is inlined as the private `ParseValidity` method, handling four syntactic forms: plain value, date range, season keyword, and combined date+season. `ResolvePartialDate` expands `YYYY`/`YYYY-MM` abbreviations to full `DateTime` bounds. Non-temporal parentheticals (no colon, not a season keyword) are preserved as literal name parts for backward compatibility with entity names like "Rada (Ithan)".
 
-**Temporal filtering**: The `activeOn` parameter enables parse-time filtering for `@alias`, `@slug`, and generic override tags. Other temporal tags are returned unfiltered for downstream resolution by the PowerShell merge path. Season check uses default meteorological mapping only — custom season boundaries from `local.config.psd1` are not accessible from C#.
+Temporal filtering: The `activeOn` parameter enables parse-time filtering for `@alias`, `@slug`, and generic override tags. Other temporal tags are returned unfiltered for downstream resolution by the PowerShell merge path. Season check uses default meteorological mapping only — custom season boundaries from `local.config.psd1` are not accessible from C#.
 
-**Output**: `EntityParseResult` containing an array of `EntityTagEntry` objects (one per root entity bullet). Each entry carries typed `List<TemporalEntry>` fields for all temporal history properties and `List<string>` fields for non-temporal tags. The PowerShell merge path calls `.AddRange()` on each history list to accumulate across multiple entity definition file sections.
+Output: `EntityParseResult` containing an array of `EntityTagEntry` objects (one per root entity bullet). Each entry carries typed `List<TemporalEntry>` fields for all temporal history properties and `List<string>` fields for non-temporal tags. The PowerShell merge path calls `.AddRange()` on each history list to accumulate across multiple entity definition file sections.
 
-**Dispatch**: `get-entity.ps1` checks `([PSTypeName]'Robot.EntityTagParser').Type` at runtime and uses the C# path when available (line 276), falling back to the equivalent PowerShell loop (line 457+) when not compiled.
+Dispatch: `get-entity.ps1` checks `([PSTypeName]'Robot.EntityTagParser').Type` at runtime and uses the C# path when available (line 276), falling back to the equivalent PowerShell loop (line 457+) when not compiled.
 
-**Consumer**: `get-entity.ps1` (sole consumer via `[Robot.EntityTagParser]::Parse`).
+Consumer: `get-entity.ps1` (sole consumer via `[Robot.EntityTagParser]::Parse`).
 
 ---
 
-## 7. Edge Cases
+## Edge Cases
 
 | Scenario | Behavior |
 |---|---|
@@ -469,7 +446,7 @@ Unrecognized `@`-prefixed tags fall through to a generic overrides bucket (`Dict
 | Missing parent in `@lokacja` chain | Uses parent name as-is if entity not registered |
 | Null/empty validity dates | Returns `$null`; item considered always active |
 | `YYYY-02` end bound | Resolves to last day of February (auto-calculated via `DaysInMonth`) |
-| Duplicate entity names across files | Merged: histories concatenated, not replaced |
+| Duplicate entity names across files | Merged: histories concatenated |
 | Unresolved entity name in Zmiany | Warns to stderr, skips change |
 | Player/Entity dedup in resolution | When fuzzy match returns Player, maps back via `Player.Names` |
 | `$null` `ValidFrom` in history sorting | Sorts before dated entries (always-active items stable at start) |
@@ -477,7 +454,7 @@ Unrecognized `@`-prefixed tags fall through to a generic overrides bucket (`Dict
 
 ---
 
-## 8. Testing
+## Testing
 
 | Test file | Coverage |
 |---|---|
@@ -487,19 +464,20 @@ Unrecognized `@`-prefixed tags fall through to a generic overrides bucket (`Dict
 | `tests/get-playercharacter-state.Tests.ps1` | Three-layer merge, IncludeState, IncludeDeleted |
 | `tests/entity-status.Tests.ps1` | Status lifecycle, temporal status transitions |
 | `tests/przedmiot-entity.Tests.ps1` | Przedmiot type mappings, entity creation, duplicate detection |
-| `tests/currency-entity.Tests.ps1` | Currency entity creation, @ilość tag handling, quantity updates |
+| `tests/currency-entity.Tests.ps1` | Currency entity creation, @ilosc tag handling, quantity updates |
 | `tests/get-entity-mapa.Tests.ps1` | Mapa type parsing, @slug resolution, @url/@url_nerthus overrides, hierarchical CN, door-paths |
 
 Fixtures: `entities.md`, `entities-100-ent.md`, `entities-200-ent.md`, `sessions-zmiany.md`, `entities-mapa.md`, `entities-slug.md`.
 
 ---
 
-## 9. Related Documents
+## Related Documents
 
-- [ENTITY-WRITES.md](ENTITY-WRITES.md) - Write operations on entity files
-- [CHARFILE.md](CHARFILE.md) - Character file format (Layer 1 of three-layer merge)
-- [SESSIONS.md](SESSIONS.md) - Session Zmiany extraction
-- [NAME-RESOLUTION.md](NAME-RESOLUTION.md) - Name resolution used by `Get-EntityState`
-- [CURRENCY.md](CURRENCY.md) - Currency tracking system (denominations, @Transfer, reconciliation)
-- [LOCATION-GRAPH.md](LOCATION-GRAPH.md) - Location graph (coordinates, route edges, transition edges)
-- [MIGRATION.md](MIGRATION.md) - §1 Data Model Transition
+- [ENTITY-WRITES.md](ENTITY-WRITES.md) — Write operations on entity files
+- [CHARFILE.md](CHARFILE.md) — Character file format (Layer 1 of three-layer merge)
+- [SESSIONS.md](SESSIONS.md) — Session Zmiany extraction
+- [NAME-RESOLUTION.md](NAME-RESOLUTION.md) — Name resolution used by `Get-EntityState`
+- [CURRENCY.md](CURRENCY.md) — Currency tracking system (denominations, @Transfer, reconciliation)
+- [LOCATION-GRAPH.md](LOCATION-GRAPH.md) — Location graph (coordinates, route edges, transition edges)
+- [STRUCTURES.md](STRUCTURES.md) — Canonical data structure reference (Entity, Session, Player, etc.)
+- [MIGRATION.md](MIGRATION.md) — Data Model Transition

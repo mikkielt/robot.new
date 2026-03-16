@@ -1,18 +1,14 @@
-# Location Graph - Technical Reference
+# Location Graph
 
-**Status**: Reference documentation.
+## Scope
 
----
+The location graph subsystem comprises `Get-LocationGraph` (multi-source edge merging, node construction, staleness detection), route edge extraction in `Get-NamedLocationReport`, transition edge extraction in `Get-NamedLogLocationReport`, and `@koordynaty` tag parsing in `Get-Entity`/`Get-EntityState`.
 
-## 1. Scope
-
-This document covers the location graph subsystem: `Get-LocationGraph` (multi-source edge merging, node construction, staleness detection), route edge extraction in `Get-NamedLocationReport`, transition edge extraction in `Get-NamedLogLocationReport`, and `@koordynaty` tag parsing in `Get-Entity`/`Get-EntityState`.
-
-**Not covered**: Location entity CRUD — see [ENTITY-WRITES.md](ENTITY-WRITES.md). Log fetching and parsing — see [LOGS.md](LOGS.md). Name resolution internals — see [NAME-RESOLUTION.md](NAME-RESOLUTION.md). Session format and metadata extraction — see [SESSIONS.md](SESSIONS.md).
+Location entity CRUD is documented in [ENTITY-WRITES.md](ENTITY-WRITES.md). Log fetching and parsing is documented in [LOGS.md](LOGS.md). Name resolution internals are documented in [NAME-RESOLUTION.md](NAME-RESOLUTION.md). Session format and metadata extraction is documented in [SESSIONS.md](SESSIONS.md).
 
 ---
 
-## 2. Architecture Overview
+## Architecture Overview
 
 ```
 Data Sources                          Intermediate Reports              Graph Assembly
@@ -31,7 +27,7 @@ Session Logs (LocationSegments) ────>│
                                      └─> Staleness detection (CoordinateHistory)
 ```
 
-### Source Files
+Source files:
 
 | File | Function | Role |
 |---|---|---|
@@ -40,15 +36,15 @@ Session Logs (LocationSegments) ────>│
 | `public/reporting/get-namedloglocationreport.ps1` | `Get-NamedLogLocationReport` | Transition edge extraction (and log location analysis) |
 | `public/get-entity.ps1` | `Get-Entity` | `@koordynaty` tag parsing |
 | `public/get-entitystate.ps1` | `Get-EntityState` | `@koordynaty` Zmiany override |
-| `private/cli/cli-registry.ps1` | — | CLI menu entry `location-graph` |
+| `private/cli/cli-registry.ps1` | -- | CLI menu entry `location-graph` |
 | `private/cli/cli-wf-reporting.ps1` | `Invoke-LocationGraphWorkflow` | CLI workflow |
 | `private/location-helpers.ps1` | `Get-MapBaseName` | Map name suffix stripping |
 
 ---
 
-## 3. `@koordynaty` Tag
+## @koordynaty Tag
 
-### 3.1 Syntax
+Syntax:
 
 ```markdown
 * Wieża Obserwacyjna
@@ -56,42 +52,25 @@ Session Logs (LocationSegments) ────>│
     - @koordynaty: 130, 85 (2025-01:)
 ```
 
-Format: `X, Y` where X and Y are integer tile coordinates (32×32 pixel units on the Margonem world map). Supports temporal validity ranges like all other tags (see [ENTITIES.md](ENTITIES.md) §3.6).
+Format: `X, Y` where X and Y are integer tile coordinates (32x32 pixel units on the Margonem world map). Supports temporal validity ranges like all other tags (see [ENTITIES.md](ENTITIES.md) Temporal Scoping section).
 
 Interior locations (no world-map position) omit `@koordynaty` entirely; their `Coordinates` property resolves to `$null`.
 
-### 3.2 Parsing (Get-Entity)
+In `public/get-entity.ps1`, the `@koordynaty` case in the tag switch: (1) Splits the value on `,` -- expects exactly 2 parts. (2) Validates both parts parse as `[int]`. (3) Builds a history entry: `@{ X; Y; ValidFrom; ValidTo; Season }`. (4) Appends to `$CoordinateHistory` (a `List[object]`). Active coordinate resolution mirrors `@nazwa_nerthus`: iterates `$CoordinateHistory` in reverse, applies `Test-TemporalActivity`, and takes the first active entry.
 
-In `public/get-entity.ps1`, the `@koordynaty` case in the tag switch:
-
-1. Splits the value on `,` — expects exactly 2 parts
-2. Validates both parts parse as `[int]`
-3. Builds a history entry: `@{ X; Y; ValidFrom; ValidTo; Season }`
-4. Appends to `$CoordinateHistory` (a `List[object]`)
-
-Active coordinate resolution mirrors `@nazwa_nerthus`: iterates `$CoordinateHistory` in reverse, applies `Test-TemporalActivity`, and takes the first active entry.
-
-Entity object properties added:
-- `Coordinates` — `@{ X = [int]; Y = [int] }` or `$null` (active value)
-- `CoordinateHistory` — `List[object]` of all temporal entries
-
-### 3.3 Session Overrides (Get-EntityState)
+Entity object properties added: `Coordinates` (`@{ X = [int]; Y = [int] }` or `$null` for the active value) and `CoordinateHistory` (`List[object]` of all temporal entries).
 
 In `public/get-entitystate.ps1`, the `@koordynaty` case in the Zmiany tag switch follows the same parse-validate-append pattern. The entry is auto-dated from the session date (same as `@lokacja`, `@nazwa_nerthus`, etc.).
-
-### 3.4 Merge (Get-Entity multi-file)
 
 `CoordinateHistory` merge follows the same pattern as `NerthusNameHistory`: entries from secondary files are appended, then the combined list is re-sorted and active value recomputed.
 
 ---
 
-## 4. Route Edges
-
-### 4.1 Extraction
+## Route Edges
 
 Implemented in `Get-NamedLocationReport` (`public/reporting/get-namedlocationreport.ps1`).
 
-Session `@Lokacje` entries record locations where meaningful action took place — they do not represent a physical route. The optional `->` separator indicates a location transition within a session:
+Session `@Lokacje` entries record locations where meaningful action took place -- they do not represent a physical route. The optional `->` separator indicates a location transition within a session:
 
 ```markdown
 - @Lokacje:
@@ -100,9 +79,7 @@ Session `@Lokacje` entries record locations where meaningful action took place �
 
 This notation is not widely used. When present, the function splits each location string on `\s*->\s*|\s+- \s*` (precompiled regex `$RouteSplitRegex`), cleans segments (trim, strip trailing `*`, skip `Brak`), then extracts consecutive pairs as route edges.
 
-### 4.2 Return Type Change
-
-`Get-NamedLocationReport` returns a `[PSCustomObject]` wrapper instead of a plain array:
+`Get-NamedLocationReport` returns a `[PSCustomObject]` wrapper:
 
 ```powershell
 [PSCustomObject]@{
@@ -111,11 +88,9 @@ This notation is not widely used. When present, the function splits each locatio
 }
 ```
 
-**Breaking change**: callers that previously iterated the return value directly must now access `.Locations`. Updated callers:
-- `migration/phase5-session-upgrade.ps1` — uses `$LocationReportResult.Locations`
-- CLI registry `location-report` entry — `DataTransform = { param($R) $R.Locations }` for backward-compatible table display
+Breaking change: callers that previously iterated the return value directly must now access `.Locations`. Updated callers: `migration/phase5-session-upgrade.ps1` uses `$LocationReportResult.Locations`; CLI registry `location-report` entry uses `DataTransform = { param($R) $R.Locations }` for backward-compatible table display.
 
-### 4.3 Route Edge Schema
+Route edge schema:
 
 | Property | Type | Description |
 |---|---|---|
@@ -127,17 +102,11 @@ This notation is not widely used. When present, the function splits each locatio
 
 ---
 
-## 5. Transition Edges (Primary Connectivity Source)
+## Transition Edges
 
-Session logs are the primary source of truth for physical location connectivity. While session `@Lokacje` metadata records only where meaningful action occurred, log LocationSegments capture every physical location a character passes through — including intermediate locations omitted from session metadata.
+Session logs are the primary source of truth for physical location connectivity. Session `@Lokacje` metadata records only where meaningful action occurred; log LocationSegments capture every physical location a character passes through -- including intermediate locations omitted from session metadata.
 
-### 5.1 Extraction
-
-Implemented in `Get-NamedLogLocationReport` (`public/reporting/get-namedloglocationreport.ps1`).
-
-After building the `$LocationEntries` list from resolved LocationSegments, the function iterates consecutive pairs. Self-transitions (same resolved or raw name, case-insensitive) are skipped.
-
-### 5.2 Integration in Output
+Implemented in `Get-NamedLogLocationReport` (`public/reporting/get-namedloglocationreport.ps1`). After building the `$LocationEntries` list from resolved LocationSegments, the function iterates consecutive pairs. Self-transitions (same resolved or raw name, case-insensitive) are skipped.
 
 Each session result object gains two properties:
 
@@ -146,7 +115,7 @@ Each session result object gains two properties:
 | `Transitions` | `PSCustomObject[]` | Consecutive location pair edges |
 | `Summary.TransitionCount` | int | Count of transitions for the session |
 
-### 5.3 Transition Edge Schema
+Transition edge schema:
 
 | Property | Type | Description |
 |---|---|---|
@@ -160,29 +129,19 @@ Each session result object gains two properties:
 
 ---
 
-## 5b. Map Name Stripping (`Get-MapBaseName`)
+## Map Name Stripping — Get-MapBaseName
 
 Game maps use naming conventions with floor, room, direction, and difficulty suffixes (e.g. `Piekielna Grota p.3 - sala 1`). When `Resolve-Name` fails on a raw LocationSegment header, `Get-NamedLogLocationReport` falls back to `Get-MapBaseName` to produce progressively shorter candidate names.
 
-### Algorithm
+Algorithm: (1) Strip trailing difficulty parenthetical `(poziom: ...)` if present -- add the cleaned name as the first candidate. (2) Split the remaining name by whitespace. (3) Progressively drop trailing words, keeping at least 1 word. Each shorter version becomes a candidate. (4) Trailing separators (`-`, `--`, `---`) are trimmed from each candidate. (5) Return all candidates ordered from longest (least stripped) to shortest.
 
-1. Strip trailing difficulty parenthetical `(poziom: ...)` if present — add the cleaned name as the first candidate.
-2. Split the remaining name by whitespace.
-3. Progressively drop trailing words, keeping at least 1 word. Each shorter version becomes a candidate.
-4. Trailing separators (`-`, `–`, `—`) are trimmed from each candidate.
-5. Return all candidates ordered from longest (least stripped) to shortest.
+The caller iterates candidates in order and uses `Resolve-Name` on each. The first candidate that resolves is used. The `StrippedName` output property records which candidate matched.
 
-The caller iterates candidates in order and uses `Resolve-Name` on each. The **first** candidate that resolves is used. The `StrippedName` output property records which candidate matched.
-
-### Source
-
-`private/location-helpers.ps1` — dot-sourced by `Get-NamedLogLocationReport`. Resolved entries receive `Stage = 'MapStrip'`.
+Source: `private/location-helpers.ps1` -- dot-sourced by `Get-NamedLogLocationReport`. Resolved entries receive `Stage = 'MapStrip'`.
 
 ---
 
-## 6. `Get-LocationGraph`
-
-### 6.1 Parameters
+## Get-LocationGraph
 
 | Parameter | Type | Mandatory | Description |
 |---|---|---|---|
@@ -194,21 +153,9 @@ The caller iterates candidates in order and uses `Resolve-Name` on each. The **f
 | `IncludeMovementEdges` | switch | No | Include transition edges from session logs |
 | `Quiet` | switch | No | Suppress warnings |
 
-### 6.2 Algorithm
+Algorithm: (1) Load data -- auto-fetch `Get-Entity` and `Get-Session` if not provided (passes `MinDate`/`MaxDate`). (2) Build entity lookup -- case-insensitive dictionary keyed by `Name` and all entries in `Names` (aliases). (3) Edge accumulation -- uses a `$AddEdge` scriptblock closure over an `$EdgeKey` dictionary (key = `"Source|Target|Type"`, case-insensitive); duplicate edges increment `Weight` and extend `Sources` list. (4) Containment edges (Type=`Containment`) from `@lokacja` chain: `parent -> child` for every `Lokacja` entity with a non-null `Location`. (5) Door edges (Type=`Door`) from `@drzwi`: `entity -> door_target` for every Lokacja with non-empty `Doors` list. (6) Route edges (Type=`Route`) from `Get-NamedLocationReport` `.RouteEdges` -- consecutive `->` segments from session metadata. (7) Inferred hierarchy edges (Type=`InferredHierarchy`) from `Get-NamedLocationReport` `.Locations[].InferredParents` -- slash-path parent-child relationships. (8) Movement edges (Type=`Movement`, optional) from `Get-NamedLogLocationReport` `.Transitions` -- consecutive log location segments; only included when `-IncludeMovementEdges` is set. (9) Node construction -- all unique endpoint names from edges form the node set; each node resolves against the entity lookup for `CN`, `NerthusName`, `Coordinates`, and `IsExterior` classification. (10) Degree computation -- in-degree and out-degree per node. (11) Staleness detection -- for each edge, checks if source or target entity has `CoordinateHistory` with entries whose `ValidFrom` is after the edge's `FirstSeen`; marks `PossiblyStale = $true` with reason string.
 
-1. **Load data**: Auto-fetch `Get-Entity` and `Get-Session` if not provided (passes `MinDate`/`MaxDate`)
-2. **Build entity lookup**: Case-insensitive dictionary keyed by `Name` and all entries in `Names` (aliases)
-3. **Edge accumulation**: Uses a `$AddEdge` scriptblock closure over an `$EdgeKey` dictionary (key = `"Source|Target|Type"`, case-insensitive). Duplicate edges increment `Weight` and extend `Sources` list
-4. **Containment edges** (Type=`Containment`): From `@lokacja` chain — `parent → child` for every `Lokacja` entity with a non-null `Location`
-5. **Door edges** (Type=`Door`): From `@drzwi` — `entity → door_target` for every Lokacja with non-empty `Doors` list
-6. **Route edges** (Type=`Route`): From `Get-NamedLocationReport` `.RouteEdges` — consecutive `->` segments from session metadata
-7. **Inferred hierarchy edges** (Type=`InferredHierarchy`): From `Get-NamedLocationReport` `.Locations[].InferredParents` — slash-path parent-child relationships
-8. **Movement edges** (Type=`Movement`, optional): From `Get-NamedLogLocationReport` `.Transitions` — consecutive log location segments. Only included when `-IncludeMovementEdges` is set
-9. **Node construction**: All unique endpoint names from edges form the node set. Each node resolves against the entity lookup for `CN`, `NerthusName`, `Coordinates`, and `IsExterior` classification
-10. **Degree computation**: In-degree and out-degree per node
-11. **Staleness detection**: For each edge, checks if source or target entity has `CoordinateHistory` with entries whose `ValidFrom` is after the edge's `FirstSeen` — marks `PossiblyStale = $true` with reason string
-
-### 6.3 Edge Object Schema
+Edge object schema:
 
 | Property | Type | Description |
 |---|---|---|
@@ -222,7 +169,7 @@ The caller iterates candidates in order and uses `Resolve-Name` on each. The **f
 | `PossiblyStale` | bool | Whether coordinate changes suggest the edge may be outdated |
 | `StaleReason` | string | Human-readable explanation of staleness (or `$null`) |
 
-### 6.4 Node Object Schema
+Node object schema:
 
 | Property | Type | Description |
 |---|---|---|
@@ -235,7 +182,7 @@ The caller iterates candidates in order and uses `Resolve-Name` on each. The **f
 | `InDegree` | int | Number of inbound edges |
 | `OutDegree` | int | Number of outbound edges |
 
-### 6.5 Summary Object Schema
+Summary object schema:
 
 | Property | Type | Description |
 |---|---|---|
@@ -253,68 +200,44 @@ The caller iterates candidates in order and uses `Resolve-Name` on each. The **f
 | `InteriorNodes` | int | Nodes without coordinates |
 | `PossiblyStaleEdges` | int | Edges flagged as potentially outdated |
 
-### 6.6 Edge Types and Data Sources
+Edge types and data sources:
 
 | Edge Type | Source | Directionality | Notes |
 |---|---|---|---|
-| `Containment` | Entity `@lokacja` | Parent → Child | Structural hierarchy |
-| `Door` | Entity `@drzwi` | Entity → Door target | Physical link |
+| `Containment` | Entity `@lokacja` | Parent to Child | Structural hierarchy |
+| `Door` | Entity `@drzwi` | Entity to Door target | Physical link |
 | `Route` | Session `@Lokacje` with `->` | Sequential | Optional notation, uncommon |
-| `InferredHierarchy` | Session `@Lokacje` with `/` | Parent → Child | E.g., `Erathia/Zamek Steadwick` |
-| `Movement` | Log LocationSegments | Sequential | Walkable transitions (structurally adjacent, distance ≤ 2) |
-| `Teleport` | Log LocationSegments | Sequential | Non-adjacent transitions — excluded from physical connectivity |
+| `InferredHierarchy` | Session `@Lokacje` with `/` | Parent to Child | E.g., `Erathia/Zamek Steadwick` |
+| `Movement` | Log LocationSegments | Sequential | Walkable transitions (structurally adjacent, distance <= 2) |
+| `Teleport` | Log LocationSegments | Sequential | Non-adjacent transitions -- excluded from physical connectivity |
 
-### 6.7 Teleport Detection
+After building structural edges (Containment + Door), an adjacency set is constructed for each location. A log transition A to B is classified as Movement if A and B are within graph distance <= 2 through structural edges (direct neighbor, or share a common neighbor -- e.g., two children of the same parent). If neither direct adjacency nor a shared neighbor exists, it is classified as Teleport. Teleport edges are recorded in the graph with `Type = 'Teleport'` but are semantically distinct from Movement -- they represent magical/instant travel and should be excluded from physical connectivity analysis.
 
-After building structural edges (Containment + Door), an **adjacency set** is constructed for each location. A log transition A → B is classified as:
+Progressive refinement: Migration Phase 9 creates Lokacja entities with canonical names and `@margonemid` tags but does not populate `@drzwi` connections. In this initial state, adjacency is limited to containment (parent-child), so most transitions between standalone exterior locations are classified as Teleport. As `@drzwi` connections are added -- manually or through analysis of high-frequency movement patterns -- the classification improves. Full multi-signal teleport detection (movement frequency, coordinate proximity, external data from MargoWorld plugin) is an advanced concern beyond core scope.
 
-- **Movement** if A and B are within **graph distance ≤ 2** through structural edges (direct neighbor, or share a common neighbor — e.g., two children of the same parent)
-- **Teleport** if neither direct adjacency nor a shared neighbor exists
-
-Teleport edges are recorded in the graph with `Type = 'Teleport'` but are semantically distinct from Movement — they represent magical/instant travel and should be excluded from physical connectivity analysis.
-
-**Progressive refinement**: Migration Phase 9 creates Lokacja entities with canonical names and `@margonemid` tags but does **not** populate `@drzwi` connections. In this initial state, adjacency is limited to containment (parent-child), so most transitions between standalone exterior locations are classified as Teleport. As `@drzwi` connections are added — manually or through analysis of high-frequency movement patterns — the classification improves. Full multi-signal teleport detection (movement frequency, coordinate proximity, external data from MargoWorld plugin) is an advanced concern beyond core scope.
-
-### 6.8 Staleness Detection
-
-An edge is marked `PossiblyStale` when:
-- Either the source or target entity has multiple `CoordinateHistory` entries
-- At least one history entry has `ValidFrom` after the edge's `FirstSeen` date
-- This indicates the location moved on the map after the edge was established
-
-The `StaleReason` string format: `"Source coordinates changed at YYYY-MM-DD"` or `"Target coordinates changed at YYYY-MM-DD"`.
+An edge is marked `PossiblyStale` when either the source or target entity has multiple `CoordinateHistory` entries and at least one history entry has `ValidFrom` after the edge's `FirstSeen` date. This indicates the location moved on the map after the edge was established. The `StaleReason` string format: `"Source coordinates changed at YYYY-MM-DD"` or `"Target coordinates changed at YYYY-MM-DD"`.
 
 ---
 
-## 7. CLI Integration
-
-### 7.1 Menu Entry
+## CLI Integration
 
 Registry key: `location-graph`, Mode: `Workflow`, Category: `Raporty`.
 
 The `location-report` entry has a `DataTransform` scriptblock to extract `.Locations` from the new wrapper return type for backward-compatible table display.
 
-### 7.2 Workflow
-
-`Invoke-LocationGraphWorkflow` in `private/cli/cli-wf-reporting.ps1`:
-
-1. Date range wizard (start/end date prompts)
-2. Movement edges choice (Yes/No via `Show-ArrowMenu`)
-3. Invokes `Get-LocationGraph` with collected parameters
-4. Displays summary table (node/edge counts by type)
-5. Displays node table (Name, NerthusName, Coordinates, In/Out degree)
+`Invoke-LocationGraphWorkflow` in `private/cli/cli-wf-reporting.ps1`: (1) Date range wizard (start/end date prompts). (2) Movement edges choice (Yes/No via `Show-ArrowMenu`). (3) Invokes `Get-LocationGraph` with collected parameters. (4) Displays summary table (node/edge counts by type). (5) Displays node table (Name, NerthusName, Coordinates, In/Out degree).
 
 ---
 
-## 8. Edge Cases
+## Edge Cases
 
 | Scenario | Behavior |
 |---|---|
 | `@koordynaty` with non-integer values | Skipped with warning; `Coordinates` remains `$null` |
 | `@koordynaty` with wrong number of parts (not 2) | Skipped silently |
 | Interior location (no `@koordynaty`) | `Coordinates = $null`, `IsExterior = $false` |
-| Self-transition in logs (same location twice) | Skipped — not added to `Transitions` |
-| Route edge `A -> A` (same location) | Preserved — route edges do not filter self-loops |
+| Self-transition in logs (same location twice) | Skipped -- not added to `Transitions` |
+| Route edge `A -> A` (same location) | Preserved -- route edges do not filter self-loops |
 | Entity alias resolution in node construction | Lookup checks both `Name` and `Names` (aliases) |
 | Duplicate edge from multiple sources | Weight incremented, Sources list extended |
 | No sessions in date range | Returns graph with only entity-sourced edges |
@@ -324,7 +247,7 @@ The `location-report` entry has a `DataTransform` scriptblock to extract `.Locat
 
 ---
 
-## 9. Testing
+## Testing
 
 | Test file | Coverage |
 |---|---|
@@ -333,7 +256,7 @@ The `location-report` entry has a `DataTransform` scriptblock to extract `.Locat
 | `tests/get-namedloglocationreport.Tests.ps1` | Transition edges: consecutive pairs, self-transition skip, resolved names, empty logs (+ existing resolution tests) |
 | `tests/get-locationgraph.Tests.ps1` | Containment, door, coordinate, route, inferred hierarchy edges; node resolution; summary counts; empty inputs |
 
-**Fixture files:**
+Fixture files:
 
 | Fixture | Used by |
 |---|---|
@@ -343,10 +266,10 @@ The `location-report` entry has a `DataTransform` scriptblock to extract `.Locat
 
 ---
 
-## 10. Related Documents
+## Related Documents
 
-- [ENTITIES.md](ENTITIES.md) - Entity data model, `@koordynaty` tag, temporal history arrays
-- [SESSIONS.md](SESSIONS.md) - Session metadata extraction (`@Lokacje`, route edge source)
-- [LOGS.md](LOGS.md) - Log location analysis (transition edge source)
-- [NAME-RESOLUTION.md](NAME-RESOLUTION.md) - Name resolution used for entity matching in nodes
-- [AUDITING.md](AUDITING.md) - Other reporting functions (`Get-NamedLocationReport` scope note)
+- [ENTITIES.md](ENTITIES.md) -- Entity data model, `@koordynaty` tag, temporal history arrays
+- [SESSIONS.md](SESSIONS.md) -- Session metadata extraction (`@Lokacje`, route edge source)
+- [LOGS.md](LOGS.md) -- Log location analysis (transition edge source)
+- [NAME-RESOLUTION.md](NAME-RESOLUTION.md) -- Name resolution used for entity matching in nodes
+- [AUDITING.md](AUDITING.md) -- Other reporting functions (`Get-NamedLocationReport` scope note)

@@ -1,19 +1,16 @@
 # Testing Guide - Technical Reference
 
-**Status**: Reference documentation.
-
 ---
 
-## 1. Scope
+## Scope
 
 This document covers the test infrastructure: Pester conventions, test file organization, fixture design, loading patterns, mock strategies, shared helpers, and how to add tests for new functions.
 
 ---
 
-## 2. Prerequisites
+## Prerequisites
 
-- **Pester v5.0+** (the only external dependency)
-- **PowerShell 5.1** or **PowerShell Core 7.0+**
+Pester v5.0+ is the only external dependency. PowerShell 5.1 or PowerShell Core 7.0+ is required.
 
 ```powershell
 Install-Module Pester -MinimumVersion 5.0 -Force -SkipPublisherCheck
@@ -21,7 +18,7 @@ Install-Module Pester -MinimumVersion 5.0 -Force -SkipPublisherCheck
 
 ---
 
-## 3. Running Tests
+## Running Tests
 
 ```powershell
 # From the .robot.new/ directory:
@@ -39,7 +36,7 @@ Invoke-Pester -Configuration (Import-PowerShellDataFile ./tests/.pesterconfig.ps
 Invoke-Pester ./tests/ -Output Detailed -CodeCoverage ./public/*.ps1,./public/**/*.ps1,./private/*.ps1
 ```
 
-### 3.1 Configuration (`.pesterconfig.psd1`)
+Configuration (`.pesterconfig.psd1`):
 
 ```powershell
 @{
@@ -60,9 +57,7 @@ Invoke-Pester ./tests/ -Output Detailed -CodeCoverage ./public/*.ps1,./public/**
 
 ---
 
-## 4. File Organization
-
-### 4.1 Naming Convention
+## File Organization
 
 Test files mirror source files with a `.Tests.ps1` suffix:
 
@@ -71,220 +66,220 @@ public/get-entity.ps1                ->  tests/get-entity.Tests.ps1
 private/charfile-helpers.ps1         ->  tests/charfile-helpers.Tests.ps1
 ```
 
-### 4.2 Directory Structure
+Directory structure:
 
 ```
 tests/
-├── .pesterconfig.psd1                              # Pester configuration
-├── TestHelpers.ps1                                 # Shared utilities
-│
-│   # Infrastructure & config
-├── admin-config.Tests.ps1
-├── admin-state.Tests.ps1
-├── get-reporoot.Tests.ps1
-├── get-markdown.Tests.ps1
-├── parse-markdownfile.Tests.ps1
-├── operation-context.Tests.ps1
-│
-│   # Entity data access
-├── get-entity.Tests.ps1
-├── get-entitystate.Tests.ps1
-├── get-nameindex.Tests.ps1
-├── resolve-name.Tests.ps1
-│
-│   # Entity CRUD
-├── new-entity.Tests.ps1
-├── set-entity.Tests.ps1
-├── remove-entity.Tests.ps1
-├── entity-writehelpers.Tests.ps1
-├── entity-status.Tests.ps1
-├── przedmiot-entity.Tests.ps1
-│
-│   # Currency
-├── new-currencyentity.Tests.ps1
-├── set-currencyentity.Tests.ps1
-├── get-currencyentity.Tests.ps1
-├── remove-currencyentity.Tests.ps1
-├── currency-entity.Tests.ps1
-├── currency-helpers.Tests.ps1
-├── get-currencyreport.Tests.ps1
-├── test-currencyreconciliation.Tests.ps1
-│
-│   # Sessions
-├── get-session.Tests.ps1
-├── set-session.Tests.ps1
-├── new-session.Tests.ps1
-├── format-sessionblock.Tests.ps1
-├── resolve-narrator.Tests.ps1
-├── get-sessionlog.Tests.ps1
-├── invoke-sessionlogfetch.Tests.ps1
-├── test-sessionintegrity.Tests.ps1
-│
-│   # Player & character
-├── get-player.Tests.ps1
-├── get-playercharacter.Tests.ps1
-├── get-playercharacter-state.Tests.ps1
-├── new-player.Tests.ps1
-├── new-playercharacter.Tests.ps1
-├── set-player.Tests.ps1
-├── set-playercharacter.Tests.ps1
-├── set-playercharacter-charfile.Tests.ps1
-├── remove-playercharacter.Tests.ps1
-├── charfile-helpers.Tests.ps1
-│
-│   # PU & workflow
-├── get-newplayercharacterpucount.Tests.ps1
-├── invoke-playercharacterpuassignment.Tests.ps1
-├── test-playercharacterpuassignment.Tests.ps1
-├── get-gitchangelog.Tests.ps1
-├── send-discordmessage.Tests.ps1
-│
-│   # Reporting & auditing
-├── get-changelog.Tests.ps1
-├── get-entityhistory.Tests.ps1
-├── get-notificationlog.Tests.ps1
-├── get-puassignmentlog.Tests.ps1
-├── get-transactionledger.Tests.ps1
-├── get-narratorreport.Tests.ps1
-├── get-namedloglocationreport.Tests.ps1
-│
-│   # CLI
-├── cli-fuzzy.Tests.ps1
-├── cli-help.Tests.ps1
-├── cli-primitives.Tests.ps1
-├── cli-registry.Tests.ps1
-├── cli-wizard.Tests.ps1
-├── cli-engine.Tests.ps1
-├── cli-buffer.Tests.ps1
-├── cli-components.Tests.ps1
-├── cli-input.Tests.ps1
-│
-│   # Session graph
-├── get-sessiongraph.Tests.ps1
-├── set-sessiongraph.Tests.ps1
-├── test-sessiongraphintegrity.Tests.ps1
-├── get-entitysessionprofile.Tests.ps1
-├── get-narratorsessionprofile.Tests.ps1
-├── compare-sessionparticipation.Tests.ps1
-├── get-sessiongraphleaderboard.Tests.ps1
-│
-│   # Location graph
-├── koordynaty-parsing.Tests.ps1
-├── get-namedlocationreport.Tests.ps1
-├── get-locationgraph.Tests.ps1
-├── get-locationgraph-integration.Tests.ps1
-├── seasonal-and-location.Tests.ps1
-├── mapa-entity.Tests.ps1
-│
-│   # Infrastructure extras
-├── get-entity-mapa.Tests.ps1
-├── migration-phase5-location-import.Tests.ps1
-│
-│   # Plugins & migration
-├── plugin-system.Tests.ps1
-├── narrator-normalization.Tests.ps1
-│
-└── fixtures/
-    │   # Player database
-    ├── Gracze.md                                   # Standard player DB
-    ├── Gracze-brak-pu.md                           # Player DB with missing PU
-    ├── Gracze-many-characters.md                   # Player DB with many characters
-    ├── Gracze-no-characters.md                     # Player DB with no characters
-    │
-    │   # Entity registry
-    ├── entities.md                                 # Standard entity registry
-    ├── entities-100-ent.md                         # Override file (primacy 100)
-    ├── entities-200-ent.md                         # Override file (primacy 200)
-    ├── entities-brak-pu.md                         # Missing PU scenario
-    ├── entities-changes.md                         # Zmiany test data
-    ├── entities-currency-crud.md                   # Currency CRUD (3 entities)
-    ├── entities-currency-edge.md                   # Currency edge cases
-    ├── entities-currency-update.md                 # Currency update scenarios
-    ├── entities-deep-locations.md                  # Nested location hierarchy
-    ├── entities-drzwi-typ.md                       # @drzwi/@typ tag tests
-    ├── entities-duplicate-names.md                 # Duplicate name handling
-    ├── entities-empty-sections.md                  # Empty section headers
-    ├── entities-generic-crud.md                    # Generic CRUD (all 6 types)
-    ├── entities-many-aliases.md                    # Multiple aliases per entity
-    ├── entities-many-characters.md                 # Many characters scenario
-    ├── entities-many-groups.md                     # Many groups scenario
-    ├── entities-multi-transfer.md                  # Multiple transfers
-    ├── entities-multiline-info.md                  # Multi-line entity info
-    ├── entities-overlapping-temporal.md            # Overlapping temporal ranges
-    ├── entities-przedmiot-existing.md              # Pre-existing Przedmiot entries
-    ├── entities-remove-pc.md                       # Character removal test
-    ├── entities-status-basic.md                    # Basic status transitions
-    ├── entities-status-default.md                  # Default status handling
-    ├── entities-status-przedmiot.md                # Przedmiot status handling
-    ├── entities-status-transitions.md              # Complex status transitions
-    ├── entities-unicode-names.md                   # Unicode entity names
-    ├── entities-unresolved.md                      # Unresolved references
-    │
-    │   # Session fixtures
-    ├── sessions-gen1.md                            # Gen1 format
-    ├── sessions-gen2.md                            # Gen2 format
-    ├── sessions-gen2-multi-loc.md                  # Gen2 with multiple locations
-    ├── sessions-gen3.md                            # Gen3 format
-    ├── sessions-gen4.md                            # Gen4 format
-    ├── sessions-gen4-full.md                       # Gen4 with all metadata tags
-    ├── sessions-changes.md                         # Session with Zmiany block
-    ├── sessions-co-narrator.md                     # Co-narrated sessions
-    ├── sessions-code-fence.md                      # Code fences in content
-    ├── sessions-date-range.md                      # Multi-day date ranges
-    ├── sessions-deep-zmiany.md                     # Complex nested Zmiany
-    ├── sessions-duplicate.md                       # Deduplication test data
-    ├── sessions-empty-body.md                      # Sessions with empty body
-    ├── sessions-failed.md                          # Malformed dates
-    ├── sessions-many.md                            # Large session count
-    ├── sessions-multi-transfer.md                  # Multiple @Transfer lines
-    ├── sessions-narrator-override.md               # Narrator mapping overrides
-    ├── sessions-no-metadata.md                     # Sessions without metadata
-    ├── sessions-unicode.md                         # Unicode in session content
-    ├── sessions-unresolved.md                      # Unresolved references
-    ├── sessions-zmiany.md                          # Zmiany override test data
-    ├── sessions-integrity/                         # Session integrity check fixtures
-    │   ├── base.md
-    │   ├── duplicate-pu.md
-    │   ├── format-anomaly.md
-    │   ├── future-dated.md
-    │   ├── malformed.md
-    │   └── modified.md
-    │
-    │   # Character files
-    ├── charfile-anglebracket.md                    # Angle bracket edge case
-    ├── charfile-empty.md                           # Empty character file
-    ├── charfile-empty-reputation.md                # Empty reputation section
-    ├── charfile-full.md                            # Full character file
-    ├── charfile-missing-sections.md                # Missing sections
-    ├── charfile-multilinestan.md                   # Multi-line stan
-    ├── charfile-rich.md                            # Rich content character
-    ├── charfile-set-pc.md                          # Set-PlayerCharacter test data
-    ├── charfile-unicode.md                         # Unicode in character data
-    │
-    │   # Location graph
-    ├── entities-koordynaty.md                      # Coordinate parsing test data
-    ├── sessions-route-edges.md                     # Route edge extraction test data
-    │
-    │   # Other
-    ├── minimal-entity.md                           # Minimal entity for writes
-    ├── pu-sessions.md                              # PU session history
-    ├── pu-sessions-sample.md                       # Sample PU history
-    ├── local.config.psd1                           # Config fixture
-    ├── log-chatlog.txt                             # Chat log fixture
-    ├── log-prose.txt                               # Prose log fixture
-    │
-    └── templates/                                  # Template subset (2 of 8)
-        ├── player-character-file.md.template       # Character file skeleton
-        └── player-entry.md.template                # Character entry in entities.md
++-- .pesterconfig.psd1                              # Pester configuration
++-- TestHelpers.ps1                                 # Shared utilities
+|
+|   # Infrastructure & config
++-- admin-config.Tests.ps1
++-- admin-state.Tests.ps1
++-- get-reporoot.Tests.ps1
++-- get-markdown.Tests.ps1
++-- parse-markdownfile.Tests.ps1
++-- operation-context.Tests.ps1
+|
+|   # Entity data access
++-- get-entity.Tests.ps1
++-- get-entitystate.Tests.ps1
++-- get-nameindex.Tests.ps1
++-- resolve-name.Tests.ps1
+|
+|   # Entity CRUD
++-- new-entity.Tests.ps1
++-- set-entity.Tests.ps1
++-- remove-entity.Tests.ps1
++-- entity-writehelpers.Tests.ps1
++-- entity-status.Tests.ps1
++-- przedmiot-entity.Tests.ps1
+|
+|   # Currency
++-- new-currencyentity.Tests.ps1
++-- set-currencyentity.Tests.ps1
++-- get-currencyentity.Tests.ps1
++-- remove-currencyentity.Tests.ps1
++-- currency-entity.Tests.ps1
++-- currency-helpers.Tests.ps1
++-- get-currencyreport.Tests.ps1
++-- test-currencyreconciliation.Tests.ps1
+|
+|   # Sessions
++-- get-session.Tests.ps1
++-- set-session.Tests.ps1
++-- new-session.Tests.ps1
++-- format-sessionblock.Tests.ps1
++-- resolve-narrator.Tests.ps1
++-- get-sessionlog.Tests.ps1
++-- invoke-sessionlogfetch.Tests.ps1
++-- test-sessionintegrity.Tests.ps1
+|
+|   # Player & character
++-- get-player.Tests.ps1
++-- get-playercharacter.Tests.ps1
++-- get-playercharacter-state.Tests.ps1
++-- new-player.Tests.ps1
++-- new-playercharacter.Tests.ps1
++-- set-player.Tests.ps1
++-- set-playercharacter.Tests.ps1
++-- set-playercharacter-charfile.Tests.ps1
++-- remove-playercharacter.Tests.ps1
++-- charfile-helpers.Tests.ps1
+|
+|   # PU & workflow
++-- get-newplayercharacterpucount.Tests.ps1
++-- invoke-playercharacterpuassignment.Tests.ps1
++-- test-playercharacterpuassignment.Tests.ps1
++-- get-gitchangelog.Tests.ps1
++-- send-discordmessage.Tests.ps1
+|
+|   # Reporting & auditing
++-- get-changelog.Tests.ps1
++-- get-entityhistory.Tests.ps1
++-- get-notificationlog.Tests.ps1
++-- get-puassignmentlog.Tests.ps1
++-- get-transactionledger.Tests.ps1
++-- get-narratorreport.Tests.ps1
++-- get-namedloglocationreport.Tests.ps1
+|
+|   # CLI
++-- cli-fuzzy.Tests.ps1
++-- cli-help.Tests.ps1
++-- cli-primitives.Tests.ps1
++-- cli-registry.Tests.ps1
++-- cli-wizard.Tests.ps1
++-- cli-engine.Tests.ps1
++-- cli-buffer.Tests.ps1
++-- cli-components.Tests.ps1
++-- cli-input.Tests.ps1
+|
+|   # Session graph
++-- get-sessiongraph.Tests.ps1
++-- set-sessiongraph.Tests.ps1
++-- test-sessiongraphintegrity.Tests.ps1
++-- get-entitysessionprofile.Tests.ps1
++-- get-narratorsessionprofile.Tests.ps1
++-- compare-sessionparticipation.Tests.ps1
++-- get-sessiongraphleaderboard.Tests.ps1
+|
+|   # Location graph
++-- koordynaty-parsing.Tests.ps1
++-- get-namedlocationreport.Tests.ps1
++-- get-locationgraph.Tests.ps1
++-- get-locationgraph-integration.Tests.ps1
++-- seasonal-and-location.Tests.ps1
++-- mapa-entity.Tests.ps1
+|
+|   # Infrastructure extras
++-- get-entity-mapa.Tests.ps1
++-- migration-phase5-location-import.Tests.ps1
+|
+|   # Plugins & migration
++-- plugin-system.Tests.ps1
++-- narrator-normalization.Tests.ps1
+|
++-- fixtures/
+    |   # Player database
+    +-- Gracze.md                                   # Standard player DB
+    +-- Gracze-brak-pu.md                           # Player DB with missing PU
+    +-- Gracze-many-characters.md                   # Player DB with many characters
+    +-- Gracze-no-characters.md                     # Player DB with no characters
+    |
+    |   # Entity registry
+    +-- entities.md                                 # Standard entity registry
+    +-- entities-100-ent.md                         # Override file (primacy 100)
+    +-- entities-200-ent.md                         # Override file (primacy 200)
+    +-- entities-brak-pu.md                         # Missing PU scenario
+    +-- entities-changes.md                         # Zmiany test data
+    +-- entities-currency-crud.md                   # Currency CRUD (3 entities)
+    +-- entities-currency-edge.md                   # Currency edge cases
+    +-- entities-currency-update.md                 # Currency update scenarios
+    +-- entities-deep-locations.md                  # Nested location hierarchy
+    +-- entities-drzwi-typ.md                       # @drzwi/@typ tag tests
+    +-- entities-duplicate-names.md                 # Duplicate name handling
+    +-- entities-empty-sections.md                  # Empty section headers
+    +-- entities-generic-crud.md                    # Generic CRUD (all 6 types)
+    +-- entities-many-aliases.md                    # Multiple aliases per entity
+    +-- entities-many-characters.md                 # Many characters scenario
+    +-- entities-many-groups.md                     # Many groups scenario
+    +-- entities-multi-transfer.md                  # Multiple transfers
+    +-- entities-multiline-info.md                  # Multi-line entity info
+    +-- entities-overlapping-temporal.md            # Overlapping temporal ranges
+    +-- entities-przedmiot-existing.md              # Pre-existing Przedmiot entries
+    +-- entities-remove-pc.md                       # Character removal test
+    +-- entities-status-basic.md                    # Basic status transitions
+    +-- entities-status-default.md                  # Default status handling
+    +-- entities-status-przedmiot.md                # Przedmiot status handling
+    +-- entities-status-transitions.md              # Complex status transitions
+    +-- entities-unicode-names.md                   # Unicode entity names
+    +-- entities-unresolved.md                      # Unresolved references
+    |
+    |   # Session fixtures
+    +-- sessions-gen1.md                            # Gen1 format
+    +-- sessions-gen2.md                            # Gen2 format
+    +-- sessions-gen2-multi-loc.md                  # Gen2 with multiple locations
+    +-- sessions-gen3.md                            # Gen3 format
+    +-- sessions-gen4.md                            # Gen4 format
+    +-- sessions-gen4-full.md                       # Gen4 with all metadata tags
+    +-- sessions-changes.md                         # Session with Zmiany block
+    +-- sessions-co-narrator.md                     # Co-narrated sessions
+    +-- sessions-code-fence.md                      # Code fences in content
+    +-- sessions-date-range.md                      # Multi-day date ranges
+    +-- sessions-deep-zmiany.md                     # Complex nested Zmiany
+    +-- sessions-duplicate.md                       # Deduplication test data
+    +-- sessions-empty-body.md                      # Sessions with empty body
+    +-- sessions-failed.md                          # Malformed dates
+    +-- sessions-many.md                            # Large session count
+    +-- sessions-multi-transfer.md                  # Multiple @Transfer lines
+    +-- sessions-narrator-override.md               # Narrator mapping overrides
+    +-- sessions-no-metadata.md                     # Sessions without metadata
+    +-- sessions-unicode.md                         # Unicode in session content
+    +-- sessions-unresolved.md                      # Unresolved references
+    +-- sessions-zmiany.md                          # Zmiany override test data
+    +-- sessions-integrity/                         # Session integrity check fixtures
+    |   +-- base.md
+    |   +-- duplicate-pu.md
+    |   +-- format-anomaly.md
+    |   +-- future-dated.md
+    |   +-- malformed.md
+    |   +-- modified.md
+    |
+    |   # Character files
+    +-- charfile-anglebracket.md                    # Angle bracket edge case
+    +-- charfile-empty.md                           # Empty character file
+    +-- charfile-empty-reputation.md                # Empty reputation section
+    +-- charfile-full.md                            # Full character file
+    +-- charfile-missing-sections.md                # Missing sections
+    +-- charfile-multilinestan.md                   # Multi-line stan
+    +-- charfile-rich.md                            # Rich content character
+    +-- charfile-set-pc.md                          # Set-PlayerCharacter test data
+    +-- charfile-unicode.md                         # Unicode in character data
+    |
+    |   # Location graph
+    +-- entities-koordynaty.md                      # Coordinate parsing test data
+    +-- sessions-route-edges.md                     # Route edge extraction test data
+    |
+    |   # Other
+    +-- minimal-entity.md                           # Minimal entity for writes
+    +-- pu-sessions.md                              # PU session history
+    +-- pu-sessions-sample.md                       # Sample PU history
+    +-- local.config.psd1                           # Config fixture
+    +-- log-chatlog.txt                             # Chat log fixture
+    +-- log-prose.txt                               # Prose log fixture
+    |
+    +-- templates/                                  # Template subset (2 of 8)
+        +-- player-character-file.md.template       # Character file skeleton
+        +-- player-entry.md.template                # Character entry in entities.md
 ```
 
-> **Note**: The `templates/` fixture directory contains only the 2 templates used by write tests (`New-PlayerCharacter`). The remaining 6 production templates (in the module's `templates/` dir) are not duplicated; tests that need them reference the module root directly.
+The `templates/` fixture directory contains only the 2 templates used by write tests (`New-PlayerCharacter`). The remaining 6 production templates (in the module's `templates/` dir) are not duplicated; tests that need them reference the module root directly.
 
 ---
 
-## 5. Shared Helpers (`TestHelpers.ps1`)
+## Shared Helpers (`TestHelpers.ps1`)
 
-### 5.1 Path Variables
+Path variables:
 
 ```powershell
 $script:ModuleRoot   = # .robot.new/ (parent of tests directory)
@@ -292,7 +287,7 @@ $script:FixturesRoot = # tests/fixtures/
 $script:TempRoot     = # GUID-based temp directory (per test run)
 ```
 
-### 5.2 Functions
+Functions:
 
 | Function | Purpose |
 |---|---|
@@ -305,9 +300,9 @@ $script:TempRoot     = # GUID-based temp directory (per test run)
 
 ---
 
-## 6. Loading Patterns
+## Loading Patterns
 
-### Pattern A - Exported Functions
+Pattern A -- Exported Functions:
 
 For testing exported `Verb-Noun` functions:
 
@@ -319,7 +314,7 @@ BeforeAll {
 }
 ```
 
-### Pattern B - Helpers in Function Files
+Pattern B -- Helpers in Function Files:
 
 For testing internal helper functions within a function file:
 
@@ -332,7 +327,7 @@ BeforeAll {
 }
 ```
 
-### Pattern C - Standalone Helper Files
+Pattern C -- Standalone Helper Files:
 
 For testing standalone helper scripts (non-Verb-Noun):
 
@@ -345,7 +340,7 @@ BeforeAll {
 }
 ```
 
-### Pattern D - Parser (Special)
+Pattern D -- Parser (Special):
 
 `private/parse-markdownfile.ps1` is invoked via `&` operator (not dot-sourced) because it has a top-level `param()`:
 
@@ -353,7 +348,7 @@ BeforeAll {
 $Result = & "$script:ModuleRoot/private/parse-markdownfile.ps1" $FixturePath
 ```
 
-### Pattern E - Engine Components
+Pattern E -- Engine Components:
 
 For testing CLI engine files in `private/cli/engine/`. Engine files depend on each other in a specific order and must be dot-sourced with their dependencies:
 
@@ -374,16 +369,11 @@ BeforeAll {
 }
 ```
 
-Engine tests validate data structures and logic (region calculation, buffer operations, segment comparison, component state management) without actual terminal rendering. Key considerations:
-
-- Engine files use `$script:` variables for screen state (`ScreenWidth`, `ScreenHeight`, `Regions`)
-- Components are hashtables with `Render` and `HandleKey` scriptblocks
-- Tests exercise component factories (`New-MenuListComponent`, `New-ResultTableComponent`, etc.) and their state transitions
-- No mocking of `Get-RepoRoot` is needed (engine tests are pure UI logic)
+Engine tests validate data structures and logic (region calculation, buffer operations, segment comparison, component state management) without actual terminal rendering. Engine files use `$script:` variables for screen state (`ScreenWidth`, `ScreenHeight`, `Regions`). Components are hashtables with `Render` and `HandleKey` scriptblocks. Tests exercise component factories (`New-MenuListComponent`, `New-ResultTableComponent`, etc.) and their state transitions. No mocking of `Get-RepoRoot` is needed (engine tests are pure UI logic).
 
 ---
 
-## 7. Test Structure Convention
+## Test Structure Convention
 
 Every test file follows the same skeleton:
 
@@ -408,15 +398,11 @@ AfterAll {
 
 ---
 
-## 8. Mock Patterns
+## Mock Patterns
 
-### 8.1 Universal Mocks
+`Get-RepoRoot` is mocked in almost every test file. Read tests return `$script:FixturesRoot` (reads fixtures as if they were the repository). Write tests return `$script:TempRoot` (writes to disposable temp directory).
 
-`Get-RepoRoot` is mocked in almost every test file:
-- **Read tests**: Returns `$script:FixturesRoot` (reads fixtures as if they were the repository)
-- **Write tests**: Returns `$script:TempRoot` (writes to disposable temp directory)
-
-### 8.2 Common Mocks
+Common mocks:
 
 | Mock target | Typical replacement |
 |---|---|
@@ -426,13 +412,9 @@ AfterAll {
 | `Get-AdminConfig` | Hashtable with fixture paths |
 | `Get-AdminHistoryEntries` | Empty or pre-populated `HashSet[string]` |
 
-### 8.3 What Is NOT Mocked
+.NET static methods (`[System.IO.File]::ReadAllLines`, etc.) are not mocked -- they use real fixtures instead. `Get-Markdown`, `Get-Entity`, and `Get-Player` typically operate on fixture data and are not mocked.
 
-- `.NET static methods** (`[System.IO.File]::ReadAllLines`, etc.) - use real fixtures instead
-- `Get-Markdown` - operates on real fixture files
-- `Get-Entity` / `Get-Player` - typically operate on fixture data
-
-### 8.4 Write Test Pattern
+Write test pattern:
 
 ```powershell
 # 1. Copy fixture to temp
@@ -451,20 +433,16 @@ $Lines | Should -Contain "    - @margonemid: 12345"
 
 ---
 
-## 9. Fixture Design
+## Fixture Design
 
-### 9.1 Principles
+Fixtures use synthetic, controlled data with no dependency on actual repository content. They are minimal but complete -- enough data to exercise all code paths. Fixtures cross-reference each other (e.g., `Gracze.md` players match `entities.md` entries).
 
-- **Synthetic, controlled data** - no dependency on actual repository content
-- **Minimal but complete** - enough data to exercise all code paths
-- **Cross-referencing** - fixtures reference each other (e.g., `Gracze.md` players match `entities.md` entries)
-
-### 9.2 Key Fixtures
+Key fixtures:
 
 | Fixture | Contents | Tests |
 |---|---|---|
 | `Gracze.md` | 3 players with full PU data, character variations, MargonemID, webhooks | `get-player`, `get-playercharacter` |
-| `entities.md` | NPCs, orgs, locations (with hierarchy), Gracz/Postać entries | `get-entity`, `get-entitystate` |
+| `entities.md` | NPCs, orgs, locations (with hierarchy), Gracz/Postac entries | `get-entity`, `get-entitystate` |
 | `entities-100-ent.md` | Override entries (primacy 100) | Multi-file merge, override primacy |
 | `entities-200-ent.md` | Override entries (primacy 200) | Multi-file merge |
 | `entities-generic-crud.md` | All 6 entity types populated | `new-entity`, `set-entity`, `remove-entity` |
@@ -477,42 +455,34 @@ $Lines | Should -Contain "    - @margonemid: 12345"
 
 ---
 
-## 10. Testing Strategies
+## Testing Strategies
 
-### 10.1 Temporal Filtering
+Temporal filtering tests use extensive date-range testing for validity windows. Fixtures include entities with various `(YYYY-MM:YYYY-MM)` ranges to verify `Test-TemporalActivity`, `Get-LastActiveValue`, and `Get-AllActiveValues`.
 
-Extensive date-range testing for validity windows. Fixtures include entities with various `(YYYY-MM:YYYY-MM)` ranges to verify `Test-TemporalActivity`, `Get-LastActiveValue`, and `Get-AllActiveValues`.
+Merge logic tests use multiple fixture files (`entities.md`, `entities-100-ent.md`, `entities-200-ent.md`) to verify override precedence and alias merging across files.
 
-### 10.2 Merge Logic
+Polish declension tests in `resolve-name.Tests.ps1` include test cases for suffix stripping and stem alternation with Polish morphological forms (e.g., `"Solmyra"` -> `"Solmyr"`, `"Vidominie"` -> `"Vidomina"`).
 
-Multiple fixture files (`entities.md`, `entities-100-ent.md`, `entities-200-ent.md`) test override precedence and alias merging across files.
-
-### 10.3 Polish Declension
-
-`resolve-name.Tests.ps1` includes test cases for suffix stripping and stem alternation with Polish morphological forms (e.g., `"Solmyra"` -> `"Solmyr"`, `"Vidominie"` -> `"Vidomina"`).
-
-### 10.4 Format Generation
-
-Separate fixture files per format generation ensure all four formats are tested independently for parsing, metadata extraction, and format upgrade paths.
+Format generation tests use separate fixture files per format generation to ensure all four formats are tested independently for parsing, metadata extraction, and format upgrade paths.
 
 ---
 
-## 11. Adding Tests for New Functions
+## Adding Tests for New Functions
 
-1. **Create test file**: `tests/<function-name>.Tests.ps1`
-2. **Choose loading pattern**: A (exported), B (internal helpers), C (standalone helper), D (parser), or E (engine component)
-3. **Create fixtures** (if needed): Add to `tests/fixtures/` with minimal but complete data
-4. **Follow skeleton**: `BeforeAll` -> `Describe` -> `Context` -> `It` -> `AfterAll`
-5. **Mock `Get-RepoRoot`**: Point to fixtures (read) or temp dir (write)
-6. **Use temp dirs for writes**: `New-TestTempDir` + `Copy-FixtureToTemp` + `Remove-TestTempDir`
-7. **Verify with assertions**: Use Pester's `Should` syntax
+1. Create test file: `tests/<function-name>.Tests.ps1`
+2. Choose loading pattern: A (exported), B (internal helpers), C (standalone helper), D (parser), or E (engine component)
+3. Create fixtures (if needed): add to `tests/fixtures/` with minimal but complete data
+4. Follow skeleton: `BeforeAll` -> `Describe` -> `Context` -> `It` -> `AfterAll`
+5. Mock `Get-RepoRoot`: point to fixtures (read) or temp dir (write)
+6. Use temp dirs for writes: `New-TestTempDir` + `Copy-FixtureToTemp` + `Remove-TestTempDir`
+7. Verify with assertions: use Pester's `Should` syntax
 
 ---
 
-## 12. Statistics
+## Statistics
 
 | Metric | Count |
-|--------|-------|
+|---|---|
 | Test files | ~80 |
 | Test cases (`It` blocks) | ~1,660 |
 | Fixture files | ~60 |
@@ -520,8 +490,8 @@ Separate fixture files per format generation ensure all four formats are tested 
 
 ---
 
-## 13. Related Documents
+## Related Documents
 
 - [SYNTAX.md](SYNTAX.md) - Code style conventions (applies to test code too)
-- [MIGRATION.md](MIGRATION.md) - §15 Testing section lists test coverage per area
-- [PU.md](PU.md) - §15 Testing lists PU-specific test files
+- [MIGRATION.md](MIGRATION.md) - Testing section lists test coverage per area
+- [PU.md](PU.md) - Testing section lists PU-specific test files
