@@ -2,12 +2,10 @@ using System;
 using System.Collections.Generic;
 
 namespace Robot {
-    /// Compiled economic analysis for snapshot and timeline reporting.
+    /// Economic analysis for snapshot and timeline reporting.
     ///
-    /// Compiled C# replaces PowerShell ScriptBlock-based sorting and LINQ-style
-    /// accumulation loops that incurred ~2ms overhead per snapshot from interpreter
-    /// dispatch on the inner loops. The C# version handles 50-200 wealth holders
-    /// in <0.1ms.
+    /// Performs Gini coefficient computation and top-holder extraction over
+    /// the full set of wealth-holding entities per denomination.
     ///
     /// Two operations:
     /// - ComputeGini: Gini coefficient from positive-wealth values using the

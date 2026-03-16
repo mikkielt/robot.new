@@ -4,10 +4,8 @@ using System.Collections.Generic;
 namespace Robot {
     /// Compiled fuzzy string matcher for CLI typeahead filtering.
     ///
-    /// Compiled C# replaces per-keystroke PowerShell .Where() + .ToLowerInvariant() +
-    /// .StartsWith() loops that cost ~8ms per keystroke on 3,757+ entity name candidates.
-    /// The C# version pre-lowercases all names at construction (~1ms) and then filters
-    /// in <0.5ms per keystroke using Ordinal comparisons on pre-lowered strings.
+    /// Pre-lowercases all candidate names at construction time. Filter uses Ordinal
+    /// comparisons on pre-lowered strings, avoiding per-call case conversion overhead.
     ///
     /// Two-stage filtering:
     /// 1. Prefix match (highest relevance) — names starting with query

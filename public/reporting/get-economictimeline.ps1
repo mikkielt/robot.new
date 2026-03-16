@@ -8,18 +8,27 @@
     temporal filtering. Returns an array of monthly data points for trend
     analysis of currency supply and transaction volume.
 
-    Processing pipeline (per month):
+    Processing pipeline:
+    Pre-loop setup:
+    1. Pre-sort sessions by date once for O(log N) binary search per month
+    2. Resolve denomination filter once (not per-month)
+
+    Per-month iteration:
     1. Determine month boundaries (first day to last day or MaxDate cap)
-    2. Obtain entity state for the month-end date:
+    2. Binary-search the pre-sorted session array to find the subset of
+       sessions up to the month-end date — avoids passing all sessions
+       to Get-EntityState when only a fraction is relevant
+    3. Obtain entity state for the month-end date:
        - Pre-provided entities: in-memory status filter via Get-LastActiveValue
          on Robot.TemporalEntry .Value property (avoids re-parsing entities.md
          on each iteration)
        - No pre-provided entities: full Get-Entity -ActiveOn from disk
-    3. Build entity lookup and extract currency items via
+    4. Build entity lookup and extract currency items via
        Get-CurrencyEntitiesFiltered with owner classification
-    4. Apply optional denomination and entity owner filters
-    5. Count @Transfer directives within the month window
-    6. Delegate aggregation to New-EconomicSnapshotData
+    5. Apply optional denomination and entity owner filters
+    6. Binary-search for @Transfer directives within the month window
+       (scoped session subset avoids scanning all sessions)
+    7. Delegate aggregation to New-EconomicSnapshotData
 
     Each data point includes Month (yyyy-MM), TotalSupplyKogi,
     PhysicalSupplyKogi, VirtualSupplyKogi, SupplyByDenomination breakdown,
@@ -88,6 +97,30 @@ function Get-EconomicTimeline {
 
     $Timeline = [System.Collections.Generic.List[object]]::new()
 
+    # Pre-sort sessions by date once — enables O(log N) binary search per month
+    # instead of passing all sessions to Get-EntityState on each iteration
+    $SortedSessions = [System.Collections.Generic.List[object]]::new()
+    if ($Sessions -and $Sessions.Count -gt 0) {
+        foreach ($S in $Sessions) {
+            if ($null -ne $S.Date) { $SortedSessions.Add($S) }
+        }
+        $SortedSessions.Sort([System.Comparison[object]]{ param($A, $B) $A.Date.CompareTo($B.Date) })
+    }
+
+    # Extract date array for binary search (parallel to $SortedSessions by index)
+    $SessionDates = [datetime[]]::new($SortedSessions.Count)
+    for ($I = 0; $I -lt $SortedSessions.Count; $I++) {
+        $SessionDates[$I] = $SortedSessions[$I].Date
+    }
+
+    # Resolve denomination filter once outside the loop — Resolve-CurrencyDenomination
+    # performs a name lookup that is invariant across months, so hoisting it avoids
+    # redundant resolution on each iteration
+    $DenomFilter = $null
+    if ($Denomination) {
+        $DenomFilter = Resolve-CurrencyDenomination -Name $Denomination
+    }
+
     # Walk month-by-month from MinDate to MaxDate (inclusive of partial end month)
     $Current = [datetime]::new($MinDate.Year, $MinDate.Month, 1)
     $EndBoundary = [datetime]::new($MaxDate.Year, $MaxDate.Month, 1).AddMonths(1).AddDays(-1)
@@ -102,6 +135,48 @@ function Get-EconomicTimeline {
         }
         $MonthEnd = $Current.AddMonths(1).AddDays(-1)
         $EffectiveDate = if ($MonthEnd -gt $MaxDate) { $MaxDate } else { $MonthEnd }
+
+        # Binary search for sessions up to EffectiveDate — only these can contribute
+        # Zmiany/Transfer overrides relevant to this month's entity state
+        # BinarySearch returns exact index on hit, or bitwise complement (~) of the
+        # next-larger index on miss — subtract 1 to get the last session <= EffectiveDate
+        $UpToIdx = [System.Array]::BinarySearch($SessionDates, $EffectiveDate)
+        if ($UpToIdx -lt 0) {
+            $UpToIdx = (-bnot $UpToIdx) - 1  # ~idx gives insertion point; -1 = last <=
+        }
+        # Walk forward to include all sessions sharing the same date as EffectiveDate
+        while ($UpToIdx -lt ($SortedSessions.Count - 1) -and $SessionDates[$UpToIdx + 1] -le $EffectiveDate) {
+            $UpToIdx++
+        }
+
+        # Slice: sessions[0..UpToIdx] — only sessions up to month-end date
+        $MonthSessions = if ($UpToIdx -ge 0 -and $SortedSessions.Count -gt 0) {
+            $Subset = [object[]]::new($UpToIdx + 1)
+            $SortedSessions.CopyTo(0, $Subset, 0, $UpToIdx + 1)
+            $Subset
+        } else {
+            @()
+        }
+
+        # Second binary search: narrow to sessions within [MonthStart, EffectiveDate]
+        # for @Transfer directive scoping — $MonthSessions includes all sessions up to
+        # month-end (needed for cumulative entity state), but transfers only count within
+        # the current month window
+        $MonthStart = $Current
+        $FromIdx = [System.Array]::BinarySearch($SessionDates, $MonthStart)
+        if ($FromIdx -lt 0) { $FromIdx = -bnot $FromIdx }  # insertion point = first >= MonthStart
+        # Walk backward to include all sessions sharing the same date as MonthStart
+        while ($FromIdx -gt 0 -and $SessionDates[$FromIdx - 1] -ge $MonthStart) {
+            $FromIdx--
+        }
+        $MonthWindowSessions = if ($FromIdx -le $UpToIdx -and $SortedSessions.Count -gt 0 -and $UpToIdx -ge 0) {
+            $WindowLen = $UpToIdx - $FromIdx + 1
+            $WindowSubset = [object[]]::new($WindowLen)
+            $SortedSessions.CopyTo($FromIdx, $WindowSubset, 0, $WindowLen)
+            $WindowSubset
+        } else {
+            @()
+        }
 
         if ($EntitiesPreProvided) {
             # Filter in-memory by status history rather than re-parsing entities.md
@@ -118,9 +193,11 @@ function Get-EconomicTimeline {
             if (-not $MonthEntities) { $MonthEntities = @() }
         }
 
+        # Pass only sessions up to month-end — later sessions cannot contribute
+        # overrides visible at EffectiveDate, reducing Get-EntityState work
         $MonthState = @()
         if ($MonthEntities.Count -gt 0) {
-            $MonthState = @(Get-EntityState -Entities $MonthEntities -Sessions $Sessions -NameIndex $NameIndex -ActiveOn $EffectiveDate -Quiet)
+            $MonthState = @(Get-EntityState -Entities $MonthEntities -Sessions $MonthSessions -NameIndex $NameIndex -ActiveOn $EffectiveDate -Quiet)
         }
         if (-not $MonthState) { $MonthState = @() }
 
@@ -142,15 +219,12 @@ function Get-EconomicTimeline {
         if (-not $CurrencyItems) { $CurrencyItems = @() }
 
         # Narrow to user-specified denomination or entity owner scope
-        if ($Denomination) {
-            $DenomFilter = Resolve-CurrencyDenomination -Name $Denomination
-            if ($DenomFilter) {
-                $Filtered = [System.Collections.Generic.List[object]]::new()
-                foreach ($Item in $CurrencyItems) {
-                    if ($Item.Denomination.Name -eq $DenomFilter.Name) { $Filtered.Add($Item) }
-                }
-                $CurrencyItems = @($Filtered)
+        if ($DenomFilter) {
+            $Filtered = [System.Collections.Generic.List[object]]::new()
+            foreach ($Item in $CurrencyItems) {
+                if ($Item.Denomination.Name -eq $DenomFilter.Name) { $Filtered.Add($Item) }
             }
+            $CurrencyItems = @($Filtered)
         }
         if ($Entity) {
             $Filtered = [System.Collections.Generic.List[object]]::new()
@@ -162,11 +236,10 @@ function Get-EconomicTimeline {
             $CurrencyItems = @($Filtered)
         }
 
-        # Scope @Transfer directives to this month's date window
-        $MonthStart = $Current
+        # Scope @Transfer directives to this month's date window using pre-sliced subset
         $TransferEntries = @()
-        if ($Sessions -and $Sessions.Count -gt 0) {
-            $TransferEntries = @(Get-SessionDirectiveEntries -Sessions $Sessions -DirectiveName 'Transfers' -MinDate $MonthStart -MaxDate $EffectiveDate)
+        if ($MonthWindowSessions.Count -gt 0) {
+            $TransferEntries = @(Get-SessionDirectiveEntries -Sessions $MonthWindowSessions -DirectiveName 'Transfers' -MinDate $MonthStart -MaxDate $EffectiveDate)
         }
 
         # Delegate aggregation (supply split, Gini, transfer count) to economy-helpers

@@ -25,7 +25,10 @@
        blocks (Objaśnienia, Efekty) are reassembled with consistent spacing.
     7. Splice: replace the session's lines in the original file array, write
        via ShouldProcess gate, fire BeforeWrite/AfterWrite plugin hooks.
-    8. Eager graph refresh: after non-batch writes, update the session graph
+    8. Cache invalidation: Clear-ParseCaches is called after each successful
+       write to prevent stale cached data (WP-2 Markdown cache, WP-4 session
+       file cache) from masking the mutation on subsequent Get-Session calls.
+    9. Eager graph refresh: after non-batch writes, update the session graph
        index for Tiers 0+1 so the graph stays current without a full rebuild.
 
     Metadata replacement is always full-replace (not merge). Pass @() to clear
@@ -381,6 +384,12 @@ function Set-Session {
                     }
 
                     [System.IO.File]::WriteAllText($FilePath, $NewFileContent, $UTF8NoBOM)
+
+                    # Invalidate WP-2/WP-4 parse caches so the next Get-Session/Get-Markdown
+                    # call re-reads this file instead of returning stale pre-mutation data
+                    if ($ExecutionContext.InvokeCommand.GetCommand('Clear-ParseCaches', [System.Management.Automation.CommandTypes]::Function)) {
+                        Clear-ParseCaches
+                    }
 
                     if ($script:HasOpCtx) { Add-OperationFile -Path $FilePath }
 

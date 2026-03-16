@@ -12,10 +12,18 @@
     Helpers:
     - Get-DeclensionStem:            strips Polish noun declension suffixes from a query
     - Get-StemAlternationCandidates:  reverses Polish consonant mutations to produce base-form candidates
+    - Get-EntityFilesFingerprint:     builds a LastWriteTimeUtc-based fingerprint across all
+      entity source files (entities.md, overflow *-NNN-ent.md, Gracze.md) for cache
+      invalidation in the WP-1 name index cache
 
     Module-level data:
-    - $DeclensionSuffixes:  ordered list of Polish noun suffixes (longest-first to prevent partial stripping)
-    - $StemAlternations:    consonant mutation mappings (inflected ending -> nominative base)
+    - $DeclensionSuffixes:    ordered list of Polish noun suffixes (longest-first to prevent partial stripping)
+    - $StemAlternations:      consonant mutation mappings (inflected ending -> nominative base)
+    - $CachedNameIndex:       WP-1 module-scoped cache holding the last Get-NameIndex result
+      (Index + StemIndex + BKTree) to avoid rebuilding the name index on every Resolve-Name
+      call when no entity files have changed
+    - $CachedNameIndexKey:    fingerprint string from Get-EntityFilesFingerprint matching
+      the cached name index; a mismatch triggers a full rebuild
 
     Resolve-Name uses a multi-stage pipeline:
       Stage 1  - Exact index lookup (case-insensitive). O(1) via the token index from Get-NameIndex.
@@ -27,6 +35,12 @@
       Stage 3  - Levenshtein fuzzy match. Finds the closest token within a length-scaled edit
                  distance threshold. Uses BK-tree when available (O(log N)), falls back to
                  linear scan.
+
+    When no caller-provided Index is passed, Resolve-Name checks the WP-1 module-scoped
+    cache before rebuilding. The cache key is a file-modification fingerprint: if entity
+    files haven't changed since the last call, the cached name index is reused directly.
+    This avoids the ~4s Get-Entity + Get-NameIndex rebuild that would otherwise run on
+    every standalone Resolve-Name invocation (e.g. from session-parsehelpers Intel resolution).
 
     The declension suffix list targets Polish noun inflection patterns observed in the repository's
     session notes. The suffix ordering is critical: longest suffixes must be tried first to
@@ -116,6 +130,38 @@ function Get-StemAlternationCandidates {
     return $Candidates
 }
 
+function Get-EntityFilesFingerprint {
+    # Concatenates LastWriteTimeUtc ticks from all entity source files into a single
+    # fingerprint string for WP-1 cache invalidation. Returning null forces a cache miss
+    # (no entity files found — fresh repo or test environment).
+    $RepoRoot = Get-RepoRoot
+    $FP = [System.Text.StringBuilder]::new()
+
+    # Primary entity file (same discovery logic as Get-Entity's file resolution)
+    $EntPath = [System.IO.Path]::Combine($RepoRoot, 'entities.md')
+    if ([System.IO.File]::Exists($EntPath)) {
+        $Info = [System.IO.FileInfo]::new($EntPath)
+        [void]$FP.Append($Info.LastWriteTimeUtc.Ticks).Append(':')
+    }
+
+    # Overflow entity files (*-NNN-ent.md)
+    $OverflowFiles = [System.IO.Directory]::GetFiles($RepoRoot, '*-*-ent.md', [System.IO.SearchOption]::AllDirectories)
+    foreach ($OvFile in $OverflowFiles) {
+        $Info = [System.IO.FileInfo]::new($OvFile)
+        [void]$FP.Append($Info.LastWriteTimeUtc.Ticks).Append(':')
+    }
+
+    # Player source file (Gracze.md) — name index includes player names (F1)
+    $GraczePath = [System.IO.Path]::Combine($RepoRoot, 'Gracze.md')
+    if ([System.IO.File]::Exists($GraczePath)) {
+        $Info = [System.IO.FileInfo]::new($GraczePath)
+        [void]$FP.Append($Info.LastWriteTimeUtc.Ticks).Append(':')
+    }
+
+    if ($FP.Length -eq 0) { return $null }
+    return $FP.ToString()
+}
+
 function Resolve-Name {
     <#
         .SYNOPSIS
@@ -159,9 +205,20 @@ function Resolve-Name {
 
     if ([string]::IsNullOrWhiteSpace($Query)) { return $null }
     if (-not $Index) {
-        if (-not $Players) { $Players = Get-Player }
-        if (-not $Entities) { $Entities = Get-Entity }
-        $NameIndexResult = Get-NameIndex -Players $Players -Entities $Entities
+        # WP-1: Reuse cached name index when entity files haven't changed.
+        # Without this cache, standalone Resolve-Name calls (no caller-provided Index)
+        # would rebuild Get-Entity + Get-NameIndex (~4s) on every invocation.
+        $CacheKey = Get-EntityFilesFingerprint
+        if ($null -ne $CacheKey -and $script:CachedNameIndexKey -eq $CacheKey -and $null -ne $script:CachedNameIndex) {
+            $NameIndexResult = $script:CachedNameIndex
+        } else {
+            if (-not $Players) { $Players = Get-Player }
+            if (-not $Entities) { $Entities = Get-Entity }
+            $NameIndexResult = Get-NameIndex -Players $Players -Entities $Entities
+            # Persist for subsequent calls within the same module session
+            $script:CachedNameIndex    = $NameIndexResult
+            $script:CachedNameIndexKey = $CacheKey
+        }
         $Index     = $NameIndexResult.Index
         $StemIndex = $NameIndexResult.StemIndex
         $BKTree    = $NameIndexResult.BKTree

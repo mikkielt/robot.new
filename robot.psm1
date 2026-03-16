@@ -52,6 +52,19 @@ $ModuleRoot = $PSScriptRoot
 
 $script:SuppressWarnings = $false
 
+# ── Parse Caches ─────────────────────────────────────────────────────────
+# Memory caches for parsed data — invalidated by Clear-ParseCaches on writes.
+# WP-1: Name index cache (Resolve-Name hot path)
+$script:CachedNameIndex    = $null
+$script:CachedNameIndexKey = $null
+# WP-2: Markdown parse result cache keyed by FilePath -> {ModTime, Result}
+$script:MarkdownCache      = $null
+# WP-3: Entity result cache (Get-Entity without -ActiveOn)
+$script:CachedEntities     = $null
+$script:CachedEntityKey    = $null
+# WP-4: Per-file session cache keyed by FilePath -> {ModTime, Sessions}
+$script:SessionFileCache   = $null
+
 # ── Compiled C# Library ───────────────────────────────────────────────────
 # Consumer files check PSTypeName before using C# types and fall back to
 # PowerShell when unavailable, so a compilation failure is non-fatal.
@@ -354,6 +367,32 @@ if ([System.IO.Directory]::Exists($PluginsDir)) {
 
 # Defined inline because they need direct access to $script: plugin state.
 
+function Clear-ParseCaches {
+    <#
+        .SYNOPSIS
+        Nulls all module-scoped parse caches to force reload after data mutations.
+    #>
+    $script:MarkdownCache      = $null
+    $script:CachedEntities     = $null
+    $script:CachedEntityKey    = $null
+    $script:CachedNameIndex    = $null
+    $script:CachedNameIndexKey = $null
+    $script:SessionFileCache   = $null
+
+    # WP-8: Clear disk cache so next cold start rebuilds from fresh data.
+    # Non-fatal — if ParseCacheHelper isn't loaded or deletion fails, memory
+    # cache invalidation above is sufficient for correctness.
+    if (([System.Management.Automation.PSTypeName]'Robot.ParseCacheHelper').Type) {
+        try {
+            $RepoRoot = Get-RepoRoot
+            $CacheDir = [System.IO.Path]::Combine($RepoRoot, '.robot-cache')
+            [Robot.ParseCacheHelper]::DeleteCacheDirectory($CacheDir)
+        } catch {
+            # Best-effort: disk cache deletion failure doesn't affect memory invalidation
+        }
+    }
+}
+
 function Get-PluginConfig {
     <#
         .SYNOPSIS
@@ -410,6 +449,7 @@ function Get-LoadedPlugins {
 
 [void]$ExportedFunctions.Add('Get-PluginConfig')
 [void]$ExportedFunctions.Add('Get-LoadedPlugins')
+[void]$ExportedFunctions.Add('Clear-ParseCaches')
 
 # ── PHASE 4: Export ─────────────────────────────────────────────────────────
 

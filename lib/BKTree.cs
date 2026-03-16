@@ -5,18 +5,13 @@ using System.Collections.Generic;
 namespace Robot {
     /// BK-tree with integrated case-insensitive Levenshtein distance for fuzzy name matching.
     ///
-    /// Compiled C# replaces a PowerShell hashtable + ScriptBlock Levenshtein that cost ~4ms per
-    /// lookup due to interpreter overhead on the inner character loop. The C# version reduces
-    /// per-lookup cost to ~0.02ms — critical when Get-NameIndex builds the tree over 4,700+ tokens
-    /// and Resolve-Name performs 16,500+ fuzzy lookups per session run.
-    ///
     /// Algorithm: metric tree keyed on Levenshtein distance. Search prunes children outside
     /// [d-threshold, d+threshold] range, yielding O(log N) average lookup vs O(N) linear scan.
     /// Tree is built once per module load and reused across all Resolve-Name calls.
     ///
     /// FindFuzzyPairs provides batch O(n^2) pairwise comparison for Get-NamedLocationReport
     /// deduplication. Uses ArrayPool<int> to rent work arrays once, avoiding per-pair allocation
-    /// (50-200 location names, ~5K-20K pair comparisons).
+    /// across all pair comparisons.
     ///
     /// Thread safety: instance methods (Add, Search) are not thread-safe — tree is built
     /// single-threaded during Get-NameIndex. Static FindFuzzyPairs and LevenshteinDistance

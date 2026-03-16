@@ -8,12 +8,10 @@ namespace Robot {
     /// SHA256 content hasher with zero-allocation inner loop for session graph
     /// staleness detection.
     ///
-    /// Compiled C# replaces a PowerShell pipeline of [regex]'\s+'.Replace($Content, '') +
-    /// [System.Text.Encoding]::UTF8.GetBytes() + SHA256.ComputeHash() that allocated three
-    /// intermediate strings/arrays per call. The C# version fuses whitespace stripping and
-    /// UTF-8 encoding into a single pass, renting the byte buffer from ArrayPool<byte>.
+    /// Fuses whitespace stripping and UTF-8 encoding into a single pass, renting the byte
+    /// buffer from ArrayPool<byte> to avoid per-call allocation.
     ///
-    /// Called by Get-SessionContentHash for every session section (~500-700 sections per run).
+    /// Called by Get-SessionContentHash for every session section in the repository.
     /// HashSections batches header+body pairs for sidecar file generation.
     ///
     /// Whitespace semantics: char.IsWhiteSpace matches the same set as .NET regex \s

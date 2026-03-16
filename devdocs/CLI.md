@@ -547,6 +547,20 @@ Prefix matches are ranked before contains matches. Results are capped at `MaxRes
 
 The engine-driven fuzzy search (`Invoke-EngineFuzzySearch`) applies stages 1-2 immediately on each keystroke and triggers stage 3 after a 300ms debounce (`Invoke-FuzzyDebounce`). Stage 3 matches display with a `≈` prefix to indicate approximate results.
 
+### 7.3 Compiled C# Type: `Robot.FuzzyMatcher`
+
+**Source**: `lib/FuzzyMatcher.cs` — compiled centrally in `robot.psm1`.
+
+Compiled fuzzy string matcher for CLI typeahead filtering. Pre-lowercases all candidate names at construction time (`ToLowerInvariant`), then uses `Ordinal` comparisons on pre-lowered strings to eliminate per-keystroke case conversion overhead.
+
+**API**:
+
+- **Constructor** `FuzzyMatcher(string[] names)` — builds a normalized (lowered) name array. Null names are normalized to empty string. The caller retains the original candidate array and maps returned indices back.
+- **`Filter(string query, int maxResults)`** — two-stage filtering: (1) prefix match via `StartsWith` with `Ordinal` comparison, (2) contains match via `IndexOf` with `Ordinal` comparison. Returns `int[]` of indices into the original name array, capped at `maxResults`. A `HashSet<int>` deduplicates stage 2 results against stage 1 hits.
+- **`FindHighlight(string text, string query)`** — static method returning `int[2]` (`{startIndex, length}`) for match position rendering. Consumed by `Split-HighlightSegments` for ANSI color highlighting.
+
+**Consumers**: CLI typeahead/search code — `Invoke-FuzzyFilter` (`private/cli/cli-fuzzy.ps1`), `Invoke-MenuFilter` (`private/cli/engine/cli-menulist.ps1`).
+
 ---
 
 ## 8. Wizard Auto-Generation (`cli-wizard.ps1`, `cli-wizard-steps.ps1`, `cli-wizard-preview.ps1`)

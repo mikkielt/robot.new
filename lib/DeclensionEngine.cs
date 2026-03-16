@@ -4,10 +4,9 @@ using System.Collections.Generic;
 namespace Robot {
     /// Polish noun declension engine for name resolution.
     ///
-    /// Compiled C# replaces PowerShell suffix-stripping loops that called
-    /// .EndsWith() + .Substring() through the interpreter at ~0.15ms per name.
-    /// The C# version reduces this to ~0.005ms — critical at 16,500 calls per
-    /// session run with 13 suffix checks + 12 alternation checks per call.
+    /// Iterates suffix and alternation arrays using .EndsWith() + .Substring() with
+    /// OrdinalIgnoreCase comparison. Called on every unresolved name during resolution,
+    /// with each call checking all configured suffix entries then all alternation entries.
     ///
     /// Two operations:
     /// - GetStem: strips the first matching inflection suffix (e.g. "Erathii" -> "Erathi")

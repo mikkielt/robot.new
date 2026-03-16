@@ -389,6 +389,78 @@ Characters with `Status = 'Usunięty'` are excluded unless `-IncludeDeleted`.
 
 ---
 
+## 6a. Compiled C# Types (`lib/`)
+
+Three compiled C# types in the `Robot` namespace replace PowerShell-native `[PSCustomObject]` construction on the entity hot path. All are loaded via a single batch `Add-Type` call in `robot.psm1` at module import time (guarded by `PSTypeName` check to avoid recompilation). PowerShell fallback paths exist for all three when compilation fails.
+
+### 6a.1 `Robot.Entity` (`lib/EntityModel.cs`)
+
+Central 27-property entity domain model. Each `Get-Entity` invocation constructs one `Robot.Entity` instance per registered entity instead of a `[PSCustomObject]@{}` hashtable.
+
+**Property typing**: Collection properties (`Names`, `Aliases`, `Groups`, `Doors`, `Coordinates`, all `*History` lists, `Overrides`, `GenericNames`, `Contains`, `UnresolvedTransfers`) are typed as `object` rather than their concrete generic types. This preserves compatibility with PowerShell's `List[object]` creation pattern and the `Comparison[object]` sort delegates used by `Robot.TemporalSorter`. PowerShell accesses these via dynamic dispatch (`.Count`, `.Add()`, `.Sort()`, indexer), which works identically on `object`-typed properties.
+
+**Consumers**: `Get-Entity` (construction at lines 423/715), `Get-EntityState` (mutation of history lists, resorting), `Get-Player`, `Get-NameIndex`, `Resolve-Name`, `Get-EntityHistory`, CLI entity display, all reporting functions.
+
+**Fallback**: When `Robot.Entity` is unavailable, `get-entity.ps1` falls back to `[PSCustomObject]@{}` with identical property names. Downstream code is unaffected because both paths expose the same property surface.
+
+### 6a.2 `Robot.TemporalEntry` / `Robot.CoordinateTemporalEntry` (`lib/TemporalEntry.cs`)
+
+Lightweight temporal value containers for entity history list entries.
+
+**`Robot.TemporalEntry`**: Unifies all domain-specific property names (Location, Type, Owner, Group, Status, Quantity, FilePath, NerthusName, alias text) into a single `Value` field. Four properties total:
+
+| Property | Type | Description |
+|---|---|---|
+| `Value` | `string` | The domain value (location name, status string, quantity, etc.) |
+| `ValidFrom` | `DateTime?` | Start of validity range (`$null` = always active) |
+| `ValidTo` | `DateTime?` | End of validity range (`$null` = open-ended) |
+| `Season` | `string` | Polish season keyword (`$null` when not seasonal) |
+
+**`Robot.CoordinateTemporalEntry`**: Carries `X`/`Y` integer fields instead of a string `Value`. Used exclusively by `@koordynaty` history entries.
+
+| Property | Type | Description |
+|---|---|---|
+| `X` | `int` | Horizontal tile coordinate |
+| `Y` | `int` | Vertical tile coordinate |
+| `ValidFrom` | `DateTime?` | Start of validity range |
+| `ValidTo` | `DateTime?` | End of validity range |
+| `Season` | `string` | Polish season keyword |
+
+Both types provide a default constructor and a parameterized constructor for inline creation (`[Robot.TemporalEntry]::new($Value, $ValidFrom, $ValidTo, $Season)`).
+
+History lists are sorted by `ValidFrom` via `Robot.TemporalSorter` (see `lib/TemporalSorter.cs`), with `$null` sorting before dated entries so always-active items remain stable at the start.
+
+**Consumers**: `get-entity.ps1` (construction in both C# and PowerShell paths), `get-entitystate.ps1` (session override application, `@Transfer` quantity deltas), `Get-EntityHistory`, `Get-LastActiveValue`, `Get-AllActiveValues`.
+
+### 6a.3 `Robot.EntityTagParser` (`lib/EntityTagParser.cs`)
+
+Compiled 14-way entity tag dispatcher that replaces the per-bullet PowerShell tag parsing loop in `get-entity.ps1`.
+
+**API**: `[Robot.EntityTagParser]::Parse($Texts, $ParentIndices, $Indents, $ValidityPattern, $DateRangePattern, $ActiveOn)` — static method accepting flat parallel arrays from `MarkdownScanner` output for a single entity type section.
+
+**Two-phase processing**:
+
+1. **Phase 1** — Builds a `Dictionary<int, List<int>>` parent-to-children index in O(n) over the flat arrays, identifying root bullets (indent level 0) and child bullets.
+2. **Phase 2** — Iterates root bullets. For each root, dispatches child bullets through a 14-way tag prefix match:
+
+| Tags (temporal) | Tags (non-temporal) |
+|---|---|
+| `@lokacja`, `@drzwi`, `@typ`, `@należy_do`, `@grupa`, `@status`, `@ilość`, `@alias`, `@plik`, `@nazwa_nerthus`, `@slug`, `@koordynaty` | `@zawiera`, `@generyczne_nazwy` |
+
+Unrecognized `@`-prefixed tags fall through to a generic overrides bucket (`Dictionary<string, List<string>>`).
+
+**Inlined logic**: `ConvertFrom-ValidityString` is inlined as the private `ParseValidity` method, handling four syntactic forms: plain value, date range, season keyword, and combined date+season. `ResolvePartialDate` expands `YYYY`/`YYYY-MM` abbreviations to full `DateTime` bounds. Non-temporal parentheticals (no colon, not a season keyword) are preserved as literal name parts for backward compatibility with entity names like "Rada (Ithan)".
+
+**Temporal filtering**: The `activeOn` parameter enables parse-time filtering for `@alias`, `@slug`, and generic override tags. Other temporal tags are returned unfiltered for downstream resolution by the PowerShell merge path. Season check uses default meteorological mapping only — custom season boundaries from `local.config.psd1` are not accessible from C#.
+
+**Output**: `EntityParseResult` containing an array of `EntityTagEntry` objects (one per root entity bullet). Each entry carries typed `List<TemporalEntry>` fields for all temporal history properties and `List<string>` fields for non-temporal tags. The PowerShell merge path calls `.AddRange()` on each history list to accumulate across multiple entity definition file sections.
+
+**Dispatch**: `get-entity.ps1` checks `([PSTypeName]'Robot.EntityTagParser').Type` at runtime and uses the C# path when available (line 276), falling back to the equivalent PowerShell loop (line 457+) when not compiled.
+
+**Consumer**: `get-entity.ps1` (sole consumer via `[Robot.EntityTagParser]::Parse`).
+
+---
+
 ## 7. Edge Cases
 
 | Scenario | Behavior |

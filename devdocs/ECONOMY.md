@@ -289,7 +289,42 @@ Registered in `private/cli/cli-registry.ps1` under the `Waluta` menu category.
 
 ---
 
-## 10. Related Documents
+## 10. Compiled C# Type: `Robot.EconomicAnalyzer`
+
+**Source**: `lib/EconomicAnalyzer.cs` — compiled centrally in `robot.psm1`.
+
+`Robot.EconomicAnalyzer` provides economic analysis for snapshot and timeline reporting. Two static operations:
+
+### 10.1 `ComputeGini(int[] positiveWealth)`
+
+Computes the Gini coefficient from positive-wealth values using the standard formula:
+
+```
+G = (2 * SUM(i * w[i])) / (n * SUM(w)) - (n+1)/n
+```
+
+- O(n log n) from `Array.Sort`, O(n) accumulation
+- Mutates the input array (sorts ascending in place)
+- Returns `0.0` for `n <= 1` or `sumW == 0`
+
+### 10.2 `GetTopHolders(string[] ownerNames, int[] ownerWealth, string[] ownerCategories, int top, out string[] topNames, out int[] topWealth, out string[] topCategories)`
+
+Top-N extraction via index-array sort. Uses full sort (simpler than partial sort for typical sizes of 50--200 holders). Returns parallel arrays through `out` parameters for direct PowerShell consumption via `[ref]`.
+
+- Returns empty arrays when input is null/empty or `top <= 0`
+- Sorts by wealth descending via index indirection to preserve parallel array alignment
+
+### 10.3 Type Loading
+
+Compiled centrally in `robot.psm1` at module import time. Consumer code checks availability with `([System.Management.Automation.PSTypeName]'Robot.EconomicAnalyzer').Type` and falls back to an equivalent PowerShell implementation when the type is unavailable.
+
+### 10.4 Consumer
+
+`New-EconomicSnapshotData` (`private/economy-helpers.ps1`) — calls both `ComputeGini` and `GetTopHolders` when the C# type is available, falling back to PowerShell Sort-Object/ScriptBlock comparisons otherwise.
+
+---
+
+## 11. Related Documents
 
 - [CURRENCY.md](CURRENCY.md) - Currency system (denominations, CRUD, reconciliation, @Transfer)
 - [ENTITIES.md](ENTITIES.md) - Entity system (tags, temporal scoping)

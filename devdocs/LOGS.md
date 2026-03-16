@@ -267,9 +267,39 @@ All parsers return:
 
 ---
 
-## 6. `Get-SessionLog` - Core Pipeline
+## 6. Compiled C# Parser (`lib/LogParser.cs`)
 
-### 6.1 Parameters
+**Robot.LogParser** is a compiled C# log content parser for ChatLog and Prose formats. It applies 3-5 precompiled regex operations per line in a single native pass with struct array output (`LogLine[]`), minimizing GC pressure on the hot path.
+
+### 6.1 Format Parsers
+
+Two format parsers are implemented:
+
+1. **ChatLog**: `[HH:MM]` timestamped lines with optional `[Channel]` tags. Uses a pending-timestamp state machine -- a timestamp line with no content after the channel tag is held pending until the next line resolves it (continuation text, empty line, or next timestamp).
+2. **Prose**: freeform text with location headers detected by heuristic (short line <= 60 chars after empty line, no `Speaker:` pattern).
+
+Format detection scans the first ~30 non-empty lines; 2+ timestamp matches selects ChatLog, otherwise Prose.
+
+### 6.2 Output Types
+
+| Type | Kind | Purpose |
+|---|---|---|
+| `ParseResult` | class | Container: `Format`, `Lines` (`LogLine[]`), `LocationSegments` (`LocationSegment[]`) |
+| `LogLine` | struct | Per-line data: `Index`, `Time`, `Channel`, `Speaker`, `Text`, `Segment` |
+| `LocationSegment` | class | Per-segment data: `Index`, `Raw`, `StartLine`, `EndLine`, `Resolved`, `Stage` |
+
+`LocationSegment` is a class (not struct) because PowerShell consumers set `Resolved`/`Stage` properties after name resolution in `Get-SessionLog`; value-type boxing would lose mutations on array elements.
+
+### 6.3 Consumers
+
+- `Parse-LogContent` (`private/parse-logcontent.ps1`) -- dispatches to `Robot.LogParser` when the type is available, falls back to the PowerShell parsers (section 5) otherwise.
+- `Get-SessionLog` (`public/session/get-sessionlog.ps1`)
+
+---
+
+## 7. `Get-SessionLog` - Core Pipeline
+
+### 7.1 Parameters
 
 | Parameter | Type | Mandatory | Description |
 |---|---|---|---|
@@ -282,7 +312,7 @@ All parsers return:
 
 When `.Logs` contains local file paths (non-HTTP entries such as `res/logs/filename`), they are read directly from disk via `[System.IO.File]::ReadAllText()` without HTTP requests. Mixed URLs and local paths in the same session are fully supported — URLs go through `Invoke-LogBatchFetch` while local paths are resolved against `Get-RepoRoot`'s `.robot/` directory and merged into the fetched content dictionary before parsing.
 
-### 6.2 Pipeline Architecture
+### 7.2 Pipeline Architecture
 
 Uses **collect-then-emit** pattern:
 
@@ -296,15 +326,15 @@ Uses **collect-then-emit** pattern:
 
 This ensures each unique URL is fetched/parsed only once, even when shared across sessions.
 
-### 6.3 Speaker Resolution
+### 7.3 Speaker Resolution
 
 When `-Index` is provided, each speaker's raw name is resolved via `Resolve-Name` using the Index's `Index`, `StemIndex`, and `BKTree` sub-hashtables. The `Cache` parameter enables cross-session resolution caching.
 
-### 6.4 Location Segment Resolution
+### 7.4 Location Segment Resolution
 
 When `-Index` is provided, each `LocationSegment.Raw` value is resolved via `Resolve-Name`. `Resolved` and `Stage` NoteProperties are added to the segment objects.
 
-### 6.5 Output Schema
+### 7.5 Output Schema
 
 Per session, emits:
 
@@ -333,7 +363,7 @@ Per session, emits:
 - `Channels[].Lines`: Array of line indices in this channel
 - When `-Index` is provided, `LocationSegments[].Resolved` and `LocationSegments[].Stage` are populated via `Resolve-Name`
 
-### 6.6 `-IncludeLogs` Integration
+### 7.6 `-IncludeLogs` Integration
 
 `Get-Session -IncludeLogs` internally calls `Get-SessionLog` and attaches a `LogData` property to each session object that has log URLs. This enables single-pipeline workflows:
 
@@ -344,9 +374,9 @@ $Sessions[0].LogData.Logs[0].Speakers  # speaker list from first log
 
 ---
 
-## 7. `Invoke-SessionLogFetch` - Mass Fetch Workflow
+## 8. `Invoke-SessionLogFetch` - Mass Fetch Workflow
 
-### 7.1 Parameters
+### 8.1 Parameters
 
 | Parameter | Type | Mandatory | Description |
 |---|---|---|---|
@@ -361,7 +391,7 @@ $Sessions[0].LogData.Logs[0].Speakers  # speaker list from first log
 
 Supports `ShouldProcess`.
 
-### 7.2 Pipeline Architecture
+### 8.2 Pipeline Architecture
 
 Uses **collect-then-emit** pattern like `Get-SessionLog`:
 
@@ -373,7 +403,7 @@ Uses **collect-then-emit** pattern like `Get-SessionLog`:
    - Partition into cached, failed/skipped, and pending
    - Fetch pending URLs with retry logic
 
-### 7.3 Error Handling
+### 8.3 Error Handling
 
 | HTTP Status | Action |
 |---|---|
@@ -386,7 +416,7 @@ Uses **collect-then-emit** pattern like `Get-SessionLog`:
 
 Failed markers contain: URL, error description, HTTP status code, UTC timestamp (ISO 8601 format).
 
-### 7.4 Output
+### 8.4 Output
 
 Returns a summary `PSCustomObject`:
 
@@ -401,15 +431,15 @@ Returns a summary `PSCustomObject`:
 }
 ```
 
-### 7.5 `-WhatIf` Support
+### 8.5 `-WhatIf` Support
 
 With `-WhatIf`, partitions URLs into cached/skipped/pending but performs no HTTP requests. Reports what would be fetched. Returns the summary with `Fetched = 0`.
 
 ---
 
-## 8. `Get-NamedLogLocationReport` - Location Analysis
+## 9. `Get-NamedLogLocationReport` - Location Analysis
 
-### 8.1 Parameters
+### 9.1 Parameters
 
 | Parameter | Type | Mandatory | Description |
 |---|---|---|---|
@@ -419,7 +449,7 @@ With `-WhatIf`, partitions URLs into cached/skipped/pending but performs no HTTP
 | `Cache` | hashtable | No | Shared resolution cache |
 | `MaxNearMatches` | int | No | Max near-match candidates for unresolved locations (default 3) |
 
-### 8.2 Analysis Steps
+### 9.2 Analysis Steps
 
 For each LocationSegment in each parsed log:
 
@@ -427,7 +457,7 @@ For each LocationSegment in each parsed log:
 2. **Cross-reference** against the source session's `@Lokalizacje` metadata
 3. **Near-match detection** for unresolved locations: Levenshtein distance against all `Lokacja` entities in the index, threshold `floor(length / 3)`
 
-### 8.3 Output Schema
+### 9.3 Output Schema
 
 ```powershell
 @{
@@ -471,7 +501,7 @@ For each LocationSegment in each parsed log:
 
 ---
 
-## 9. CLI Integration
+## 10. CLI Integration
 
 Two CLI entries under the "Logi" section:
 
@@ -490,13 +520,14 @@ Date range -> `Get-Session | Get-SessionLog -SkipFetch` -> `Get-NamedLogLocation
 
 ---
 
-## 10. File Map
+## 11. File Map
 
 | File | Layer | Purpose |
 |---|---|---|
 | `private/log-fetchhelpers.ps1` | Private | URL normalization, disk cache, HTTP fetch (5 functions) |
 | `private/session-decomposehelpers.ps1` | Private | `Resolve-LogUrlToLocalPath` — URL-to-local-path resolution for log localization |
 | `private/parse-logcontent.ps1` | Private | Format detection, ChatLog/Prose parsers (4 functions) |
+| `lib/LogParser.cs` | Compiled C# | `Robot.LogParser` — native ChatLog/Prose parser with struct array output |
 | `public/session/get-sessionlog.ps1` | Public | Core pipeline: fetch, parse, cross-reference |
 | `public/workflow/invoke-sessionlogfetch.ps1` | Public | Mass fetch with error handling |
 | `public/reporting/get-namedloglocationreport.ps1` | Public | Location resolution analysis |
@@ -510,7 +541,7 @@ Date range -> `Get-Session | Get-SessionLog -SkipFetch` -> `Get-NamedLogLocation
 
 ---
 
-## 11. Related Documents
+## 12. Related Documents
 
 - [SESSIONS.md](SESSIONS.md) - Session parsing pipeline (produces `.Logs` URLs consumed by this subsystem)
 - [NAME-RESOLUTION.md](NAME-RESOLUTION.md) - Name resolution used for speaker and location matching

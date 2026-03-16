@@ -22,6 +22,12 @@
       mentions, Intel) via HashSet/Dictionary union. Reports scalar
       field conflicts (Title, Format) as warnings.
 
+    Module-level data:
+    - $script:SessionFileCache: per-file session cache (WP-4) storing
+      structural extraction results keyed by FilePath -> {ModTime, Sessions, Failed}.
+      Cache stores pre-narrator/pre-Intel data; entity-dependent
+      post-processing runs on every call including cache hits.
+
     Get-Session scans Markdown files for level-3 headers containing a
     yyyy-MM-dd date and extracts structured session objects. It supports
     four format generations:
@@ -33,30 +39,38 @@
     - Gen4 (2026+): @-prefixed tags (- @Lokacje:, - @PU:, - @Logi:,
       - @Zmiany:). Backwards compatible with Gen3.
 
-    Pipeline:
+    Pipeline (WP-4 + WP-6 architecture):
     1. Collect input files (explicit file, directory scan, or repo root)
     2. Pre-fetch shared dependencies: entities, players, name index
     3. Pre-build entity indices for O(1) Intel resolution (EntityByGroup,
        EntityByLocation) to avoid O(E) scans per Intel directive
-    4. Batch-parse all files via Get-Markdown (RunspacePool parallelism)
-    5. Per file: pre-filter sections by date regex, batch Resolve-Narrator
-    6. Per section: parse date, detect format, build ChildrenOf hashtable
-       keyed by ParentIndex/LocalIndex for O(1) parent-child lookups,
-       extract locations/PU/logs/changes/transfers/mentions/Intel
-    7. @Data override rescues sessions with malformed header dates
-    8. @Narrator override replaces header-based narrator resolution
-    9. Cross-file deduplication groups by exact header text (Ordinal)
+    4. Batch-parse all files via Get-Markdown (WP-2 cache handles this)
+    5. Per file: check $script:SessionFileCache
+       a. Cache HIT: use cached structural sessions
+       b. Cache MISS: C# extraction (Robot.SessionExtractor, WP-6) or
+          PowerShell fallback -> store in cache
+    6. Post-processing (runs on both cache hits and misses):
+       a. Batch Resolve-Narrator for header-based narrator resolution
+       b. @Narrator override resolution (name index dependent)
+       c. Location Strategy 1 (entity resolution for Gen3/Gen4)
+       d. Entity mention extraction (opt-in via -IncludeMentions)
+       e. Intel target resolution (Resolve-IntelTargets)
+    7. Date filtering (AFTER cache lookup to support wider ranges)
+    8. Cross-file deduplication groups by exact header text (Ordinal)
 
-    Critical invariant: NarratorIdx must stay in sync with ParseableIndices
-    even when sessions are date-filtered out, because Resolve-Narrator
-    returns results for all parseable sections in a file.
+    The C# extractor (Robot.SessionExtractor) handles structural extraction
+    only: header parsing, format detection, tag dispatch, and tag-based
+    location extraction (Strategy 2). Entity-dependent operations stay in
+    PowerShell. When the C# type is unavailable, the full PS extraction
+    loop runs as fallback.
 #>
 
 . "$script:ModuleRoot/private/temporal-helpers.ps1"
 . "$script:ModuleRoot/private/session-parsehelpers.ps1"
 . "$script:ModuleRoot/private/session-intelhelpers.ps1"
 
-# C# types: Robot.NarratorResult, Robot.Narrator (lib/NarratorResult.cs)
+# C# types: Robot.NarratorResult, Robot.Narrator (lib/NarratorResult.cs),
+# Robot.SessionExtractor (lib/SessionExtractor.cs)
 # Compiled centrally in robot.psm1 at module import time.
 
 # Extracts yyyy-MM-dd date (with optional /DD range suffix) from a session
@@ -447,6 +461,22 @@ function Get-Session {
     $MarkdownByPath = [System.Collections.Generic.Dictionary[string, object]]::new([System.StringComparer]::OrdinalIgnoreCase)
     foreach ($MarkdownResult in $AllMarkdownResults) { $MarkdownByPath[$MarkdownResult.FilePath] = $MarkdownResult }
 
+    # WP-4: Lazy-initialize per-file session cache. Caching structural data
+    # (header, date, format, tag-extracted metadata) avoids re-parsing unchanged
+    # files on repeated Get-Session calls within the same module session.
+    if (-not $script:SessionFileCache) {
+        $script:SessionFileCache = [System.Collections.Generic.Dictionary[string, object]]::new(
+            [System.StringComparer]::OrdinalIgnoreCase)
+    }
+
+    # WP-6: Prefer C# SessionExtractor when available — compiled extraction is
+    # ~3x faster than the PowerShell per-section loop for large session files
+    $UseCsExtractor = ([System.Management.Automation.PSTypeName]'Robot.SessionExtractor').Type -ne $null
+
+    # Cache key includes content/failed flags because sessions cached without
+    # content must be re-extracted when -IncludeContent is requested, and vice versa
+    $CacheFlags = "c$([int]$IncludeContent.IsPresent)f$([int]$IncludeFailed.IsPresent)"
+
     # Per-file processing: pre-filter sections, resolve narrators, extract metadata
 
     $script:ProgressFileIdx = 0
@@ -464,185 +494,291 @@ function Get-Session {
         $SessionSections = $Markdown.Sections.Where({ $_.Header -and $_.Header.Level -eq 3 })
         if ($SessionSections.Count -eq 0) { continue }
 
-        # Single-pass pre-filter: cache date regex matches and build parseable sections list
-        $HasCandidateSession = $false
-        $ParseableSections   = [System.Collections.Generic.List[object]]::new()
-        $ParseableIndices    = [System.Collections.Generic.HashSet[int]]::new()
-        $CachedDateMatches   = [System.Collections.Generic.Dictionary[int, object]]::new()
-        $CachedDateParsed    = [System.Collections.Generic.Dictionary[int, object]]::new()
+        # WP-4: Check per-file cache before extraction. Date filtering runs AFTER
+        # cache lookup so a cached file can serve both narrow and wide date ranges
+        # without re-extraction. Cache key uses file mod-time + flag suffix.
+        $FileInfo = [System.IO.FileInfo]::new($FilePath)
+        $FileModKey = "$($FileInfo.LastWriteTimeUtc.Ticks):$CacheFlags"
+        $CachedFileData = $null
+        $CacheHit = $false
 
-        for ($i = 0; $i -lt $SessionSections.Count; $i++) {
-            $Sect = $SessionSections[$i]
-            $DMatch = $DateRegex.Match($Sect.Header.Text)
-            $CachedDateMatches[$i] = $DMatch
-
-            if ($DMatch.Success) {
-                $ParseableSections.Add($Sect)
-                [void]$ParseableIndices.Add($i)
-
-                # Cache parsed date to avoid redundant TryParseExact in ConvertFrom-SessionHeader
-                $DStr = $DMatch.Groups[1].Value
-                $DParsed = ConvertTo-SessionDate -DateString $DStr
-                if ($DParsed) {
-                    $CachedDateParsed[$i] = $DParsed
-                    if (-not $HasCandidateSession -and $DParsed -ge $MinDate -and $DParsed -le $MaxDate) {
-                        $HasCandidateSession = $true
-                    }
-                }
-            } else {
-                # No date match — must process (may become a failed session entry)
-                $HasCandidateSession = $true
+        if ($script:SessionFileCache.ContainsKey($FilePath)) {
+            $CachedEntry = $script:SessionFileCache[$FilePath]
+            if ($CachedEntry.ModTime -eq $FileModKey) {
+                $CachedFileData = $CachedEntry
+                $CacheHit = $true
             }
         }
-        if (-not $HasCandidateSession) { continue }
+
+        if ($CacheHit) {
+            # Cache hit: reuse structural sessions. Entity-dependent post-processing
+            # (narrator, Intel targets, Location Strategy 1, mentions) still re-runs
+            # because the entity index may have changed since the cache was populated.
+            $FileStructuralSessions = $CachedFileData.Sessions
+            $FileFailedSessions     = $CachedFileData.Failed
+        } else {
+            # Cache miss: run structural extraction (C# fast path or PS fallback)
+            $FileStructuralSessions = [System.Collections.Generic.List[object]]::new()
+            $FileFailedSessions     = [System.Collections.Generic.List[object]]::new()
+
+            # WP-6: C# fast path — Robot.SessionExtractor handles header parsing,
+            # format detection, and tag dispatch in compiled code
+            if ($UseCsExtractor) {
+                for ($SectI = 0; $SectI -lt $SessionSections.Count; $SectI++) {
+                    $Section = $SessionSections[$SectI]
+                    $Header  = $Section.Header.Text
+
+                    # Flatten list items into parallel arrays for C# interop (avoids marshalling PSCustomObjects)
+                    $ItemCount = @($Section.Lists).Count
+                    $Texts = [string[]]::new($ItemCount)
+                    $ParentIndices = [int[]]::new($ItemCount)
+                    for ($Idx = 0; $Idx -lt $ItemCount; $Idx++) {
+                        $LI = @($Section.Lists)[$Idx]
+                        $Texts[$Idx] = $LI.Text
+                        $ParentIndices[$Idx] = $LI.ParentIndex
+                    }
+
+                    $CsSess = [Robot.SessionExtractor]::ExtractSection(
+                        $Header,
+                        $Section.Content,
+                        $Texts,
+                        $ParentIndices,
+                        $DateRegex,
+                        $PURegex,
+                        $UrlRegex,
+                        $IncludeContent.IsPresent
+                    )
+
+                    if ($null -eq $CsSess) {
+                        # No valid date — record as failed
+                        if ($IncludeFailed) {
+                            $FileFailedSessions.Add(@{
+                                Header       = $Header
+                                Content      = if ($IncludeContent) { $Section.Content } else { $null }
+                                SectionIndex = $SectI
+                            })
+                        }
+                        continue
+                    }
+
+                    $FileStructuralSessions.Add(@{
+                        Header           = $CsSess.Header
+                        Date             = $CsSess.Date
+                        DateEnd          = $CsSess.DateEnd
+                        DateStr          = $CsSess.DateStr
+                        EndDayStr        = $CsSess.EndDayStr
+                        Title            = $CsSess.Title
+                        Format           = $CsSess.Format
+                        Locations        = $CsSess.Locations
+                        Logs             = if ($CsSess.Logs) { @($CsSess.Logs) } else { @() }
+                        PU               = if ($CsSess.PU) { @($CsSess.PU) } else { @() }
+                        Changes          = if ($CsSess.Changes) { @($CsSess.Changes) } else { @() }
+                        Transfers        = if ($CsSess.Transfers) { @($CsSess.Transfers) } else { @() }
+                        RawIntel         = if ($CsSess.RawIntel) { $CsSess.RawIntel } else { [System.Collections.Generic.List[object]]::new() }
+                        NarratorRawText  = $CsSess.NarratorRawText
+                        MetaNarrators    = if ($CsSess.MetaNarrators) { @($CsSess.MetaNarrators) } else { @() }
+                        Content          = $CsSess.Content
+                        FirstNonEmptyLine = $CsSess.FirstNonEmptyLine
+                        SectionIndex     = $SectI
+                    })
+                }
+            } else {
+                # PowerShell fallback: full per-section extraction loop
+                for ($SectI = 0; $SectI -lt $SessionSections.Count; $SectI++) {
+                    $Section = $SessionSections[$SectI]
+                    $Header  = $Section.Header.Text
+
+                    $DMatch = $DateRegex.Match($Header)
+                    $DateInfo = $null
+                    if ($DMatch.Success) {
+                        $DStr = $DMatch.Groups[1].Value
+                        $DParsed = ConvertTo-SessionDate -DateString $DStr
+                        if ($DParsed) {
+                            $DateInfo = @{
+                                Date      = $DParsed
+                                DateEnd   = $null
+                                DateStr   = $DStr
+                                EndDayStr = $DMatch.Groups[2].Value
+                            }
+                            if ($DateInfo.EndDayStr) {
+                                $EndStr = $DStr.Substring(0, 8) + $DateInfo.EndDayStr
+                                $EndParsed = ConvertTo-SessionDate -DateString $EndStr
+                                if ($EndParsed) { $DateInfo.DateEnd = $EndParsed }
+                            }
+                        }
+                    }
+
+                    # @Data override rescues sessions with malformed header dates
+                    $DateOverrideStr = $null
+                    if ($Section.Lists) {
+                        foreach ($LI in $Section.Lists) {
+                            if ($LI.Indent -ne 0) { continue }
+                            $DOTestText = if ($LI.Text.StartsWith('@')) { $LI.Text.Substring(1) } else { $LI.Text }
+                            $DOLower = $DOTestText.ToLowerInvariant()
+                            if ($DOLower.StartsWith('data') -and $DOLower.Length -gt 4 -and ($DOLower[4] -eq ':' -or $DOLower[4] -eq ' ')) {
+                                $DOColonIdx = $DOTestText.IndexOf(':')
+                                if ($DOColonIdx -ge 0) {
+                                    $DOInline = $DOTestText.Substring($DOColonIdx + 1).Trim()
+                                    if ($DOInline.Length -gt 0) {
+                                        $DateOverrideStr = $DOInline
+                                    } else {
+                                        foreach ($DOChild in $Section.Lists) {
+                                            if ($DOChild.ParentIndex -eq $LI.LocalIndex) {
+                                                $DateOverrideStr = $DOChild.Text.Trim()
+                                                break
+                                            }
+                                        }
+                                    }
+                                }
+                                break
+                            }
+                        }
+                    }
+                    if ($DateOverrideStr) {
+                        $DOParsed = ConvertTo-SessionDate -DateString $DateOverrideStr
+                        if ($DOParsed) {
+                            if ($null -eq $DateInfo) {
+                                $DateInfo = @{
+                                    Date      = $DOParsed
+                                    DateEnd   = $null
+                                    DateStr   = $DateOverrideStr
+                                    EndDayStr = $null
+                                }
+                            } else {
+                                $DateInfo.Date = $DOParsed
+                                $DateInfo.DateStr = $DateOverrideStr
+                            }
+                        }
+                    }
+
+                    if ($null -eq $DateInfo) {
+                        if ($IncludeFailed) {
+                            $FileFailedSessions.Add(@{
+                                Header       = $Header
+                                Content      = if ($IncludeContent) { $Section.Content } else { $null }
+                                SectionIndex = $SectI
+                            })
+                        }
+                        continue
+                    }
+
+                    # Extract title from header
+                    $Title = Get-SessionTitle -Header $Header -DateInfo $DateInfo
+
+                    # Classify session format
+                    $ContentLines = $Section.Content.Split([char]"`n")
+                    $FirstNonEmptyLine = $null
+                    foreach ($CLine in $ContentLines) {
+                        if (-not [string]::IsNullOrWhiteSpace($CLine)) {
+                            $FirstNonEmptyLine = $CLine
+                            break
+                        }
+                    }
+                    $Format = Get-SessionFormat -FirstNonEmptyLine $FirstNonEmptyLine -SectionLists $Section.Lists
+
+                    # Build section children-of index
+                    $SectionChildrenOf = @{}
+                    foreach ($LI in $Section.Lists) {
+                        if ($LI.ParentIndex -ge 0) {
+                            if (-not $SectionChildrenOf.ContainsKey($LI.ParentIndex)) {
+                                $SectionChildrenOf[$LI.ParentIndex] = [System.Collections.Generic.List[object]]::new()
+                            }
+                            $SectionChildrenOf[$LI.ParentIndex].Add($LI)
+                        }
+                    }
+
+                    # Tag-based location extraction (Strategy 2 only — Strategy 1 runs in post-processing)
+                    $Locations = Get-SessionLocations -Format $Format -FirstNonEmptyLine $FirstNonEmptyLine -SectionLists $Section.Lists -LocItalicRegex $LocItalicRegex -Index $null -ChildrenOf $SectionChildrenOf
+
+                    # List-based metadata extraction
+                    $ListMeta = Get-SessionListMetadata -SectionLists $Section.Lists -PURegex $PURegex -UrlRegex $UrlRegex -ChildrenOf $SectionChildrenOf
+
+                    $Logs = $ListMeta.Logs
+                    if ($Logs.Count -eq 0) {
+                        $Logs = Get-SessionPlainTextLogs -ContentLines $ContentLines -LogiLineRegex $LogiLineRegex
+                    }
+
+                    # Extract narrator raw text from header
+                    $NarratorRaw = $null
+                    $LastComma = $Header.LastIndexOf(',')
+                    if ($LastComma -ge 0 -and ($Header.Split(',').Length - 1) -ge 2) {
+                        $NarratorRaw = $Header.Substring($LastComma + 1).Trim()
+                    }
+
+                    $FileStructuralSessions.Add(@{
+                        Header           = $Header
+                        Date             = $DateInfo.Date
+                        DateEnd          = $DateInfo.DateEnd
+                        DateStr          = $DateInfo.DateStr
+                        EndDayStr        = $DateInfo.EndDayStr
+                        Title            = $Title
+                        Format           = $Format
+                        Locations        = if ($Locations) { @($Locations) } else { @() }
+                        Logs             = if ($Logs) { @($Logs) } else { @() }
+                        PU               = if ($ListMeta.PU) { @($ListMeta.PU) } else { @() }
+                        Changes          = if ($ListMeta.Changes -and $ListMeta.Changes.Count -gt 0) { @($ListMeta.Changes) } else { @() }
+                        Transfers        = if ($ListMeta.Transfers -and $ListMeta.Transfers.Count -gt 0) { @($ListMeta.Transfers) } else { @() }
+                        RawIntel         = if ($ListMeta.Intel -and $ListMeta.Intel.Count -gt 0) { $ListMeta.Intel } else { [System.Collections.Generic.List[object]]::new() }
+                        NarratorRawText  = $NarratorRaw
+                        MetaNarrators    = if ($ListMeta.Narrators -and $ListMeta.Narrators.Count -gt 0) { @($ListMeta.Narrators) } else { @() }
+                        Content          = if ($IncludeContent) { $Section.Content } else { $null }
+                        FirstNonEmptyLine = $FirstNonEmptyLine
+                        SectionIndex     = $SectI
+                    })
+                }
+            }
+
+            # Persist structural results so subsequent calls with different date ranges skip extraction
+            $script:SessionFileCache[$FilePath] = @{
+                ModTime  = $FileModKey
+                Sessions = $FileStructuralSessions
+                Failed   = $FileFailedSessions
+            }
+        }
+
+        # ── Post-processing: entity-dependent operations ──────────────────────
+        # These steps run on EVERY call (including cache hits) because they
+        # depend on the current entity index, which may have changed since
+        # the structural cache was populated.
+
+        # Build parseable sections list for batch narrator resolution
+        $ParseableSections = [System.Collections.Generic.List[object]]::new()
+        foreach ($StructSess in $FileStructuralSessions) {
+            if ($null -ne $StructSess.NarratorRawText -or $StructSess.MetaNarrators.Count -gt 0) {
+                $ParseableSections.Add([PSCustomObject]@{ Header = $StructSess.Header })
+            }
+        }
 
         $NarratorResults = $null
         if ($ParseableSections.Count -gt 0) {
             $NarratorResults = Resolve-Narrator -Sessions $ParseableSections.ToArray() -Index $Index -StemIndex $StemIndex -BKTree $BKTree -NarratorCache $NarratorCache
         }
 
-        # Per-section processing: date parsing, format detection, metadata extraction
-
         $NarratorIdx = 0
-        for ($i = 0; $i -lt $SessionSections.Count; $i++) {
-            $Section = $SessionSections[$i]
-            $Header  = $Section.Header.Text
-
-            # Reuse cached regex match and pre-parsed date from the pre-filter pass
-            $CachedMatch = if ($CachedDateMatches.ContainsKey($i)) { $CachedDateMatches[$i] } else { $null }
-            $HeaderArgs = @{ Header = $Header; DateRegex = $DateRegex; Match = $CachedMatch }
-            if ($CachedDateParsed.ContainsKey($i)) { $HeaderArgs['ParsedDate'] = $CachedDateParsed[$i] }
-            $DateInfo = ConvertFrom-SessionHeader @HeaderArgs
-
-            # @Data override rescues sessions with malformed header dates (e.g. "2024-07-014")
-            # by providing a correct date via a structured tag in the session body
-            $DateOverrideStr = $null
-            if ($Section.Lists) {
-                foreach ($LI in $Section.Lists) {
-                    if ($LI.Indent -ne 0) { continue }
-                    $DOTestText = if ($LI.Text.StartsWith('@')) { $LI.Text.Substring(1) } else { $LI.Text }
-                    $DOLower = $DOTestText.ToLowerInvariant()
-                    if ($DOLower.StartsWith('data') -and $DOLower.Length -gt 4 -and ($DOLower[4] -eq ':' -or $DOLower[4] -eq ' ')) {
-                        $DOColonIdx = $DOTestText.IndexOf(':')
-                        if ($DOColonIdx -ge 0) {
-                            $DOInline = $DOTestText.Substring($DOColonIdx + 1).Trim()
-                            if ($DOInline.Length -gt 0) {
-                                $DateOverrideStr = $DOInline
-                            } else {
-                                foreach ($DOChild in $Section.Lists) {
-                                    if ($DOChild.ParentIndex -eq $LI.LocalIndex) {
-                                        $DateOverrideStr = $DOChild.Text.Trim()
-                                        break
-                                    }
-                                }
-                            }
-                        }
-                        break
-                    }
-                }
-            }
-            if ($DateOverrideStr) {
-                $DOParsed = ConvertTo-SessionDate -DateString $DateOverrideStr
-                if ($DOParsed) {
-                    if ($null -eq $DateInfo) {
-                        $DateInfo = @{
-                            Date      = $DOParsed
-                            DateEnd   = $null
-                            DateStr   = $DateOverrideStr
-                            EndDayStr = $null
-                        }
-                    } else {
-                        $DateInfo.Date = $DOParsed
-                        $DateInfo.DateStr = $DateOverrideStr
-                    }
-                }
-            }
-
-            if ($null -eq $DateInfo) {
-                # Header does not match session pattern - record as failed
-                if ($IncludeFailed) {
-                    $FailedSession = [PSCustomObject]@{
-                        FilePath       = $FilePath
-                        FilePaths      = @($FilePath)
-                        Header         = $Header
-                        Date           = $null
-                        DateEnd        = $null
-                        Title          = $Header
-                        Narrator       = $null
-                        Locations      = @()
-                        Logs           = @()
-                        PU             = @()
-                        Format         = "Unknown"
-                        IsMerged       = $false
-                        DuplicateCount = 0
-                        Content        = if ($IncludeContent) { $Section.Content } else { $null }
-                        Changes        = @()
-                        Mentions       = @()
-                        Intel          = @()
-                        ParseError     = "Header does not contain a valid yyyy-MM-dd date"
-                    }
-                    $FailedSessions.Add($FailedSession)
+        foreach ($StructSess in $FileStructuralSessions) {
+            # Date filtering (cache stores ALL sessions; filter here)
+            if ($StructSess.Date -lt $MinDate -or $StructSess.Date -gt $MaxDate) {
+                # Still advance narrator index to keep in sync
+                if ($null -ne $StructSess.NarratorRawText -or $StructSess.MetaNarrators.Count -gt 0) {
+                    $NarratorIdx++
                 }
                 continue
             }
 
-            # Extract narrator BEFORE date filtering — $NarratorIdx must stay in sync
-            # with $ParseableIndices even when sessions are filtered out
+            # Narrator resolution from header
             $NarratorResult = $null
-            if ($NarratorResults -and $ParseableIndices.Contains($i)) {
-                $NarratorResult = if ($NarratorResults -is [array]) { $NarratorResults[$NarratorIdx] } else { $NarratorResults }
+            if ($null -ne $StructSess.NarratorRawText -or $StructSess.MetaNarrators.Count -gt 0) {
+                if ($NarratorResults) {
+                    $NarratorResult = if ($NarratorResults -is [array]) { $NarratorResults[$NarratorIdx] } else { $NarratorResults }
+                }
                 $NarratorIdx++
             }
 
-            # Date filtering
-            if ($DateInfo.Date -lt $MinDate -or $DateInfo.Date -gt $MaxDate) { continue }
-
-            # Extract title from header (middle comma-separated segment)
-            $Title = Get-SessionTitle -Header $Header -DateInfo $DateInfo
-
-            # Classify session format generation from content heuristics
-            $ContentLines = $Section.Content.Split([char]"`n")
-
-            $FirstNonEmptyLine = $null
-            foreach ($CLine in $ContentLines) {
-                if (-not [string]::IsNullOrWhiteSpace($CLine)) {
-                    $FirstNonEmptyLine = $CLine
-                    break
-                }
-            }
-
-            $Format = Get-SessionFormat -FirstNonEmptyLine $FirstNonEmptyLine -SectionLists $Section.Lists
-
-            # Parent-to-children list index built once per section and shared by
-            # Get-SessionLocations, Get-SessionListMetadata, and Get-SessionMentions.
-            # Keyed by section-local ParentIndex; lookup via item's LocalIndex.
-            $SectionChildrenOf = @{}
-            foreach ($LI in $Section.Lists) {
-                if ($LI.ParentIndex -ge 0) {
-                    if (-not $SectionChildrenOf.ContainsKey($LI.ParentIndex)) {
-                        $SectionChildrenOf[$LI.ParentIndex] = [System.Collections.Generic.List[object]]::new()
-                    }
-                    $SectionChildrenOf[$LI.ParentIndex].Add($LI)
-                }
-            }
-
-            # Extract session metadata: locations, PU, logs, changes, transfers
-            $Locations = Get-SessionLocations -Format $Format -FirstNonEmptyLine $FirstNonEmptyLine -SectionLists $Section.Lists -LocItalicRegex $LocItalicRegex -Index $Index -ChildrenOf $SectionChildrenOf
-
-            # List-based metadata extraction (PU, logs, changes, transfers, narrators)
-            $ListMeta = Get-SessionListMetadata -SectionLists $Section.Lists -PURegex $PURegex -UrlRegex $UrlRegex -ChildrenOf $SectionChildrenOf
-
-            $Logs    = $ListMeta.Logs
-            $PU      = $ListMeta.PU
-            $Changes = $ListMeta.Changes
-            $Transfers = $ListMeta.Transfers
-
             # @Narrator override replaces header-based resolution with explicit canonical names
-            $MetaNarrators = $ListMeta.Narrators
+            $MetaNarrators = $StructSess.MetaNarrators
             if ($MetaNarrators -and $MetaNarrators.Count -gt 0) {
                 $OverrideNarrators = [System.Collections.Generic.List[object]]::new()
                 foreach ($CanonName in $MetaNarrators) {
-                    # Exact name index match yields High confidence
                     if ($Index.ContainsKey($CanonName)) {
                         $IdxEntry = $Index[$CanonName]
                         if (-not $IdxEntry.Ambiguous -and $IdxEntry.OwnerType -eq 'Player') {
@@ -650,7 +786,6 @@ function Get-Session {
                             continue
                         }
                     }
-                    # Fuzzy resolution fallback yields Medium confidence
                     $Resolved = Resolve-Name -Query $CanonName -Index $Index -StemIndex $StemIndex -BKTree $BKTree -OwnerType 'Player'
                     if ($Resolved) {
                         $OverrideNarrators.Add([Robot.Narrator]::new($Resolved.Name, $Resolved, 'Medium'))
@@ -671,33 +806,82 @@ function Get-Session {
                 }
             }
 
-            # Gen1/Gen2 fallback: extract log URLs from plain text "Logi:" lines
-            if ($Logs.Count -eq 0) {
-                $Logs = Get-SessionPlainTextLogs -ContentLines $ContentLines -LogiLineRegex $LogiLineRegex
+            # Location Strategy 1: entity-based resolution for Gen3/Gen4 sessions
+            # where Strategy 2 (tag extraction) yielded no locations. Requires the
+            # entity index, so it runs in post-processing rather than structural extraction.
+            $LocationsV = $StructSess.Locations
+            if (($LocationsV.Count -eq 0) -and ($StructSess.Format -eq 'Gen3' -or $StructSess.Format -eq 'Gen4') -and $Index) {
+                $Section = $null
+                # Find matching section from Markdown parse for list item access
+                $SectIdx = $StructSess.SectionIndex
+                if ($SectIdx -ge 0 -and $SectIdx -lt $SessionSections.Count) {
+                    $Section = $SessionSections[$SectIdx]
+                }
+                if ($Section -and $Section.Lists) {
+                    $SectionChildrenOf = @{}
+                    foreach ($LI in $Section.Lists) {
+                        if ($LI.ParentIndex -ge 0) {
+                            if (-not $SectionChildrenOf.ContainsKey($LI.ParentIndex)) {
+                                $SectionChildrenOf[$LI.ParentIndex] = [System.Collections.Generic.List[object]]::new()
+                            }
+                            $SectionChildrenOf[$LI.ParentIndex].Add($LI)
+                        }
+                    }
+                    $LocResult = Get-SessionLocations -Format $StructSess.Format -FirstNonEmptyLine $StructSess.FirstNonEmptyLine -SectionLists $Section.Lists -LocItalicRegex $LocItalicRegex -Index $Index -ChildrenOf $SectionChildrenOf
+                    if ($LocResult -and $LocResult.Count -gt 0) {
+                        $LocationsV = @($LocResult)
+                    }
+                }
             }
 
             # Entity mention extraction (opt-in via -IncludeMentions for performance)
             $MentionsV = @()
             if ($IncludeMentions) {
-                $RawMentions = Get-SessionMentions `
-                    -Content $Section.Content `
-                    -SectionLists $Section.Lists `
-                    -Format $Format `
-                    -FirstNonEmptyLine $FirstNonEmptyLine `
-                    -Index $Index `
-                    -StemIndex $StemIndex `
-                    -ResolveCache $MentionCache `
-                    -ChildrenOf $SectionChildrenOf `
-                    -ContentLines $ContentLines
-                $MentionsV = if ($RawMentions -and $RawMentions.Count -gt 0) { @($RawMentions) } else { @() }
+                $Section = $null
+                $SectIdx = $StructSess.SectionIndex
+                if ($SectIdx -ge 0 -and $SectIdx -lt $SessionSections.Count) {
+                    $Section = $SessionSections[$SectIdx]
+                }
+                if ($Section) {
+                    $SectionChildrenOf = @{}
+                    foreach ($LI in $Section.Lists) {
+                        if ($LI.ParentIndex -ge 0) {
+                            if (-not $SectionChildrenOf.ContainsKey($LI.ParentIndex)) {
+                                $SectionChildrenOf[$LI.ParentIndex] = [System.Collections.Generic.List[object]]::new()
+                            }
+                            $SectionChildrenOf[$LI.ParentIndex].Add($LI)
+                        }
+                    }
+                    $RawMentions = Get-SessionMentions `
+                        -Content $Section.Content `
+                        -SectionLists $Section.Lists `
+                        -Format $StructSess.Format `
+                        -FirstNonEmptyLine $StructSess.FirstNonEmptyLine `
+                        -Index $Index `
+                        -StemIndex $StemIndex `
+                        -ResolveCache $MentionCache `
+                        -ChildrenOf $SectionChildrenOf
+                    $MentionsV = if ($RawMentions -and $RawMentions.Count -gt 0) { @($RawMentions) } else { @() }
+                }
             }
 
             # Intel resolution: map @Intel directives to recipient entities
             $IntelV = @()
-            if ($ListMeta.Intel -and $ListMeta.Intel.Count -gt 0 -and $null -ne $DateInfo.Date) {
+            $RawIntel = $StructSess.RawIntel
+            if ($RawIntel -and $RawIntel.Count -gt 0 -and $null -ne $StructSess.Date) {
+                # Normalize raw Intel to SessionIntel C# objects — PS fallback
+                # produces hashtables while C# extractor produces typed objects
+                $IntelList = [System.Collections.Generic.List[object]]::new()
+                foreach ($RI in $RawIntel) {
+                    if ($RI -is [Robot.SessionIntel]) {
+                        $IntelList.Add($RI)
+                    } else {
+                        $IntelList.Add([Robot.SessionIntel]::new($RI.RawTarget, $RI.Message))
+                    }
+                }
                 $ResolvedIntel = Resolve-IntelTargets `
-                    -RawIntel $ListMeta.Intel `
-                    -SessionDate $DateInfo.Date `
+                    -RawIntel $IntelList `
+                    -SessionDate $StructSess.Date `
                     -Entities $Entities `
                     -Index $Index `
                     -StemIndex $StemIndex `
@@ -708,34 +892,61 @@ function Get-Session {
                 $IntelV = if ($ResolvedIntel -and $ResolvedIntel.Count -gt 0) { @($ResolvedIntel) } else { @() }
             }
 
-            # Assemble final session object with all extracted metadata
-            $LocationsV = if ($Locations) { @($Locations) } else { @() }
-            $LogsV = if ($Logs) { @($Logs) } else { @() }
-            $PUV = if ($PU) { @($PU) } else { @() }
-            $ChangesV = if ($Changes -and $Changes.Count -gt 0) { @($Changes) } else { @() }
-            $TransfersV = if ($Transfers -and $Transfers.Count -gt 0) { @($Transfers) } else { @() }
+            # Assemble final session object with all extracted + post-processed metadata
+            $LocationsArr = if ($LocationsV) { @($LocationsV) } else { @() }
+            $LogsArr = if ($StructSess.Logs) { @($StructSess.Logs) } else { @() }
+            $PUArr = if ($StructSess.PU) { @($StructSess.PU) } else { @() }
+            $ChangesArr = if ($StructSess.Changes) { @($StructSess.Changes) } else { @() }
+            $TransfersArr = if ($StructSess.Transfers) { @($StructSess.Transfers) } else { @() }
 
             $SessionProps = [ordered]@{
                 FilePath       = $FilePath
                 FilePaths      = $null
-                Header         = $Header
-                Date           = $DateInfo.Date
-                DateEnd        = $DateInfo.DateEnd
-                Title          = $Title
+                Header         = $StructSess.Header
+                Date           = $StructSess.Date
+                DateEnd        = $StructSess.DateEnd
+                Title          = $StructSess.Title
                 Narrator       = $NarratorResult
-                Locations      = $LocationsV
-                Logs           = $LogsV
-                PU             = $PUV
-                Format         = $Format
+                Locations      = $LocationsArr
+                Logs           = $LogsArr
+                PU             = $PUArr
+                Format         = $StructSess.Format
                 IsMerged       = $false
                 DuplicateCount = 1
-                Content        = if ($IncludeContent) { $Section.Content } else { $null }
-                Changes        = $ChangesV
-                Transfers      = $TransfersV
+                Content        = $StructSess.Content
+                Changes        = $ChangesArr
+                Transfers      = $TransfersArr
                 Mentions       = $MentionsV
                 Intel          = $IntelV
             }
             $AllSessions.Add([PSCustomObject]$SessionProps)
+        }
+
+        # Append failed sessions for this file
+        if ($IncludeFailed -and $FileFailedSessions.Count -gt 0) {
+            foreach ($FailedData in $FileFailedSessions) {
+                $FailedSession = [PSCustomObject]@{
+                    FilePath       = $FilePath
+                    FilePaths      = @($FilePath)
+                    Header         = $FailedData.Header
+                    Date           = $null
+                    DateEnd        = $null
+                    Title          = $FailedData.Header
+                    Narrator       = $null
+                    Locations      = @()
+                    Logs           = @()
+                    PU             = @()
+                    Format         = "Unknown"
+                    IsMerged       = $false
+                    DuplicateCount = 0
+                    Content        = $FailedData.Content
+                    Changes        = @()
+                    Mentions       = @()
+                    Intel          = @()
+                    ParseError     = "Header does not contain a valid yyyy-MM-dd date"
+                }
+                $FailedSessions.Add($FailedSession)
+            }
         }
     }
 

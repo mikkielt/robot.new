@@ -688,7 +688,99 @@ Returns `$null` if items are empty/null - caller must check before including in 
 
 ---
 
-## 13. Testing
+## 13. Compiled C# Types
+
+Performance-critical session extraction and metadata parsing are implemented in compiled C# under `lib/`. All types live in the `Robot` namespace, loaded via `Add-Type` with `PSTypeName` guard (see [SYNTAX.md](SYNTAX.md) §Compiled C# Types).
+
+### 13.1 `Robot.SessionExtractor` (`lib/SessionExtractor.cs`)
+
+Per-section session structural extractor. Consolidates header date parsing, format classification (Gen1--Gen4), children-of index construction, and tag dispatch into a single compiled call.
+
+"Structural extraction" = all processing from Markdown structure alone, without entity database or name index. Returns `NarratorRawText` (unresolved). Entity-dependent post-processing stays in PowerShell:
+
+- Narrator resolution (`Resolve-Narrator` via name index)
+- Intel target resolution (`Resolve-IntelTargets` via name index)
+- Location Strategy 1 (entity-name-based Lokacja detection)
+- `@Narrator` override resolution (name index dependent)
+- Entity mention extraction (name index dependent)
+
+**API**: `[Robot.SessionExtractor]::ExtractSection($Header, $Content, $Texts, $ParentIndices, $SessionDatePattern, $PUPattern, $UrlPattern, $IncludeContent)` — returns `ExtractedSession` or `$null` if the header contains no valid date.
+
+**Output type** (`ExtractedSession`):
+
+| Field | Type | Description |
+|---|---|---|
+| `Header` | string | Raw header text |
+| `Date` | DateTime | Parsed session date |
+| `DateEnd` | DateTime? | End date for multi-day sessions |
+| `DateStr` | string | Raw date string from header |
+| `EndDayStr` | string | Raw `/DD` suffix (or null) |
+| `Title` | string | Session title (header minus date and narrator) |
+| `Format` | string | Detected generation: `Gen1`, `Gen2`, `Gen3`, `Gen4` |
+| `Locations` | string[] | Tag-based locations (Strategy 2 only) |
+| `Logs` | List[string] | Log URLs or local paths |
+| `PU` | List[SessionPU] | PU awards |
+| `Changes` | List[SessionChange] | Entity change directives |
+| `Transfers` | List[SessionTransfer] | Currency transfer directives |
+| `RawIntel` | List[SessionIntel] | Unresolved intel entries |
+| `NarratorRawText` | string | Raw narrator text from header (for PS resolution) |
+| `MetaNarrators` | List[string] | Names from `@Narrator` tag (for PS override) |
+| `Content` | string | Raw section content (null unless `includeContent` is true) |
+| `FirstNonEmptyLine` | string | First non-empty content line (for Gen2 detection) |
+
+**Consumer**: `get-session.ps1`.
+
+### 13.2 `Robot.SessionTagParser` (`lib/SessionTagParser.cs`)
+
+Compiled session tag dispatcher for `Get-SessionListMetadata`. Single-pass parent->children index build (`Dictionary<int, List<int>>`) followed by character-level prefix matching on lowered `@`-tag prefixes. Eight tag types dispatched: `@PU`, `@Logi`, `@Zmiany`, `@Intel`, `@Narrator`, `@Data`, `@Transfer`, `@Lokacje`.
+
+PU values support comma-as-decimal (Polish locale: `"0,3"` -> `0.3`).
+
+**API**: `[Robot.SessionTagParser]::Parse($Texts, $ParentIndices, $PUPattern, $UrlPattern)` — returns `ParsedMetadata`.
+
+**Internal types** (used by `SessionExtractor.DispatchTags` and the `Parse` method):
+
+| Type | Kind | Fields | Description |
+|---|---|---|---|
+| `ParsedMetadata` | class | `PU`, `Logs`, `Changes`, `Intel`, `Transfers`, `Narrators`, `DateOverride` | Aggregate result with typed collections |
+| `PUEntry` | struct | `Character`, `Value`, `HasValue` | PU award with optional decimal value |
+| `ChangeEntry` | class | `EntityName`, `Tags[]` | Entity change directive |
+| `TagEntry` | struct | `Tag`, `Value` | Single `@tag: value` pair |
+| `IntelEntry` | struct | `RawTarget`, `Message` | Intel directive |
+| `TransferEntry` | struct | `Amount`, `Denomination`, `Source`, `Destination` | Currency transfer |
+
+**Consumer**: `session-parsehelpers.ps1` (`Get-SessionListMetadata`).
+
+### 13.3 Session Metadata Types (`lib/SessionMetadata.cs`)
+
+Lightweight session metadata types: `Robot.SessionPU`, `Robot.SessionChange`, `Robot.SessionTag`, `Robot.SessionIntel`, `Robot.SessionTransfer`. Separate from `SessionTagParser`'s internal structs because consumers expect reference-type semantics with nullable `Value` (e.g., PU entries without an explicit value use `$null` instead of `0`).
+
+| Class | Properties | Description |
+|---|---|---|
+| `SessionPU` | `Character` (string), `Value` (object) | PU award — `Value` is `[decimal]` or `$null` |
+| `SessionChange` | `EntityName` (string), `Tags` (SessionTag[]) | Entity change directive from `@Zmiany` |
+| `SessionTag` | `Tag` (string), `Value` (string) | Single `@tag: value` pair within a change |
+| `SessionIntel` | `RawTarget` (string), `Message` (string) | Intel directive from `@Intel` |
+| `SessionTransfer` | `Amount` (int), `Denomination` (string), `Source` (string), `Destination` (string) | Transfer from `@Transfer` |
+
+All classes are `sealed` with parameterless and parameterized constructors.
+
+**Consumers**: `Get-Session`, `Get-EntityState`, `Invoke-PlayerCharacterPUAssignment`.
+
+### 13.4 Narrator Result Types (`lib/NarratorResult.cs`)
+
+`Robot.NarratorResult` and `Robot.Narrator` — narrator resolution result types. The outer result holds an array of resolved narrators with confidence levels. `Narrator` sub-objects carry a backreference to the resolved Player object (typed as `object` since it holds a PowerShell `PSCustomObject`). Cached by raw narrator text in `Resolve-Narrator` to avoid redundant resolution.
+
+| Class | Properties | Description |
+|---|---|---|
+| `NarratorResult` | `Narrators` (Narrator[]), `IsCouncil` (bool), `Confidence` (string), `RawText` (string) | Outer result for batch session processing |
+| `Narrator` | `Name` (string), `Player` (object), `Confidence` (string) | Individual narrator entry with player backreference |
+
+**Consumers**: `resolve-narrator.ps1`, `get-session.ps1` (narrator override), PU assignment, CLI narrator display.
+
+---
+
+## 14. Testing
 
 | Test file | Coverage |
 |---|---|
@@ -701,7 +793,7 @@ Fixtures: `sessions-gen1.md`, `sessions-gen2.md`, `sessions-gen3.md`, `sessions-
 
 ---
 
-## 14. Related Documents
+## 15. Related Documents
 
 - [PU.md](PU.md) - PU computation from session data
 - [ENTITIES.md](ENTITIES.md) - Entity state merging from session Zmiany

@@ -456,7 +456,44 @@ Follow the same pattern as `Read-SessionHashMeta` / `Write-SessionHashMeta`:
 
 ---
 
-## 14. Incremental Update Strategy
+## 14. Compiled C# Type: `Robot.JsonHelper` (`lib/JsonHelper.cs`)
+
+Fast JSON serializer/deserializer using `System.Text.Json`. Parses directly to `Hashtable`/`Dictionary` without intermediate object trees. Loaded via `Add-Type` with `PSTypeName` guard (see [SYNTAX.md](SYNTAX.md) §Compiled C# Types). PowerShell fallback paths (`ConvertTo-Json`/`ConvertFrom-Json`) exist in all callers when the type is unavailable.
+
+### 14.1 Read Methods
+
+| Method | Signature | Returns | Description |
+|---|---|---|---|
+| `ReadAsHashtable` | `static Hashtable ReadAsHashtable(string path)` | Case-insensitive `Hashtable` (recursive) | Nested objects become `Hashtable`, arrays become `object[]`. Numbers: `int` if fits, else `long`, else `double`. Strings preserved as-is (no `DateTime` auto-conversion, ensuring hash stability). Returns empty `Hashtable` if root element is not an object. |
+| `ReadAsStringDictionary` | `static Dictionary<string, string> ReadAsStringDictionary(string path)` | `Dictionary<string, string>` (`OrdinalIgnoreCase`) | Flat string-to-string mapping for hash sidecar files (header to SHA256). Null JSON values become empty string. |
+
+### 14.2 Write Methods
+
+| Method | Signature | Returns | Description |
+|---|---|---|---|
+| `WriteSortedJson` | `static void WriteSortedJson(string path, IDictionary data, int maxDepth)` | void | Ordinal-sorted keys at all levels with 4-space indentation for clean git diffs. Creates parent directories as needed. UTF-8 no BOM. `maxDepth` prevents infinite recursion on circular references (values beyond depth are stringified). |
+
+String encoding handles JSON control characters via standard escapes and passes Unicode (including Polish diacritics) through unescaped.
+
+### 14.3 Consumers
+
+| Caller | File | Methods Used |
+|---|---|---|
+| `Read-SessionGraphIndex` | `private/session-graphhelpers.ps1` | `ReadAsHashtable` |
+| `Write-SessionGraphIndex` | `private/session-graphhelpers.ps1` | `WriteSortedJson` (depth 5) |
+| `Read-SessionGraphMeta` | `private/session-graphhelpers.ps1` | `ReadAsHashtable` |
+| `Write-SessionGraphMeta` | `private/session-graphhelpers.ps1` | `WriteSortedJson` (depth 1) |
+| `Read-MentionCache` | `private/session-graphhelpers.ps1` | `ReadAsHashtable` |
+| `Write-MentionCache` | `private/session-graphhelpers.ps1` | `WriteSortedJson` (depth 5) |
+| `Read-SessionHashFile` | `private/session-hashhelpers.ps1` | `ReadAsStringDictionary` |
+| `Write-SessionHashFile` | `private/session-hashhelpers.ps1` | `WriteSortedJson` (depth 1) |
+| `Read-SessionHashMeta` | `private/session-hashhelpers.ps1` | `ReadAsHashtable` |
+| `Write-SessionHashMeta` | `private/session-hashhelpers.ps1` | `WriteSortedJson` (depth 1) |
+| `WriteMetaFile` | `lib/ParseCacheHelper.cs` | `WriteSortedJson` (via direct C# call) |
+
+---
+
+## 15. Incremental Update Strategy
 
 The incremental path in `Set-SessionGraph`:
 1. Read `LastIncrementalUpdate` from `_meta.json`
@@ -471,35 +508,35 @@ The **eager refresh** path (`-EagerOnly`) provides a lighter alternative: it ref
 
 ---
 
-## 15. Cross-Cutting: `Set-SessionGraphStale`
+## 16. Cross-Cutting: `Set-SessionGraphStale`
 
 Defined in `private/entity-writehelpers.ps1` (not in `session-graphhelpers.ps1`), this function marks the session graph's Tier 2 data as potentially invalid after entity write operations that could change the name set.
 
-### 15.1 Parameters
+### 16.1 Parameters
 
 | Parameter | Type | Mandatory | Description |
 |---|---|---|---|
 | `Reason` | string | Yes | Human-readable reason for staleness (e.g. entity name change, alias update) |
 | `ResDir` | string | Yes | Path to the `.robot/res/` directory |
 
-### 15.2 Algorithm
+### 16.2 Algorithm
 
 1. Guard-loads `Read-SessionGraphMeta` and `Write-SessionGraphMeta` from `session-graphhelpers.ps1` if not already available
 2. Computes the path `$ResDir/session-graph/_meta.json`
 3. If `_meta.json` exists, reads it, sets `Tier2Stale = $true` and `Tier2StaleReason = $Reason`, then writes it back
 4. If `_meta.json` does not exist, does nothing (no graph to mark as stale)
 
-### 15.3 Error Handling
+### 16.3 Error Handling
 
 The entire function body is wrapped in `try/catch` with an empty catch block. This is intentional: `Set-SessionGraphStale` is best-effort and must never fail the entity write operation that called it. Entity writes are the primary concern; graph staleness is a secondary signal.
 
-### 15.4 Relationship to `Set-SessionGraph`
+### 16.4 Relationship to `Set-SessionGraph`
 
 When `Set-SessionGraph` runs in full mode (`-Full`), it clears the `Tier2Stale` flag. When running in eager mode (`-EagerOnly`), it does not clear `Tier2Stale` because Tier 2 data is preserved, not recomputed. The staleness flag serves as a signal that a full rebuild is recommended.
 
 ---
 
-## 16. Edge Cases
+## 17. Edge Cases
 
 | Scenario | Behavior |
 |---|---|
@@ -522,7 +559,7 @@ When `Set-SessionGraph` runs in full mode (`-Full`), it clears the `Tier2Stale` 
 
 ---
 
-## 17. Testing
+## 18. Testing
 
 Test file: `tests/set-sessiongraph.Tests.ps1` (31 tests, Pattern B)
 
@@ -548,7 +585,7 @@ Fixture data: in-memory hashtable with 5 sessions (1x Gen1, 1x Gen2, 2x Gen3, 1x
 
 ---
 
-## 18. Related Documents
+## 19. Related Documents
 
 - [SESSIONS.md](SESSIONS.md) -- Session parsing, format generations, `Merge-SessionGroup`
 - [NAME-RESOLUTION.md](NAME-RESOLUTION.md) -- Name index, fuzzy matching, mention extraction

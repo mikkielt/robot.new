@@ -10,7 +10,9 @@ This document covers the name resolution subsystem: `Get-NameIndex` (index const
 
 **Shared dependency**: `private/string-helpers.ps1` provides `Get-LevenshteinDistance` (PowerShell fallback), dot-sourced by `public/resolve/resolve-name.ps1`, `public/get-nameindex.ps1`, `public/reporting/get-namedlocationreport.ps1`, and `public/reporting/get-namedloglocationreport.ps1`.
 
-**Compiled C# dependency**: `lib/BKTree.cs` provides the `Robot.BKTree` class — a compiled C# BK-tree with integrated case-insensitive Levenshtein distance. Loaded via `Add-Type` in `public/get-nameindex.ps1`. Eliminates PowerShell interpretation overhead on the hottest path (16,500+ calls per `Get-Session` run on 4,700+ tokens). Falls back to the legacy PowerShell BK-tree helpers when `Add-Type` fails.
+**Compiled C# dependency**: `lib/BKTree.cs` provides the `Robot.BKTree` class — a compiled C# BK-tree with integrated case-insensitive Levenshtein distance. Loaded via `Add-Type` in `public/get-nameindex.ps1`. Called on every unresolved token during name resolution across all session processing. Falls back to the legacy PowerShell BK-tree helpers when `Add-Type` fails.
+
+**Compiled C# dependency**: `lib/DeclensionEngine.cs` provides the `Robot.DeclensionEngine` class — Polish noun declension engine for suffix stripping and consonant alternation reversal. Constructed once at module load by `public/resolve/resolve-name.ps1`. Called on every unresolved name during `Resolve-Name` stages 2 and 2b. Falls back to the PowerShell functions `Get-DeclensionStem` and `Get-StemAlternationCandidates` when `Add-Type` fails.
 
 **Not covered**: How name resolution is consumed by `Get-Session`, `Get-EntityState`, or `Resolve-Narrator` - see [SESSIONS.md](SESSIONS.md) and [ENTITIES.md](ENTITIES.md). Log location analysis - see [LOGS.md](LOGS.md).
 
@@ -184,9 +186,46 @@ The type check ensures the class is loaded only once per session, even if `get-n
 
 ---
 
-## 5. Name Resolution (`Resolve-Name`)
+## 5. Compiled C# Type: `Robot.DeclensionEngine`
 
-### 5.1 Functions
+**Source**: `lib/DeclensionEngine.cs` — compiled centrally in `robot.psm1`.
+
+`Robot.DeclensionEngine` is a Polish noun declension engine for name resolution. It iterates suffix and alternation arrays using `.EndsWith()` + `.Substring()` with `OrdinalIgnoreCase` comparison. Constructed once at module load by `public/resolve/resolve-name.ps1` with Polish declension tables (locative, genitive, instrumental, dative suffixes and consonant alternation pairs).
+
+### 5.1 `GetStem(string text)`
+
+Strips the first matching inflection suffix from text. Suffixes are tried in constructor input order — longest-first ordering is critical to prevent partial stripping (e.g., `"ami"` must be tried before `"i"`). Minimum stem length of 3: `text.Length` must exceed `suffix.Length + 2`. Returns the original text if no suffix matches.
+
+**Example**: `"Erathii"` -> `"Erathi"`, `"Sandrem"` -> `"Sandr"`.
+
+### 5.2 `GetAlternationCandidates(string text)`
+
+Reverses stem alternation changes to produce candidate base forms. For each matching inflected ending, strips it and appends the corresponding base form suffix. Applies the same minimum stem length guard as `GetStem`. May return multiple candidates when multiple alternations match. Returns an empty array if no alternation matches.
+
+**Example**: `"Valesce"` -> strip `"ce"`, append `"ka"` -> `"Valeska"`.
+
+### 5.3 Construction
+
+The engine is instantiated with three parallel arrays:
+
+| Parameter | Type | Description |
+|---|---|---|
+| `suffixes` | `string[]` | Declension suffixes ordered longest-first (`-owi`, `-ami`, `-ach`, `-iem`, `-em`, `-a`, `-u`, `-y`, etc.) |
+| `altInflected` | `string[]` | Inflected endings to match (`-dzie`, `-ce`, `-rze`, `-dze`, `-ście`, `-ni`, `-si`, `-zi`, `-ci`) |
+| `altBase` | `string[]` | Corresponding base form replacements (`-da`, `-ka`, `-ra`, `-ga`, `-sta`, `-n`, `-s`, `-z`, `-c`) |
+
+### 5.4 Consumers
+
+- `Resolve-Name` Stage 2 (`public/resolve/resolve-name.ps1`): calls `GetStem` for suffix stripping, then looks up the result in the pre-built `StemIndex`
+- `Resolve-Name` Stage 2b (`public/resolve/resolve-name.ps1`): calls `GetAlternationCandidates` to reverse consonant mutations, then looks up each candidate in the `Index`
+
+When the C# type is unavailable, `Resolve-Name` falls back to the equivalent PowerShell functions `Get-DeclensionStem` and `Get-StemAlternationCandidates`.
+
+---
+
+## 6. Name Resolution (`Resolve-Name`)
+
+### 6.1 Functions
 
 | Function | Purpose |
 |---|---|
@@ -196,7 +235,7 @@ The type check ensures the class is loaded only once per session, even if `get-n
 | `Get-LevenshteinDistance` | Two-row matrix edit distance — PowerShell fallback (from `private/string-helpers.ps1`) |
 | `Robot.BKTree.LevenshteinDistance` | Two-row matrix edit distance — compiled C# (from `lib/BKTree.cs`) |
 
-### 5.2 Parameters
+### 6.2 Parameters
 
 | Parameter | Type | Description |
 |---|---|---|
@@ -211,7 +250,7 @@ The type check ensures the class is loaded only once per session, even if `get-n
 | `Players` | object[] | Pre-fetched players (for auto-building index) |
 | `Entities` | object[] | Pre-fetched entities (for auto-building index) |
 
-### 5.3 Stage 1 - Exact Index Lookup
+### 6.3 Stage 1 - Exact Index Lookup
 
 ```
 IF Query in Index (case-insensitive)
@@ -222,7 +261,7 @@ IF Query in Index (case-insensitive)
 
 **Complexity**: O(1) dictionary lookup.
 
-### 5.4 Stage 2 - Declension-Stripped Match
+### 6.4 Stage 2 - Declension-Stripped Match
 
 Strips Polish noun declension suffixes from the query and looks up the resulting stem in the pre-built stem index.
 
@@ -242,7 +281,7 @@ IF stem in StemIndex:
 
 **Examples**: `"Solmyra"` -> stem `"Solmyr"` -> resolves to Solmyr. `"Sandrem"` -> stem `"Sandro"`.
 
-### 5.5 Stage 2b - Stem Alternation Match
+### 6.5 Stage 2b - Stem Alternation Match
 
 Handles Polish consonant mutations where the suffix replaces the stem ending. Generates candidate base forms by reversing known alternation patterns.
 
@@ -267,7 +306,7 @@ FOR each candidate:
         RETURN Owner
 ```
 
-### 5.6 Stage 3 - Levenshtein Fuzzy Match
+### 6.6 Stage 3 - Levenshtein Fuzzy Match
 
 **Skippable**: When `-NoFuzzy` is set, stage 3 is skipped entirely and the function returns `$null` (caching the miss). Used by callers that want only exact/declension matches to avoid false positives.
 
@@ -293,7 +332,7 @@ threshold = MaxDistance >= 0 ? MaxDistance
 
 ---
 
-## 6. Cache Pattern
+## 7. Cache Pattern
 
 The optional `-Cache` hashtable uses `[DBNull]::Value` as a sentinel for "looked up, found nothing":
 
@@ -315,7 +354,7 @@ This distinguishes between "never looked up" (`ContainsKey` = false) and "looked
 
 ---
 
-## 7. Edge Cases
+## 8. Edge Cases
 
 | Scenario | Behavior |
 |---|---|
@@ -331,7 +370,7 @@ This distinguishes between "never looked up" (`ContainsKey` = false) and "looked
 
 ---
 
-## 8. Testing
+## 9. Testing
 
 | Test file | Coverage |
 |---|---|
@@ -341,7 +380,7 @@ This distinguishes between "never looked up" (`ContainsKey` = false) and "looked
 
 ---
 
-## 9. Related Documents
+## 10. Related Documents
 
 - [ENTITIES.md](ENTITIES.md) - Entity name resolution in `Get-EntityState` (uses `Resolve-Name` internally)
 - [SESSIONS.md](SESSIONS.md) - Mention extraction and narrator resolution (uses `Resolve-Name`)

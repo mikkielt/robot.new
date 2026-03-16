@@ -44,7 +44,11 @@
 
     Set-SessionGraphStale is a best-effort helper called after entity mutations
     that affect session graph resolution (e.g. location or group changes). It
-    loads session-graphhelpers.ps1 on demand and sets Tier2Stale in _meta.json.
+    invalidates parse caches via Clear-ParseCaches before attempting to set
+    Tier2Stale in _meta.json — cache clearing is positioned before the try block
+    to guarantee invalidation even if session graph staleness tracking fails
+    (F10: cache must never serve stale data after an entity mutation). It loads
+    session-graphhelpers.ps1 on demand for the graph metadata update.
 #>
 
 . "$PSScriptRoot/entity-findhelpers.ps1"
@@ -298,6 +302,12 @@ function Set-SessionGraphStale {
         [Parameter(Mandatory)] [string]$Reason,
         [Parameter(Mandatory)] [string]$ResDir
     )
+
+    # Invalidate all parse caches before the try block so cache clearing
+    # is guaranteed even if session graph staleness tracking fails (F10)
+    if ($ExecutionContext.InvokeCommand.GetCommand('Clear-ParseCaches', [System.Management.Automation.CommandTypes]::Function)) {
+        Clear-ParseCaches
+    }
 
     try {
         if (-not (Get-Command 'Read-SessionGraphMeta' -ErrorAction SilentlyContinue)) {

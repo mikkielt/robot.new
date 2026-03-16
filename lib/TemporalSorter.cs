@@ -4,9 +4,9 @@ using System.Management.Automation;
 namespace Robot {
     /// Compiled temporal sort comparers for entity history lists.
     ///
-    /// The C# Comparison<object> delegate avoids per-comparison interpreter
-    /// dispatch. For O(n log n) sorts on lists of 5-50 items, Get-EntityState
-    /// sorts 9 history lists per entity across the full entity set.
+    /// Produces a Comparison<object> delegate that reads DateTime? properties via
+    /// PSObject reflection. Get-EntityState sorts each entity's temporal history
+    /// lists using this delegate across the full entity set.
     ///
     /// The delegate is created once per property name ("ValidFrom" for entity state,
     /// "Date" for changelog) and reused across all sorts in the same Get-EntityState call.

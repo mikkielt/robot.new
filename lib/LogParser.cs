@@ -5,9 +5,8 @@ using System.Text.RegularExpressions;
 namespace Robot {
     /// Compiled log content parser for ChatLog and Prose session log formats.
     ///
-    /// Keeps all regex matching in native code with struct array output,
-    /// avoiding per-line .NET interop crossings (3-5 regex operations per line).
-    /// Typical parse time: ~8ms for a 2,000-line log file.
+    /// Applies 3-5 precompiled regex operations per line in a single native pass
+    /// with struct array output.
     ///
     /// Two format parsers:
     /// - ChatLog: [HH:MM] timestamped lines with optional [Channel] tags.

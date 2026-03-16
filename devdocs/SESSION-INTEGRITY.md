@@ -97,15 +97,41 @@ Returns a `[string]` -- 64-character lowercase hex SHA256 hash.
 
 ---
 
-## 4. `Get-FileHeaderHashes`
+## 4. Compiled C# Hasher (`lib/ContentHasher.cs`)
 
-### 4.1 Parameters
+**Robot.ContentHasher** is a compiled C# SHA256 content hasher with zero-allocation inner loop. It fuses whitespace stripping and UTF-8 encoding into a single pass, renting the byte buffer from `ArrayPool<byte>` to avoid per-call GC pressure.
+
+### 4.1 Methods
+
+| Method | Signature | Description |
+|---|---|---|
+| `Hash` | `static string Hash(string content)` | Compute SHA256 of whitespace-stripped content. Returns lowercase 64-char hex string. Empty/whitespace-only content returns the SHA256 of an empty byte array (stable sentinel value). |
+| `HashSections` | `static string[] HashSections(string[] headers, string[] bodies)` | Batch header+body pairs for sidecar file generation. Concatenates each header+newline+body, then hashes. Returns parallel string array of hashes. |
+
+### 4.2 Thread Safety
+
+The static `SHA256` instance is guarded by `lock` -- safe for `RunspacePool` parallel Markdown parsing in `Get-Markdown`.
+
+### 4.3 Whitespace Semantics
+
+`char.IsWhiteSpace` matches the same set as .NET regex `\s` (tabs, spaces, CR, LF, form feeds, non-breaking spaces, etc.), ensuring hash stability across line-ending normalization and compatibility with the PowerShell `Get-ContentHash` implementation (section 3).
+
+### 4.4 Consumers
+
+- `Get-SessionContentHash` (`private/session-hashhelpers.ps1`) -- dispatches to `Robot.ContentHasher.Hash` when the type is available, falls back to the PowerShell `Get-ContentHash` (section 3) otherwise.
+- `Save-SessionHashSidecar` (`private/session-hashhelpers.ps1`)
+
+---
+
+## 5. `Get-FileHeaderHashes`
+
+### 5.1 Parameters
 
 | Parameter | Type | Mandatory | Description |
 |---|---|---|---|
 | `MarkdownResult` | object | Yes | Parsed result from `Get-Markdown` (has `.Sections` with `.Header` and `.Content`) |
 
-### 4.2 Algorithm
+### 5.2 Algorithm
 
 1. Create `Dictionary[string, string]` with `OrdinalIgnoreCase` comparer
 2. Iterate over `$MarkdownResult.Sections`
@@ -115,21 +141,21 @@ Returns a `[string]` -- 64-character lowercase hex SHA256 hash.
 6. Compute hash via `Get-ContentHash`
 7. Store in dictionary: `$Hashes[$HeaderLine] = $Hash`
 
-### 4.3 Output
+### 5.3 Output
 
 Returns `Dictionary[string, string]` -- keys are full header lines, values are SHA256 hashes. Empty dictionary if no headers found.
 
 ---
 
-## 5. `Read-SessionHashFile` / `Write-SessionHashFile`
+## 6. `Read-SessionHashFile` / `Write-SessionHashFile`
 
-### 5.1 Read Parameters
+### 6.1 Read Parameters
 
 | Parameter | Type | Mandatory | Description |
 |---|---|---|---|
 | `JsonPath` | string | Yes | Path to the `.json` hash sidecar file |
 
-### 5.2 Read Algorithm
+### 6.2 Read Algorithm
 
 1. Return empty `Dictionary[string, string]` (OrdinalIgnoreCase) if file does not exist
 2. Read file via `[System.IO.File]::ReadAllText` with UTF-8 no BOM
@@ -137,14 +163,14 @@ Returns `Dictionary[string, string]` -- keys are full header lines, values are S
 4. Copy all properties into dictionary
 5. On parse failure: warn to stderr, return empty dictionary
 
-### 5.3 Write Parameters
+### 6.3 Write Parameters
 
 | Parameter | Type | Mandatory | Description |
 |---|---|---|---|
 | `JsonPath` | string | Yes | Path to the `.json` hash sidecar file |
 | `Hashes` | Dictionary[string, string] | Yes | Header-to-hash dictionary |
 
-### 5.4 Write Algorithm
+### 6.4 Write Algorithm
 
 1. Create parent directories if needed
 2. Sort keys using `StringComparer.Ordinal` for deterministic output
@@ -154,9 +180,9 @@ Returns `Dictionary[string, string]` -- keys are full header lines, values are S
 
 ---
 
-## 6. `Read-SessionHashMeta` / `Write-SessionHashMeta`
+## 7. `Read-SessionHashMeta` / `Write-SessionHashMeta`
 
-### 6.1 Metadata Schema
+### 7.1 Metadata Schema
 
 | Key | Type | Default | Description |
 |---|---|---|---|
@@ -166,7 +192,7 @@ Returns `Dictionary[string, string]` -- keys are full header lines, values are S
 
 Timestamps use `yyyy-MM-dd HH:mm:ss` format (not ISO 8601) to prevent `ConvertFrom-Json` from auto-converting strings to `DateTime` objects.
 
-### 6.2 Read Algorithm
+### 7.2 Read Algorithm
 
 1. Return defaults if file does not exist
 2. Read and parse with `ConvertFrom-Json -AsHashtable`
@@ -175,16 +201,16 @@ Timestamps use `yyyy-MM-dd HH:mm:ss` format (not ISO 8601) to prevent `ConvertFr
 
 ---
 
-## 7. `Get-HashableFiles`
+## 8. `Get-HashableFiles`
 
-### 7.1 Parameters
+### 8.1 Parameters
 
 | Parameter | Type | Mandatory | Description |
 |---|---|---|---|
 | `RepoRoot` | string | Yes | Root directory of the lore repository |
 | `ExcludeDirectory` | string[] | No | Additional directories to exclude |
 
-### 7.2 Exclusion Rules
+### 8.2 Exclusion Rules
 
 | Rule | Mechanism |
 |---|---|
@@ -192,7 +218,7 @@ Timestamps use `yyyy-MM-dd HH:mm:ss` format (not ISO 8601) to prevent `ConvertFr
 | `Nerthus/` subdirectory | Component scan: case-insensitive match on `Nerthus` |
 | User-specified directories | Absolute prefix matching via `$ExcludePrefixes` |
 
-### 7.3 Algorithm
+### 8.3 Algorithm
 
 1. Resolve symlinks via `[System.IO.Path]::GetFullPath` (handles macOS `/var` -> `/private/var`)
 2. Enumerate all `*.md` files recursively via `[System.IO.Directory]::GetFiles`
@@ -201,22 +227,22 @@ Timestamps use `yyyy-MM-dd HH:mm:ss` format (not ISO 8601) to prevent `ConvertFr
 5. Check against user-specified exclusion prefixes
 6. Collect surviving paths into result list
 
-### 7.4 Output
+### 8.4 Output
 
 Returns `List[string]` -- absolute paths to hashable `.md` files.
 
 ---
 
-## 8. `Get-RelativeHashPath`
+## 9. `Get-RelativeHashPath`
 
-### 8.1 Parameters
+### 9.1 Parameters
 
 | Parameter | Type | Mandatory | Description |
 |---|---|---|---|
 | `FilePath` | string | Yes | Absolute file path |
 | `RepoRoot` | string | Yes | Repository root directory |
 
-### 8.2 Algorithm
+### 9.2 Algorithm
 
 1. Resolve both paths via `GetFullPath`
 2. If file is under repo root: strip root prefix, replace `\` with `/`
@@ -224,9 +250,9 @@ Returns `List[string]` -- absolute paths to hashable `.md` files.
 
 ---
 
-## 9. `Set-SessionHash`
+## 10. `Set-SessionHash`
 
-### 9.1 Parameters
+### 10.1 Parameters
 
 | Parameter | Type | Mandatory | Description |
 |---|---|---|---|
@@ -236,7 +262,7 @@ Returns `List[string]` -- absolute paths to hashable `.md` files.
 | `ExcludeDirectory` | string[] | No | Directories to exclude from scanning |
 | `Quiet` | switch | No | Suppress warning output to stderr |
 
-### 9.2 File Selection Logic
+### 10.2 File Selection Logic
 
 ```
 $File specified?
@@ -249,7 +275,7 @@ $File specified?
             +-- Fallback to full scan if no timestamp or git fails
 ```
 
-### 9.3 Algorithm
+### 10.3 Algorithm
 
 1. Dot-source `session-hashhelpers.ps1` and `admin-config.ps1` if not already loaded
 2. Resolve `RepoRoot`, `HashDir`, `MetaPath` from `Get-AdminConfig`
@@ -263,7 +289,7 @@ $File specified?
    e. Write updated hashes via `Write-SessionHashFile` (respects `ShouldProcess`)
 6. Update `_meta.json` timestamps (full run sets both `LastFullUpdate` and `LastIncrementalUpdate`; incremental sets only `LastIncrementalUpdate`)
 
-### 9.4 Output Schema
+### 10.4 Output Schema
 
 | Property | Type | Description |
 |---|---|---|
@@ -274,9 +300,9 @@ $File specified?
 
 ---
 
-## 10. `Test-SessionIntegrity`
+## 11. `Test-SessionIntegrity`
 
-### 10.1 Parameters
+### 11.1 Parameters
 
 | Parameter | Type | Mandatory | Description |
 |---|---|---|---|
@@ -287,9 +313,9 @@ $File specified?
 | `ProgressCallback` | scriptblock | No | Optional callback for CLI progress reporting (receives `Current`, `Total`, `ItemDetail`) |
 | `Quiet` | switch | No | Suppress warning output to stderr |
 
-File selection logic is identical to `Set-SessionHash` (section 9.2).
+File selection logic is identical to `Set-SessionHash` (section 10.2).
 
-### 10.2 Validation Checks
+### 11.2 Validation Checks
 
 | # | Check | Severity | Condition |
 |---|---|---|---|
@@ -303,7 +329,7 @@ File selection logic is identical to `Set-SessionHash` (section 9.2).
 | 8 | Format Anomalies | Low | Date-like line without `###` header prefix |
 | 9 | Future-Dated Sessions | Medium | Session header date is after today |
 
-### 10.3 Algorithm
+### 11.3 Algorithm
 
 1. Dot-source helpers (same as `Set-SessionHash`)
 2. Resolve config and determine files to check (same file selection logic)
@@ -320,7 +346,7 @@ File selection logic is identical to `Set-SessionHash` (section 9.2).
       - Scan level-3 headers for date validity (Check 5) and future dates (Check 9)
       - Section-based scan for format anomalies (Check 8)
 
-### 10.4 Precompiled Regex Patterns
+### 11.4 Precompiled Regex Patterns
 
 | Variable | Pattern | Purpose |
 |---|---|---|
@@ -328,7 +354,7 @@ File selection logic is identical to `Set-SessionHash` (section 9.2).
 | `$script:DateLineLikePattern` | `^\d{4}-\d{2}-\d{2}` | Detect date-like lines for format anomaly check |
 | `$script:SessionDatePattern` | `\b(\d{4}-\d{2}-\d{2})(?:/(\d{2}))?\b` | Extract and validate dates from headers (canonical: `temporal-helpers.ps1`) |
 
-### 10.5 Format Anomaly Detection
+### 11.5 Format Anomaly Detection
 
 Format anomaly detection uses parsed section data (from `Get-Markdown`) instead of a separate raw file read. For each section, the `Content` string is split on newline characters and scanned with line numbers computed from `Section.Header.LineNumber`.
 
@@ -339,7 +365,7 @@ The scan skips:
 
 Only bare date-like lines at column 0 without `### ` prefix are flagged. This approach eliminates redundant file I/O — the parser output already contains all the content needed for anomaly detection.
 
-### 10.6 Output Schema
+### 11.6 Output Schema
 
 | Property | Type | Description |
 |---|---|---|
@@ -356,9 +382,9 @@ Only bare date-like lines at column 0 without `### ` prefix are flagged. This ap
 
 ---
 
-## 11. Common Patterns
+## 12. Common Patterns
 
-### 11.1 Module-Level Data
+### 12.1 Module-Level Data
 
 | Variable | File | Purpose |
 |---|---|---|
@@ -368,7 +394,7 @@ Only bare date-like lines at column 0 without `### ` prefix are flagged. This ap
 | `$script:DateLineLikePattern` | `test-sessionintegrity.ps1` | Precompiled date-like line pattern |
 | `$script:SessionDatePattern` | `temporal-helpers.ps1` | Precompiled date extraction pattern (shared) |
 
-### 11.2 Dot-Source Loading
+### 12.2 Dot-Source Loading
 
 Both `Set-SessionHash` and `Test-SessionIntegrity` guard-load helpers:
 
@@ -382,7 +408,7 @@ This avoids re-loading when the module has already sourced the helpers.
 
 ---
 
-## 12. Edge Cases
+## 13. Edge Cases
 
 | Scenario | Behavior |
 |---|---|
@@ -401,7 +427,7 @@ This avoids re-loading when the module has already sourced the helpers.
 
 ---
 
-## 13. Testing
+## 14. Testing
 
 Test file: `tests/test-sessionintegrity.Tests.ps1`
 
@@ -416,7 +442,7 @@ Test file: `tests/test-sessionintegrity.Tests.ps1`
 | `Set-SessionHash` | File mode, WhatIf, second-run counting |
 | `Test-SessionIntegrity` | Clean state, modified, deleted, new, missing hash, malformed, PU-affected, duplicate PU, format anomaly, future-dated, output structure |
 
-### 13.1 Fixtures
+### 14.1 Fixtures
 
 Located in `tests/fixtures/sessions-integrity/`:
 
@@ -433,7 +459,7 @@ Loading pattern: **A** (exported functions) + **B** (dot-source internal helpers
 
 ---
 
-## 14. Related Documents
+## 15. Related Documents
 
 - [SESSIONS.md](SESSIONS.md) -- session parsing pipeline and format generations
 - [PU.md](PU.md) -- PU assignment algorithm (uses same `@PU:` pattern)

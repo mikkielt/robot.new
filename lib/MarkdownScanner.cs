@@ -6,9 +6,8 @@ using System.Text.RegularExpressions;
 namespace Robot {
     /// Compiled Markdown line scanner for parse-markdownfile.ps1.
     ///
-    /// Applies 6 precompiled regex per line in native code, avoiding per-line
-    /// interpreter dispatch. Critical for Get-Markdown's RunspacePool parallelism
-    /// where each worker parses one file with minimal interop overhead.
+    /// Applies 6 precompiled regex per line in native code. Used by Get-Markdown's
+    /// RunspacePool parallelism where each worker parses one file independently.
     ///
     /// Single-pass algorithm producing flat arrays with int-based parent
     /// indices (not object references). ListEntry is a class (not struct)

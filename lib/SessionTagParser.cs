@@ -6,11 +6,9 @@ using System.Text.RegularExpressions;
 namespace Robot {
     /// Compiled session tag dispatcher for Get-SessionListMetadata.
     ///
-    /// Compiled C# replaces an 8-way sequential if/elseif chain in PowerShell
-    /// that performed .ToLowerInvariant() + .StartsWith() on every list item
-    /// text, with each branch constructing PSCustomObject output. At 9,253 calls
-    /// per session run (~185K dispatch iterations), the interpreter overhead
-    /// dominated at ~300ms total. The C# version reduces this to ~15ms.
+    /// Performs single-pass parent->children index build followed by character-level
+    /// prefix matching on lowered @-tag prefixes. Dispatches eight tag types with
+    /// typed struct output, eliminating per-item object construction overhead.
     ///
     /// Algorithm: single-pass parent->children index build (Dictionary<int, List<int>>),
     /// then character-level prefix matching on the lowered @-tag prefix. Eight tag types

@@ -8,10 +8,7 @@ using System.Text.Json;
 namespace Robot {
     /// Fast JSON serializer/deserializer using System.Text.Json.
     ///
-    /// Compiled C# replaces PowerShell's ConvertTo-Json / ConvertFrom-Json which
-    /// allocated large intermediate PSObject trees and performed ~50ms of property
-    /// enumeration per file. The C# version parses directly to Hashtable/Dictionary
-    /// in ~2ms for typical 500-entry session graph index files.
+    /// Parses directly to Hashtable/Dictionary without intermediate object trees.
     ///
     /// Read methods:
     /// - ReadAsHashtable: recursive conversion to case-insensitive Hashtable, matching

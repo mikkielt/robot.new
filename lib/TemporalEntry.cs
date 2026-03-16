@@ -6,8 +6,8 @@ namespace Robot {
     /// Group, Status, Quantity, FilePath, NerthusName, Text) into a single
     /// Value property so all history lists share one entry type.
     ///
-    /// Each entity carries ~10 history lists (LocationHistory, TypeHistory, etc.)
-    /// with 2-50 entries each, sorted by ValidFrom via Robot.TemporalSorter.
+    /// Each entity carries multiple history lists (LocationHistory, TypeHistory, etc.)
+    /// sorted by ValidFrom via Robot.TemporalSorter.
     ///
     /// Consumers: get-entity.ps1, get-entitystate.ps1, Get-EntityHistory,
     /// Get-LastActiveValue, Get-AllActiveValues, Robot.TemporalSorter
