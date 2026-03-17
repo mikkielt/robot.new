@@ -76,6 +76,122 @@ Describe 'Robot.ApiMiddleware' {
         }
     }
 
+    Context 'FixedTimeEquals' {
+        It 'returns true for identical strings' {
+            [Robot.ApiMiddleware]::FixedTimeEquals('hello', 'hello') | Should -BeTrue
+        }
+
+        It 'returns false for different strings of same length' {
+            [Robot.ApiMiddleware]::FixedTimeEquals('hello', 'world') | Should -BeFalse
+        }
+
+        It 'returns false for same-prefix different-length strings' {
+            [Robot.ApiMiddleware]::FixedTimeEquals('rbt_abc', 'rbt_abcdef') | Should -BeFalse
+        }
+
+        It 'returns false when either string is null' {
+            [Robot.ApiMiddleware]::FixedTimeEquals($null, 'test') | Should -BeFalse
+            [Robot.ApiMiddleware]::FixedTimeEquals('test', $null) | Should -BeFalse
+        }
+
+        It 'returns false for empty vs non-empty' {
+            [Robot.ApiMiddleware]::FixedTimeEquals('', 'test') | Should -BeFalse
+        }
+
+        It 'returns true for two empty strings' {
+            [Robot.ApiMiddleware]::FixedTimeEquals('', '') | Should -BeTrue
+        }
+    }
+
+    Context 'ApiTokenStore' {
+        It 'adds and authenticates a token' {
+            $Store = [Robot.ApiTokenStore]::new()
+            $Info = [Robot.ApiTokenInfo]::new()
+            $Info.Name = 'test-token'
+            $Info.Scopes = @('entity:read')
+            $Info.CreatedAt = '2026-03-17T00:00:00Z'
+            $Store.Add('rbt_testvalue', $Info) | Should -BeTrue
+
+            $Result = $Store.Authenticate('rbt_testvalue')
+            $Result | Should -Not -BeNullOrEmpty
+            $Result.Name | Should -Be 'test-token'
+        }
+
+        It 'returns null for invalid token' {
+            $Store = [Robot.ApiTokenStore]::new()
+            $Info = [Robot.ApiTokenInfo]::new()
+            $Info.Name = 'real'
+            $Info.Scopes = @('admin:all')
+            $Store.Add('rbt_real', $Info) | Should -BeTrue
+
+            $Store.Authenticate('rbt_wrong') | Should -BeNullOrEmpty
+        }
+
+        It 'removes token by name' {
+            $Store = [Robot.ApiTokenStore]::new()
+            $Info = [Robot.ApiTokenInfo]::new()
+            $Info.Name = 'removeme'
+            $Info.Scopes = @('entity:read')
+            $Store.Add('rbt_remove', $Info) | Should -BeTrue
+
+            $Removed = $null
+            $Store.RemoveByName('removeme', [ref]$Removed) | Should -BeTrue
+            $Removed | Should -Be 'rbt_remove'
+            $Store.Count | Should -Be 0
+        }
+
+        It 'lists tokens without raw values' {
+            $Store = [Robot.ApiTokenStore]::new()
+            $Info = [Robot.ApiTokenInfo]::new()
+            $Info.Name = 'listed'
+            $Info.Scopes = @('entity:read', 'session:read')
+            $Info.CreatedAt = '2026-03-17T00:00:00Z'
+            $Store.Add('rbt_secret', $Info) | Should -BeTrue
+
+            $List = $Store.ListTokens()
+            $List.Count | Should -Be 1
+            $List[0]['name'] | Should -Be 'listed'
+            $List[0]['scopes'] | Should -Contain 'entity:read'
+        }
+    }
+
+    Context 'HasScope' {
+        It 'returns true for exact scope match' {
+            $Info = [Robot.ApiTokenInfo]::new()
+            $Info.Scopes = @('entity:read')
+            [Robot.ApiMiddleware]::HasScope($Info, 'entity:read') | Should -BeTrue
+        }
+
+        It 'returns true for admin:all wildcard' {
+            $Info = [Robot.ApiTokenInfo]::new()
+            $Info.Scopes = @('admin:all')
+            [Robot.ApiMiddleware]::HasScope($Info, 'entity:write') | Should -BeTrue
+        }
+
+        It 'returns true for hierarchical match' {
+            $Info = [Robot.ApiTokenInfo]::new()
+            $Info.Scopes = @('entity:read')
+            [Robot.ApiMiddleware]::HasScope($Info, 'entity:read:own') | Should -BeTrue
+        }
+
+        It 'returns false for missing scope' {
+            $Info = [Robot.ApiTokenInfo]::new()
+            $Info.Scopes = @('entity:read')
+            [Robot.ApiMiddleware]::HasScope($Info, 'entity:write') | Should -BeFalse
+        }
+
+        It 'returns false for null token' {
+            [Robot.ApiMiddleware]::HasScope($null, 'entity:read') | Should -BeFalse
+        }
+
+        It 'returns true for null/empty required scope' {
+            $Info = [Robot.ApiTokenInfo]::new()
+            $Info.Scopes = @('entity:read')
+            [Robot.ApiMiddleware]::HasScope($Info, $null) | Should -BeTrue
+            [Robot.ApiMiddleware]::HasScope($Info, '') | Should -BeTrue
+        }
+    }
+
     Context 'Configuration' {
         It 'has correct default values' {
             $MW = [Robot.ApiMiddleware]::new()

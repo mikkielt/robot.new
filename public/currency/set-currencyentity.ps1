@@ -7,6 +7,13 @@
     Przedmiot entity. Supports absolute quantity, delta quantity (+N/-N),
     owner transfer, and location assignment.
 
+    Processing pipeline:
+    1. Validate mutually exclusive parameters (Amount/AmountDelta, Owner/Location).
+    2. Locate the entity bullet under ## Przedmiot via Find-EntitySection/Find-EntityBullet.
+    3. For delta mode: read current @ilość, strip temporal suffix, apply arithmetic.
+    4. Write updated @ilość, @należy_do, and/or @lokacja tags with (YYYY-MM:) temporal suffix.
+    5. Persist via Write-EntityFile, fire AfterWrite plugin hook, return OperationResult.
+
     Mutual exclusions enforced:
     - -Amount and -AmountDelta cannot be combined (ambiguous intent)
     - -Owner and -Location cannot be combined (currency is either owned or placed)
@@ -15,11 +22,16 @@
     any temporal suffix), adds the delta, and writes the result as an absolute
     value with a new (YYYY-MM:) temporal suffix.
 
-    Dot-sources entity-writehelpers.ps1 (Read-EntityFile, Find-EntitySection,
-    Find-EntityBullet, Find-EntityTag, Set-EntityTag, Write-EntityFile),
-    admin-config.ps1 (Get-AdminConfig), and currency-helpers.ps1.
+    Helpers (dot-sourced):
+    - entity-writehelpers.ps1: Read-EntityFile, Find-EntitySection,
+      Find-EntityBullet, Find-EntityTag, Set-EntityTag, Write-EntityFile
+    - admin-config.ps1: Get-AdminConfig (entities file path resolution)
+    - currency-helpers.ps1: currency domain utilities
 
-    Supports -WhatIf via SupportsShouldProcess.
+    Integration points:
+    - Invoke-PluginHook 'AfterWrite': notifies plugins after successful file write
+    - New-OperationResult: returns structured result when operation context is active
+    - SupportsShouldProcess: -WhatIf/-Confirm support (ConfirmImpact = Medium)
 #>
 
 . "$script:ModuleRoot/private/entity-writehelpers.ps1"
@@ -65,6 +77,7 @@ function Set-CurrencyEntity {
         throw "Cannot specify both -Owner and -Location. Currency is either owned or placed at a location."
     }
 
+    # Resolve config and reset operation context for fresh warning collection
     $Config = Get-AdminConfig
     if ($script:HasOpCtx) { Clear-OperationContext }
 
@@ -76,7 +89,7 @@ function Set-CurrencyEntity {
         $ValidFrom = (Get-Date).ToString('yyyy-MM')
     }
 
-    # Locate entity bullet under ## Przedmiot
+    # Locate entity bullet under ## Przedmiot — fail-early if not found
     $EntitiesFilePath = Invoke-EnsureEntityFile -Path $EntitiesFile
     $File = Read-EntityFile -Path $EntitiesFilePath
     $LinesArray = $File.Lines.ToArray()
@@ -104,12 +117,12 @@ function Set-CurrencyEntity {
             # Strip temporal suffix before parsing: "50 (2025-01:)" -> "50"
             $ParenIdx = $QtyText.IndexOf('(')
             if ($ParenIdx -gt 0) { $QtyText = $QtyText.Substring(0, $ParenIdx).Trim() }
-            [void][int]::TryParse($QtyText, [ref]$CurrentQty)
+            [void][int]::TryParse($QtyText, [ref]$CurrentQty)  # defaults to 0 on parse failure
         }
         $Amount = $CurrentQty + $AmountDelta
     }
 
-    # Write modified tags to entity file
+    # Apply each requested tag mutation — ChildEnd tracks insertion offset shifts
     if ($null -ne $Amount) {
         $ChildEnd = Set-EntityTag -Lines $Lines -ChildrenStart $ChildStart -ChildrenEnd $ChildEnd -TagName 'ilość' -Value "$Amount ($ValidFrom`:)"
     }
@@ -124,6 +137,15 @@ function Set-CurrencyEntity {
 
     if ($PSCmdlet.ShouldProcess($EntitiesFilePath, "Set-CurrencyEntity: update '$Name'")) {
         Write-EntityFile -Path $EntitiesFilePath -Lines $Lines -NL $File.NL
+
+        # Notify plugins after successful write (e.g. API cache invalidation)
+        if (Get-Command 'Invoke-PluginHook' -ErrorAction SilentlyContinue) {
+            Invoke-PluginHook -Operation 'Set-CurrencyEntity' -Phase 'AfterWrite' -Context @{
+                Operation = 'Set-CurrencyEntity'
+                Name      = $Name
+                Amount    = $Amount
+            }
+        }
 
         if ($script:HasOpCtx) {
             return (New-OperationResult -Success $true -Action 'Update' `

@@ -201,6 +201,178 @@ Describe 'Robot.ApiServer' {
         }
     }
 
+    Context 'Authentication (multi-token)' {
+        It 'returns 401 when auth required but no header sent' {
+            $Server = [Robot.ApiServer]::new()
+            $Router = [Robot.ApiRouter]::new()
+            $Middleware = [Robot.ApiMiddleware]::new()
+            $Port = Get-Random -Minimum 49152 -Maximum 65535
+            $Prefix = "http://localhost:$Port/api/"
+
+            # Set up TokenStore with a token (activates auth requirement)
+            $Store = [Robot.ApiTokenStore]::new()
+            $Info = [Robot.ApiTokenInfo]::new()
+            $Info.Name = 'test'; $Info.Scopes = @('admin:all')
+            $Store.Add('rbt_validtoken', $Info) | Out-Null
+            $Middleware.TokenStore = $Store
+
+            $Router.AddStaticRoute('GET', '/health',
+                [Func[Robot.RouteMatch, Robot.ApiServer, object]]{
+                    param($m, $s) return @{ status = 'ok' }
+                }, 'Health')
+
+            try {
+                $Server.Start($Prefix, $Router, $Middleware)
+
+                $Response = $null
+                try {
+                    Invoke-WebRequest -Uri "http://localhost:$Port/api/health" `
+                        -Method GET -ErrorAction Stop
+                } catch {
+                    $Response = $_.Exception.Response
+                }
+
+                [int]$Response.StatusCode | Should -Be 401
+            } finally {
+                $Server.Stop()
+                $Server.Dispose()
+            }
+        }
+
+        It 'passes auth with valid token (does not return 401)' {
+            $Server = [Robot.ApiServer]::new()
+            $Router = [Robot.ApiRouter]::new()
+            $Middleware = [Robot.ApiMiddleware]::new()
+            $Port = Get-Random -Minimum 49152 -Maximum 65535
+            $Prefix = "http://localhost:$Port/api/"
+
+            $Store = [Robot.ApiTokenStore]::new()
+            $Info = [Robot.ApiTokenInfo]::new()
+            $Info.Name = 'test'; $Info.Scopes = @('admin:all')
+            $Store.Add('rbt_valid123', $Info) | Out-Null
+            $Middleware.TokenStore = $Store
+
+            try {
+                $Server.Start($Prefix, $Router, $Middleware)
+
+                # No routes registered — valid token should pass auth, then get 404 (not 401)
+                $Response = $null
+                try {
+                    Invoke-WebRequest -Uri "http://localhost:$Port/api/anything" `
+                        -Method GET `
+                        -Headers @{ Authorization = 'Bearer rbt_valid123' } `
+                        -ErrorAction Stop
+                } catch {
+                    $Response = $_.Exception.Response
+                }
+
+                [int]$Response.StatusCode | Should -Be 404
+            } finally {
+                $Server.Stop()
+                $Server.Dispose()
+            }
+        }
+    }
+
+    Context 'Scope enforcement' {
+        It 'returns 403 when token lacks required scope' {
+            $Server = [Robot.ApiServer]::new()
+            $Router = [Robot.ApiRouter]::new()
+            $Middleware = [Robot.ApiMiddleware]::new()
+            $Port = Get-Random -Minimum 49152 -Maximum 65535
+            $Prefix = "http://localhost:$Port/api/"
+
+            $Store = [Robot.ApiTokenStore]::new()
+            $Info = [Robot.ApiTokenInfo]::new()
+            $Info.Name = 'readonly'; $Info.Scopes = @('entity:read')
+            $Store.Add('rbt_readonly', $Info) | Out-Null
+            $Middleware.TokenStore = $Store
+
+            $Router.AddStaticRoute('GET', '/admin-only',
+                [Func[Robot.RouteMatch, Robot.ApiServer, object]]{
+                    param($m, $s) return @{ data = 'secret' }
+                }, 'Admin only', 200, 'admin:write')
+
+            try {
+                $Server.Start($Prefix, $Router, $Middleware)
+
+                $Response = $null
+                try {
+                    Invoke-WebRequest -Uri "http://localhost:$Port/api/admin-only" `
+                        -Method GET `
+                        -Headers @{ Authorization = 'Bearer rbt_readonly' } `
+                        -ErrorAction Stop
+                } catch {
+                    $Response = $_.Exception.Response
+                }
+
+                [int]$Response.StatusCode | Should -Be 403
+            } finally {
+                $Server.Stop()
+                $Server.Dispose()
+            }
+        }
+    }
+
+    Context 'Content-Type validation' {
+        It 'returns 415 for POST without Content-Type' {
+            $Server = [Robot.ApiServer]::new()
+            $Router = [Robot.ApiRouter]::new()
+            $Middleware = [Robot.ApiMiddleware]::new()
+            $Port = Get-Random -Minimum 49152 -Maximum 65535
+            $Prefix = "http://localhost:$Port/api/"
+
+            $Router.AddRoute('POST', '/data', 'Invoke-Handler', 'Post data', 201)
+
+            try {
+                $Server.Start($Prefix, $Router, $Middleware)
+
+                $Response = $null
+                try {
+                    Invoke-WebRequest -Uri "http://localhost:$Port/api/data" `
+                        -Method POST -Body '{"test":1}' `
+                        -ContentType 'text/plain' -ErrorAction Stop
+                } catch {
+                    $Response = $_.Exception.Response
+                }
+
+                [int]$Response.StatusCode | Should -Be 415
+            } finally {
+                $Server.Stop()
+                $Server.Dispose()
+            }
+        }
+    }
+
+    Context 'Backward compatibility' {
+        It 'allows open access when no auth configured (does not return 401)' {
+            $Server = [Robot.ApiServer]::new()
+            $Router = [Robot.ApiRouter]::new()
+            $Middleware = [Robot.ApiMiddleware]::new()
+            # No AuthToken, no TokenStore = open access
+            $Port = Get-Random -Minimum 49152 -Maximum 65535
+            $Prefix = "http://localhost:$Port/api/"
+
+            try {
+                $Server.Start($Prefix, $Router, $Middleware)
+
+                # No routes — open access should pass auth, then get 404 (not 401)
+                $Response = $null
+                try {
+                    Invoke-WebRequest -Uri "http://localhost:$Port/api/anything" `
+                        -Method GET -ErrorAction Stop
+                } catch {
+                    $Response = $_.Exception.Response
+                }
+
+                [int]$Response.StatusCode | Should -Be 404
+            } finally {
+                $Server.Stop()
+                $Server.Dispose()
+            }
+        }
+    }
+
     Context 'Graceful shutdown' {
         It 'stops accepting connections after Stop()' {
             $Server = [Robot.ApiServer]::new()

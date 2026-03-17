@@ -91,6 +91,32 @@ Describe 'Robot.ApiRouter' {
         }
     }
 
+    Context 'Route scope' {
+        It 'sets RequiredScope on route with scope parameter' {
+            $Router = [Robot.ApiRouter]::new()
+            $Router.AddRoute('GET', '/entities', 'Invoke-Handler', 'test', 200, 'entity:read')
+            $Match = $Router.Match('GET', '/entities')
+            $Match.Route.RequiredScope | Should -Be 'entity:read'
+        }
+
+        It 'has null RequiredScope when no scope specified' {
+            $Router = [Robot.ApiRouter]::new()
+            $Router.AddRoute('GET', '/health', 'Invoke-Handler', 'test')
+            $Match = $Router.Match('GET', '/health')
+            $Match.Route.RequiredScope | Should -BeNullOrEmpty
+        }
+
+        It 'includes scope field in ListRoutes output' {
+            $Router = [Robot.ApiRouter]::new()
+            $Router.AddRoute('GET', '/entities', 'Invoke-A', 'List', 200, 'entity:read')
+            $Router.AddRoute('GET', '/health', 'Invoke-B', 'Health')
+
+            $Routes = $Router.ListRoutes()
+            $Routes[0]['scope'] | Should -Be 'entity:read'
+            $Routes[1]['scope'] | Should -BeNullOrEmpty
+        }
+    }
+
     Context 'SSE route' {
         It 'registers SSE route with IsSse flag' {
             $Router = [Robot.ApiRouter]::new()

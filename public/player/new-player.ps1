@@ -3,19 +3,29 @@
     Creates a new player entry in entities.md with optional first character.
 
     .DESCRIPTION
-    This file contains New-Player which:
-    1. Creates an entity entry under ## Gracz with @margonemid, @prfwebhook,
-       and @trigger tags in entities.md.
-    2. Validates that the player does not already exist (throws if found).
-    3. Validates Discord webhook URL format.
-    4. Optionally creates a first character by delegating to New-PlayerCharacter.
+    This file contains New-Player which creates a Gracz entity and optionally
+    a first Postać character in a single operation.
 
-    The delegation to New-PlayerCharacter reuses its template rendering,
-    PU computation, and charfile generation logic rather than duplicating it.
+    Processing pipeline:
+    1. Validate Discord webhook URL format (fail-early before any writes).
+    2. Check for duplicate player names (would corrupt entity index).
+    3. Build ordered tag set: @margonemid, @prfwebhook, @trigger.
+    4. Resolve target file and insertion point via Resolve-EntityTarget.
+    5. Write player bullet under ## Gracz, fire AfterCreate plugin hook.
+    6. Optionally delegate to New-PlayerCharacter for first character
+       (reuses its template rendering, PU computation, charfile generation).
+    7. Return composite result with player and character details.
 
-    Dot-sources entity-writehelpers.ps1 (file I/O and tag manipulation)
-    and admin-config.ps1 (entities file path resolution).
-    Supports -WhatIf via SupportsShouldProcess.
+    Helpers (dot-sourced):
+    - entity-writehelpers.ps1: Read-EntityFile, Find-EntitySection,
+      Find-EntityBullet, Write-EntityFile, Resolve-EntityTarget
+    - admin-config.ps1: Get-AdminConfig (entities file path resolution)
+
+    Integration points:
+    - Invoke-PluginHook 'AfterCreate': notifies plugins after player entry creation
+    - New-PlayerCharacter: delegation target for optional first character
+    - New-OperationResult: returns structured result when operation context is active
+    - SupportsShouldProcess: -WhatIf/-Confirm support (ConfirmImpact = Medium)
 #>
 
 . "$script:ModuleRoot/private/entity-writehelpers.ps1"
@@ -56,6 +66,7 @@ function New-Player {
         [string]$EntitiesFile
     )
 
+    # Resolve config and reset operation context for fresh warning collection
     $Config = Get-AdminConfig
     if ($script:HasOpCtx) { Clear-OperationContext }
 
@@ -79,6 +90,7 @@ function New-Player {
         }
     }
 
+    # Build ordered tag set — only non-empty values are included
     $InitialTags = [ordered]@{}
 
     if (-not [string]::IsNullOrWhiteSpace($MargonemID)) {
@@ -89,6 +101,7 @@ function New-Player {
         $InitialTags['prfwebhook'] = $PRFWebhook
     }
 
+    # Triggers are stored as array — multi-value tag rendered as nested bullets
     if ($Triggers -and $Triggers.Count -gt 0) {
         $CleanTriggers = [System.Collections.Generic.List[string]]::new()
         foreach ($Trigger in $Triggers) {
@@ -101,10 +114,20 @@ function New-Player {
         }
     }
 
+    # Resolve-EntityTarget determines the target file (entities.md or overflow)
+    # and prepares the line array with the new bullet inserted
     $PlayerTarget = Resolve-EntityTarget -FilePath $EntitiesFile -EntityType 'Gracz' -EntityName $Name -InitialTags $InitialTags
 
     if ($PSCmdlet.ShouldProcess($EntitiesFile, "New-Player: create player entry '$Name'")) {
         Write-EntityFile -Path $PlayerTarget.FilePath -Lines $PlayerTarget.Lines -NL $PlayerTarget.NL
+
+        # Notify plugins after successful creation (e.g. API cache invalidation)
+        if (Get-Command 'Invoke-PluginHook' -ErrorAction SilentlyContinue) {
+            Invoke-PluginHook -Operation 'New-Player' -Phase 'AfterCreate' -Context @{
+                Operation = 'New-Player'
+                Name      = $Name
+            }
+        }
     }
 
     # Delegate to New-PlayerCharacter so character creation reuses its
@@ -132,6 +155,7 @@ function New-Player {
         $CharacterResult = New-PlayerCharacter @CharParams
     }
 
+    # Composite result includes both player and optional character details
     $ReturnObj = [PSCustomObject]@{
         PlayerName    = $Name
         MargonemID    = $MargonemID
@@ -142,6 +166,7 @@ function New-Player {
         CharacterFile = if ($CharacterResult) { $CharacterResult.CharacterFile } else { $null }
     }
 
+    # Attach OperationResult for CLI undo tracking when operation context is active
     if ($script:HasOpCtx) {
         $OpResult = New-OperationResult -Success $true -Action 'Create' `
             -TargetType 'Gracz' -TargetName $Name -UndoHint "Remove-Entity -Name '$Name' -Type 'Gracz'"

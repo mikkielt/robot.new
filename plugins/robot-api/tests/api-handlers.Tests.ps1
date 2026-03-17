@@ -355,7 +355,6 @@ Describe 'Invoke-ApiEventBroadcast' {
 
     Context 'Event dispatch' {
         It 'handles Write-EntityFile operation' {
-            # Verify the function accepts the correct hook context shape
             $script:ApiServerInstance = $null
             { Invoke-ApiEventBroadcast -HookContext @{
                 Operation  = 'Write-EntityFile'
@@ -379,6 +378,32 @@ Describe 'Invoke-ApiEventBroadcast' {
                 Operation     = 'New-PlayerCharacter'
                 PlayerName    = 'TestPlayer'
                 CharacterName = 'TestChar'
+            } } | Should -Not -Throw
+        }
+
+        It 'handles Remove-Entity operation' {
+            $script:ApiServerInstance = $null
+            { Invoke-ApiEventBroadcast -HookContext @{
+                Operation  = 'Remove-Entity'
+                Name       = 'DeletedEntity'
+                EntityType = 'NPC'
+            } } | Should -Not -Throw
+        }
+
+        It 'handles Set-CurrencyEntity operation' {
+            $script:ApiServerInstance = $null
+            { Invoke-ApiEventBroadcast -HookContext @{
+                Operation = 'Set-CurrencyEntity'
+                Name      = 'Korony Test'
+                Amount    = 100
+            } } | Should -Not -Throw
+        }
+
+        It 'handles New-Player operation' {
+            $script:ApiServerInstance = $null
+            { Invoke-ApiEventBroadcast -HookContext @{
+                Operation = 'New-Player'
+                Name      = 'TestPlayer'
             } } | Should -Not -Throw
         }
     }

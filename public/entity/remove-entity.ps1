@@ -6,20 +6,33 @@
     This file contains Remove-Entity which marks an entity as soft-deleted
     by writing @status: Usunięty (YYYY-MM:) to its entry in entities.md.
 
-    Searches all entity type sections for the named entity, or scopes to
-    -Type if provided for disambiguation. Does not delete the bullet or
-    any files — only sets the status tag. This preserves referential
-    integrity: session @Zmiany and @PU entries that reference the entity
-    remain valid, and historical queries still find it.
+    Processing pipeline:
+    1. Resolve config, locate entities file via Invoke-EnsureEntityFile.
+    2. Search for entity bullet — scoped to -Type when given, otherwise
+       scans all 7 entity type sections sequentially (first match wins).
+    3. Write @status: Usunięty tag with (YYYY-MM:) temporal suffix.
+    4. Persist via Write-EntityFile, fire AfterWrite plugin hook.
+    5. Invalidate session graph cache (entity removal affects graph edges).
+    6. Return OperationResult with undo hint pointing to Set-Entity.
 
-    Entities with status Usunięty are filtered out by Get-Entity unless
-    -IncludeDeleted is set.
+    Soft-delete preserves referential integrity: session @Zmiany and @PU
+    entries that reference the entity remain valid, and historical queries
+    still find it. Entities with status Usunięty are filtered out by
+    Get-Entity unless -IncludeDeleted is set.
 
     ConfirmImpact is High because the operation changes entity visibility
     across all downstream consumers (reports, CLI, PU assignment).
 
-    Dot-sources entity-writehelpers.ps1 (file I/O and tag manipulation)
-    and admin-config.ps1 (entities file path resolution).
+    Helpers (dot-sourced):
+    - entity-writehelpers.ps1: Read-EntityFile, Find-EntitySection,
+      Find-EntityBullet, Set-EntityTag, Write-EntityFile
+    - admin-config.ps1: Get-AdminConfig (entities file path resolution)
+
+    Integration points:
+    - Invoke-PluginHook 'AfterWrite': notifies plugins after successful file write
+    - Set-SessionGraphStale: invalidates cached session graph
+    - New-OperationResult: returns structured result when operation context is active
+    - SupportsShouldProcess: -WhatIf/-Confirm support (ConfirmImpact = High)
 #>
 
 . "$script:ModuleRoot/private/entity-writehelpers.ps1"
@@ -47,6 +60,7 @@ function Remove-Entity {
         [string]$EntitiesFile
     )
 
+    # Resolve config and reset operation context for fresh warning collection
     $Config = Get-AdminConfig
     if ($script:HasOpCtx) { Clear-OperationContext }
 
@@ -62,7 +76,7 @@ function Remove-Entity {
     $File = Read-EntityFile -Path $EntitiesFilePath
     $LinesArray = $File.Lines.ToArray()
 
-    # Search scoped to -Type when given, otherwise scan all sections sequentially
+    # Search scoped to -Type when given, otherwise scan all 7 sections sequentially
     $FoundBullet = $null
     $FoundType = $null
 
@@ -93,18 +107,30 @@ function Remove-Entity {
         throw "Entity '$Name' not found in entities.md"
     }
 
+    # Mark entity as deleted — temporal suffix preserves the removal date for auditing
     $Lines = $File.Lines
     $ChildEnd = Set-EntityTag -Lines $Lines -ChildrenStart $FoundBullet.ChildrenStartIdx -ChildrenEnd $FoundBullet.ChildrenEndIdx -TagName 'status' -Value "Usunięty ($ValidFrom`:)"
 
     if ($PSCmdlet.ShouldProcess($EntitiesFilePath, "Remove-Entity: soft-delete '$Name' (## $FoundType, @status: Usunięty ($ValidFrom`:))")) {
         Write-EntityFile -Path $EntitiesFilePath -Lines $Lines -NL $File.NL
 
+        # Notify plugins after successful write (e.g. API cache invalidation)
+        if (Get-Command 'Invoke-PluginHook' -ErrorAction SilentlyContinue) {
+            Invoke-PluginHook -Operation 'Remove-Entity' -Phase 'AfterWrite' -Context @{
+                Operation  = 'Remove-Entity'
+                Name       = $Name
+                EntityType = $FoundType
+                Path       = $EntitiesFilePath
+            }
+        }
+
+        # Entity removal changes graph topology — force rebuild on next access
         Set-SessionGraphStale -Reason "Encja '$Name' została usunięta" -ResDir $Config.ResDir
 
         if ($script:HasOpCtx) {
             return (New-OperationResult -Success $true -Action 'SoftDelete' `
                 -TargetType $(if ($FoundType) { $FoundType } else { 'Entity' }) -TargetName $Name `
-                -UndoHint "Set-Entity -Name '$Name' -Tags @{status='Aktywny'}")
+                -UndoHint "Set-Entity -Name '$Name' -Tags @{status='Aktywny'}")  # reversible via status reset
         }
     }
 }

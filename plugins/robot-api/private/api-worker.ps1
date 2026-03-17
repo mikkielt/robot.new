@@ -8,18 +8,33 @@
     functions.
 
     Each worker thread owns an independent Runspace with the Robot module
-    imported and handler files dot-sourced. Workers dequeue ApiRequest objects
-    from the C# server's BlockingCollection, invoke the named handler function,
-    and set the TaskCompletionSource result to unblock the awaiting HTTP thread.
+    imported and four handler files dot-sourced (api-handlers-read,
+    api-handlers-write, api-handlers-auth, api-token-helpers). Workers
+    dequeue ApiRequest objects from the C# server's BlockingCollection
+    via Take() (blocking), invoke the named handler function, and set
+    the TaskCompletionSource result to unblock the awaiting HTTP thread.
 
-    Cache coherence: each worker tracks a local cache version counter. Before
-    processing a request, it compares against the shared ApiServer.CacheVersion
-    (updated by Interlocked.Increment after writes). On version mismatch, the
-    worker calls Clear-ParseCaches to refresh its runspace's entity/session data.
+    Cache coherence: each worker tracks a local cache version counter.
+    Before processing a request, it compares against the shared static
+    [Robot.ApiServer]::CacheVersion (bumped by Interlocked.Increment
+    after POST/PUT/DELETE operations). On version mismatch, the worker
+    calls Clear-ParseCaches to refresh its runspace's entity/session
+    data, ensuring read-after-write consistency across worker threads.
 
-    Thread model: N background .NET Threads (not ThreadPool) with dedicated
-    runspaces. Background threads auto-terminate when the process exits.
-    Worker count is configurable via plugin config (default 8).
+    Thread model: N background .NET Threads (not ThreadPool) with
+    dedicated runspaces. Background threads auto-terminate when the
+    process exits. Worker count is configurable via plugin config
+    (default 8). Each thread is named "RobotApiWorker-{i}" for
+    diagnostics.
+
+    Request processing pipeline per dequeue:
+    1. Cache version check + optional Clear-ParseCaches
+    2. Handler name validation against $HandlerMap (rejects stale routes)
+    3. Build $ApiContext hashtable from ApiRequest fields
+    4. Parse JSON body from BodyBytes if present (400 on invalid JSON)
+    5. Invoke handler, extract StatusCode/Body from result hashtable
+    6. Increment CacheVersion for write methods (POST/PUT/DELETE)
+    7. Set [Robot.ApiResponse] on TaskCompletionSource
 
     Helpers:
     - Start-ApiWorkerPool: creates N runspaces + threads, starts dequeue loops
@@ -28,8 +43,10 @@
     Module-level data:
     - $script:ApiWorkerThreads: List of active worker Thread objects
     - $script:ApiWorkerRunspaces: List of {Runspace, PowerShell} entries
+      (each entry is a hashtable with Runspace and PowerShell keys)
 #>
 
+# Worker pool state — initialized by Start-ApiWorkerPool, cleared by Stop-ApiWorkerPool
 $script:ApiWorkerThreads   = $null
 $script:ApiWorkerRunspaces = $null
 
@@ -59,11 +76,13 @@ function Start-ApiWorkerPool {
         [void]$PS.Invoke()
         $PS.Commands.Clear()
 
-        # Dot-source the handler files into each runspace
+        # Dot-source handler files so each runspace has all API functions available
         $HandlerDir = [System.IO.Path]::GetDirectoryName($PSScriptRoot)
         $HandlerFiles = @(
             "$HandlerDir/private/api-handlers-read.ps1"
             "$HandlerDir/private/api-handlers-write.ps1"
+            "$HandlerDir/private/api-handlers-auth.ps1"
+            "$HandlerDir/private/api-token-helpers.ps1"  # needed by auth handlers
         )
         foreach ($HF in $HandlerFiles) {
             if ([System.IO.File]::Exists($HF)) {
@@ -76,7 +95,7 @@ function Start-ApiWorkerPool {
 
         $script:ApiWorkerRunspaces.Add(@{ Runspace = $Runspace; PowerShell = $PS })
 
-        # Worker thread: dequeue requests, invoke handlers, return results
+        # Capture state for the ParameterizedThreadStart closure
         $WorkerState = @{
             Queue      = $Queue
             HandlerMap = $HandlerMap
@@ -89,16 +108,16 @@ function Start-ApiWorkerPool {
             $Q  = $State.Queue
             $HM = $State.HandlerMap
             $PS = $State.PS
-            $LocalCacheVersion = 0
+            $LocalCacheVersion = 0  # compared against shared [Robot.ApiServer]::CacheVersion
 
             while (-not $Q.IsCompleted) {
                 $Req = $null
                 try {
-                    $Req = $Q.Take()  # Blocks until item available or completed
+                    $Req = $Q.Take()  # blocks until item available or CompleteAdding called
                 } catch [System.OperationCanceledException] {
                     break
                 } catch [System.InvalidOperationException] {
-                    break  # CompleteAdding was called
+                    break  # BlockingCollection was completed
                 }
 
                 if ($null -eq $Req) { continue }
@@ -155,14 +174,14 @@ function Start-ApiWorkerPool {
                     $Result = $PS.Invoke()
                     $PS.Commands.Clear()
 
-                    # Extract result (handler returns hashtable with StatusCode, Body)
+                    # Handler returns hashtable with StatusCode + Body; default 204 for empty
                     $HandlerResult = if ($Result -and $Result.Count -gt 0) {
                         $Result[0]
                     } else {
                         @{ StatusCode = 204 }
                     }
 
-                    # Increment cache version after write operations
+                    # Invalidate caches after mutations so next read sees fresh data
                     if ($Req.Method -in @('POST', 'PUT', 'DELETE')) {
                         [System.Threading.Interlocked]::Increment(
                             [ref][Robot.ApiServer]::CacheVersion)
@@ -174,7 +193,7 @@ function Start-ApiWorkerPool {
                     } else { 200 }
                     $Resp.Body = $HandlerResult.Body
 
-                    # Pass through labels flag from handler
+                    # IncludeLabels tells the C# serializer to emit field name annotations
                     if ($HandlerResult.IncludeLabels) {
                         $Resp.IncludeLabels = $true
                     }

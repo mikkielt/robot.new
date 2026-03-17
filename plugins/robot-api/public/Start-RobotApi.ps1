@@ -6,20 +6,38 @@
     This file contains Start-RobotApi — the entry point for launching the
     HTTP API server. Orchestrates a multi-phase startup:
 
-    1. Type guard: verifies Robot.ApiServer C# type is available (requires
+    1. Type guard: verifies [Robot.ApiServer] C# type is available (requires
        PowerShell 7.0+ with .NET Core for HttpListener support).
     2. Config resolution: merges plugin config (plugin.psd1 defaults +
        local.config.psd1 overrides) with parameter-level overrides.
-    3. Engine assembly: creates ApiServer, ApiRouter, and ApiMiddleware
-       instances, wires middleware settings (auth, CORS, rate limiting).
-    4. Route registration: dot-sources api-routes.ps1, calls
+    3. Engine assembly: creates [Robot.ApiServer], [Robot.ApiRouter], and
+       [Robot.ApiMiddleware] instances; wires middleware settings (CORS,
+       rate limiting, request body limit).
+    4. Token store: creates [Robot.ApiTokenStore], loads persistent tokens
+       from .psd1 file (with gitignore safety check), falls back to legacy
+       single AuthToken if no multi-token store exists.
+    5. Route registration: dot-sources api-routes.ps1, calls
        Register-AllApiRoutes to build the compiled route table.
-    5. HTTP start: ApiServer.Start() begins accepting connections.
-    6. Worker pool: dot-sources api-worker.ps1, launches N runspace threads.
+    6. HTTP start: ApiServer.Start() begins accepting connections on the
+       configured prefix (e.g. http://localhost:8642/api/).
+    7. Worker pool: dot-sources api-worker.ps1, launches N PowerShell
+       runspace threads to process queued requests.
+
+    Helpers (dot-sourced):
+    - api-token-helpers.ps1: Resolve-TokenFilePath, Test-TokenFileGitignored,
+      Sync-ApiTokenStore
+    - api-routes.ps1: Register-AllApiRoutes
+    - api-worker.ps1: Start-ApiWorkerPool
 
     Module-level data:
-    - $script:ApiServerInstance: the active ApiServer reference (shared with
-      Stop-RobotApi, Get-RobotApiStatus, and CLI workflows)
+    - $script:ApiServerInstance: the active [Robot.ApiServer] reference
+      (shared with Stop-RobotApi, Get-RobotApiStatus, and CLI workflows)
+
+    C# types:
+    - [Robot.ApiServer]: HTTP listener, request queue, SSE manager
+    - [Robot.ApiRouter]: compiled route table with pattern matching
+    - [Robot.ApiMiddleware]: auth, CORS, rate limiting, body size guard
+    - [Robot.ApiTokenStore]: concurrent multi-token store for Bearer auth
 #>
 
 function Start-RobotApi {
@@ -51,7 +69,7 @@ function Start-RobotApi {
         [switch]$Quiet
     )
 
-    # Verify C# engine compiled
+    # Fail early if C# types weren't compiled — avoids cryptic errors downstream
     if (-not ([System.Management.Automation.PSTypeName]'Robot.ApiServer').Type) {
         $PSCmdlet.ThrowTerminatingError(
             [System.Management.Automation.ErrorRecord]::new(
@@ -72,12 +90,12 @@ function Start-RobotApi {
     if ($Workers) { $Config.WorkerCount   = $Workers }
     if ($ReadOnly){ $Config.ReadOnly      = $true }
 
-    # Default config values if plugin config not loaded
+    # Fallback defaults when plugin.psd1 is missing or incomplete
     if (-not $Config.ListenPort)         { $Config.ListenPort         = 8642 }
     if (-not $Config.ListenAddress)      { $Config.ListenAddress      = 'localhost' }
     if (-not $Config.WorkerCount)        { $Config.WorkerCount        = 8 }
     if (-not $Config.RateLimitPerSecond) { $Config.RateLimitPerSecond = 100 }
-    if (-not $Config.MaxRequestBody)     { $Config.MaxRequestBody     = 65536 }
+    if (-not $Config.MaxRequestBody)     { $Config.MaxRequestBody     = 65536 }  # 64 KB
 
     $Prefix = "http://$($Config.ListenAddress):$($Config.ListenPort)/api/"
 
@@ -88,22 +106,48 @@ function Start-RobotApi {
     $Router     = [Robot.ApiRouter]::new()
     $Middleware  = [Robot.ApiMiddleware]::new()
 
-    $Middleware.AuthToken          = $Config.AuthToken
     $Middleware.CorsOrigin         = $Config.CorsOrigin
     $Middleware.ReadOnly           = [bool]$Config.ReadOnly
     $Middleware.MaxRequestBody     = [int]$Config.MaxRequestBody
     $Middleware.RateLimitPerSecond = [int]$Config.RateLimitPerSecond
-    $Middleware.RateLimitBurst     = [int]$Config.RateLimitPerSecond * 2
+    $Middleware.RateLimitBurst     = [int]$Config.RateLimitPerSecond * 2  # 2x sustained rate as burst headroom
+
+    # Initialize multi-token store — shared with New/Remove-RobotApiToken for hot-reload
+    . "$PSScriptRoot/../private/api-token-helpers.ps1"
+    $TokenStore = [Robot.ApiTokenStore]::new()
+    $Middleware.TokenStore = $TokenStore
+
+    # Load persistent tokens — file may not exist on first run
+    $TokenFilePath = Resolve-TokenFilePath
+    if ([System.IO.File]::Exists($TokenFilePath)) {
+        if (-not (Test-TokenFileGitignored -Path $TokenFilePath)) {
+            $PSCmdlet.ThrowTerminatingError(
+                [System.Management.Automation.ErrorRecord]::new(
+                    [System.InvalidOperationException]::new(
+                        "SECURITY: Token file '$TokenFilePath' is NOT gitignored. " +
+                        "Add it to .gitignore before starting the API server."),
+                    'TokenFileNotGitignored',
+                    [System.Management.Automation.ErrorCategory]::SecurityError,
+                    $TokenFilePath))
+            return
+        }
+        Sync-ApiTokenStore -TokenStore $TokenStore -FilePath $TokenFilePath
+    }
+
+    # Fall back to legacy single AuthToken from config when no multi-token store exists
+    if ($Config.AuthToken -and $TokenStore.IsEmpty) {
+        $Middleware.AuthToken = $Config.AuthToken
+    }
 
     # Register routes
     . "$PSScriptRoot/../private/api-routes.ps1"
     $HandlerMap = Register-AllApiRoutes -Router $Router -Server $Server
 
-    # Start C# HTTP engine
+    # Start C# HTTP listener — begins accepting connections and queuing requests
     $Server.Start($Prefix, $Router, $Middleware)
     $script:ApiServerInstance = $Server
 
-    # Start PS worker pool
+    # Launch PowerShell runspace pool to dequeue and process requests
     . "$PSScriptRoot/../private/api-worker.ps1"
     Start-ApiWorkerPool -Server $Server -HandlerMap $HandlerMap `
         -WorkerCount ([int]$Config.WorkerCount)

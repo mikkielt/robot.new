@@ -5,12 +5,19 @@
     .DESCRIPTION
     This file contains Get-RobotApiStatus — returns a PSCustomObject
     (PSTypeName 'Robot.ApiStatus') with the server's running state, request
-    statistics, queue depth, SSE client count, and cache version.
+    statistics, queue depth, SSE client count, cache version, and active
+    token count.
 
     When no server instance exists ($script:ApiServerInstance is $null),
-    returns a default offline snapshot. Otherwise delegates to
-    ApiServer.GetStatus() and wraps the C# dictionary result in a typed
-    PSCustomObject for pipeline-friendly output.
+    returns a default offline snapshot with zeroed counters but a live
+    CacheVersion (read atomically from [Robot.ApiServer]::CacheVersion
+    via Interlocked.Read). Otherwise delegates to ApiServer.GetStatus()
+    and wraps the C# dictionary result in a typed PSCustomObject for
+    pipeline-friendly output.
+
+    Module-level data:
+    - $script:ApiServerInstance: active [Robot.ApiServer] set by Start-RobotApi
+    - $script:ApiTokenStore: active [Robot.ApiTokenStore] for live token count
 #>
 
 function Get-RobotApiStatus {
@@ -21,6 +28,7 @@ function Get-RobotApiStatus {
     [CmdletBinding()]
     param()
 
+    # Offline path — return zeroed snapshot when server hasn't been started
     if (-not $script:ApiServerInstance) {
         return [PSCustomObject]@{
             PSTypeName    = 'Robot.ApiStatus'
@@ -31,7 +39,8 @@ function Get-RobotApiStatus {
             QueuedRequests = 0
             SseClients    = 0
             CacheVersion  = [System.Threading.Interlocked]::Read(
-                [ref][Robot.ApiServer]::CacheVersion)
+                [ref][Robot.ApiServer]::CacheVersion)  # static field survives server stop/restart
+            TokenCount    = 0
         }
     }
 
@@ -46,5 +55,6 @@ function Get-RobotApiStatus {
         QueuedRequests = $Status['queuedRequests']
         SseClients     = $Status['sseClients']
         CacheVersion   = $Status['cacheVersion']
+        TokenCount     = if ($script:ApiTokenStore) { $script:ApiTokenStore.Count } else { 0 }  # store only exists when server has been started
     }
 }

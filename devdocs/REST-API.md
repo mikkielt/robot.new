@@ -1,14 +1,10 @@
 # REST API - Technical Reference
 
----
-
 ## Scope
 
 This document covers the compiled C# server engine (`lib/Api*.cs`), the plugin shell (`plugins/robot-api/`), the RunspacePool worker bridge, the RSQL query layer, the endpoint reference, and the request/response protocol.
 
 For plugin system mechanics, see [PLUGINS.md](PLUGINS.md). For entity data access, see [ENTITIES.md](ENTITIES.md). For session graph reporting, see [SESSION-GRAPH.md](SESSION-GRAPH.md).
-
----
 
 ## Architecture Overview
 
@@ -40,8 +36,6 @@ For plugin system mechanics, see [PLUGINS.md](PLUGINS.md). For entity data acces
 ```
 
 The server uses a hybrid architecture: a compiled C# engine handles HTTP I/O, routing, middleware, and serialization, while PowerShell RunspacePool workers execute the business logic handlers. Static routes (`/health`, `/routes`, `/metrics`, `/schema`) respond entirely in C# without touching the worker pool.
-
----
 
 ## Endpoint Reference
 
@@ -84,17 +78,17 @@ Session endpoints:
 | Method | Path | Handler | Description |
 |---|---|---|---|
 | GET | `/sessions` | `Invoke-ApiGetSessions` | List sessions |
-| GET | `/session-graph/entity/:name` | `Invoke-ApiGetSessionGraphEntity` | Participation profile |
-| GET | `/session-graph/compare` | `Invoke-ApiGetSessionGraphCompare` | Overlap analysis |
-| GET | `/session-graph/leaderboard` | `Invoke-ApiGetSessionGraphLeaderboard` | Top entities by session count |
+| GET | `/session-graph/entity/:name` | `Invoke-ApiGetEntityProfile` | Participation profile |
+| GET | `/session-graph/compare` | `Invoke-ApiCompareParticipation` | Overlap analysis |
+| GET | `/session-graph/leaderboard` | `Invoke-ApiGetLeaderboard` | Top entities by session count |
 
 Currency and economy endpoints:
 
 | Method | Path | Handler | Description |
 |---|---|---|---|
 | GET | `/currency` | `Invoke-ApiGetCurrency` | Currency holdings |
-| GET | `/economy/snapshot` | `Invoke-ApiGetEconomySnapshot` | Supply, Gini, top holders |
-| GET | `/economy/timeline` | `Invoke-ApiGetEconomyTimeline` | Monthly trends |
+| GET | `/economy/snapshot` | `Invoke-ApiGetEconomicSnapshot` | Supply, Gini, top holders |
+| GET | `/economy/timeline` | `Invoke-ApiGetEconomicTimeline` | Monthly trends |
 | GET | `/transactions` | `Invoke-ApiGetTransactions` | Transaction ledger |
 | POST | `/currency` | `Invoke-ApiCreateCurrency` | Create holding |
 | PUT | `/currency/:name` | `Invoke-ApiUpdateCurrency` | Update amount |
@@ -104,7 +98,7 @@ Name resolution, validation, report, and workflow endpoints:
 | Method | Path | Handler | Description |
 |---|---|---|---|
 | GET | `/resolve/:name` | `Invoke-ApiResolveName` | Resolve name to entity or player |
-| GET | `/validate/pu` | `Invoke-ApiValidatePu` | PU assignment validation |
+| GET | `/validate/pu` | `Invoke-ApiValidatePU` | PU assignment validation |
 | GET | `/validate/currency` | `Invoke-ApiValidateCurrency` | Currency reconciliation |
 | GET | `/validate/sessions` | `Invoke-ApiValidateSessions` | Session integrity |
 | GET | `/validate/graph` | `Invoke-ApiValidateGraph` | Session graph integrity |
@@ -114,17 +108,74 @@ Name resolution, validation, report, and workflow endpoints:
 | GET | `/reports/narrators` | `Invoke-ApiGetNarrators` | Narrator statistics |
 | GET | `/reports/locations` | `Invoke-ApiGetLocations` | Location reference data |
 | GET | `/reports/location-graph` | `Invoke-ApiGetLocationGraph` | Location topology |
-| GET | `/reports/pu-log` | `Invoke-ApiGetPuLog` | PU processing history |
+| GET | `/reports/pu-log` | `Invoke-ApiGetPULog` | PU processing history |
 | GET | `/reports/notifications` | `Invoke-ApiGetNotifications` | Notification audit log |
 | GET | `/reports/discord-delivery` | `Invoke-ApiGetDeliveryLog` | Discord webhook delivery history |
-| POST | `/workflow/session-graph` | `Invoke-ApiRebuildSessionGraph` | Rebuild session graph index |
-| POST | `/workflow/session-hash` | `Invoke-ApiUpdateSessionHash` | Update session content hashes |
+| POST | `/workflow/session-graph` | `Invoke-ApiRebuildGraph` | Rebuild session graph index |
+| POST | `/workflow/session-hash` | `Invoke-ApiRebuildHashes` | Update session content hashes |
 
----
+Auth management endpoints (require `auth:manage` scope):
+
+| Method | Path | Handler | Description |
+|---|---|---|---|
+| POST | `/auth/token` | `Invoke-ApiCreateToken` | Create a new scoped token |
+| DELETE | `/auth/token/:name` | `Invoke-ApiDeleteToken` | Delete a token by name |
+| GET | `/auth/status` | `Invoke-ApiGetAuthStatus` | List tokens and count |
+
+## Authentication & Authorization
+
+The API supports three auth modes, resolved in priority order:
+
+1. Multi-token store (preferred): tokens stored in `.robot/res/api-tokens.psd1`, each with a name and scope list. Created via `New-RobotApiToken` or `POST /auth/token`. The token file must be gitignored — startup fails with a security error otherwise.
+2. Single token: `AuthToken` config value or `ROBOT_API_TOKEN` env var. Token gets synthetic `admin:all` scope.
+3. Open access: no tokens configured and no `AuthToken` set. All requests pass auth with synthetic `admin:all`.
+
+Token format: `rbt_` prefix + 44 base62 chars (~48 chars total), generated via `System.Security.Cryptography.RandomNumberGenerator`.
+
+## Scope Enforcement
+
+Each route declares a `RequiredScope` (visible in `GET /routes` response). The middleware chain:
+
+```
+CORS → Authenticate (401) → RateLimit → RouteMatch (404) → ScopeCheck (403) → ReadOnly (403) → ContentType (415) → dispatch
+```
+
+Scope matching rules (implemented in `ApiMiddleware.HasScope`):
+- `admin:all` matches any scope (wildcard)
+- Exact match: token scope `entity:read` matches route requiring `entity:read`
+- Hierarchical: token scope `entity:read` matches route requiring `entity:read:own`
+
+## Scope Reference
+
+| Scope | Routes |
+|---|---|
+| _(none)_ | Static: /health, /routes, /metrics, /schema; SSE: /events |
+| `entity:read` | GET /entities, /entities/:name, /entity-state, /entities/:name/history, /entities/:name/delta, /resolve/:name, /currency, /economy/snapshot, /economy/timeline, /transactions |
+| `entity:write` | POST /entities, PUT /entities/:name, DELETE /entities/:name, POST /currency, PUT /currency/:name |
+| `player:read` | GET /players, /players/:name |
+| `player:write` | POST /players, POST /players/:name/characters |
+| `session:read` | GET /sessions, /session-graph/entity/:name, /session-graph/compare, /session-graph/leaderboard |
+| `admin:read` | GET /validate/\*, /reports/\* |
+| `admin:write` | POST /workflow/\* |
+| `auth:manage` | POST /auth/token, DELETE /auth/token/:name, GET /auth/status |
+
+## Token Management
+
+```powershell
+# Create a read-only token
+$Token = New-RobotApiToken -Name 'frontend' -Scopes 'entity:read', 'session:read'
+# $Token.Token contains the raw value (shown only once)
+
+# List tokens (no raw values)
+Get-RobotApiToken
+
+# Remove a token
+Remove-RobotApiToken -Name 'frontend' -Confirm:$false
+```
 
 ## Request Protocol
 
-Authentication: when `AuthToken` is configured, all requests must include `Authorization: Bearer <token>`. Constant-time comparison via XOR accumulator in `ApiMiddleware`. Missing or invalid token returns HTTP 401.
+Authentication: when tokens are configured (multi-token store or single `AuthToken`), all requests must include `Authorization: Bearer <token>`. Multi-token authentication scans all tokens with constant-time comparison via XOR accumulator in `ApiMiddleware`. Missing or invalid token returns HTTP 401. Insufficient scope returns HTTP 403.
 
 CORS: when `CorsOrigin` is set, `ApiMiddleware` injects `Access-Control-Allow-Origin`, `Access-Control-Allow-Methods`, and `Access-Control-Allow-Headers` on every response. Preflight `OPTIONS` requests receive HTTP 204 with the same headers. When unset, no CORS headers are sent.
 
@@ -163,15 +214,14 @@ Error responses:
 |---|---|
 | 400 | Invalid JSON body or missing required parameters |
 | 401 | Missing or invalid Bearer token |
-| 403 | Write request in read-only mode |
+| 403 | Insufficient scope or write request in read-only mode |
 | 404 | Route not found |
 | 413 | Request body exceeds size limit |
+| 415 | Missing or incorrect Content-Type (must be `application/json`) |
 | 422 | Handler processing error (invalid input data) |
 | 429 | Rate limit exceeded (`Retry-After: 1` header) |
 | 503 | Queue full (all workers busy, backpressure) |
 | 504 | Handler timeout (60-second limit) |
-
----
 
 ## Query Examples
 
@@ -222,8 +272,6 @@ events.addEventListener('character:create', (e) => {
 });
 ```
 
----
-
 ## C# Class Responsibilities
 
 `Robot.ApiServer` (`lib/ApiServer.cs`) — Async HTTP listener backed by `System.Net.HttpListener`. Manages the accept loop (`GetContextAsync` on the .NET ThreadPool), dispatches each request to `Task.Run` for parallel handling, and bridges to PowerShell via a `BlockingCollection<ApiRequest>` with configurable bounded capacity (default 512). Exposes `CacheVersion` as a static `Interlocked` counter for cross-runspace cache invalidation. Provides `GetStatus()` for the status endpoint.
@@ -240,8 +288,6 @@ events.addEventListener('character:create', (e) => {
 
 `Robot.ApiNameDictionary` (`lib/ApiNameDictionary.cs`) — Static, thread-safe bidirectional mapping between canonical Polish domain terms and English API labels. Covers entity types (7), statuses (3), tags (14), seasons (4), denominations (3+3 short forms), session formats (4), participation sources (5), intel directives (3), and owner types (3). All lookups O(1) via `Dictionary<string, string>` with `OrdinalIgnoreCase`. Zero allocation on the hot path.
 
----
-
 ## Async Request Flow
 
 1. `HttpListener.GetContextAsync()` accepts a connection on the .NET thread pool
@@ -256,8 +302,6 @@ events.addEventListener('character:create', (e) => {
 10. A PowerShell worker dequeues the request, invokes the handler, and calls `SetResult` to unblock the HTTP thread
 11. `ApiSerializer` writes the response directly to `HttpListenerResponse.OutputStream`
 
----
-
 ## BlockingCollection / TaskCompletionSource Bridge
 
 The C# HTTP thread and the PowerShell worker thread communicate through two mechanisms:
@@ -265,8 +309,6 @@ The C# HTTP thread and the PowerShell worker thread communicate through two mech
 `BlockingCollection<ApiRequest>` — bounded FIFO queue (default capacity 512). The HTTP thread calls `TryAdd` with a 5-second timeout. Worker threads call `Take` which blocks until a request is available or `CompleteAdding` is called during shutdown. This provides backpressure: when all workers are busy and the queue fills, new requests get HTTP 503 instead of unbounded memory growth.
 
 `TaskCompletionSource<ApiResponse>` — per-request completion signal. Created with `RunContinuationsAsynchronously` to prevent worker thread hijacking. The HTTP thread awaits this task (with timeout). The PS worker calls `SetResult` after handler invocation. On handler error, the worker calls `SetResult` with a 500-status `ApiResponse` containing the error message.
-
----
 
 ## RunspacePool Worker Lifecycle
 
@@ -295,8 +337,6 @@ Graceful shutdown (`Stop-ApiWorkerPool`):
 2. Dispose each `PowerShell` instance
 3. Close and dispose each `Runspace`
 
----
-
 ## Cache Coherence Protocol
 
 The module uses in-memory parse caches (`$script:CachedEntities`, `$script:CachedSessions`, etc.) that are per-runspace. When a write handler modifies data, other runspaces must invalidate their stale caches.
@@ -304,8 +344,6 @@ The module uses in-memory parse caches (`$script:CachedEntities`, `$script:Cache
 `Robot.ApiServer.CacheVersion` is a `static long` accessed via `Interlocked.Read` and `Interlocked.Increment`. Each worker thread maintains a local version number. Before executing a read handler, the worker compares its local version against the shared version. On mismatch, it calls `Clear-ParseCaches` to force a re-parse on the next data access, then updates its local version. After executing a write handler, the worker increments the shared version.
 
 This is an optimistic scheme: read-read sequences across workers share the same cache epoch without contention. Only writes (which are infrequent) force a global cache invalidation on the next read.
-
----
 
 ## Serializer Type Dispatch
 
@@ -326,8 +364,6 @@ This is an optimistic scheme: read-read sequences across workers share the same 
 
 The Entity fast path writes all scalar properties (`Name`, `CN`, `Type`, `Status`, `Location`, `Owner`, `Quantity`, `FilePath`, `NerthusName`) and collection properties (`Aliases`, `Groups`, `Doors`, `Names`, `Coordinates`, `Contains`) with null-skip for collections. This avoids the reflection overhead of the PSObject path.
 
----
-
 ## Token Bucket Rate Limiter
 
 `ApiMiddleware` uses a per-IP token bucket stored in `ConcurrentDictionary<string, TokenBucket>`. Each bucket has a configurable capacity (burst, default 200) and refill rate (per second, default 100).
@@ -338,19 +374,15 @@ Stale eviction: buckets that have not been accessed for 10 minutes are removed o
 
 Disabled when `RateLimitPerSecond <= 0`.
 
----
-
 ## SSE Event System
 
 The SSE endpoint (`/events`) registers the client's `HttpListenerResponse` with `ApiSseManager`. The response is kept open with `SendChunked = true`, `Content-Type: text/event-stream`, and `Cache-Control: no-cache`.
 
-Events are broadcast by plugin hooks registered in `plugin.psd1`: `Write-EntityFile` (AfterWrite), `New-Entity` (AfterCreate), and `New-PlayerCharacter` (AfterCreate). The hook handler `Invoke-ApiEventBroadcast` builds an event data dictionary and calls `ApiSseManager.Broadcast(eventType, data)`.
+Events are broadcast by plugin hooks registered in `plugin.psd1`: `Write-EntityFile` (AfterWrite), `New-Entity` (AfterCreate), `New-PlayerCharacter` (AfterCreate), `Remove-Entity` (AfterWrite), `Set-CurrencyEntity` (AfterWrite), and `New-Player` (AfterCreate). The hook handler `Invoke-ApiEventBroadcast` builds an event data dictionary and calls `ApiSseManager.Broadcast(eventType, data)`.
 
-Event types: `entity:write`, `entity:create`, `character:create`. Each event includes entity name, type, path, and a UTC timestamp.
+Event types: `entity:write`, `entity:create`, `entity:delete`, `character:create`, `currency:write`, `player:create`. Each event includes entity name, type, path, and a UTC timestamp.
 
 Dead clients are detected during broadcast (failed `OutputStream.Write`) and removed from the client dictionary. The 30-second heartbeat timer sends `: keepalive\n\n` SSE comments to proactively detect stale connections.
-
----
 
 ## RSQL Query Layer
 
@@ -370,8 +402,6 @@ Fields: `?fields=name,type,status` — sparse fieldsets. Omit to return all prop
 
 Pagination: `?page[size]=50&page[after]=<cursor>` — cursor-based. Default page size 50, max 500. Cursor is base64-encoded value of the last item's cursor field (default: `name`). Response includes `hasMore` and `nextCursor`.
 
----
-
 ## ApiNameDictionary Design
 
 The dictionary maps 9 categories of Polish domain terms to English API labels:
@@ -390,8 +420,6 @@ Two directions: `ResolveCanonical(category, value)` accepts either canonical or 
 
 All dictionaries are `static readonly` — zero allocation, thread-safe by construction.
 
----
-
 ## Plugin Structure
 
 ```
@@ -401,12 +429,17 @@ plugins/robot-api/
 |   +-- Start-RobotApi.ps1           # Init C# engine + PS worker pool
 |   +-- Stop-RobotApi.ps1            # Graceful shutdown
 |   +-- Get-RobotApiStatus.ps1       # Status snapshot
+|   +-- New-RobotApiToken.ps1        # Create scoped API token
+|   +-- Remove-RobotApiToken.ps1     # Delete token by name
+|   +-- Get-RobotApiToken.ps1        # List tokens (no raw values)
 +-- private/
 |   +-- api-routes.ps1               # Route registration (static + dynamic)
 |   +-- api-worker.ps1               # RunspacePool worker threads
 |   +-- api-handlers-read.ps1        # 28 read handlers
 |   +-- api-handlers-write.ps1       # 9 write handlers
+|   +-- api-handlers-auth.ps1        # Auth token API handlers
 |   +-- api-handlers-events.ps1      # SSE broadcast hook handler
+|   +-- api-token-helpers.ps1        # Token file I/O and generation helpers
 +-- cli/
 |   +-- cli-wf-robot-api.ps1         # CLI workflow functions (start/stop/status)
 +-- tests/
@@ -417,9 +450,9 @@ plugins/robot-api/
     +-- api-server.Tests.ps1
     +-- api-handlers.Tests.ps1
     +-- api-worker.Tests.ps1
+    +-- api-token-helpers.Tests.ps1
+    +-- api-token-management.Tests.ps1
 ```
-
----
 
 ## Configuration
 
@@ -436,15 +469,11 @@ Plugin config (`plugin.psd1`) with environment variable overrides:
 | `RateLimitPerSecond` | 100 | `ROBOT_API_RATE_LIMIT` | Max requests per second per IP (0 = unlimited) |
 | `MaxRequestBody` | 65536 | — | Maximum request body size in bytes |
 
----
-
 ## Testing
 
 Test files: `api-router.Tests.ps1` (11 tests), `api-middleware.Tests.ps1` (9 tests), `api-query.Tests.ps1` (37 tests), `api-dictionary.Tests.ps1` (28 tests), `api-server.Tests.ps1` (server lifecycle, concurrent requests, rate limit, shutdown), `api-handlers.Tests.ps1` (per-handler tests with mock ApiContext), `api-worker.Tests.ps1` (worker pool lifecycle, concurrent processing, cache version propagation)
 
 All tests use the `PSTypeName` guard pattern to skip if C# types are not compiled.
-
----
 
 ## Related Documents
 

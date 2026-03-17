@@ -9,7 +9,7 @@
     (e.g. parse-markdownfile.ps1) are left unloaded — they are consumed
     on demand by the functions that need them, keeping import time minimal.
 
-    Loading proceeds in four phases:
+    Loading proceeds in five phases:
     Phase 1 (Core Functions): .NET Directory.GetFiles with AllDirectories
       enumerates all .ps1 files, filters to Verb-Noun names via compiled
       regex, dot-sources each, and collects names for Export-ModuleMember.
@@ -22,28 +22,46 @@
       2c. Load each plugin's public/ Verb-Noun files, wire hooks into
           the "Operation:Phase" registry, collect menu items, categories,
           and help content for CLI integration.
-    Phase 3 (Plugin Management): Define Get-PluginConfig and
-      Get-LoadedPlugins inline (they need $script: variable access).
+    Phase 3 (Plugin Management): Define Get-PluginConfig, Get-LoadedPlugins,
+      and Clear-ParseCaches inline (they need $script: variable access).
+    Phase 3b (Module Cleanup): Register OnRemove handler to stop the API
+      server and worker pool on Remove-Module, preventing resource leaks.
     Phase 4 (Export): Export-ModuleMember with the collected function names.
+
+    Inline functions:
+    - Write-RobotWarning: stderr + operation context warning emitter (33 callers)
+    - Write-RobotInfo: stderr-only informational emitter (2 callers)
+    - Clear-ParseCaches: nulls all memory caches and deletes disk cache (2 callers)
+    - Get-PluginConfig: returns resolved config for a named plugin (exported)
+    - Get-LoadedPlugins: returns info about all loaded plugins (exported)
 
     Module-level data:
     - $script:SuppressWarnings: warning suppression flag for -Quiet switches
+    - $script:ModuleRoot: absolute path to the module directory
+    - $script:MarkdownCache: WP-2 parsed Markdown cache (FilePath -> {ModTime, Result})
+    - $script:CachedEntities / $script:CachedEntityKey: WP-3 entity result cache
+    - $script:CachedNameIndex / $script:CachedNameIndexKey: WP-1 name index cache
+    - $script:SessionFileCache: WP-4 per-file session cache
     - $script:CachedSeasonMapping: season mapping from local.config.psd1
     - $script:LoadedPlugins: Name -> manifest hashtable
-    - $script:HookRegistry: "Operation:Phase" -> sorted handler list
+    - $script:HookRegistry: "Operation:Phase" -> priority-sorted handler list
     - $script:PluginConfigs: Name -> resolved config hashtable
     - $script:PluginMenuItems: CLI menu entries contributed by plugins
     - $script:PluginMenuCategories: new CLI categories from plugins
     - $script:PluginHelpContent: Category -> help entries from plugins
-    - $script:ModuleRoot: absolute path to the module directory
+    - $script:ApiServerInstance: HttpListener instance managed by robot-api plugin
+
+    C# types (compiled from lib/*.cs):
+    - [Robot.MarkdownScanner]: guard type for batch compilation check
+    - [Robot.ParseCacheHelper]: disk cache persistence, used by Clear-ParseCaches
 
     Core design principles:
     - No external modules or dependencies — only Git and PowerShell
     - Compatible with PowerShell 5.1 (Windows) and 7.0+ (Core)
     - .NET methods for file I/O, string manipulation, and process execution
-    - No tools beyond Git and PowerShell
 #>
 
+# Local var assigned here; promoted to $script:ModuleRoot in Phase 2 setup
 $ModuleRoot = $PSScriptRoot
 
 # ── Warning Suppression ────────────────────────────────────────────────────
@@ -371,9 +389,10 @@ if ([System.IO.Directory]::Exists($PluginsDir)) {
     }
 }
 
-# ── PHASE 3: Plugin Management Functions ────────────────────────────────────
+# ── PHASE 3: Inline Functions ──────────────────────────────────────────────
 
-# Defined inline because they need direct access to $script: plugin state.
+# Defined inline because they need direct access to $script: module state
+# (parse caches and plugin registries) that cannot be accessed from separate files.
 
 function Clear-ParseCaches {
     <#
@@ -458,6 +477,23 @@ function Get-LoadedPlugins {
 [void]$ExportedFunctions.Add('Get-PluginConfig')
 [void]$ExportedFunctions.Add('Get-LoadedPlugins')
 [void]$ExportedFunctions.Add('Clear-ParseCaches')
+
+# ── Module Cleanup ─────────────────────────────────────────────────────────
+# Stop API server and worker pool on Remove-Module to prevent resource leaks.
+
+$MyInvocation.MyCommand.ScriptBlock.Module.OnRemove = {
+    if ($script:ApiServerInstance) {
+        try {
+            # Worker pool must stop before listener — pending requests drain first
+            if (Get-Command 'Stop-ApiWorkerPool' -ErrorAction SilentlyContinue) {
+                Stop-ApiWorkerPool
+            }
+            $script:ApiServerInstance.Stop()
+            $script:ApiServerInstance.Dispose()
+            $script:ApiServerInstance = $null
+        } catch { }  # best-effort cleanup — module is being unloaded regardless
+    }
+}
 
 # ── PHASE 4: Export ─────────────────────────────────────────────────────────
 

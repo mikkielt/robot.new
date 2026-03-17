@@ -5,7 +5,10 @@
     Author            = 'Anward'
     MinCoreVersion    = '2.0.0'
     DependsOn         = @()
-    ExportedFunctions = @('Start-RobotApi', 'Stop-RobotApi', 'Get-RobotApiStatus')
+    ExportedFunctions = @(
+        'Start-RobotApi', 'Stop-RobotApi', 'Get-RobotApiStatus',
+        'New-RobotApiToken', 'Remove-RobotApiToken', 'Get-RobotApiToken'
+    )
     Config            = @{
         ListenPort = @{
             Description = 'HTTP listening port'
@@ -75,8 +78,26 @@
             Handler   = 'Invoke-ApiEventBroadcast'
             Priority  = 999
         }
+        @{
+            Operation = 'Remove-Entity'
+            Phase     = 'AfterWrite'
+            Handler   = 'Invoke-ApiEventBroadcast'
+            Priority  = 999
+        }
+        @{
+            Operation = 'Set-CurrencyEntity'
+            Phase     = 'AfterWrite'
+            Handler   = 'Invoke-ApiEventBroadcast'
+            Priority  = 999
+        }
+        @{
+            Operation = 'New-Player'
+            Phase     = 'AfterCreate'
+            Handler   = 'Invoke-ApiEventBroadcast'
+            Priority  = 999
+        }
     )
-    Scopes            = @('admin:all')
+    Scopes            = @('admin:all', 'auth:manage')
     MenuCategories    = @('API')
     MenuItems         = @(
         @{
