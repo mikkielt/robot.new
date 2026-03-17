@@ -439,24 +439,30 @@ Describe 'Get-SessionListMetadata' {
             $Result.Transfers.Count | Should -Be 3
         }
 
-        It 'rejects transfer with invalid amount' {
+        It 'treats non-numeric first token as item name with amount=1' {
+            # Amount-optional: "abc koron" is parsed as an item identifier with amount=1
             $TransferItem = New-ListItem -Text '@Transfer: abc koron, Dawca -> Odbiorca' -LocalIndex 0
             $AllItems = @($TransferItem)
             $ChildrenOf = Build-ChildrenOf -ListItems $AllItems
 
             $Result = Get-SessionListMetadata -SectionLists $AllItems -PURegex $script:PURegex -UrlRegex $script:UrlRegex -ChildrenOf $ChildrenOf
 
-            $Result.Transfers.Count | Should -Be 0
+            $Result.Transfers.Count | Should -Be 1
+            $Result.Transfers[0].Amount | Should -Be 1
+            $Result.Transfers[0].Denomination | Should -Be 'abc koron'
         }
 
-        It 'rejects transfer with zero amount' {
+        It 'treats zero amount as item name with amount=1' {
+            # Amount-optional: "0" is not > 0, so "0 koron" is parsed as item identifier with amount=1
             $TransferItem = New-ListItem -Text '@Transfer: 0 koron, Dawca -> Odbiorca' -LocalIndex 0
             $AllItems = @($TransferItem)
             $ChildrenOf = Build-ChildrenOf -ListItems $AllItems
 
             $Result = Get-SessionListMetadata -SectionLists $AllItems -PURegex $script:PURegex -UrlRegex $script:UrlRegex -ChildrenOf $ChildrenOf
 
-            $Result.Transfers.Count | Should -Be 0
+            $Result.Transfers.Count | Should -Be 1
+            $Result.Transfers[0].Amount | Should -Be 1
+            $Result.Transfers[0].Denomination | Should -Be '0 koron'
         }
 
         It 'rejects transfer without arrow' {

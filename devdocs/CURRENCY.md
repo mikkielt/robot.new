@@ -206,6 +206,19 @@ Returns `Dictionary[string, object]` with `OrdinalIgnoreCase` comparer.
 
 ---
 
+## Currency-Item Delegation Architecture
+
+Currency entities are a specialized subset of Przedmiot (item) entities. The currency layer delegates shared operations to the unified item layer (`private/item-helpers.ps1`):
+
+- `Get-ItemEntitiesFiltered` — shared filtering pipeline (status gates, owner/location/name filters, owner type resolution). Used by both `Get-CurrencyEntity` (with denomination filtering) and `Get-ItemEntity` (with currency exclusion by default).
+- `Build-CurrencyEntityLookup` / `Find-CurrencyEntity` — currency-specific denomination+owner lookup, remain in `currency-helpers.ps1`.
+- `Resolve-CurrencyOwnerType` delegates to shared `Resolve-ItemOwnerType` in `item-helpers.ps1`.
+- Denomination constants, conversion utilities, and reconciliation logic remain currency-specific in `currency-helpers.ps1`.
+
+The item layer (`private/item-helpers.ps1`, `lib/ItemHelper.cs`) provides a dual-index lookup for all Przedmiot entities: `ByNameAndOwner` (entity name + owner) and `ByDenomAndOwner` (denomination + owner). The C# accelerator (`Robot.ItemHelper`) builds both indexes in a single pass.
+
+---
+
 ## `@Transfer` Session Directive
 
 Syntax — a session-level directive (same level as `@Zmiany`, `@PU`, `@Logi`):
@@ -215,9 +228,15 @@ Syntax — a session-level directive (same level as `@Zmiany`, `@PU`, `@Logi`):
 
 - @Transfer: 100 koron, Xeron Demonlord -> Kupiec Orrin
 - @Transfer: 50 talarow, Kupiec Orrin -> Kyrre
+- @Transfer: Miecz Armagedonu, Xeron Demonlord -> Kupiec Orrin
+- @Transfer: 3 Mikstura leczenia, Kupiec Orrin -> Kyrre
 ```
 
-Format: `- @Transfer: {amount} {denomination}, {source} -> {destination}`
+Format (currency): `- @Transfer: {amount} {denomination}, {source} -> {destination}`
+Format (item, amount=1): `- @Transfer: {item}, {source} -> {destination}`
+Format (item, explicit amount): `- @Transfer: {amount} {item}, {source} -> {destination}`
+
+When amount is omitted, defaults to 1. If the denomination portion matches a known currency denomination, the transfer is processed as a currency transfer. Otherwise, it is processed as an item transfer targeting Przedmiot entities matched by name + owner.
 
 Parsing (`public/session/get-session.ps1`) happens in `Get-SessionListMetadata` alongside other metadata blocks. The parser:
 

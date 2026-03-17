@@ -380,14 +380,14 @@ function Get-SessionListMetadata {
             }
         }
 
-        # Transfer: currency convenience shorthand
-        # Format: "- @Transfer: {amount} {denomination}, {source} -> {destination}"
+        # Transfer: item/currency convenience shorthand
+        # Format: "- @Transfer: {amount} {identifier}, {source} -> {destination}"
+        #   or:   "- @Transfer: {identifier}, {source} -> {destination}" (amount defaults to 1)
         if ($MatchText.StartsWith('transfer') -and $MatchText.Length -gt 8 -and ($MatchText[8] -eq ':' -or $MatchText[8] -eq ' ')) {
             $TransferValue = $ItemText
             $TColonIdx = $TransferValue.IndexOf(':')
             if ($TColonIdx -ge 0) {
                 $TransferBody = $TransferValue.Substring($TColonIdx + 1).Trim()
-                # Parse: "{amount} {denomination}, {source} -> {destination}"
                 $ArrowIdx = $TransferBody.IndexOf('->')
                 $CommaIdx = $TransferBody.IndexOf(',')
                 if ($ArrowIdx -gt 0 -and $CommaIdx -gt 0 -and $CommaIdx -lt $ArrowIdx) {
@@ -395,17 +395,22 @@ function Get-SessionListMetadata {
                     $Source = $TransferBody.Substring($CommaIdx + 1, $ArrowIdx - $CommaIdx - 1).Trim()
                     $Destination = $TransferBody.Substring($ArrowIdx + 2).Trim()
 
-                    # Split amount and denomination from "{amount} {denomination}"
+                    # Amount-optional: if first token is a positive integer,
+                    # it is the amount and the rest is the identifier.
+                    # Otherwise entire string is the identifier with amount=1.
                     $SpaceIdx = $AmountDenom.IndexOf(' ')
-                    if ($SpaceIdx -gt 0) {
-                        $AmountStr = $AmountDenom.Substring(0, $SpaceIdx).Trim()
+                    [int]$TransferAmount = 0
+                    $DenomStr = $null
+                    if ($SpaceIdx -gt 0 -and [int]::TryParse($AmountDenom.Substring(0, $SpaceIdx), [ref]$TransferAmount) -and $TransferAmount -gt 0) {
                         $DenomStr = $AmountDenom.Substring($SpaceIdx + 1).Trim()
-                        [int]$TransferAmount = 0
-                        if ([int]::TryParse($AmountStr, [ref]$TransferAmount) -and $TransferAmount -gt 0 `
-                            -and -not [string]::IsNullOrWhiteSpace($Source) `
-                            -and -not [string]::IsNullOrWhiteSpace($Destination)) {
-                            $Transfers.Add([Robot.SessionTransfer]::new($TransferAmount, $DenomStr, $Source, $Destination))
-                        }
+                    } else {
+                        $TransferAmount = 1
+                        $DenomStr = $AmountDenom.Trim()
+                    }
+                    if ($DenomStr.Length -gt 0 `
+                        -and -not [string]::IsNullOrWhiteSpace($Source) `
+                        -and -not [string]::IsNullOrWhiteSpace($Destination)) {
+                        $Transfers.Add([Robot.SessionTransfer]::new($TransferAmount, $DenomStr, $Source, $Destination))
                     }
                 }
             }

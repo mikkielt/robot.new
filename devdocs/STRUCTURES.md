@@ -929,6 +929,78 @@ PSCustomObject returned by `Get-CurrencyEntitiesFiltered` in `private/currency-h
 
 ---
 
+## Item Entity Object
+
+Returned by `Get-ItemEntity`. Enriched Przedmiot entity with owner classification and currency identification.
+
+| Property | Type | Description |
+|---|---|---|
+| `EntityName` | string | Entity display name |
+| `Owner` | string | Owner entity name (from `@należy_do`) |
+| `OwnerType` | string | Physical, Virtual, or Unknown (resolved from entity type) |
+| `Location` | string | Entity location (from `@lokacja`) |
+| `Quantity` | int | Parsed `@ilość` value (defaults to 1) |
+| `Status` | string | Entity status (Aktywny default) |
+| `IsCurrency` | bool | Whether this item matches a currency denomination |
+| `Denomination` | string | Resolved denomination name (null if not currency) |
+| `LastChangeDate` | datetime? | Most recent ValidFrom across owner/location/status/quantity histories |
+
+---
+
+## Resolve-Entity Result
+
+Returned by `Resolve-Entity`. Passes through original `Robot.Entity` objects — no enrichment or projection. Filter parameters are AND-combined: Owner, Location, Group, Type, Status, Name (substring).
+
+---
+
+## Dormancy Report Object
+
+Returned by `Get-DormancyReport`. One entry per dormant entity, sorted by `DaysDormant` descending.
+
+| Property | Type | Description |
+|---|---|---|
+| `Name` | string | Entity name |
+| `Type` | string | Entity type |
+| `Status` | string | Entity status (null treated as Aktywny) |
+| `LastActivity` | datetime? | Most recent activity date (null = no history) |
+| `DaysDormant` | int | Days since last activity |
+| `CreatedOn` | datetime? | Earliest ValidFrom across all histories |
+| `LastSource` | string | Activity source: PropertyChange, SessionMention, or Creation |
+
+Activity sources checked: all 9 history lists (ValidFrom scan) + session graph index `_index.json` (participant dates). Entities with `Status = Usunięty` excluded by default.
+
+---
+
+## Session Frequency Trend Object
+
+Returned by `Get-SessionFrequencyTrend`. One entry per calendar month with sessions.
+
+| Property | Type | Description |
+|---|---|---|
+| `Month` | string | Calendar month in `yyyy-MM` format |
+| `SessionCount` | int | Number of sessions in this month |
+| `NarratorCount` | int | Number of unique narrators |
+| `UniqueNarrators` | string[] | Deduplicated narrator names |
+| `FormatBreakdown` | hashtable | Session counts per format: Gen1, Gen2, Gen3, Gen4 |
+
+Sessions with null Date are skipped. Narrator names extracted from `Session.Narrator.Name` (object) or string value.
+
+---
+
+## Entity Delta Object
+
+Returned by `Get-EntityDelta`. One entry per changed property between two date snapshots.
+
+| Property | Type | Description |
+|---|---|---|
+| `Property` | string | Polish display name: Lokacja, Właściciel, Typ, Status, Ilość, NazwaNerthus, Grupy, Drzwi |
+| `Before` | object | Value at FromDate (scalar or string[] for multi-valued) |
+| `After` | object | Value at ToDate (scalar or string[] for multi-valued) |
+
+Scalar comparison uses `OrdinalIgnoreCase` with null→empty normalization. Multi-valued comparison uses `HashSet[string]` symmetric diff. Entity resolution supports primary name and alias (Names collection) matching.
+
+---
+
 ## Testing
 
 | Test file | Structure coverage |
@@ -951,6 +1023,11 @@ PSCustomObject returned by `Get-CurrencyEntitiesFiltered` in `private/currency-h
 | `tests/get-markdown.Tests.ps1` | ScanResult, HeaderEntry, SectionEntry, ListEntry, LinkEntry |
 | `tests/parse-logcontent.Tests.ps1` | ParseResult, LogLine, LocationSegment |
 | `tests/resolve-name.Tests.ps1` | NameIndex, IndexEntry, BK-tree results |
+| `tests/get-itementity.Tests.ps1` | ItemEntity object, owner type, currency exclusion |
+| `tests/resolve-entity.Tests.ps1` | Resolve-Entity filtering, status gates |
+| `tests/get-dormancyreport.Tests.ps1` | DormancyReport object, threshold filtering, LastSource |
+| `tests/get-sessionfrequencytrend.Tests.ps1` | SessionFrequencyTrend object, narrator dedup, format breakdown |
+| `tests/get-entitydelta.Tests.ps1` | EntityDelta object, scalar/multi-valued diffs, alias resolution |
 
 ---
 

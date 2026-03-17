@@ -1,7 +1,8 @@
 <#
     .SYNOPSIS
     Reporting-domain CLI workflows - Intel preview, name search, log fetch,
-    log location report, location graph, session graph, and migration reports.
+    log location report, location graph, session graph, dormancy, delta,
+    and migration reports.
 
     .DESCRIPTION
     This file contains workflow functions for reporting and diagnostics, consumed
@@ -16,6 +17,8 @@
     - Invoke-SessionGraphWorkflow:           session participation graph with 4 query modes
     - Invoke-CompareParticipationWorkflow:   cross-entity session overlap matrix (min 2 entities)
     - Invoke-SessionLeaderboardWorkflow:     session participation ranking with tier breakdown
+    - Invoke-DormancyReportWorkflow:         dormant entity detection with configurable threshold
+    - Invoke-EntityDeltaWorkflow:            entity property diff between two dates
     - Invoke-MigrationQuickCheck:            migration quick diagnostics (loads migration-shared.ps1)
     - Invoke-MigrationFullReport:            migration full report (loads migration-shared.ps1)
 
@@ -769,4 +772,126 @@ function Invoke-SessionGraphWorkflow {
 
     Write-CLILine -Text 'Naciśnij dowolny klawisz...' -Color $DisabledColor
     [void][System.Console]::ReadKey($true)
+}
+
+# ── Dormancy Report Workflow ───────────────────────────────────────────────
+
+function Invoke-DormancyReportWorkflow {
+    param([object]$State, [hashtable]$Entry)
+
+    $AccentColor   = Get-CLIColor -Role 'Accent'
+    $DisabledColor = Get-CLIColor -Role 'Disabled'
+
+    Write-CLILine -Text 'Raport uśpionych encji' -Color $AccentColor
+    Write-Host ''
+
+    # Step 1: Threshold months
+    $ThresholdStep = New-WizardTextStep -Name 'Threshold' -Label 'Próg nieaktywności (miesiące, domyślnie 6)'
+    $ThresholdInput = Invoke-WizardStep -Step $ThresholdStep -State $State
+    if ($ThresholdInput -eq '__back__') { return }
+
+    $ThresholdMonths = 6
+    if ($ThresholdInput -and $ThresholdInput -match '^\d+$') {
+        $ThresholdMonths = [int]$ThresholdInput
+    }
+
+    # Step 2: Optional type filter
+    $TypeComponent = New-WizardStepComponent -Label 'Filtr po typie (opcjonalny)' `
+        -StepNumber 0 -TotalSteps 0 -StepType 'selection' `
+        -Options @('Wszystkie', 'NPC', 'Grupa', 'Lokacja', 'Przedmiot', 'Postać')
+    $TypeChoice = Invoke-EngineLifecycle -Component $TypeComponent -State $State
+    if ($TypeChoice -eq '__quit__') { return '__quit__' }
+    if ($TypeChoice -eq '__back__') { return }
+
+    $Params = @{ ThresholdMonths = $ThresholdMonths; Quiet = $true }
+    if ($TypeChoice -and $TypeChoice -ne 'Wszystkie') {
+        $Params['Type'] = $TypeChoice
+    }
+
+    try {
+        $Report = Get-DormancyReport @Params
+
+        if (-not $Report -or $Report.Count -eq 0) {
+            Write-Host ''
+            Write-CLILine -Text 'Brak uśpionych encji przy progu ' -Color $DisabledColor -NoNewline
+            Write-Host "$ThresholdMonths miesięcy."
+            Write-CLILine -Text 'Naciśnij dowolny klawisz...' -Color $DisabledColor
+            [void][System.Console]::ReadKey($true)
+            return
+        }
+
+        $TableComponent = New-ResultTableComponent -Data $Report `
+            -Columns @('Name', 'Type', 'DaysDormant', 'LastActivity', 'LastSource') `
+            -Headers @('Nazwa', 'Typ', 'Dni', 'Ostatnia aktywność', 'Źródło') `
+            -Widths @(25, 12, 8, 15, 18) `
+            -Title "Uśpione encje (próg: $ThresholdMonths mies.)"
+        [void](Invoke-EngineLifecycle -Component $TableComponent -State $State)
+    }
+    catch {
+        Write-CLILine -Text "Błąd: $_" -Color (Get-CLIColor -Role 'Error')
+        Write-CLILine -Text 'Naciśnij dowolny klawisz...' -Color $DisabledColor
+        [void][System.Console]::ReadKey($true)
+    }
+}
+
+# ── Entity Delta Workflow ──────────────────────────────────────────────────
+
+function Invoke-EntityDeltaWorkflow {
+    param([object]$State, [hashtable]$Entry)
+
+    $AccentColor   = Get-CLIColor -Role 'Accent'
+    $DisabledColor = Get-CLIColor -Role 'Disabled'
+
+    Write-CLILine -Text 'Porównanie stanu encji' -Color $AccentColor
+    Write-Host ''
+
+    # Step 1: Pick entity via fuzzy search
+    $Entity = Invoke-EngineFuzzySearch -Prompt 'Wybierz encję' -Source 'entities' -State $State
+    if (-not $Entity) { return }
+
+    # Step 2: FromDate
+    $FromStep = New-WizardDateStep -Name 'FromDate' -Label 'Data „od"' -Required
+    $FromDate = Invoke-WizardStep -Step $FromStep -State $State
+    if (-not $FromDate -or $FromDate -eq '__back__') { return }
+
+    # Step 3: ToDate
+    $ToStep = New-WizardDateStep -Name 'ToDate' -Label 'Data „do"' -Required
+    $ToDate = Invoke-WizardStep -Step $ToStep -State $State
+    if (-not $ToDate -or $ToDate -eq '__back__') { return }
+
+    try {
+        $Delta = Get-EntityDelta -Name $Entity.Name -FromDate $FromDate -ToDate $ToDate -Quiet
+
+        if (-not $Delta -or $Delta.Count -eq 0) {
+            Write-Host ''
+            Write-CLILine -Text "Brak zmian dla '$($Entity.Name)' w zadanym zakresie." -Color $DisabledColor
+            Write-CLILine -Text 'Naciśnij dowolny klawisz...' -Color $DisabledColor
+            [void][System.Console]::ReadKey($true)
+            return
+        }
+
+        # Format Before/After for display (arrays → comma-joined)
+        $DisplayData = [System.Collections.Generic.List[object]]::new($Delta.Count)
+        foreach ($D in $Delta) {
+            $BeforeStr = if ($D.Before -is [System.Collections.IList]) { $D.Before -join ', ' } elseif ($D.Before) { [string]$D.Before } else { '(brak)' }
+            $AfterStr = if ($D.After -is [System.Collections.IList]) { $D.After -join ', ' } elseif ($D.After) { [string]$D.After } else { '(brak)' }
+            $DisplayData.Add([PSCustomObject]@{
+                Property = $D.Property
+                Before   = $BeforeStr
+                After    = $AfterStr
+            })
+        }
+
+        $TableComponent = New-ResultTableComponent -Data @($DisplayData) `
+            -Columns @('Property', 'Before', 'After') `
+            -Headers @('Właściwość', 'Przed', 'Po') `
+            -Widths @(18, 25, 25) `
+            -Title "$($Entity.Name): $($FromDate.ToString('yyyy-MM-dd')) → $($ToDate.ToString('yyyy-MM-dd'))"
+        [void](Invoke-EngineLifecycle -Component $TableComponent -State $State)
+    }
+    catch {
+        Write-CLILine -Text "Błąd: $_" -Color (Get-CLIColor -Role 'Error')
+        Write-CLILine -Text 'Naciśnij dowolny klawisz...' -Color $DisabledColor
+        [void][System.Console]::ReadKey($true)
+    }
 }

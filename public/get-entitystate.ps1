@@ -15,9 +15,14 @@
     resolution pipeline (exact match, declension stripping, stem alternation,
     Levenshtein fuzzy matching) and applies @tag overrides to the matching entity objects.
 
-    @Transfer directives (e.g. "- @Transfer: 100 koron, Solmyr -> Sandro") are
-    expanded into symmetric @ilość deltas on the source and destination currency
-    entities, found by matching @generyczne_nazwy (denomination) + @należy_do (owner).
+    @Transfer directives (e.g. "- @Transfer: 100 koron, Solmyr -> Sandro" or
+    "- @Transfer: Miecz Ognia, Solmyr -> Sandro") are expanded into symmetric
+    @ilość deltas on source and destination Przedmiot entities. Resolution uses
+    a two-path approach: first tries currency denomination matching
+    (Resolve-CurrencyDenomination -> ByDenomAndOwner index), then falls back to
+    item name matching (ByNameAndOwner index with optional fuzzy resolution).
+    Atomicity: if either side is unresolvable, the entire transfer is skipped
+    and recorded in UnresolvedTransfers on the resolvable entity.
 
     Override priority: most-recent-dated entry wins regardless of source (entity file
     or session Zmiany). This is achieved by appending session overrides to history lists
@@ -32,7 +37,9 @@
     When Resolve-Name returns a Player object (due to Player/Gracz dedup in the name
     index), the result is mapped back to the corresponding entity via shared names.
 
-    Uses Robot.TemporalSorter (lib/TemporalSorter.cs, compiled centrally in
+    Uses item-helpers.ps1 and currency-helpers.ps1 (lazy-loaded on first
+    @Transfer) for the unified item lookup layer (Build-ItemLookup). Uses
+    Robot.TemporalSorter (lib/TemporalSorter.cs, compiled centrally in
     robot.psm1) — compiled C# temporal sort comparer invoked O(n log n) times
     per sort across 9 history lists per entity.
 #>
@@ -111,7 +118,7 @@ function Get-EntityState {
     }
     $SessionsWithChanges.Sort([System.Comparison[object]]{ param($a, $b) $a.Date.CompareTo($b.Date) })
 
-    $CurrencyLookup = $null  # lazy-loaded on first @Transfer encounter
+    $ItemLookup = $null  # lazy-loaded on first @Transfer encounter (unified item+currency lookup)
 
     $script:ProgressSessIdx = 0
     $script:ProgressSessTotal = $SessionsWithChanges.Count
@@ -263,19 +270,16 @@ function Get-EntityState {
         }
 
         # @Transfer creates symmetric @ilość changes: -N on source, +N on destination
+        # Unified path: try currency denomination first, then item name fallback
         if ($Session.PSObject.Properties['Transfers'] -and $Session.Transfers -and $Session.Transfers.Count -gt 0) {
-            if (-not $CurrencyLookup) {
+            if (-not $ItemLookup) {
+                . "$script:ModuleRoot/private/item-helpers.ps1"
                 . "$script:ModuleRoot/private/currency-helpers.ps1"
-                $CurrencyLookup = Build-CurrencyEntityLookup -Entities $Entities
+                $KnownDenominations = @($script:CurrencyDenominations | ForEach-Object { $_.Name })
+                $ItemLookup = Build-ItemLookup -Entities $Entities -DenominationNames $KnownDenominations
             }
 
             foreach ($Transfer in $Session.Transfers) {
-                $ResolvedDenom = Resolve-CurrencyDenomination -Name $Transfer.Denomination
-                if (-not $ResolvedDenom) {
-                    Write-RobotWarning "[WARN Get-EntityState] Unknown denomination '$($Transfer.Denomination)' in @Transfer in session '$($Session.Header)'"
-                    continue
-                }
-
                 # Source owner name resolution — same fuzzy pipeline as Zmiany
                 $ResolvedSourceName = $Transfer.Source
                 if (-not $EntityByName.ContainsKey($ResolvedSourceName)) {
@@ -312,21 +316,52 @@ function Get-EntityState {
                     }
                 }
 
-                # Locate currency Przedmiot entities by denomination + owner
-                $SourceEntity = Find-CurrencyEntity -Entities $Entities -Denomination $Transfer.Denomination -OwnerName $ResolvedSourceName -CurrencyLookup $CurrencyLookup
-                if (-not $SourceEntity) {
-                    Write-RobotWarning "[WARN Get-EntityState] No currency entity for '$($ResolvedSourceName)' ($($ResolvedDenom.Name)) in @Transfer in session '$($Session.Header)'"
-                }
+                $SourceEntity = $null
+                $DestEntity = $null
+                $TransferLabel = $null
 
-                $DestEntity = Find-CurrencyEntity -Entities $Entities -Denomination $Transfer.Denomination -OwnerName $ResolvedDestName -CurrencyLookup $CurrencyLookup
-                if (-not $DestEntity) {
-                    Write-RobotWarning "[WARN Get-EntityState] No currency entity for '$($ResolvedDestName)' ($($ResolvedDenom.Name)) in @Transfer in session '$($Session.Header)'"
+                # Path 1: Currency denomination resolution
+                $ResolvedDenom = Resolve-CurrencyDenomination -Name $Transfer.Denomination
+                if ($ResolvedDenom) {
+                    $TransferLabel = $ResolvedDenom.Name
+                    $SourceEntity = Find-ItemByDenomAndOwner -Lookup $ItemLookup -Denomination $ResolvedDenom.Name -OwnerName $ResolvedSourceName
+                    if (-not $SourceEntity) {
+                        Write-RobotWarning "[WARN Get-EntityState] No currency entity for '$($ResolvedSourceName)' ($($ResolvedDenom.Name)) in @Transfer in session '$($Session.Header)'"
+                    }
+                    $DestEntity = Find-ItemByDenomAndOwner -Lookup $ItemLookup -Denomination $ResolvedDenom.Name -OwnerName $ResolvedDestName
+                    if (-not $DestEntity) {
+                        Write-RobotWarning "[WARN Get-EntityState] No currency entity for '$($ResolvedDestName)' ($($ResolvedDenom.Name)) in @Transfer in session '$($Session.Header)'"
+                    }
+                } else {
+                    # Path 2: Item name resolution (non-currency Przedmiot)
+                    $TransferLabel = $Transfer.Denomination
+                    $SourceEntity = Find-ItemByNameAndOwner -Lookup $ItemLookup -ItemName $Transfer.Denomination -OwnerName $ResolvedSourceName
+                    if (-not $SourceEntity) {
+                        # Try fuzzy name resolution to find the canonical item name
+                        $ResolvedItemName = Resolve-Name -Query $Transfer.Denomination -Index $NameIndexResult.Index -StemIndex $NameIndexResult.StemIndex -BKTree $NameIndexResult.BKTree -Cache $Cache
+                        if ($ResolvedItemName) {
+                            $SourceEntity = Find-ItemByNameAndOwner -Lookup $ItemLookup -ItemName $ResolvedItemName.Name -OwnerName $ResolvedSourceName
+                            if ($SourceEntity) {
+                                $TransferLabel = $ResolvedItemName.Name
+                                $DestEntity = Find-ItemByNameAndOwner -Lookup $ItemLookup -ItemName $ResolvedItemName.Name -OwnerName $ResolvedDestName
+                            }
+                        }
+                    } else {
+                        $DestEntity = Find-ItemByNameAndOwner -Lookup $ItemLookup -ItemName $Transfer.Denomination -OwnerName $ResolvedDestName
+                    }
+
+                    if (-not $SourceEntity) {
+                        Write-RobotWarning "[WARN Get-EntityState] No item entity '$($Transfer.Denomination)' for '$($ResolvedSourceName)' in @Transfer in session '$($Session.Header)'"
+                    }
+                    if (-not $DestEntity) {
+                        Write-RobotWarning "[WARN Get-EntityState] No item entity '$($Transfer.Denomination)' for '$($ResolvedDestName)' in @Transfer in session '$($Session.Header)'"
+                    }
                 }
 
                 # Atomicity: skip entire transfer if either side is unresolvable
                 if (-not $SourceEntity -or -not $DestEntity) {
                     $ErrMsg = "Unresolved @Transfer in session '$($Session.Header)': " +
-                              "Source='$ResolvedSourceName' Dest='$ResolvedDestName' ($($ResolvedDenom.Name))"
+                              "Source='$ResolvedSourceName' Dest='$ResolvedDestName' ($TransferLabel)"
                     $AffectedEntity = if ($SourceEntity) { $SourceEntity } elseif ($DestEntity) { $DestEntity } else { $null }
                     if ($AffectedEntity) {
                         if (-not $AffectedEntity.UnresolvedTransfers) {
@@ -338,34 +373,30 @@ function Get-EntityState {
                 }
 
                 # Debit source
-                if ($SourceEntity) {
-                    if (-not $SourceEntity.QuantityHistory) {
-                        $SourceEntity.QuantityHistory = [System.Collections.Generic.List[object]]::new()
-                    }
-                    $CurrentSrcQty = 0
-                    $LastSrcQty = Get-LastActiveValue -History $SourceEntity.QuantityHistory -PropertyName 'Value' -ActiveOn $Session.Date
-                    [int]$ParsedSrcQty = 0
-                    if ($LastSrcQty -and [int]::TryParse($LastSrcQty, [ref]$ParsedSrcQty)) {
-                        $CurrentSrcQty = $ParsedSrcQty
-                    }
-                    $SourceEntity.QuantityHistory.Add([Robot.TemporalEntry]::new([string]($CurrentSrcQty - $Transfer.Amount), $Session.Date, $null, $null))
-                    [void]$ModifiedEntities.Add($SourceEntity.Name)
+                if (-not $SourceEntity.QuantityHistory) {
+                    $SourceEntity.QuantityHistory = [System.Collections.Generic.List[object]]::new()
                 }
+                $CurrentSrcQty = 0
+                $LastSrcQty = Get-LastActiveValue -History $SourceEntity.QuantityHistory -PropertyName 'Value' -ActiveOn $Session.Date
+                [int]$ParsedSrcQty = 0
+                if ($LastSrcQty -and [int]::TryParse($LastSrcQty, [ref]$ParsedSrcQty)) {
+                    $CurrentSrcQty = $ParsedSrcQty
+                }
+                $SourceEntity.QuantityHistory.Add([Robot.TemporalEntry]::new([string]($CurrentSrcQty - $Transfer.Amount), $Session.Date, $null, $null))
+                [void]$ModifiedEntities.Add($SourceEntity.Name)
 
                 # Credit destination
-                if ($DestEntity) {
-                    if (-not $DestEntity.QuantityHistory) {
-                        $DestEntity.QuantityHistory = [System.Collections.Generic.List[object]]::new()
-                    }
-                    $CurrentDstQty = 0
-                    $LastDstQty = Get-LastActiveValue -History $DestEntity.QuantityHistory -PropertyName 'Value' -ActiveOn $Session.Date
-                    [int]$ParsedDstQty = 0
-                    if ($LastDstQty -and [int]::TryParse($LastDstQty, [ref]$ParsedDstQty)) {
-                        $CurrentDstQty = $ParsedDstQty
-                    }
-                    $DestEntity.QuantityHistory.Add([Robot.TemporalEntry]::new([string]($CurrentDstQty + $Transfer.Amount), $Session.Date, $null, $null))
-                    [void]$ModifiedEntities.Add($DestEntity.Name)
+                if (-not $DestEntity.QuantityHistory) {
+                    $DestEntity.QuantityHistory = [System.Collections.Generic.List[object]]::new()
                 }
+                $CurrentDstQty = 0
+                $LastDstQty = Get-LastActiveValue -History $DestEntity.QuantityHistory -PropertyName 'Value' -ActiveOn $Session.Date
+                [int]$ParsedDstQty = 0
+                if ($LastDstQty -and [int]::TryParse($LastDstQty, [ref]$ParsedDstQty)) {
+                    $CurrentDstQty = $ParsedDstQty
+                }
+                $DestEntity.QuantityHistory.Add([Robot.TemporalEntry]::new([string]($CurrentDstQty + $Transfer.Amount), $Session.Date, $null, $null))
+                [void]$ModifiedEntities.Add($DestEntity.Name)
             }
         }
     }

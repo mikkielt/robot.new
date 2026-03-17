@@ -130,6 +130,14 @@ Currency holdings are classified as physical (owned by a player character — re
 
 ---
 
+## Item Data
+
+Items (Przedmiot entities) are tracked with enriched properties: entity name, owner, owner type (Physical for player characters, Virtual for NPCs/groups, Unknown otherwise), location, quantity, status, and whether the item is a currency denomination. Items default to excluding currency entities and inactive/deleted entries.
+
+Reverse lookups let you query entities by property values: "what entities are at location X?", "what does character Y own?", "who is in group Z?" Filters are AND-combined and optional. Results are original entity objects with no transformation.
+
+---
+
 ## Reports and Analysis
 
 The system produces several types of reports, each with its own data shape.
@@ -143,6 +151,12 @@ An economic snapshot captures the state of the economy at a point in time: total
 An economic timeline shows monthly trends: how supply and transactions change over time.
 
 A materialization report breaks down physical vs virtual currency by denomination and by player, and flags orphaned physical currency.
+
+A dormancy report identifies entities with no recent activity. It scans all property history lists and the session graph index for the most recent activity date, then flags entities exceeding a configurable inactivity threshold (default 6 months). Each dormant entity reports its name, type, days dormant, last activity source (property change, session mention, or creation), and creation date.
+
+A session frequency trend groups sessions by calendar month, counting sessions, unique narrators, and format breakdown (Gen1-Gen4). Supports date range filtering.
+
+An entity delta compares an entity's state at two points in time, reporting which properties changed. Compares scalar properties (location, owner, type, status, quantity) and multi-valued properties (groups, doors) using set difference.
 
 An entity history shows the timeline of property changes for a single entity: what changed, when, and the value.
 

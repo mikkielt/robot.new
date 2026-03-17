@@ -520,7 +520,7 @@ Gen4 sessions use `@`-prefixed block items inside the session section, parsed by
 | `@Logi` | Session log URLs |
 | `@Zmiany` | Entity change directives (nested `- EntityName` / `- @tag: value` items) |
 | `@Intel` | Targeted intelligence messages for specific entities |
-| `@Transfer` | Currency transfer directives (`{amount} {denomination}, {source} -> {destination}`) |
+| `@Transfer` | Transfer directives — currency: `{amount} {denomination}, {source} -> {destination}`, item: `{item}, {source} -> {destination}` or `{amount} {item}, {source} -> {destination}` |
 | `@Narrator` | Narrator name override (when header narrator differs from canonical name) |
 | `@Data` | Date override for malformed or placeholder headers |
 

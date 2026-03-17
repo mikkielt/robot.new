@@ -41,6 +41,7 @@ $script:MenuOrder = @(
     'Gracze i Postacie'
     'Encje'
     'Waluta'
+    'Przedmioty'
     'PU'
     'Raporty i Narzędzia'
     'Migracja'
@@ -710,6 +711,34 @@ $script:MenuRegistry = @(
         InfoText = @('Analiza fizycznej vs wirtualnej waluty z detekcją osieroconych pozycji.')
     }
 
+    # ─── Przedmioty ──────────────────────────────────────────────────────────
+
+    @{
+        ID       = 'browse-items'
+        Label    = 'Przeglądaj przedmioty'
+        Description = 'Lista przedmiotów (bez waluty)'
+        Function = 'Get-ItemEntity'
+        Menu     = 'Przedmioty'
+        Mode     = 'Query'
+        Columns  = @('EntityName', 'Owner', 'Location', 'Quantity', 'Status')
+        Headers  = @('Nazwa', 'Właściciel', 'Lokacja', 'Ilość', 'Status')
+        Widths   = @(25, 18, 18, 8, 12)
+        ColumnPriority = @(1, 1, 2, 3, 3)
+        FilterPrefixes = @{
+            'właściciel' = 'Owner'; 'owner' = 'Owner'
+            'lokacja' = 'Location'; 'location' = 'Location'
+        }
+        HelpBrief = 'Lista przedmiotów (Przedmiot) z filtrami.'
+        HelpFull = @(
+            'Przeglądanie przedmiotów (encje typu Przedmiot).'
+            'Domyślnie wyklucza walutę — użyj parametru IncludeCurrency.'
+            'Filtrowanie:'
+            '  właściciel:nazwa — filtruj po właścicielu'
+            '  lokacja:nazwa — filtruj po lokacji'
+        )
+        InfoText = @('Lista przedmiotów z właścicielem, lokacją i ilością.')
+    }
+
     # ─── PU ───────────────────────────────────────────────────────────────────
 
     @{
@@ -1134,6 +1163,102 @@ $script:MenuRegistry = @(
             '  - Wyświetla kartę znalezionej encji'
         )
         InfoText = @('Wyszukaj dowolny element świata gry po nazwie — przybliżone dopasowanie.')
+    }
+
+    @{
+        ID       = 'resolve-entity'
+        Label    = 'Odwrotne wyszukiwanie'
+        Description = 'Filtruj encje po właściciel/lokacja/grupa'
+        Function = 'Resolve-Entity'
+        Menu     = 'Raporty i Narzędzia'
+        Mode     = 'Query'
+        Columns  = @('Name', 'Type', 'Location', 'Owner', 'Status')
+        Headers  = @('Nazwa', 'Typ', 'Lokacja', 'Właściciel', 'Status')
+        Widths   = @(25, 12, 18, 18, 12)
+        ColumnPriority = @(1, 1, 2, 2, 3)
+        FilterPrefixes = @{
+            'typ' = 'Type'; 'type' = 'Type'
+            'lokacja' = 'Location'; 'location' = 'Location'
+            'właściciel' = 'Owner'; 'owner' = 'Owner'
+        }
+        FilterOverrides = @{
+            'Owner'    = @{ Type = 'fuzzy'; Source = 'entities'; Label = 'Właściciel'; Required = $false }
+            'Location' = @{ Type = 'fuzzy'; Source = 'locations'; Label = 'Lokacja'; Required = $false }
+            'Group'    = @{ Type = 'fuzzy'; Source = 'groups'; Label = 'Grupa'; Required = $false }
+            'Type'     = @{ Type = 'selection'; Label = 'Typ'; Required = $false; Options = @('NPC', 'Grupa', 'Lokacja', 'Przedmiot', 'Postać') }
+        }
+        HelpBrief = 'Znajdź encje po właścicielu, lokacji lub grupie.'
+        HelpFull = @(
+            'Odwrotne wyszukiwanie encji — „co jest w lokacji X?",'
+            '„co posiada postać Y?", „kto jest w grupie Z?"'
+            'Filtry ustawiane na początku (opcjonalne).'
+            '  typ:NPC — filtruj po typie'
+            '  lokacja:nazwa — filtruj po lokacji'
+            '  właściciel:nazwa — filtruj po właścicielu'
+        )
+        InfoText = @('Filtruj encje po właścicielu, lokacji, grupie lub typie.')
+    }
+
+    @{
+        ID               = 'dormancy-report'
+        Label            = 'Raport uśpionych'
+        Description      = 'Encje bez aktywności od N miesięcy'
+        Menu             = 'Raporty i Narzędzia'
+        Mode             = 'Workflow'
+        WorkflowFunction = 'Invoke-DormancyReportWorkflow'
+        HelpBrief        = 'Lista encji nieaktywnych od zadanej liczby miesięcy.'
+        HelpFull         = @(
+            'Raport uśpionych encji:'
+            '  - Próg nieaktywności (domyślnie 6 miesięcy)'
+            '  - Opcjonalny filtr po typie'
+            '  - Sortowanie: najdłużej uśpione na górze'
+            '  - Źródła aktywności: zmiany tagów + graf sesji'
+        )
+        InfoText         = @('Wykrywa encje bez aktywności od zadanej liczby miesięcy.')
+    }
+
+    @{
+        ID       = 'session-frequency'
+        Label    = 'Trend częstotliwości sesji'
+        Description = 'Sesje pogrupowane po miesiącach'
+        Function = 'Get-SessionFrequencyTrend'
+        Menu     = 'Raporty i Narzędzia'
+        Mode     = 'Query'
+        Columns  = @('Month', 'SessionCount', 'NarratorCount')
+        Headers  = @('Miesiąc', 'Sesje', 'Narratorzy')
+        Widths   = @(12, 10, 12)
+        ColumnPriority = @(1, 1, 2)
+        FilterOverrides = @{
+            'MinDate' = @{ Type = 'date'; Label = 'Od daty'; Required = $false }
+            'MaxDate' = @{ Type = 'date'; Label = 'Do daty'; Required = $false }
+        }
+        HelpBrief = 'Miesięczna agregacja sesji z rozbiciem na formaty.'
+        HelpFull = @(
+            'Trend częstotliwości sesji:'
+            '  - Sesje pogrupowane po miesiącach'
+            '  - Liczba unikalnych narratorów'
+            '  - Rozbicie na formaty (Gen1-Gen4)'
+            '  - Opcjonalny zakres dat'
+        )
+        InfoText = @('Miesięczna agregacja sesji z liczbą narratorów i rozbiciem formatów.')
+    }
+
+    @{
+        ID               = 'entity-delta'
+        Label            = 'Porównanie stanu encji'
+        Description      = 'Diff właściwości encji między datami'
+        Menu             = 'Raporty i Narzędzia'
+        Mode             = 'Workflow'
+        WorkflowFunction = 'Invoke-EntityDeltaWorkflow'
+        HelpBrief        = 'Porównuje stan encji w dwóch punktach czasu.'
+        HelpFull         = @(
+            'Porównanie stanu encji między datami:'
+            '  1. Wybierz encję (fuzzy search)'
+            '  2. Podaj datę „od"'
+            '  3. Podaj datę „do"'
+            '  - Porównuje: lokację, właściciela, typ, status, ilość, grupy, drzwi'
+        )
+        InfoText         = @('Pokazuje co zmieniło się w encji między dwiema datami.')
     }
 
     # ─── Logi ────────────────────────────────────────────────────────────────

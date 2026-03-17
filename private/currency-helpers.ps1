@@ -13,10 +13,11 @@
     - Test-CurrencyOwnerMatch:         test whether a currency item's owner matches a filter
     - Test-CurrencyDenominationMatch:  test whether a denomination name matches a filter
     - Test-IsCurrencyEntity:           check if an entity is a currency entity
-    - Build-CurrencyEntityLookup:      pre-build denomination+owner -> entity hashtable for O(1) lookups
-    - Find-CurrencyEntity:             find a currency entity by denomination and owner
-    - Resolve-CurrencyOwnerType:       classify owner as Physical/Virtual/Unknown by entity type
-    - Get-CurrencyEntitiesFiltered:    identify, filter by status, and enrich currency entities
+    - Build-CurrencyEntityLookup:      delegates to Build-ItemLookup, returns ByDenomAndOwner index
+    - Find-CurrencyEntity:             delegates to Find-ItemByDenomAndOwner with pre-built lookup
+    - Resolve-CurrencyOwnerType:       delegates to Resolve-ItemOwnerType (item-helpers.ps1)
+    - Get-CurrencyEntitiesFiltered:    delegates to Get-ItemEntitiesFiltered with currencyOnly flag
+    - Get-DenominationNames:           returns canonical denomination name array for item layer
 
     Module-level data:
     - $script:CurrencyDenominations:   canonical denomination definitions with exchange rates (Korony/Talary/Kogi)
@@ -32,6 +33,11 @@
 
     $script:DenomLookup is built once at dot-source time, providing O(1) resolution
     for canonical names, short names, and stem prefixes ("kor" -> Korony Elanckie).
+
+    Lookup, find, owner type, and filter operations delegate to the unified item
+    layer (item-helpers.ps1) which handles both currency and non-currency Przedmiot
+    entities. Currency-helpers adds denomination resolution, denomination-specific
+    enrichment, and the currencyOnly filter flag on top of the generic item layer.
 #>
 
 # Canonical denomination definitions
@@ -174,25 +180,10 @@ function Build-CurrencyEntityLookup {
         [object[]]$Entities
     )
 
-    $Lookup = [System.Collections.Generic.Dictionary[string, object]]::new([System.StringComparer]::OrdinalIgnoreCase)
-
-    foreach ($Entity in $Entities) {
-        if (-not $Entity.GenericNames -or $Entity.GenericNames.Count -eq 0) { continue }
-        if ($Entity.Type -ne 'Przedmiot') { continue }
-        if (-not $Entity.Owner) { continue }
-
-        foreach ($GN in $Entity.GenericNames) {
-            $Resolved = Resolve-CurrencyDenomination -Name $GN
-            if ($Resolved) {
-                $Key = "$($Resolved.Name)|$($Entity.Owner)"
-                if (-not $Lookup.ContainsKey($Key)) {
-                    $Lookup[$Key] = $Entity
-                }
-            }
-        }
-    }
-
-    return $Lookup
+    # Delegates to unified item layer — returns the ByDenomAndOwner index
+    . "$script:ModuleRoot/private/item-helpers.ps1"
+    $Lookup = Build-ItemLookup -Entities $Entities -DenominationNames (Get-DenominationNames)
+    return $Lookup.ByDenomAndOwner
 }
 
 function Find-CurrencyEntity {
@@ -212,10 +203,9 @@ function Find-CurrencyEntity {
     $ResolvedDenom = Resolve-CurrencyDenomination -Name $Denomination
     if (-not $ResolvedDenom) { return $null }
 
-    $CanonicalName = $ResolvedDenom.Name
-
+    # If pre-built lookup provided, use it directly (same key format as before)
     if ($CurrencyLookup) {
-        $Key = "$CanonicalName|$OwnerName"
+        $Key = "$($ResolvedDenom.Name)|$OwnerName"
         $Found = $null
         if ($CurrencyLookup.TryGetValue($Key, [ref]$Found)) {
             return $Found
@@ -223,26 +213,10 @@ function Find-CurrencyEntity {
         return $null
     }
 
-    foreach ($Entity in $Entities) {
-        if (-not $Entity.GenericNames -or $Entity.GenericNames.Count -eq 0) { continue }
-        if ($Entity.Type -ne 'Przedmiot') { continue }
-
-        $HasDenom = $false
-        foreach ($GN in $Entity.GenericNames) {
-            if ([string]::Equals($GN, $CanonicalName, [System.StringComparison]::OrdinalIgnoreCase)) {
-                $HasDenom = $true
-                break
-            }
-        }
-        if (-not $HasDenom) { continue }
-
-        # Check owner via OwnerHistory (last active) or Owner property
-        if ([string]::Equals($Entity.Owner, $OwnerName, [System.StringComparison]::OrdinalIgnoreCase)) {
-            return $Entity
-        }
-    }
-
-    return $null
+    # No pre-built lookup — delegate to item layer
+    . "$script:ModuleRoot/private/item-helpers.ps1"
+    $Lookup = Build-ItemLookup -Entities $Entities -DenominationNames (Get-DenominationNames)
+    return Find-ItemByDenomAndOwner -Lookup $Lookup -Denomination $ResolvedDenom.Name -OwnerName $OwnerName
 }
 
 function Resolve-CurrencyOwnerType {
@@ -254,20 +228,9 @@ function Resolve-CurrencyOwnerType {
         [System.Collections.Generic.Dictionary[string, object]]$EntityLookup
     )
 
-    if (-not $EntityLookup.ContainsKey($OwnerName)) {
-        return 'Unknown'
-    }
-
-    $OwnerEntity = $EntityLookup[$OwnerName]
-    $OwnerType = if ($OwnerEntity.Type) { $OwnerEntity.Type } else { $null }
-
-    switch ($OwnerType) {
-        'Postać'  { return 'Physical' }
-        'NPC'     { return 'Virtual' }
-        'Grupa'   { return 'Virtual' }
-        'Gracz'   { return 'Virtual' }
-        default   { return 'Unknown' }
-    }
+    # Delegates to unified item layer — identical classification logic
+    . "$script:ModuleRoot/private/item-helpers.ps1"
+    return Resolve-ItemOwnerType -OwnerName $OwnerName -EntityLookup $EntityLookup
 }
 
 function Get-CurrencyEntitiesFiltered {
@@ -283,41 +246,42 @@ function Get-CurrencyEntitiesFiltered {
         [System.Collections.Generic.Dictionary[string, object]]$EntityLookup
     )
 
+    # Delegates to unified item layer with currencyOnly filter, then adds
+    # denomination object enrichment (the only currency-specific step)
+    . "$script:ModuleRoot/private/item-helpers.ps1"
+    $DenomNames = Get-DenominationNames
+
+    $Items = Get-ItemEntitiesFiltered -Entities $Entities -DenominationNames $DenomNames `
+        -IncludeInactive:$IncludeInactive -IncludeDeleted:$IncludeDeleted `
+        -CurrencyOnly -EntityLookup $EntityLookup
+
     $Result = [System.Collections.Generic.List[object]]::new()
-
-    foreach ($Entity in $Entities) {
-        if (-not (Test-IsCurrencyEntity -Entity $Entity)) { continue }
-
-        $Status = if ($Entity.Status) { $Entity.Status } else { 'Aktywny' }
-        if ($Status -eq 'Usunięty' -and -not $IncludeDeleted) { continue }
-        if ($Status -eq 'Nieaktywny' -and -not $IncludeInactive) { continue }
-
-        $EntityDenom = $null
-        foreach ($GN in $Entity.GenericNames) {
-            $Resolved = Resolve-CurrencyDenomination -Name $GN
-            if ($Resolved) { $EntityDenom = $Resolved; break }
-        }
+    foreach ($Item in $Items) {
+        # Resolve denomination name to full denomination object (with Multiplier, Short, Tier)
+        $EntityDenom = if ($Item.Denomination) { Resolve-CurrencyDenomination -Name $Item.Denomination } else { $null }
         if (-not $EntityDenom) { continue }
 
-        $QtyStr = if ($Entity.Quantity) { $Entity.Quantity } else { '0' }
+        $QtyStr = if ($Item.Entity.Quantity) { $Item.Entity.Quantity } else { '0' }
         [int]$QtyInt = 0
         [void][int]::TryParse($QtyStr, [ref]$QtyInt)
 
-        $OwnerCategory = $null
-        if ($EntityLookup -and $Entity.Owner) {
-            $OwnerCategory = Resolve-CurrencyOwnerType -OwnerName $Entity.Owner -EntityLookup $EntityLookup
-        }
+        # Preserve original behavior: OwnerCategory is $null when EntityLookup not provided
+        $OwnerCategory = if ($EntityLookup) { $Item.OwnerType } else { $null }
 
         $Result.Add([PSCustomObject]@{
-            Entity        = $Entity
+            Entity        = $Item.Entity
             Denomination  = $EntityDenom
-            Owner         = $Entity.Owner
-            Location      = $Entity.Location
+            Owner         = $Item.Owner
+            Location      = $Item.Location
             Quantity      = $QtyInt
-            Status        = $Status
+            Status        = $Item.Status
             OwnerCategory = $OwnerCategory
         })
     }
 
     return @($Result)
+}
+
+function Get-DenominationNames {
+    return @($script:CurrencyDenominations | ForEach-Object { $_.Name })
 }

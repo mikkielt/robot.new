@@ -195,7 +195,7 @@ Extracted fields:
 | Logs | Child URLs or local file paths under `logi` tag; entries starting with `res/logs/` are accepted alongside `https://...` URLs. Also checks inline URL on root line |
 | Changes (Zmiany) | Entity names at 4-space indent, `@tag: value` at 8-space indent |
 | Intel | `RawTarget: Message` pairs under `intel` tag |
-| Transfers | `@Transfer: {amount} {denomination}, {source} -> {destination}` inline on root line |
+| Transfers | `@Transfer: {amount} {denomination}, {source} -> {destination}` or `@Transfer: {item}, {source} -> {destination}` inline on root line |
 | DateOverride | Inline `@Data: YYYY-MM-DD` value or first child of `@Data:` block |
 
 Returns hashtable with keys: `Logs`, `PU`, `Changes`, `Intel`, `Transfers`, `Narrators`, `DateOverride`.
@@ -491,7 +491,7 @@ Session object returned by `Get-Session`:
 | `DuplicateCount` | int | Number of duplicates found |
 | `Content` | string | Full section content (only with `-IncludeContent`) |
 | `Changes` | object[] | Entity state overrides from `- Zmiany:` block |
-| `Transfers` | object[] | Currency transfer directives from `- @Transfer:` lines (Amount, Denomination, Source, Destination) |
+| `Transfers` | object[] | Transfer directives from `- @Transfer:` lines (Amount, Denomination, Source, Destination). Supports both currency (`{amount} {denom}`) and item (`{item}` or `{amount} {item}`) formats |
 | `Mentions` | object[] | Deduplicated array of mention objects (only with `-IncludeMentions`) |
 | `Intel` | object[] | Resolved `@Intel` entries with recipient webhooks |
 | `LogData` | object | Parsed log data (only with `-IncludeLogs`, from `Get-SessionLog`) |

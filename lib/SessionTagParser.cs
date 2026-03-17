@@ -275,21 +275,27 @@ namespace Robot {
                                 arrowIdx - commaIdx - 1).Trim();
                             string destination = body.Substring(arrowIdx + 2).Trim();
 
+                            // Amount-optional: if first token is a positive integer,
+                            // it is the amount and the rest is the identifier.
+                            // Otherwise entire string is the identifier with amount=1.
                             int spaceIdx = amountDenom.IndexOf(' ');
-                            if (spaceIdx > 0) {
-                                string amountStr = amountDenom.Substring(0, spaceIdx).Trim();
-                                string denomStr = amountDenom.Substring(spaceIdx + 1).Trim();
-                                int amount;
-                                if (int.TryParse(amountStr, out amount) && amount > 0 &&
-                                    !string.IsNullOrWhiteSpace(source) &&
-                                    !string.IsNullOrWhiteSpace(destination)) {
-                                    result.Transfers.Add(new TransferEntry {
-                                        Amount = amount,
-                                        Denomination = denomStr,
-                                        Source = source,
-                                        Destination = destination
-                                    });
-                                }
+                            int amount;
+                            string denomStr;
+                            if (spaceIdx > 0 && int.TryParse(amountDenom.Substring(0, spaceIdx), out amount) && amount > 0) {
+                                denomStr = amountDenom.Substring(spaceIdx + 1).Trim();
+                            } else {
+                                amount = 1;
+                                denomStr = amountDenom.Trim();
+                            }
+                            if (!string.IsNullOrEmpty(denomStr) &&
+                                !string.IsNullOrWhiteSpace(source) &&
+                                !string.IsNullOrWhiteSpace(destination)) {
+                                result.Transfers.Add(new TransferEntry {
+                                    Amount = amount,
+                                    Denomination = denomStr,
+                                    Source = source,
+                                    Destination = destination
+                                });
                             }
                         }
                     }
