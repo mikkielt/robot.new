@@ -66,7 +66,7 @@ Migration progress is saved after each step. If a migration run is interrupted (
 
 The Coordinator secures the current state before any changes, then generates the entity store from legacy data. This phase combines preparation and bootstrap into a single step.
 
-The phase proceeds through the following steps. The system verifies a clean git state (no uncommitted changes allowed before migration starts). It creates a safety tag (`pre-migration`) providing a rollback point to the exact pre-migration state. It verifies the PU state file, ensuring the processing history file (`pu-sessions.md`) is preserved and continues to be used. It verifies the submodule (`.robot.new` must be registered as a git submodule) and confirms all commands are available. It creates the data manifest (`.robot/robot-data.psd1`) ensuring all commands write to the correct `entities.md` location. Finally, it generates the entity store by reading all current player and character data from the existing player database and writing it into `entities.md`. The system creates one new file containing all players, their characters, and associated metadata (PU values, aliases, group memberships). The original player database remains untouched. Additional entity sections (NPC, Group, Location, Item) are added for future use.
+The phase proceeds through the following steps. The system verifies a clean git state (no uncommitted changes allowed before migration starts). It creates a safety tag (`pre-migration`) providing a rollback point to the exact pre-migration state. It verifies the PU state file, ensuring the processing history file (`pu-sessions.json`) is preserved and continues to be used. It verifies the submodule (`.robot.new` must be registered as a git submodule) and confirms all commands are available. It creates the data manifest (`.robot/robot-data.psd1`) ensuring all commands write to the correct `entities.md` location. Finally, it generates the entity store by reading all current player and character data from the existing player database and writing it into `entities.md`. The system creates one new file containing all players, their characters, and associated metadata (PU values, aliases, group memberships). The original player database remains untouched. Additional entity sections (NPC, Group, Location, Item) are added for future use.
 
 ## Phase 1 — Baseline integralnosci sesji
 
@@ -212,7 +212,7 @@ The new system never modifies `Gracze.md`. The old system always has access to i
 
 ## Audit Trail / Evidence of Completion
 
-- PU processing log (`.robot/res/pu-sessions.md`) — timestamped entries listing which sessions were processed in each run, used to prevent double-counting
+- PU processing log (`.robot/res/pu-sessions.json`) — timestamped entries listing which sessions were processed in each run, used to prevent double-counting
 - Entity store changes — all player and character updates are committed to the repository, providing full Git history
 - Discord notifications — each player receives a message confirming awarded PU, current totals, and overflow pool usage
 - Diagnostic reports — the validation tool produces a structured report showing whether all checks passed, with details on any issues found

@@ -262,7 +262,7 @@ tests/
     |
     |   # Other
     +-- minimal-entity.md                           # Minimal entity for writes
-    +-- pu-sessions.md                              # PU session history
+    +-- pu-sessions.json                             # PU session history
     +-- pu-sessions-sample.md                       # Sample PU history
     +-- local.config.psd1                           # Config fixture
     +-- log-chatlog.txt                             # Chat log fixture
@@ -451,7 +451,7 @@ Key fixtures:
 | `sessions-duplicate.md` | Identical headers for deduplication | `Merge-SessionGroup` |
 | `sessions-zmiany.md` | Zmiany blocks with `@tag` overrides | `get-entitystate` |
 | `sessions-failed.md` | Malformed dates with valid PU content | `test-playercharacterpuassignment` |
-| `pu-sessions.md` | Pre-processed session history | History deduplication |
+| `pu-sessions.json` | Pre-processed session history | History deduplication |
 
 ---
 

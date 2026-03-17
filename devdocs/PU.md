@@ -37,7 +37,7 @@ CmdletBinding: SupportsShouldProcess, ConfirmImpact = High
 | `PlayerName` | string[] | Filter to specific player name(s) |
 | `UpdatePlayerCharacters` | switch | Write updated PU values to `entities.md` via `Set-PlayerCharacter` |
 | `SendToDiscord` | switch | Send PU notification messages to Discord via player webhooks |
-| `AppendToLog` | switch | Append processed session headers to `pu-sessions.md` history |
+| `AppendToLog` | switch | Append processed session headers to `pu-sessions.json` history |
 | `ReconcileCurrency` | switch | Run currency reconciliation checks after PU calculation |
 | `ExcludeDirectory` | string[] | Directories to exclude from session file scanning |
 | `Quiet` | switch | Suppress warning output to stderr |
@@ -104,7 +104,7 @@ The `@`-prefixed form is Gen4 syntax; both are parsed identically. PU values use
 
 Sessions with identical headers appearing across multiple Markdown files (location logs, thread files, character files) represent the same session. PU entries across these duplicates are a single reward. `Get-Session` deduplicates by header (Ordinal comparison). The merge strategy picks the primary instance with the richest metadata (scored by field count) and unions all array fields (including PU entries) via `HashSet` union. When the same character appears in PU entries across duplicates of the same session, the value is taken once.
 
-Session headers already recorded in the state file (`pu-sessions.md`) are excluded from processing. The state file is read by `Get-AdminHistoryEntries` which returns a `HashSet[string]` (OrdinalIgnoreCase) of normalized headers.
+Session headers already recorded in the state file (`pu-sessions.json`) are excluded from processing. The state file is read by `Get-AdminHistoryEntries` which returns a `HashSet[string]` (OrdinalIgnoreCase) of normalized headers.
 
 Normalization for comparison:
 1. Trim leading/trailing whitespace.
@@ -258,7 +258,7 @@ Webhook resolution: Taken from `$Items[0].Character.Player.PRFWebhook` (the firs
 
 If a player has no `PRFWebhook` configured, the notification is skipped with a `[WARN]` to stderr. Other players' notifications are still sent. Individual `Send-DiscordMessage` failures are caught and logged to stderr as `[WARN]` without aborting the remaining notifications.
 
-AppendToLog appends processed session headers to `pu-sessions.md` via `Add-AdminHistoryEntry`.
+AppendToLog appends processed session headers to `pu-sessions.json` via `Add-AdminHistoryEntry`.
 
 Entry format (written by `private/admin-state.ps1`):
 ```
@@ -269,9 +269,9 @@ Entry format (written by `private/admin-state.ps1`):
 
 Headers are sorted chronologically using `[StringComparer]::Ordinal` (string-lexicographic, which works because headers start with `YYYY-MM-DD`). The `### ` prefix is added if not already present.
 
-File creation: If `pu-sessions.md` does not exist, it is created with the preamble: `"W tym pliku znajduje sie lista sesji przetworzonych przez system.\n\n## Historia\n\n"`.
+File creation: If `pu-sessions.json` does not exist, it is created with an empty `runs` array.
 
-File location: `$Config.ResDir` -> `<RepoRoot>/.robot/res/pu-sessions.md`.
+File location: `$Config.ResDir` -> `<RepoRoot>/.robot/res/pu-sessions.json`.
 
 ReconcileCurrency runs `Test-CurrencyReconciliation` on the sessions used in the pipeline. Results are logged to stderr and attached to the assignment results via `Add-Member -NotePropertyName 'CurrencyReconciliation'`.
 
@@ -370,7 +370,7 @@ Return object:
 | Malformed PU | Iterates parsed sessions, checks `PUEntry.Value -eq $null` | `MalformedPU` |
 | Duplicate entries | Tracks character names per session via `Dictionary[string, int]`, flags when count >= 2 | `DuplicateEntries` |
 | Failed sessions with PU | Uses `Get-Session -IncludeFailed -IncludeContent`, scans content of failed sessions for `- PU:` / `- @PU:` sections and PU-like child lines | `FailedSessionsWithPU` |
-| Stale history entries | Reads all headers from `pu-sessions.md`, builds a `HashSet` of all known session headers from `Get-Session` (full repo, no date filter), finds unmatched history entries | `StaleHistoryEntries` |
+| Stale history entries | Reads all headers from `pu-sessions.json`, builds a `HashSet` of all known session headers from `Get-Session` (full repo, no date filter), finds unmatched history entries | `StaleHistoryEntries` |
 
 PU-like pattern matching (for failed session scanning):
 - Section header: `^\s*[-\*]\s+@?[Pp][Uu]\s*:` (precompiled `$script:PUSectionPattern`)
@@ -420,8 +420,8 @@ Each character produces one result object:
 ```
 Invoke-PlayerCharacterPUAssignment
 +-- private/admin-state.ps1 (dot-sourced)
-|   +-- Get-AdminHistoryEntries    -> reads pu-sessions.md
-|   +-- Add-AdminHistoryEntry      -> appends to pu-sessions.md
+|   +-- Get-AdminHistoryEntries    -> reads pu-sessions.json
+|   +-- Add-AdminHistoryEntry      -> appends to pu-sessions.json
 +-- private/admin-config.ps1 (dot-sourced)
 |   +-- Get-AdminConfig            -> resolves RepoRoot, ResDir, etc.
 +-- Get-GitChangeLog -NoPatch      -> identifies changed .md files
@@ -468,7 +468,7 @@ Get-NewPlayerCharacterPUCount
                                | sessions with PU
                     +----------v----------+
                     |  History Dedup       |
-                    |  (pu-sessions.md)    |
+                    |  (pu-sessions.json)  |
                     +----------+----------+
                                | new sessions only
                     +----------v----------+

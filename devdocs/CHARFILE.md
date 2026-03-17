@@ -90,7 +90,7 @@ Template files are located in `.robot.new/templates/`:
 | `pu-notification-base.txt.template` | PU Discord notification -- always present |
 | `pu-notification-overflow.txt.template` | PU notification -- overflow supplement consumed |
 | `pu-notification-remaining.txt.template` | PU notification -- overflow pool remaining |
-| `pu-sessions-header.md.template` | State file preamble for `pu-sessions.md` |
+| `pu-sessions-header.md.template` | State file preamble for `pu-sessions.json` |
 
 Templates use `{Placeholder}` syntax, rendered via `Get-AdminTemplate`:
 

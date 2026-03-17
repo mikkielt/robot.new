@@ -801,7 +801,7 @@ $script:MenuRegistry = @(
         HelpFull = @(
             'Dziennik wszystkich wykonanych przydziałów PU.'
             'Kolumny: data przetworzenia, liczba sesji, strefa czasowa.'
-            'Dane z pliku .robot/res/pu-sessions.md.'
+            'Dane z pliku .robot/res/pu-sessions.json.'
         )
         InfoText = @('Lista dotychczasowych przydziałów z datami i liczbą sesji.')
     }

@@ -26,7 +26,7 @@ Lore Repository (git root)
 ├── .robot/                   RUNTIME STATE
 │   ├── robot-data.psd1       Data manifest (path overrides)
 │   └── res/
-│       ├── pu-sessions.md    PU processing history
+│       ├── pu-sessions.json   PU processing history
 │       ├── session-hashes/   Session integrity SHA256s
 │       ├── session-graph/    Participation graph index
 │       ├── logs/             Cached session log text

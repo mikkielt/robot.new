@@ -10,6 +10,7 @@
 BeforeAll {
     . "$PSScriptRoot/TestHelpers.ps1"
     Import-RobotModule
+    . (Join-Path $script:ModuleRoot 'private' 'admin-state.ps1')
     . (Join-Path $script:ModuleRoot 'private' 'discord-state.ps1')
     . (Join-Path $script:ModuleRoot 'public' 'reporting' 'get-discorddeliverylog.ps1')
 }
@@ -17,26 +18,73 @@ BeforeAll {
 Describe 'Get-DiscordDeliveryLog' {
     BeforeAll {
         $script:TempDir = New-TestTempDir
-        $script:SamplePath = Join-Path $script:TempDir 'discord-delivery.md'
-        $FixtureContent = @"
-# Discord Delivery Log
-
-- 2026-02-15 10:00:00 (UTC+01:00) [OK] PU -> Jan (HTTP 204)
-    - 2026-01 PU: Solmyr +3.00
-- 2026-02-15 10:00:01 (UTC+01:00) [FAIL] PU -> Tomek
-    - 2026-01 PU: Arden +5.00
-    - ERROR: Discord webhook returned HTTP 429: rate limited
-- 2026-03-01 09:15:22 (UTC+01:00) [OK] PU -> Jan (HTTP 204)
-    - 2026-02 PU: Solmyr +2.00, Kael +1.00
-- 2026-03-01 09:15:23 (UTC+01:00) [FAIL] PU -> Tomek
-    - 2026-02 PU: Arden +4.00
-    - ERROR: Connection timeout
-- 2026-03-12 18:30:05 (UTC+01:00) [OK] Announcement -> Announcement (HTTP 204)
-    - Ogłoszenie: Następna sesja w piątek
-- 2026-03-15 10:00:00 (UTC+01:00) [OK] PU-Resend -> Tomek (HTTP 204)
-    - 2026-01 PU: Arden +5.00
-"@
-        Write-TestFile -Path $script:SamplePath -Content $FixtureContent
+        $script:SamplePath = Join-Path $script:TempDir 'discord-delivery.json'
+        $FixtureData = [ordered]@{
+            version = 1
+            entries = @(
+                [ordered]@{
+                    timestamp = '2026-02-15T10:00:00'
+                    timezone = 'UTC+01:00'
+                    status = 'OK'
+                    operation = 'PU'
+                    recipient = 'Jan'
+                    statusCode = 204
+                    context = '2026-01 PU: Solmyr +3.00'
+                    errorMessage = $null
+                }
+                [ordered]@{
+                    timestamp = '2026-02-15T10:00:01'
+                    timezone = 'UTC+01:00'
+                    status = 'FAIL'
+                    operation = 'PU'
+                    recipient = 'Tomek'
+                    statusCode = $null
+                    context = '2026-01 PU: Arden +5.00'
+                    errorMessage = 'Discord webhook returned HTTP 429: rate limited'
+                }
+                [ordered]@{
+                    timestamp = '2026-03-01T09:15:22'
+                    timezone = 'UTC+01:00'
+                    status = 'OK'
+                    operation = 'PU'
+                    recipient = 'Jan'
+                    statusCode = 204
+                    context = '2026-02 PU: Solmyr +2.00, Kael +1.00'
+                    errorMessage = $null
+                }
+                [ordered]@{
+                    timestamp = '2026-03-01T09:15:23'
+                    timezone = 'UTC+01:00'
+                    status = 'FAIL'
+                    operation = 'PU'
+                    recipient = 'Tomek'
+                    statusCode = $null
+                    context = '2026-02 PU: Arden +4.00'
+                    errorMessage = 'Connection timeout'
+                }
+                [ordered]@{
+                    timestamp = '2026-03-12T18:30:05'
+                    timezone = 'UTC+01:00'
+                    status = 'OK'
+                    operation = 'Announcement'
+                    recipient = 'Announcement'
+                    statusCode = 204
+                    context = 'Ogłoszenie: Następna sesja w piątek'
+                    errorMessage = $null
+                }
+                [ordered]@{
+                    timestamp = '2026-03-15T10:00:00'
+                    timezone = 'UTC+01:00'
+                    status = 'OK'
+                    operation = 'PU-Resend'
+                    recipient = 'Tomek'
+                    statusCode = 204
+                    context = '2026-01 PU: Arden +5.00'
+                    errorMessage = $null
+                }
+            )
+        }
+        Save-JsonStateFile -Path $script:SamplePath -Data $FixtureData
     }
     AfterAll {
         Remove-TestTempDir
@@ -127,13 +175,13 @@ Describe 'Get-DiscordDeliveryLog' {
     }
 
     It 'returns empty array for nonexistent file' {
-        $Result = Get-DiscordDeliveryLog -Path '/nonexistent/path/delivery.md'
+        $Result = Get-DiscordDeliveryLog -Path '/nonexistent/path/delivery.json'
         $Result.Count | Should -Be 0
     }
 
     It 'returns empty array for file with no entries' {
-        $EmptyPath = Join-Path $script:TempDir 'empty-delivery.md'
-        Write-TestFile -Path $EmptyPath -Content '# Discord Delivery Log'
+        $EmptyPath = Join-Path $script:TempDir 'empty-delivery.json'
+        Save-JsonStateFile -Path $EmptyPath -Data ([ordered]@{ version = 1; entries = @() })
         $Result = Get-DiscordDeliveryLog -Path $EmptyPath
         $Result.Count | Should -Be 0
     }

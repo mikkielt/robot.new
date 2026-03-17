@@ -139,7 +139,7 @@ The actual sending is left to the consumer -- `Get-Session` only resolves target
 
 ## Delivery Tracking
 
-Delivery state is persisted to `.robot/res/discord-delivery.md` as an append-only Markdown log. `Get-NotificationLog` reconstructs notification intent from `@Intel` directives; delivery tracking records actual send outcomes.
+Delivery state is persisted to `.robot/res/discord-delivery.json` as a JSON log. `Get-NotificationLog` reconstructs notification intent from `@Intel` directives; delivery tracking records actual send outcomes.
 
 State file helpers in `private/discord-state.ps1`:
 

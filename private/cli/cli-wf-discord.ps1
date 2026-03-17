@@ -20,7 +20,7 @@
     sends via Send-DiscordMessage. The webhook URL is entered manually each
     time because storing it would require per-channel configuration.
 
-    Both workflows persist delivery results to discord-delivery.md via
+    Both workflows persist delivery results to discord-delivery.json via
     Add-DiscordDeliveryEntry (discord-state.ps1).
 
     Dependencies: cli-primitives.ps1, cli-fuzzy.ps1, cli-wizard.ps1,
@@ -174,7 +174,7 @@ function Invoke-DiscordPUNotificationWorkflow {
 
     # Step 7: Send and log as PU-Resend
     $Config = Get-AdminConfig
-    $DiscordLogPath = [System.IO.Path]::Combine($Config.ResDir, 'discord-delivery.md')
+    $DiscordLogPath = [System.IO.Path]::Combine($Config.ResDir, 'discord-delivery.json')
     $ContextStr = $Selected.Context
 
     try {
@@ -268,7 +268,7 @@ function Invoke-DiscordAnnouncementWorkflow {
 
     . "$script:ModuleRoot/private/discord-state.ps1"
     $Config = Get-AdminConfig
-    $DiscordLogPath = [System.IO.Path]::Combine($Config.ResDir, 'discord-delivery.md')
+    $DiscordLogPath = [System.IO.Path]::Combine($Config.ResDir, 'discord-delivery.json')
 
     try {
         $SendResult = Send-DiscordMessage -Webhook $Webhook -Message $Message

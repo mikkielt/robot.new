@@ -19,7 +19,7 @@
                              PU-resolvable sections. The normal pipeline
                              silently drops these; this diagnostic
                              surfaces them by scanning raw content.
-    5. StaleHistoryEntries:  headers in pu-sessions.md that no longer
+    5. StaleHistoryEntries:  headers in pu-sessions.json that no longer
                              match any session in the repository.
 
     Module-level data:
@@ -37,7 +37,7 @@
        PU-like child lines to detect silently dropped data
     4. For parsed sessions: check PU entries for null values and
        duplicate character names within the same session
-    5. Cross-reference pu-sessions.md history against all known session
+    5. Cross-reference pu-sessions.json history against all known session
        headers to detect stale entries
 
     Returns a structured diagnostic object with OK boolean and categorized
@@ -235,10 +235,10 @@ function Test-PlayerCharacterPUAssignment {
         }
     }
 
-    # Stale detection: headers in pu-sessions.md that no longer match any
+    # Stale detection: headers in pu-sessions.json that no longer match any
     # repository session (renamed, deleted, or manually corrupted entries)
     $Config = Get-AdminConfig
-    $PUSessionsPath = [System.IO.Path]::Combine($Config.ResDir, 'pu-sessions.md')
+    $PUSessionsPath = [System.IO.Path]::Combine($Config.ResDir, 'pu-sessions.json')
     $HistoryHeaders = Get-AdminHistoryEntries -Path $PUSessionsPath
 
     if ($HistoryHeaders.Count -gt 0) {
@@ -265,7 +265,7 @@ function Test-PlayerCharacterPUAssignment {
             if (-not $KnownHeaders.Contains($HistoryHeader)) {
                 $StaleHistoryEntries.Add([PSCustomObject]@{
                     Header = $HistoryHeader
-                    Issue  = "Header in pu-sessions.md not found in any repository session"
+                    Issue  = "Header in pu-sessions.json not found in any repository session"
                 })
             }
         }

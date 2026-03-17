@@ -70,13 +70,49 @@ function Invoke-MigrationPhase0 {
     # Step 3: Verify PU state file exists
     Write-Step -Number 3 -Text 'Sprawdzanie pliku stanu PU...'
     $PUStatePath = [System.IO.Path]::Combine($RepoRoot, '.robot', 'res', 'pu-sessions.md')
-    if ([System.IO.File]::Exists($PUStatePath)) {
+    $PUJsonPath = [System.IO.Path]::Combine($RepoRoot, '.robot', 'res', 'pu-sessions.json')
+    if ([System.IO.File]::Exists($PUJsonPath)) {
+        Write-StepOK "Plik pu-sessions.json już istnieje"
+        Update-PhaseChecklist -State $State -Phase 0 -Item 'PUStateFileExists' -Value $true
+        Update-PhaseChecklist -State $State -Phase 0 -Item 'PUStateJsonConverted' -Value $true
+    } elseif ([System.IO.File]::Exists($PUStatePath)) {
         $LineCount = [System.IO.File]::ReadAllLines($PUStatePath).Count
         Write-StepOK "Plik pu-sessions.md istnieje ($LineCount linii)"
         Update-PhaseChecklist -State $State -Phase 0 -Item 'PUStateFileExists' -Value $true
+
+        # Step 3b: Convert PU state file from Markdown to JSON
+        Write-Step -Number '3b' -Text 'Konwersja pu-sessions.md → pu-sessions.json...'
+        . ([System.IO.Path]::Combine($PSScriptRoot, '..', 'private', 'admin-state.ps1'))
+        $ConvertOK = Convert-PUHistoryToJson -SourcePath $PUStatePath -TargetPath $PUJsonPath
+        if ($ConvertOK) {
+            Write-StepOK "Skonwertowano pu-sessions.md do JSON"
+            Update-PhaseChecklist -State $State -Phase 0 -Item 'PUStateJsonConverted' -Value $true
+        } else {
+            Write-StepError "Konwersja pu-sessions.md nie powiodła się"
+            $AllOK = $false
+        }
     } else {
-        Write-StepWarning 'Plik pu-sessions.md nie istnieje (zostanie utworzony automatycznie przy pierwszym przydziale PU)'
+        Write-StepWarning 'Plik pu-sessions.json nie istnieje (zostanie utworzony automatycznie przy pierwszym przydziale PU)'
         Update-PhaseChecklist -State $State -Phase 0 -Item 'PUStateFileExists' -Value $false
+    }
+
+    # Step 3c: Convert Discord delivery state file
+    $DiscordMdPath = [System.IO.Path]::Combine($RepoRoot, '.robot', 'res', 'discord-delivery.md')
+    $DiscordJsonPath = [System.IO.Path]::Combine($RepoRoot, '.robot', 'res', 'discord-delivery.json')
+    if ([System.IO.File]::Exists($DiscordMdPath) -and -not [System.IO.File]::Exists($DiscordJsonPath)) {
+        Write-Step -Number '3c' -Text 'Konwersja discord-delivery.md → discord-delivery.json...'
+        . ([System.IO.Path]::Combine($PSScriptRoot, '..', 'private', 'discord-state.ps1'))
+        $ConvertOK = Convert-DiscordDeliveryToJson -SourcePath $DiscordMdPath -TargetPath $DiscordJsonPath
+        if ($ConvertOK) {
+            Write-StepOK "Skonwertowano discord-delivery.md do JSON"
+            Update-PhaseChecklist -State $State -Phase 0 -Item 'DiscordStateJsonConverted' -Value $true
+        } else {
+            Write-StepError "Konwersja discord-delivery.md nie powiodła się"
+            $AllOK = $false
+        }
+    } elseif ([System.IO.File]::Exists($DiscordJsonPath)) {
+        Write-StepOK "Plik discord-delivery.json już istnieje"
+        Update-PhaseChecklist -State $State -Phase 0 -Item 'DiscordStateJsonConverted' -Value $true
     }
 
     # Step 4: Verify submodule registration

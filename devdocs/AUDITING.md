@@ -11,7 +11,7 @@ Five read-only audit/reporting functions in `public/reporting/`:
 | `Get-EntityHistory` | `get-entityhistory.ps1` | Unified timeline of a single entity's changes |
 | `Get-ChangeLog` | `get-changelog.ps1` | Cross-entity `@Zmiany` extraction from sessions |
 | `Get-TransactionLedger` | `get-transactionledger.ps1` | `@Transfer` directive ledger with running balance |
-| `Get-PUAssignmentLog` | `get-puassignmentlog.ps1` | Structured parse of `pu-sessions.md` state file |
+| `Get-PUAssignmentLog` | `get-puassignmentlog.ps1` | Structured parse of `pu-sessions.json` state file |
 | `Get-NotificationLog` | `get-notificationlog.ps1` | `@Intel` directive extraction from sessions |
 
 All functions are read-only. None modify entity files, session files, or state files.
@@ -196,13 +196,13 @@ Edge cases:
 
 | Parameter | Type | Mandatory | Description |
 |---|---|---|---|
-| `Path` | string | No | Path to the PU sessions state file. Default: `<CWD>/.robot/res/pu-sessions.md` |
+| `Path` | string | No | Path to the PU sessions state file. Default: `<CWD>/.robot/res/pu-sessions.json` |
 | `MinDate` | datetime | No | Filter runs by `ProcessedAt` timestamp |
 | `MaxDate` | datetime | No | Filter runs by `ProcessedAt` timestamp |
 
 Algorithm:
 
-1. Default `$Path` to `Join-Path (Get-Location) '.robot/res/pu-sessions.md'`
+1. Default `$Path` to `Join-Path (Get-Location) '.robot/res/pu-sessions.json'`
 2. Read file via `[System.IO.File]::ReadAllText()` (UTF-8 no BOM)
 3. Line-by-line parsing with two precompiled regex patterns: timestamp line `^\s*-\s+(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2})\s+\(([^)]+)\):\s*$` (captures datetime and timezone) and session header line `^\s+-\s+###\s+(.+)$` (reuses `$script:HistoryEntryPattern` from `admin-state.ps1`)
 4. Groups session headers under their preceding timestamp
@@ -367,5 +367,5 @@ Fixture files used:
 - [CURRENCY.md](CURRENCY.md) — Currency reporting and reconciliation
 - [PU.md](PU.md) — PU assignment pipeline and diagnostic validation
 - [STRUCTURES.md](STRUCTURES.md) — Canonical data structure reference (audit report output shapes)
-- [CONFIG-STATE.md](CONFIG-STATE.md) — State file formats (pu-sessions.md)
+- [CONFIG-STATE.md](CONFIG-STATE.md) — State file formats (pu-sessions.json)
 - [DISCORD.md](DISCORD.md) — Discord delivery tracking and state file

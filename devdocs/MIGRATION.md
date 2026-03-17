@@ -192,7 +192,7 @@ Pipeline (`Invoke-PlayerCharacterPUAssignment`):
 
 1. Date range — `Year`/`Month` -> first/last day of month. Default: 2-month lookback.
 2. Git optimization — `Get-GitChangeLog -NoPatch` pre-filters to `.md` files changed in range, passed to `Get-Session -File`. Falls back to full scan on failure.
-3. Session filtering — select sessions with PU entries, exclude already-processed headers from `.robot/res/pu-sessions.md` via `Get-AdminHistoryEntries`.
+3. Session filtering — select sessions with PU entries, exclude already-processed headers from `.robot/res/pu-sessions.json` via `Get-AdminHistoryEntries`.
 4. Character resolution — `Get-PlayerCharacter` (merges Gracze.md + entities.md). Fail-early: throws `UnresolvedPUCharacters` error (with structured `TargetObject`) if any PU character name cannot be resolved.
 5. PU computation (per character):
    ```
@@ -205,9 +205,9 @@ Pipeline (`Invoke-PlayerCharacterPUAssignment`):
 6. Side effects (switch-gated):
    - `-UpdatePlayerCharacters` — `Set-PlayerCharacter` with PUSum, PUTaken, PUExceeded.
    - `-SendToDiscord` — grouped per player, sent via `Send-DiscordMessage` (username: `Bothen`).
-   - `-AppendToLog` — `Add-AdminHistoryEntry` to `pu-sessions.md`.
+   - `-AppendToLog` — `Add-AdminHistoryEntry` to `pu-sessions.json`.
 
-Diagnostics (`Test-PlayerCharacterPUAssignment`) runs the PU pipeline in compute-only mode (`-WhatIf`). Catches `UnresolvedPUCharacters` errors and extracts `TargetObject`. Reports: unresolved character names, malformed (null) PU values, duplicate PU entries (same character, same session), failed sessions with PU content (silently dropped by normal pipeline), and stale history entries (headers in `pu-sessions.md` not matching any repository session).
+Diagnostics (`Test-PlayerCharacterPUAssignment`) runs the PU pipeline in compute-only mode (`-WhatIf`). Catches `UnresolvedPUCharacters` errors and extracts `TargetObject`. Reports: unresolved character names, malformed (null) PU values, duplicate PU entries (same character, same session), failed sessions with PU content (silently dropped by normal pipeline), and stale history entries (headers in `pu-sessions.json` not matching any repository session).
 
 Returns structured `[PSCustomObject]@{ OK; UnresolvedCharacters; MalformedPU; DuplicateEntries; FailedSessionsWithPU; StaleHistoryEntries; AssignmentResults }`.
 

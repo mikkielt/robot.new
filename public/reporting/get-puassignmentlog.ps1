@@ -3,36 +3,31 @@
     Parses the PU assignment state file into structured processing history.
 
     .DESCRIPTION
-    Reads the append-only pu-sessions.md state file and returns structured
+    Reads the JSON pu-sessions.json state file and returns structured
     objects showing when PU was processed and which sessions were included
     in each run.
 
     Module-level data:
-    - $script:AdminHistoryTimestampPattern: precompiled regex from admin-state.ps1
-      that matches timestamp header lines in the state file
-    - $script:HistoryEntryPattern: precompiled regex from admin-state.ps1 that
-      matches session header entries under each timestamp
     - $script:MultiSpacePattern: precompiled regex from admin-state.ps1 for
       normalizing multiple consecutive spaces in header text
 
     Pipeline:
-    1. Read pu-sessions.md as raw text (UTF-8 no BOM) and split into lines
-    2. Stream-parse lines: timestamp headers start new entries, indented
-       lines with list markers are session headers belonging to the current entry
-    3. Parse each session header into structured Date/Title/Narrator fields
-       by splitting on comma separators
-    4. Apply ProcessedAt date range filters (MinDate/MaxDate)
-    5. Sort descending by ProcessedAt (most recent first) for display
+    1. Read pu-sessions.json via Read-JsonStateFile (returns $null on missing
+       or corrupt file — both treated as empty history).
+    2. Iterate runs array; parse each run's processedAt ISO timestamp.
+       Handles PowerShell's auto-conversion of ISO strings to DateTime on
+       some PS versions by checking the runtime type before parsing.
+    3. Decompose each session header into Date/Title/Narrator fields
+       by splitting on comma separators (header format: "YYYY-MM-DD, Title, Narrator").
+    4. Apply ProcessedAt date range filters (MinDate/MaxDate).
+    5. Sort descending by ProcessedAt (most recent first) for display.
 
-    The state file is append-only: each PU assignment run appends a timestamp
-    header followed by the session headers that were processed. This function
-    reconstructs the full history by scanning all entries.
+    Returns: array of PSCustomObject with ProcessedAt (DateTime),
+    Timezone (string), SessionCount (int), Sessions (array of
+    PSCustomObject with Header/Date/Title/Narrator).
 #>
 
 . "$script:ModuleRoot/private/admin-state.ps1"
-
-# $script:AdminHistoryTimestampPattern — canonical definition in private/admin-state.ps1
-# (loaded via the dot-source above)
 
 function Get-PUAssignmentLog {
     <#
@@ -60,7 +55,7 @@ function Get-PUAssignmentLog {
 
     if (-not $Path) {
         $Config = Get-AdminConfig
-        $Path = [System.IO.Path]::Combine($Config.ResDir, 'pu-sessions.md')
+        $Path = [System.IO.Path]::Combine($Config.ResDir, 'pu-sessions.json')
     }
 
     if (-not [System.IO.File]::Exists($Path)) {
@@ -68,78 +63,53 @@ function Get-PUAssignmentLog {
         return @()
     }
 
-    $UTF8NoBOM = [System.Text.UTF8Encoding]::new($false)
-    $Content = [System.IO.File]::ReadAllText($Path, $UTF8NoBOM)
-    $Lines = $Content.Split([string[]]@("`r`n", "`n"), [System.StringSplitOptions]::None)
+    $State = Read-JsonStateFile -Path $Path
+    if ($null -eq $State -or -not $State.runs) {
+        return @()
+    }
 
     $Entries = [System.Collections.Generic.List[object]]::new()
-    $CurrentTimestamp = $null
-    $CurrentTimezone = $null
-    $CurrentHeaders = $null
-
-    foreach ($Line in $Lines) {
-        # Timestamp lines delimit PU processing runs in the state file
-        $TsMatch = $script:AdminHistoryTimestampPattern.Match($Line)
-        if ($TsMatch.Success) {
-            # Emit completed entry before starting a new one
-            if ($null -ne $CurrentTimestamp -and $null -ne $CurrentHeaders) {
-                $Entries.Add([PSCustomObject]@{
-                    ProcessedAt  = $CurrentTimestamp
-                    Timezone     = $CurrentTimezone
-                    SessionCount = $CurrentHeaders.Count
-                    Sessions     = @($CurrentHeaders)
-                })
-            }
-
-            # Start a new processing run entry
-            $TsStr = $TsMatch.Groups[1].Value
-            $CurrentTimezone = $TsMatch.Groups[2].Value
-            $CurrentTimestamp = [datetime]::ParseExact($TsStr, 'yyyy-MM-dd HH:mm', [System.Globalization.CultureInfo]::InvariantCulture)
-            $CurrentHeaders = [System.Collections.Generic.List[object]]::new()
-            continue
+    foreach ($Run in @($State.runs)) {
+        # ConvertFrom-Json auto-converts ISO timestamps to DateTime on some PS versions
+        $TsRaw = $Run.processedAt
+        $Timestamp = if ($TsRaw -is [datetime]) {
+            $TsRaw
+        } else {
+            [datetime]::ParseExact($TsRaw, 'yyyy-MM-ddTHH:mm:ss',
+                [System.Globalization.CultureInfo]::InvariantCulture)
         }
 
-        # Session header lines are indented list items under the current timestamp
-        $HdrMatch = $script:HistoryEntryPattern.Match($Line)
-        if ($HdrMatch.Success -and $null -ne $CurrentHeaders) {
-            $Header = $HdrMatch.Groups[1].Value.Trim()
-            $Header = $script:MultiSpacePattern.Replace($Header, ' ')
+        $SessionHeaders = [System.Collections.Generic.List[object]]::new()
+        foreach ($Header in @($Run.sessions)) {
+            $Normalized = $Header.Trim()
+            $Normalized = $script:MultiSpacePattern.Replace($Normalized, ' ')
+            if ($Normalized.Length -eq 0) { continue }
 
-            if ($Header.Length -eq 0) { continue }
-
-            # Decompose header into Date/Title/Narrator components
-            $Parts = $Header.Split(',')
+            $Parts = $Normalized.Split(',')
             $SessionDate = $null
             $SessionTitle = $null
             $SessionNarrator = $null
-
             if ($Parts.Count -ge 1) {
                 $DateStr = $Parts[0].Trim()
-                try { $SessionDate = [datetime]::ParseExact($DateStr, 'yyyy-MM-dd', [System.Globalization.CultureInfo]::InvariantCulture) } catch {}
+                try { $SessionDate = [datetime]::ParseExact($DateStr, 'yyyy-MM-dd',
+                    [System.Globalization.CultureInfo]::InvariantCulture) } catch {}
             }
-            if ($Parts.Count -ge 2) {
-                $SessionTitle = $Parts[1].Trim()
-            }
-            if ($Parts.Count -ge 3) {
-                $SessionNarrator = $Parts[2].Trim()
-            }
+            if ($Parts.Count -ge 2) { $SessionTitle = $Parts[1].Trim() }
+            if ($Parts.Count -ge 3) { $SessionNarrator = $Parts[2].Trim() }
 
-            $CurrentHeaders.Add([PSCustomObject]@{
-                Header   = $Header
+            [void]$SessionHeaders.Add([PSCustomObject]@{
+                Header   = $Normalized
                 Date     = $SessionDate
                 Title    = $SessionTitle
                 Narrator = $SessionNarrator
             })
         }
-    }
 
-    # Flush last entry
-    if ($null -ne $CurrentTimestamp -and $null -ne $CurrentHeaders) {
-        $Entries.Add([PSCustomObject]@{
-            ProcessedAt  = $CurrentTimestamp
-            Timezone     = $CurrentTimezone
-            SessionCount = $CurrentHeaders.Count
-            Sessions     = @($CurrentHeaders)
+        [void]$Entries.Add([PSCustomObject]@{
+            ProcessedAt  = $Timestamp
+            Timezone     = $Run.timezone
+            SessionCount = $SessionHeaders.Count
+            Sessions     = @($SessionHeaders)
         })
     }
 

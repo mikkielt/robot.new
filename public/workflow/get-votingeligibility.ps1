@@ -5,12 +5,11 @@
     .DESCRIPTION
     This file contains Get-VotingEligibility — a read-only function that
     determines player voting eligibility by replaying PU computation over
-    actual PU assignment runs recorded in pu-sessions.md.
+    actual PU assignment runs recorded in pu-sessions.json.
 
-    Unlike the legacy Get-ElectionPlayerList which used raw session dates
-    for its 6-month window, this function scopes activity to the actual
-    PU assignment process by:
-    1. Parsing pu-sessions.md processing timestamps to identify runs.
+    Scopes activity to the actual PU assignment process rather than raw
+    session dates by:
+    1. Parsing pu-sessions.json processing timestamps to identify runs.
     2. Filtering to runs whose processing date falls within the lookback.
     3. Grouping runs by calendar month and merging into monthly batches.
     4. Deriving the narrowest date range from session headers to minimize
@@ -29,22 +28,11 @@
     CLI and reports), then alphabetically within each group.
 
     Module-level data:
-    - $script:HistorySessionPattern: precompiled regex for "    - ### header" lines
     - $script:SessionHeaderDatePattern: precompiled regex for YYYY-MM-DD prefix extraction
-    - $script:AdminHistoryTimestampPattern: canonical definition in admin-state.ps1
 #>
 
 . "$script:ModuleRoot/private/admin-state.ps1"
 . "$script:ModuleRoot/private/admin-config.ps1"
-
-# $script:AdminHistoryTimestampPattern — canonical definition in private/admin-state.ps1
-# (loaded via the dot-source above)
-
-# Precompiled pattern for session header lines: "    - ### header"
-$script:HistorySessionPattern = [regex]::new(
-    '^\s+-\s+###\s+(.+)$',
-    [System.Text.RegularExpressions.RegexOptions]::Compiled
-)
 
 # Precompiled pattern for extracting date from session header: "YYYY-MM-DD, ..."
 $script:SessionHeaderDatePattern = [regex]::new(
@@ -76,62 +64,46 @@ function Get-VotingEligibility {
 
     $Config = Get-AdminConfig
 
-    # --- 1. Parse pu-sessions.md into timestamped run blocks ---
-    # Each block starts with a timestamp line and contains indented session headers.
+    # --- 1. Parse pu-sessions.json into timestamped run blocks ---
 
-    $PUSessionsPath = [System.IO.Path]::Combine($Config.ResDir, 'pu-sessions.md')
+    $PUSessionsPath = [System.IO.Path]::Combine($Config.ResDir, 'pu-sessions.json')
 
     if (-not [System.IO.File]::Exists($PUSessionsPath)) {
-        Write-RobotInfo "[INFO Get-VotingEligibility] No pu-sessions.md found at '$PUSessionsPath'"
+        Write-RobotInfo "[INFO Get-VotingEligibility] No pu-sessions.json found at '$PUSessionsPath'"
         return @()
     }
 
-    $UTF8NoBOM = [System.Text.UTF8Encoding]::new($false)
-    $Content = [System.IO.File]::ReadAllText($PUSessionsPath, $UTF8NoBOM)
-    $Lines = $Content.Split([string[]]@("`r`n", "`n"), [System.StringSplitOptions]::None)
-
-    $Runs = [System.Collections.Generic.List[object]]::new()
-    $CurrentTimestamp = $null
-    $CurrentHeaders = $null
-
-    foreach ($Line in $Lines) {
-        $TsMatch = $script:AdminHistoryTimestampPattern.Match($Line)
-        if ($TsMatch.Success) {
-            if ($null -ne $CurrentTimestamp -and $CurrentHeaders.Count -gt 0) {
-                [void]$Runs.Add([PSCustomObject]@{
-                    Timestamp = $CurrentTimestamp
-                    Headers   = $CurrentHeaders
-                })
-            }
-
-            $DateStr = $TsMatch.Groups[1].Value
-            $CurrentTimestamp = [datetime]::ParseExact(
-                $DateStr, 'yyyy-MM-dd HH:mm',
-                [System.Globalization.CultureInfo]::InvariantCulture
-            )
-            $CurrentHeaders = [System.Collections.Generic.List[string]]::new()
-            continue
-        }
-
-        $HeaderMatch = $script:HistorySessionPattern.Match($Line)
-        if ($HeaderMatch.Success -and $null -ne $CurrentHeaders) {
-            $Header = $HeaderMatch.Groups[1].Value.Trim()
-            if ($Header.Length -gt 0) {
-                [void]$CurrentHeaders.Add($Header)
-            }
-        }
+    $State = Read-JsonStateFile -Path $PUSessionsPath
+    if ($null -eq $State -or -not $State.runs) {
+        Write-RobotInfo "[INFO Get-VotingEligibility] No PU assignment runs found in pu-sessions.json"
+        return @()
     }
 
-    # Flush last block
-    if ($null -ne $CurrentTimestamp -and $null -ne $CurrentHeaders -and $CurrentHeaders.Count -gt 0) {
-        [void]$Runs.Add([PSCustomObject]@{
-            Timestamp = $CurrentTimestamp
-            Headers   = $CurrentHeaders
-        })
+    $Runs = [System.Collections.Generic.List[object]]::new()
+    foreach ($Run in @($State.runs)) {
+        # ConvertFrom-Json auto-converts ISO timestamps to DateTime on some PS versions
+        $TsRaw = $Run.processedAt
+        $Timestamp = if ($TsRaw -is [datetime]) {
+            $TsRaw
+        } else {
+            [datetime]::ParseExact($TsRaw, 'yyyy-MM-ddTHH:mm:ss',
+                [System.Globalization.CultureInfo]::InvariantCulture)
+        }
+        $Headers = [System.Collections.Generic.List[string]]::new()
+        foreach ($Session in @($Run.sessions)) {
+            $Trimmed = $Session.Trim()
+            if ($Trimmed.Length -gt 0) { [void]$Headers.Add($Trimmed) }
+        }
+        if ($Headers.Count -gt 0) {
+            [void]$Runs.Add([PSCustomObject]@{
+                Timestamp = $Timestamp
+                Headers   = $Headers
+            })
+        }
     }
 
     if ($Runs.Count -eq 0) {
-        Write-RobotInfo "[INFO Get-VotingEligibility] No PU assignment runs found in pu-sessions.md"
+        Write-RobotInfo "[INFO Get-VotingEligibility] No PU assignment runs found in pu-sessions.json"
         return @()
     }
 

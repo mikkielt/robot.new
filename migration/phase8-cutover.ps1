@@ -271,7 +271,7 @@ function Invoke-MigrationPhase8 {
             'Wykona pełny przydział PU za bieżący miesiąc:',
             '- zaktualizuje pliki postaci (Postaci/Gracze/*.md)',
             '- wyśle powiadomienia Discord do graczy',
-            '- dopisze wpis do logu PU (.robot/res/pu-sessions.md)',
+            '- dopisze wpis do logu PU (.robot/res/pu-sessions.json)',
             '',
             'Tak = wykonaj przydział PU i wyślij powiadomienia',
             'Nie = pomiń, przydział PU można wykonać później ręcznie'

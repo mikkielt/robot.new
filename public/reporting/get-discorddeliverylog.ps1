@@ -4,7 +4,7 @@
 
     .DESCRIPTION
     This file contains Get-DiscordDeliveryLog which reads and filters the
-    Discord delivery state file (.robot/res/discord-delivery.md).
+    Discord delivery state file (.robot/res/discord-delivery.json).
 
     Complements Get-NotificationLog (which shows notification intent from
     @Intel directives) with actual delivery status from Send-DiscordMessage
@@ -61,7 +61,7 @@ function Get-DiscordDeliveryLog {
 
     if (-not $Path) {
         $Config = Get-AdminConfig
-        $Path = [System.IO.Path]::Combine($Config.ResDir, 'discord-delivery.md')
+        $Path = [System.IO.Path]::Combine($Config.ResDir, 'discord-delivery.json')
     }
 
     if (-not [System.IO.File]::Exists($Path)) {

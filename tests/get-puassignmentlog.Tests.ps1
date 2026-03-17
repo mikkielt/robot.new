@@ -16,7 +16,7 @@ BeforeAll {
 
 Describe 'Get-PUAssignmentLog' {
     BeforeAll {
-        $script:SamplePath = Join-Path $script:FixturesRoot 'pu-sessions-sample.md'
+        $script:SamplePath = Join-Path $script:FixturesRoot 'pu-sessions-sample.json'
     }
 
     It 'returns structured entries from state file' {
@@ -99,14 +99,14 @@ Describe 'Get-PUAssignmentLog' {
     }
 
     It 'returns empty array for nonexistent file' {
-        $Result = Get-PUAssignmentLog -Path '/nonexistent/path/pu-sessions.md'
+        $Result = Get-PUAssignmentLog -Path '/nonexistent/path/pu-sessions.json'
         $Result.Count | Should -Be 0
     }
 
     It 'handles empty file gracefully' {
         $TempDir = New-TestTempDir
-        $EmptyFile = Join-Path $TempDir 'empty-pu.md'
-        Write-TestFile -Path $EmptyFile -Content '# Empty PU log'
+        $EmptyFile = Join-Path $TempDir 'empty-pu.json'
+        Save-JsonStateFile -Path $EmptyFile -Data ([ordered]@{ version = 2; runs = @() })
         $Result = Get-PUAssignmentLog -Path $EmptyFile
         $Result.Count | Should -Be 0
         Remove-TestTempDir

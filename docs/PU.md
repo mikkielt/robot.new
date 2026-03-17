@@ -17,7 +17,7 @@ The Player receives a Discord notification confirming awarded PU, current totals
 - Session files with proper headers (`### YYYY-MM-DD, Title, Narrator`) containing PU entries
 - Character roster with registered names and aliases (maintained in the entity store)
 - Player webhook addresses for Discord notifications (optional but recommended)
-- Processing history (`pu-sessions.md`) — maintained automatically, prevents double-counting
+- Processing history (`pu-sessions.json`) — maintained automatically, prevents double-counting
 
 ## Step-by-Step Flow
 
@@ -104,7 +104,7 @@ The diagnostic produces a clear pass/fail result. If any issue is found, the Coo
 
 ## Audit Trail
 
-- Processing log (`pu-sessions.md`) — each run appends a timestamped block listing which sessions were counted, used to prevent double-counting and to verify what was processed
+- Processing log (`pu-sessions.json`) — each run appends a timestamped block listing which sessions were counted, used to prevent double-counting and to verify what was processed
 - Entity store changes — all PU updates are committed to the repository, providing a full Git history of every value change
 - Discord notifications — each player receives a message confirming exact amounts, serving as a receipt
 - Diagnostic reports — structured validation results confirming data quality before and after processing

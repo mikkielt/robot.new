@@ -16,7 +16,7 @@
        Falls back to full directory scan if git optimization fails.
     3. Filter to sessions with PU entries.
     4. Exclude already-processed session headers via Get-AdminHistoryEntries
-       (pu-sessions.md tracks processed headers to prevent double-awarding).
+       (pu-sessions.json tracks processed headers to prevent double-awarding).
     5. Resolve characters via Get-PlayerCharacter (merges Gracze.md +
        entities.md). Includes alias expansion for name matching.
     6. Fail-early: ALL character names must resolve before any writes. Partial
@@ -36,9 +36,9 @@
     Side effects (all switch-gated, all ShouldProcess-guarded):
     - -UpdatePlayerCharacters: writes PU values to entities.md via Set-PlayerCharacter
     - -SendToDiscord: sends PU notification messages via player webhooks;
-      logs each delivery (success/failure) to discord-delivery.md via
+      logs each delivery (success/failure) to discord-delivery.json via
       Add-DiscordDeliveryEntry for retry and audit visibility
-    - -AppendToLog: records processed session headers to pu-sessions.md
+    - -AppendToLog: records processed session headers to pu-sessions.json
     - -ReconcileCurrency: runs currency reconciliation checks
 
     Module-level data:
@@ -78,7 +78,7 @@ function Invoke-PlayerCharacterPUAssignment {
         [Parameter(HelpMessage = "Send PU notification messages to Discord via player webhooks")]
         [switch]$SendToDiscord,
 
-        [Parameter(HelpMessage = "Append processed session headers to pu-sessions.md history")]
+        [Parameter(HelpMessage = "Append processed session headers to pu-sessions.json history")]
         [switch]$AppendToLog,
 
         [Parameter(HelpMessage = "Run currency reconciliation checks after PU calculation")]
@@ -171,16 +171,16 @@ function Invoke-PlayerCharacterPUAssignment {
         return @()
     }
 
-    # pu-sessions.md tracks processed headers to prevent double-awarding
-    $PUSessionsPath = [System.IO.Path]::Combine($Config.ResDir, 'pu-sessions.md')
-    $DiscordLogPath = [System.IO.Path]::Combine($Config.ResDir, 'discord-delivery.md')
+    # pu-sessions.json tracks processed headers to prevent double-awarding
+    $PUSessionsPath = [System.IO.Path]::Combine($Config.ResDir, 'pu-sessions.json')
+    $DiscordLogPath = [System.IO.Path]::Combine($Config.ResDir, 'discord-delivery.json')
     $ProcessedHeaders = Get-AdminHistoryEntries -Path $PUSessionsPath
 
     $NewSessions = [System.Collections.Generic.List[object]]::new()
     foreach ($Session in $SessionsWithPU) {
         $NormalizedHeader = $Session.Header.Trim()
         $NormalizedHeader = $script:MultiSpacePattern.Replace($NormalizedHeader, ' ')
-        # Compare without "### " prefix — pu-sessions.md stores bare headers
+        # Compare without "### " prefix — pu-sessions.json stores bare headers
         $CompareHeader = if ($NormalizedHeader.StartsWith('### ')) { $NormalizedHeader.Substring(4) } else { $NormalizedHeader }
 
         if (-not $ProcessedHeaders.Contains($CompareHeader) -and -not $ProcessedHeaders.Contains($NormalizedHeader)) {

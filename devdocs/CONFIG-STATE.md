@@ -104,33 +104,45 @@ Functions:
 | `Get-AdminHistoryEntries` | Reads processed session headers from a state file |
 | `Add-AdminHistoryEntry` | Appends new entries with timestamp |
 
-State files are append-only Markdown files in `.robot/res/`:
+State files are JSON files in `.robot/res/`:
 
-```markdown
-W tym pliku znajduje się lista sesji przetworzonych przez system.
-
-## Historia
-
-- 2025-06-15 14:30 (UTC+02:00):
-    - ### 2025-06-01, Session Title, Narrator
-    - ### 2025-06-08, Another Session, Narrator
-- 2025-07-15 10:00 (UTC+02:00):
-    - ### 2025-07-01, July Session, Narrator
+```json
+{
+  "runs": [
+    {
+      "timestamp": "2025-06-15 14:30 (UTC+02:00)",
+      "sessions": [
+        "2025-06-01, Session Title, Narrator",
+        "2025-06-08, Another Session, Narrator"
+      ]
+    },
+    {
+      "timestamp": "2025-07-15 10:00 (UTC+02:00)",
+      "sessions": [
+        "2025-07-01, July Session, Narrator"
+      ]
+    }
+  ]
+}
 ```
 
-`Get-AdminHistoryEntries` parses entry lines matching the precompiled pattern `^\s+-\s+###\s+(.+)$`. The normalization pipeline: (1) Trim leading/trailing whitespace. (2) Collapse multiple spaces to single space (via precompiled `\s{2,}` regex). (3) Strip leading `### ` prefix. Output is a `HashSet[string]` with `OrdinalIgnoreCase` comparer for O(1) membership testing. Both stripped and unstripped forms are available for comparison. The hash set provides efficient deduplication lookups when filtering sessions in the PU pipeline.
+`Get-AdminHistoryEntries` reads the JSON runs array and extracts all session header strings. The normalization pipeline: (1) Trim leading/trailing whitespace. (2) Collapse multiple spaces to single space (via precompiled `\s{2,}` regex). (3) Strip leading `### ` prefix. Output is a `HashSet[string]` with `OrdinalIgnoreCase` comparer for O(1) membership testing. Both stripped and unstripped forms are available for comparison. The hash set provides efficient deduplication lookups when filtering sessions in the PU pipeline.
 
-`Add-AdminHistoryEntry` appends new entries with a timestamped header:
+`Add-AdminHistoryEntry` appends a new run object with a timestamped entry:
 
-```markdown
-- YYYY-MM-dd HH:mm (UTC±HH:MM):
-    - ### session header 1
-    - ### session header 2
+```json
+{
+  "timestamp": "YYYY-MM-dd HH:mm (UTC±HH:MM)",
+  "sessions": [
+    "session header 1",
+    "session header 2"
+  ]
+}
 ```
 
-Timestamp format uses `DateTimeOffset.Now` for timezone-aware timestamps. Handles negative UTC offsets. Session headers are sorted chronologically using `[StringComparer]::Ordinal` (works because headers start with `YYYY-MM-DD`). The `### ` prefix is added automatically if not already present. If the state file doesn't exist, it is created with a preamble. Parent directory is created if missing.
+Timestamp format uses `DateTimeOffset.Now` for timezone-aware timestamps. Handles negative UTC offsets. Session headers are sorted chronologically using `[StringComparer]::Ordinal` (works because headers start with `YYYY-MM-DD`). The `### ` prefix is stripped before storage. If the state file doesn't exist, it is created with an empty `runs` array. Parent directory is created if missing.
 
-State file location: `$Config.ResDir` resolves to `<RepoRoot>/.robot/res/pu-sessions.md`. This is separate from the module directory (`.robot.new/`) and lives in `.robot/res/` for historical compatibility with the legacy system.
+State file location: `$Config.ResDir` resolves to `<RepoRoot>/.robot/res/pu-sessions.json`. This is separate from the module directory (`.robot.new/`) and lives in `.robot/res/` for historical compatibility with the legacy system.
 
 ---
 
@@ -324,7 +336,7 @@ Loaded via `Import-PowerShellDataFile` with error handling. Missing file is not 
 | `tests/get-reporoot.Tests.ps1` | `Get-ParentRepoRoot` (submodule boundary traversal) |
 | `tests/operation-context.Tests.ps1` | Accumulator lifecycle, change/warning/file tracking, `New-OperationResult` drain |
 
-Fixtures: `local.config.psd1`, `pu-sessions.md`, template files in `tests/fixtures/templates/`.
+Fixtures: `local.config.psd1`, `pu-sessions.json`, template files in `tests/fixtures/templates/`.
 
 ---
 
