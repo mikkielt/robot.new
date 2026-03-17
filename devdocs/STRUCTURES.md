@@ -1033,6 +1033,7 @@ Scalar comparison uses `OrdinalIgnoreCase` with null→empty normalization. Mult
 
 ## Related Documents
 
+- [MODEL.md](MODEL.md) — Repository layout, data flow, merge rules, cache architecture
 - [ENTITIES.md](ENTITIES.md) — Entity parsing, tags, temporal scoping, multi-file merge
 - [SESSIONS.md](SESSIONS.md) — Session parsing, format detection, metadata extraction
 - [CHARFILE.md](CHARFILE.md) — Character file parsing and section management

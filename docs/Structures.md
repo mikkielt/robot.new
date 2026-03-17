@@ -208,6 +208,7 @@ After reading this guide, you should understand what information the system reco
 
 ## Related Documents
 
+- [Model.md](Model.md) — Repository layout and how data sources connect
 - [World-State.md](World-State.md) — Managing entities and world state
 - [Sessions.md](Sessions.md) — Recording sessions and directives
 - [Players.md](Players.md) — Player and character management
