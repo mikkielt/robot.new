@@ -16,8 +16,8 @@
     5. POST via HttpClient with application/json content type.
     6. Return structured result with Webhook, StatusCode, Success, WhatIf fields.
 
-    No retry logic at this level — retry and delivery tracking are handled
-    by the queue system (Invoke-DiscordMessageQueue, Phase 3).
+    Delivery tracking is handled by callers via Add-DiscordDeliveryEntry
+    (private/discord-state.ps1). See devdocs/DISCORD.md.
 
     HttpClient, ByteArrayContent, and Response are disposed in a finally block
     to prevent socket exhaustion during batch sends.

@@ -116,6 +116,7 @@ Name resolution, validation, report, and workflow endpoints:
 | GET | `/reports/location-graph` | `Invoke-ApiGetLocationGraph` | Location topology |
 | GET | `/reports/pu-log` | `Invoke-ApiGetPuLog` | PU processing history |
 | GET | `/reports/notifications` | `Invoke-ApiGetNotifications` | Notification audit log |
+| GET | `/reports/discord-delivery` | `Invoke-ApiGetDeliveryLog` | Discord webhook delivery history |
 | POST | `/workflow/session-graph` | `Invoke-ApiRebuildSessionGraph` | Rebuild session graph index |
 | POST | `/workflow/session-hash` | `Invoke-ApiUpdateSessionHash` | Update session content hashes |
 

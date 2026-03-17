@@ -4,7 +4,7 @@
 
 ## Scope
 
-This document covers `Send-DiscordMessage` (webhook sender), PU notification message construction in `Invoke-PlayerCharacterPUAssignment`, and Intel message dispatch via `Resolve-EntityWebhook`.
+This document covers `Send-DiscordMessage` (webhook sender), PU notification message construction in `Invoke-PlayerCharacterPUAssignment`, Intel message dispatch via `Resolve-EntityWebhook`, and delivery tracking via `discord-state.ps1`.
 
 ---
 
@@ -28,11 +28,13 @@ if ($Username) { $Payload.username = $Username }
 $JSON = $Payload | ConvertTo-Json -Compress
 ```
 
-HTTP POST uses `[System.Net.Http.HttpClient]` with UTF-8 encoded `StringContent`:
+HTTP POST uses `[System.Net.Http.HttpClient]` with UTF-8 encoded `ByteArrayContent` (avoids double-encoding from `StringContent`):
 
 ```powershell
-$Content = [System.Net.Http.StringContent]::new($JSON, [System.Text.Encoding]::UTF8, "application/json")
-$Response = $HttpClient.PostAsync($Webhook, $Content).GetAwaiter().GetResult()
+$JsonBytes = [System.Text.Encoding]::UTF8.GetBytes($JSON)
+$Content = [System.Net.Http.ByteArrayContent]::new($JsonBytes)
+$Content.Headers.ContentType = [System.Net.Http.Headers.MediaTypeHeaderValue]::new('application/json')
+$Response = $Client.PostAsync($Webhook, $Content).GetAwaiter().GetResult()
 ```
 
 `.GetAwaiter().GetResult()` provides synchronous execution within PowerShell.
@@ -52,7 +54,7 @@ Return object:
 | `Success` | bool | Whether the message was sent successfully |
 | `WhatIf` | bool | True if this was a preview |
 
-Error handling: URL format is validated before attempting POST. HTTP status code is checked with response body on error. Resource cleanup runs in a `finally` block (`HttpClient`, `StringContent`, `Response` all disposed). Retry logic is delegated to a future queue system.
+Error handling: URL format is validated before attempting POST. HTTP errors throw with the status code and response body in the exception message (format: `"Discord webhook returned HTTP NNN: body"`). Resource cleanup runs in a `finally` block (`HttpClient`, `ByteArrayContent`, `Response` all disposed). Delivery tracking is handled by callers via `Add-DiscordDeliveryEntry` (see Delivery Tracking section below).
 
 ---
 
@@ -98,7 +100,7 @@ Bot username is hardcoded as `"Bothen"` in the PU assignment pipeline. `Get-Admi
 
 Webhook is resolved from `$Items[0].Character.Player.PRFWebhook` (first result's Character -> Player -> PRFWebhook path). If a player has no `PRFWebhook`, the notification is skipped with a `[WARN]` to stderr. Other players' notifications are still sent.
 
-Individual `Send-DiscordMessage` failures are caught and logged to stderr as `[WARN]`. They do not abort the remaining notifications.
+Individual `Send-DiscordMessage` failures are caught and logged to stderr as `[WARN]`. They do not abort the remaining notifications. Both successes and failures are persisted to the delivery state file via `Add-DiscordDeliveryEntry`.
 
 ---
 
@@ -126,12 +128,41 @@ The actual sending is left to the consumer -- `Get-Session` only resolves target
 | Scenario | Behavior |
 |---|---|
 | Invalid webhook URL format | Validation error before POST |
-| HTTP error response | Logged, returns `Success = $false` |
+| HTTP error response | Throws with status code and body in exception message |
 | Player with no webhook | PU still calculated and applied; notification skipped with warning |
 | Character without PlayerName | Skipped in Discord grouping |
 | Multiple characters, same player | Combined into single message |
 | `Send-DiscordMessage` exception | Caught per-player; other notifications continue |
 | `-WhatIf` mode | Returns preview object; no HTTP request made |
+
+---
+
+## Delivery Tracking
+
+Delivery state is persisted to `.robot/res/discord-delivery.md` as an append-only Markdown log. `Get-NotificationLog` reconstructs notification intent from `@Intel` directives; delivery tracking records actual send outcomes.
+
+State file helpers in `private/discord-state.ps1`:
+
+| Function | Purpose |
+|---|---|
+| `Add-DiscordDeliveryEntry` | Appends timestamped delivery record (OK or FAIL) |
+| `Get-DiscordDeliveryEntries` | Parses state file into structured PSCustomObject array |
+
+Entry format: `- YYYY-MM-dd HH:mm:ss (timezone) [OK|FAIL] Operation -> Recipient (HTTP NNN)` with optional context and error sub-lines.
+
+Callers that persist delivery results:
+
+| Source | Operation | When |
+|---|---|---|
+| `Invoke-PlayerCharacterPUAssignment` | `PU` | After each per-player `Send-DiscordMessage` |
+| `Invoke-DiscordAnnouncementWorkflow` | `Announcement` | After announcement send |
+| `Invoke-DiscordPUNotificationWorkflow` | `PU-Resend` | After re-send of failed PU notification |
+
+HTTP status codes in FAIL entries are extracted from the exception message via regex (`HTTP\s+(\d+)`), since `Send-DiscordMessage` throws on HTTP errors rather than returning a failure object.
+
+`Get-DiscordDeliveryLog` reads and filters the delivery state file. Supports filtering by operation, recipient, date range, and failed-only. Returns entries sorted most-recent-first.
+
+`Invoke-DiscordPUNotificationWorkflow` (CLI workflow) queries `Get-DiscordDeliveryLog -FailedOnly -Operation PU` for a selected player, reconstructs the notification from the context string (format: `"YYYY-MM PU: CharName +3.00"`), and re-sends via `Send-DiscordMessage`. Re-sends are logged as `PU-Resend` operations.
 
 ---
 
@@ -141,11 +172,14 @@ The actual sending is left to the consumer -- `Get-Session` only resolves target
 |---|---|
 | `tests/send-discordmessage.Tests.ps1` | URL validation, JSON construction, WhatIf, ShouldProcess |
 | `tests/invoke-playercharacterpuassignment.Tests.ps1` | Message grouping, webhook resolution, notification format |
+| `tests/discord-state.Tests.ps1` | State file write/read round-trip, regex parsing |
+| `tests/get-discorddeliverylog.Tests.ps1` | Filtering, sorting, edge cases |
 
 ---
 
 ## Related Documents
 
-- [PU.md](PU.md) - SendToDiscord side effect
-- [SESSIONS.md](SESSIONS.md) - Intel resolution and webhook lookup
-- [CONFIG-STATE.md](CONFIG-STATE.md) - Webhook configuration resolution
+- [PU.md](PU.md) — SendToDiscord side effect
+- [SESSIONS.md](SESSIONS.md) — Intel resolution and webhook lookup
+- [CONFIG-STATE.md](CONFIG-STATE.md) — Webhook configuration resolution
+- [AUDITING.md](AUDITING.md) — Notification intent vs delivery status

@@ -181,6 +181,10 @@ function Register-AllApiRoutes {
         'Notification audit')
     $HandlerMap['Invoke-ApiGetNotifications'] = $true
 
+    $Router.AddRoute('GET', '/reports/discord-delivery', 'Invoke-ApiGetDeliveryLog',
+        'Discord webhook delivery history')
+    $HandlerMap['Invoke-ApiGetDeliveryLog'] = $true
+
     # ── Write endpoints (Phase 3) ─────────────────────────────────────
     $Router.AddRoute('POST', '/entities', 'Invoke-ApiCreateEntity', 'Create entity', 201)
     $HandlerMap['Invoke-ApiCreateEntity'] = $true

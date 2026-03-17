@@ -1106,8 +1106,9 @@ $script:MenuRegistry = @(
         HelpFull = @(
             'Ponowne wysłanie powiadomienia PU:'
             '  1. Wybierz gracza'
-            '  2. Podaj miesiąc (RRRR-MM)'
-            '  - Wymaga integracji z logiem PU'
+            '  2. Wyświetla nieudane powiadomienia PU'
+            '  3. Wybierz powiadomienie do ponownego wysłania'
+            '  4. Podgląd i potwierdzenie'
         )
         InfoText = @('Ponownie wysyła powiadomienie PU na Discord (np. po awarii).')
     }

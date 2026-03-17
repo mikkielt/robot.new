@@ -35,7 +35,9 @@
 
     Side effects (all switch-gated, all ShouldProcess-guarded):
     - -UpdatePlayerCharacters: writes PU values to entities.md via Set-PlayerCharacter
-    - -SendToDiscord: sends PU notification messages via player webhooks
+    - -SendToDiscord: sends PU notification messages via player webhooks;
+      logs each delivery (success/failure) to discord-delivery.md via
+      Add-DiscordDeliveryEntry for retry and audit visibility
     - -AppendToLog: records processed session headers to pu-sessions.md
     - -ReconcileCurrency: runs currency reconciliation checks
 
@@ -46,6 +48,7 @@
 
 . "$script:ModuleRoot/private/admin-state.ps1"
 . "$script:ModuleRoot/private/admin-config.ps1"
+. "$script:ModuleRoot/private/discord-state.ps1"
 
 function Invoke-PlayerCharacterPUAssignment {
     <#
@@ -170,6 +173,7 @@ function Invoke-PlayerCharacterPUAssignment {
 
     # pu-sessions.md tracks processed headers to prevent double-awarding
     $PUSessionsPath = [System.IO.Path]::Combine($Config.ResDir, 'pu-sessions.md')
+    $DiscordLogPath = [System.IO.Path]::Combine($Config.ResDir, 'discord-delivery.md')
     $ProcessedHeaders = Get-AdminHistoryEntries -Path $PUSessionsPath
 
     $NewSessions = [System.Collections.Generic.List[object]]::new()
@@ -381,10 +385,31 @@ function Invoke-PlayerCharacterPUAssignment {
             $FullMessage = ($Items | ForEach-Object { $_.Message }) -join "`n`n"
 
             if ($PSCmdlet.ShouldProcess($PName, "Send-DiscordMessage: PU notification")) {
+                $ContextStr = "$($MinDate.ToString('yyyy-MM')) PU: " + (
+                    ($Items | ForEach-Object {
+                        "$($_.CharacterName) +$($_.GrantedPU.ToString('F2', [System.Globalization.CultureInfo]::InvariantCulture))"
+                    }) -join ', '
+                )
+
                 try {
-                    Send-DiscordMessage -Webhook $Webhook -Message $FullMessage -Username 'Bothen'
+                    $SendResult = Send-DiscordMessage -Webhook $Webhook -Message $FullMessage -Username 'Bothen'
+                    Add-DiscordDeliveryEntry -Path $DiscordLogPath `
+                        -Operation 'PU' -Recipient $PName `
+                        -Success $SendResult.Success `
+                        -StatusCode $SendResult.StatusCode `
+                        -Context $ContextStr
                 } catch {
                     Write-RobotWarning "[WARN Invoke-PlayerCharacterPUAssignment] Discord send failed for '$PName': $_"
+                    $CaughtStatusCode = 0
+                    if ($_.Exception.Message -match 'HTTP\s+(\d+)') {
+                        $CaughtStatusCode = [int]$Matches[1]
+                    }
+                    Add-DiscordDeliveryEntry -Path $DiscordLogPath `
+                        -Operation 'PU' -Recipient $PName `
+                        -Success $false `
+                        -StatusCode $CaughtStatusCode `
+                        -ErrorMessage $_.Exception.Message `
+                        -Context $ContextStr
                 }
             }
         }

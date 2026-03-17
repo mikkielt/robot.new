@@ -288,7 +288,7 @@ Reads from `Session.Intel`, populated by `Get-Session` during Intel resolution. 
 
 Intel resolution (fan-out for `Grupa/` and `Lokacja/` directives) happens inside `Get-Session`. See [SESSIONS.md](SESSIONS.md) for the resolution algorithm.
 
-This function reconstructs notification intent from session data. It does not track actual Discord delivery (no delivery logging exists in the current implementation). To confirm delivery, cross-reference with Discord channel history.
+This function reconstructs notification intent from session data. For actual delivery status, use `Get-DiscordDeliveryLog` (see [DISCORD.md](DISCORD.md)).
 
 ---
 
@@ -368,3 +368,4 @@ Fixture files used:
 - [PU.md](PU.md) — PU assignment pipeline and diagnostic validation
 - [STRUCTURES.md](STRUCTURES.md) — Canonical data structure reference (audit report output shapes)
 - [CONFIG-STATE.md](CONFIG-STATE.md) — State file formats (pu-sessions.md)
+- [DISCORD.md](DISCORD.md) — Discord delivery tracking and state file

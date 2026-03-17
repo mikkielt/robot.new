@@ -28,7 +28,8 @@
     Reports:    Invoke-ApiGetChangelog, Invoke-ApiGetDormancy,
                 Invoke-ApiGetFrequency, Invoke-ApiGetNarrators,
                 Invoke-ApiGetLocations, Invoke-ApiGetLocationGraph,
-                Invoke-ApiGetPULog, Invoke-ApiGetNotifications
+                Invoke-ApiGetPULog, Invoke-ApiGetNotifications,
+                Invoke-ApiGetDeliveryLog
 
     Handlers follow a common pattern: extract query parameters, build a
     splatted parameter hashtable for the backing module function (with -Quiet
@@ -633,6 +634,26 @@ function Invoke-ApiGetNotifications {
     try {
         $Log = @(Get-NotificationLog @Params)
         return @{ StatusCode = 200; Body = @{ count = $Log.Count; items = $Log } }
+    } catch {
+        return @{ StatusCode = 422; Body = @{ error = $_.Exception.Message } }
+    }
+}
+
+function Invoke-ApiGetDeliveryLog {
+    param([hashtable]$ApiContext)
+
+    $QP     = $ApiContext.QueryParams
+    $Params = @{ Quiet = $true }
+
+    if ($QP['operation'])  { $Params.Operation  = [string]$QP['operation'] }
+    if ($QP['recipient'])  { $Params.Recipient  = [string]$QP['recipient'] }
+    if ($QP['failedOnly'] -eq 'true') { $Params.FailedOnly = $true }
+    if ($QP['minDate'])    { $Params.MinDate    = [datetime]::Parse($QP['minDate']) }
+    if ($QP['maxDate'])    { $Params.MaxDate    = [datetime]::Parse($QP['maxDate']) }
+
+    try {
+        $Log = @(Get-DiscordDeliveryLog @Params)
+        return @{ StatusCode = 200; Body = @{ count = $Log.Count; deliveryLog = $Log } }
     } catch {
         return @{ StatusCode = 422; Body = @{ error = $_.Exception.Message } }
     }
