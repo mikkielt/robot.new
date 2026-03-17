@@ -95,6 +95,14 @@ if ([System.IO.Directory]::Exists($LibDir)) {
             }
             [void]$AllSource.Append($Body)
             try {
+                # Pre-load assemblies needed by Api*.cs into the AppDomain.
+                # Add-Type resolves references from loaded assemblies automatically.
+                foreach ($AsmName in @(
+                    'System.Net.HttpListener',
+                    'System.Net.Primitives'
+                )) {
+                    try { [void][System.Reflection.Assembly]::Load($AsmName) } catch { }
+                }
                 Add-Type -TypeDefinition $AllSource.ToString() -Language CSharp
             }
             catch {

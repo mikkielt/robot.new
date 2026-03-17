@@ -879,3 +879,4 @@ Migration phase tests are conditionally skipped when migration files are not ava
 - [PLUGINS.md](PLUGINS.md) - Plugin system (same hook/registry pattern)
 - [ENTITY-WRITES.md](ENTITY-WRITES.md) - Entity write operations wrapped by CLI wizards
 - [SESSIONS.md](SESSIONS.md) - Session pipeline wrapped by session workflows
+- [REST-API.md](REST-API.md) - REST API plugin CLI workflows (start/stop/status menu items)

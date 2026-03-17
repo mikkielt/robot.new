@@ -485,3 +485,4 @@ Fixture data: in-memory hashtable with 5 sessions (1x Gen1, 1x Gen2, 2x Gen3, 1x
 - [NAME-RESOLUTION.md](NAME-RESOLUTION.md) -- Name index, fuzzy matching, mention extraction
 - [SESSION-INTEGRITY.md](SESSION-INTEGRITY.md) -- Content hashing (similar architecture pattern)
 - [LOCATION-GRAPH.md](LOCATION-GRAPH.md) -- Edge accumulation pattern reused in CoParticipants mode
+- [REST-API.md](REST-API.md) -- REST API session graph endpoints (`/session-graph/entity`, `/compare`, `/leaderboard`)

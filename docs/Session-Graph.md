@@ -96,3 +96,4 @@ Additionally, when a session is edited through the system, an eager refresh auto
 - [PU.md](PU.md) — PU assignment and weights
 - [Location-Graph.md](Location-Graph.md) — Location relationship analysis
 - [Session-Integrity.md](Session-Integrity.md) — Session content verification
+- [Campaign Data API](REST-API.md) — Querying session participation data from external tools

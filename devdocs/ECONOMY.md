@@ -244,3 +244,4 @@ Consumer: `New-EconomicSnapshotData` (`private/economy-helpers.ps1`) -- calls bo
 - [CURRENCY.md](CURRENCY.md) -- Currency system (denominations, CRUD, reconciliation, @Transfer)
 - [ENTITIES.md](ENTITIES.md) -- Entity system (tags, temporal scoping)
 - [SESSIONS.md](SESSIONS.md) -- Session parsing
+- [REST-API.md](REST-API.md) -- REST API economy endpoints (`/economy/snapshot`, `/economy/timeline`)

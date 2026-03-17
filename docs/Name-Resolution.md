@@ -72,4 +72,5 @@ To fix an unresolved name, check the error or warning message for the exact unre
 - [Troubleshooting.md](Troubleshooting.md) — Diagnosing and fixing unresolved names
 - [Sessions.md](Sessions.md) — Session recording format
 - [Players.md](Players.md) — Player and character registration
+- [Campaign Data API](REST-API.md) — Resolving names from external tools
 - [Glossary](Glossary.md) — Term definitions

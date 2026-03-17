@@ -481,3 +481,4 @@ Fixtures: `entities.md`, `entities-100-ent.md`, `entities-200-ent.md`, `sessions
 - [LOCATION-GRAPH.md](LOCATION-GRAPH.md) — Location graph (coordinates, route edges, transition edges)
 - [STRUCTURES.md](STRUCTURES.md) — Canonical data structure reference (Entity, Session, Player, etc.)
 - [MIGRATION.md](MIGRATION.md) — Data Model Transition
+- [REST-API.md](REST-API.md) — REST API entity endpoints, RSQL filtering, serializer Entity fast path

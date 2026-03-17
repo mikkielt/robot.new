@@ -186,4 +186,5 @@ A properly recorded session:
 - [Location-Graph.md](Location-Graph.md) — Location analysis from session routes
 - [Players.md](Players.md) — Player and character management
 - [Structures](Structures.md) — What data the system tracks for each concept
+- [Campaign Data API](REST-API.md) — Querying session data from external tools
 - [Glossary](Glossary.md) — Term definitions

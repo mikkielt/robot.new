@@ -352,3 +352,4 @@ This distinguishes between "never looked up" (`ContainsKey` = false) and "looked
 - [ENTITIES.md](ENTITIES.md) — Entity name resolution in `Get-EntityState` (uses `Resolve-Name` internally)
 - [SESSIONS.md](SESSIONS.md) — Mention extraction and narrator resolution (uses `Resolve-Name`)
 - [MIGRATION.md](MIGRATION.md) — Entity State Pipeline describes name resolution in context
+- [REST-API.md](REST-API.md) — REST API `/resolve` endpoint and RSQL filter alias resolution via `ApiNameDictionary`

@@ -750,3 +750,4 @@ Invoke-Pester -Path plugins/*/tests/
 - [CONFIG-STATE.md](CONFIG-STATE.md) - Core configuration resolution (priority chain pattern reused by plugin config)
 - [ENTITY-WRITES.md](ENTITY-WRITES.md) - Write operations that invoke `BeforeWrite`/`AfterWrite` hooks
 - [SESSIONS.md](SESSIONS.md) - Session pipeline that invokes `Set-Session` hooks
+- [REST-API.md](REST-API.md) - REST API plugin (robot-api): C# engine, RunspacePool workers, hook-driven SSE

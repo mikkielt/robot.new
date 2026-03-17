@@ -46,4 +46,5 @@ Use this report when onboarding or offboarding players, during periodic audits, 
 - [Currency.md](Currency.md) — Currency holdings, transfers, and reconciliation
 - [World-State.md](World-State.md) — Entity management and temporal scoping
 - [Auditing.md](Auditing.md) — Transaction ledger and change history
+- [Campaign Data API](REST-API.md) — Querying economic snapshots and timelines from external tools
 - [Glossary](Glossary.md) — Term definitions

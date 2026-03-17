@@ -117,6 +117,7 @@ After player and character management operations:
 
 - [PU.md](PU.md) — Monthly PU assignment process
 - [Sessions.md](Sessions.md) — How sessions are recorded
+- [Campaign Data API](REST-API.md) — Querying player and character data from external tools
 - [Glossary](Glossary.md) — Term definitions
 - [Structures](Structures.md) — What data the system tracks for each concept
 - [Migration](Migration.md) — Transition from the legacy system

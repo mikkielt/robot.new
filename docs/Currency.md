@@ -124,4 +124,5 @@ Reconciliation can run as a standalone check or as part of the monthly PU proces
 - [Sessions.md](Sessions.md) — How to record sessions with @Transfer entries
 - [Auditing.md](Auditing.md) — Transaction ledger and change history
 - [Migration.md](Migration.md) — Currency enrollment during migration (Phase 7)
+- [Campaign Data API](REST-API.md) — Querying currency and transaction data from external tools
 - [Glossary](Glossary.md) — Term definitions

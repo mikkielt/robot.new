@@ -147,4 +147,5 @@ The world-state tracking system ensures:
 - [Notifications.md](Notifications.md) — How Intel targeting uses entity data
 - [Location-Graph.md](Location-Graph.md) — Location analysis and connection graph
 - [Structures](Structures.md) — What data the system tracks for each concept
+- [Campaign Data API](REST-API.md) — Querying entity data from external tools
 - [Glossary](Glossary.md) — Term definitions

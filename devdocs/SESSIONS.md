@@ -695,3 +695,4 @@ Fixtures: `sessions-gen1.md`, `sessions-gen2.md`, `sessions-gen3.md`, `sessions-
 - [SESSION-INTEGRITY.md](SESSION-INTEGRITY.md) — Session content hashing and integrity checks
 - [STRUCTURES.md](STRUCTURES.md) — Canonical data structure reference (Session, SessionPU, SessionChange, etc.)
 - [MIGRATION.md](MIGRATION.md) — Session Format Transition
+- [REST-API.md](REST-API.md) — REST API session endpoints and session graph reporting
