@@ -1,6 +1,6 @@
 # Robot PowerShell Module
 
-A PowerShell module for managing an online RPG lore repository ([Nerthus](https://github.com/search?q=Nerthus)). Runs as a Git submodule at `.robot.new/` inside the lore repository, parsing Markdown files into structured, queryable data.
+A PowerShell module for managing an online RPG lore repository ([Nerthus](https://nerthus.pl/)). Runs as a Git submodule at `.robot.new/` inside the lore repository, parsing Markdown files into structured, queryable data.
 
 - Players and Characters — full CRUD for players, characters, and their state. Characters use a three-layer merge model (entity registry → character file → session overrides) for a unified view.
 - Entities — NPCs, groups, locations, and items with temporal scoping. Every tag change carries an effective date, enabling point-in-time queries. Entities are soft-deleted, preserving full history.
