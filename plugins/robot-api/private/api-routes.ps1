@@ -231,6 +231,28 @@ function Register-AllApiRoutes {
         'Update session content hashes', 200, 'admin:write')
     $HandlerMap['Invoke-ApiRebuildHashes'] = $true
 
+    $Router.AddRoute('POST', '/sessions', 'Invoke-ApiCreateSession',
+        'Create a new session in target file(s)', 201, 'session:write')
+    $HandlerMap['Invoke-ApiCreateSession'] = $true
+
+    # --- Files ---
+    $Router.AddRoute('GET', '/files', 'Invoke-ApiGetFiles', 'List .md file paths for autocomplete', 200, 'session:read')
+    $HandlerMap['Invoke-ApiGetFiles'] = $true
+
+    # ── Dashboard ──────────────────────────────────────────────────────
+    $Router.AddRoute('GET', '/dashboard', 'Invoke-ApiGetDashboard',
+        'Web dashboard SPA', 200, $null)
+    $HandlerMap['Invoke-ApiGetDashboard'] = $true
+
+    # ── Parse endpoints (read-only) ───────────────────────────────────
+    $Router.AddRoute('POST', '/parse/log', 'Invoke-ApiParseLog',
+        'Parse raw log text into structured data', 200, 'session:read')
+    $HandlerMap['Invoke-ApiParseLog'] = $true
+
+    $Router.AddRoute('POST', '/parse/session-preview', 'Invoke-ApiSessionPreview',
+        'Preview session markdown with name resolution', 200, 'session:read')
+    $HandlerMap['Invoke-ApiSessionPreview'] = $true
+
     # ── Auth endpoints ─────────────────────────────────────────────────
     $Router.AddRoute('POST', '/auth/token', 'Invoke-ApiCreateToken', 'Create API token', 201, 'auth:manage')
     $HandlerMap['Invoke-ApiCreateToken'] = $true
@@ -240,6 +262,10 @@ function Register-AllApiRoutes {
 
     $Router.AddRoute('GET', '/auth/status', 'Invoke-ApiGetAuthStatus', 'Token store status', 200, 'auth:manage')
     $HandlerMap['Invoke-ApiGetAuthStatus'] = $true
+
+    $Router.AddRoute('GET', '/auth/whoami', 'Invoke-ApiGetWhoami',
+        'Current token identity and scopes', 200, $null)
+    $HandlerMap['Invoke-ApiGetWhoami'] = $true
 
     return $HandlerMap
 }

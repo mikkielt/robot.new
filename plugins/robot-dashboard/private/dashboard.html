@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Nerthus Dashboard</title>
+<style>
+{{CSS}}
+</style>
+</head>
+<body>
+<header>
+  <div class="header-top">
+    <h1>Nerthus</h1>
+    <div class="header-actions">
+      <button class="config-toggle" onclick="toggleApiConfig()" title="Ustawienia API">&#x2699;</button>
+      <button onclick="toggleTheme()" id="themeBtn" title="Zmie&#x0144; motyw">&#x263E;</button>
+      <span id="whoami" class="badge blue"></span>
+    </div>
+  </div>
+  <div id="api-url-bar" class="api-config">
+    <span>API:</span>
+    <input type="text" id="apiUrl" placeholder="http://localhost:8642/api">
+    <input type="password" id="apiToken" placeholder="Token">
+    <button onclick="saveApiConfig()" title="Zapisz">&#x2713;</button>
+    <button onclick="showWhoami()" title="Kim jestem?">Kim jestem?</button>
+  </div>
+</header>
+<nav id="nav"></nav>
+<main id="main">
+  <!-- Sections injected by JS based on scopes -->
+</main>
+<script>
+'use strict';
+{{JS}}
+</script>
+</body>
+</html>

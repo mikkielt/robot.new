@@ -242,6 +242,7 @@ namespace Robot {
                     QueryParams   = ParseQueryString(request.QueryString),
                     BodyBytes     = bodyBytes,
                     TokenName     = tokenInfo.Name,
+                    TokenScopes   = tokenInfo.Scopes,
                     ResponseSource = new TaskCompletionSource<ApiResponse>(
                         TaskCreationOptions.RunContinuationsAsynchronously)
                 };
@@ -266,8 +267,14 @@ namespace Robot {
 
                 var apiResponse = await apiRequest.ResponseSource.Task.ConfigureAwait(false);
 
-                // Serialize response
-                if (apiResponse.RawJson != null) {
+                // Serialize response — three paths: raw bytes, raw JSON, or object
+                if (apiResponse.RawBody != null) {
+                    // Opaque byte payload (HTML, images, etc.) with explicit content type
+                    response.StatusCode = apiResponse.StatusCode;
+                    response.ContentType = apiResponse.ContentType ?? "application/octet-stream";
+                    response.ContentLength64 = apiResponse.RawBody.Length;
+                    response.OutputStream.Write(apiResponse.RawBody, 0, apiResponse.RawBody.Length);
+                } else if (apiResponse.RawJson != null) {
                     // Pre-serialized JSON from PS handler
                     ApiSerializer.WriteRaw(response, apiResponse.RawJson,
                         apiResponse.StatusCode);
@@ -318,17 +325,21 @@ namespace Robot {
         public Dictionary<string, string> QueryParams { get; set; }
         public byte[] BodyBytes { get; set; }
         public string TokenName { get; set; }
+        public string[] TokenScopes { get; set; }
         public TaskCompletionSource<ApiResponse> ResponseSource { get; set; }
     }
 
     /// Response from PowerShell handler back to C# HTTP thread. Set on the
     /// TaskCompletionSource by api-worker.ps1 after handler execution.
-    /// Two serialization paths: Body (object serialized by ApiSerializer)
-    /// or RawJson (pre-serialized JSON string that bypasses ApiSerializer).
+    /// Three serialization paths: RawBody (opaque bytes with explicit ContentType,
+    /// e.g. HTML), RawJson (pre-serialized JSON string), or Body (object
+    /// serialized by ApiSerializer).
     public sealed class ApiResponse {
         public int StatusCode { get; set; }
-        public object Body { get; set; }      // hashtable/PSObject — serialized by ApiSerializer
-        public string RawJson { get; set; }   // pre-serialized JSON string (bypasses ApiSerializer)
+        public object Body { get; set; }        // hashtable/PSObject — serialized by ApiSerializer
+        public string RawJson { get; set; }     // pre-serialized JSON string (bypasses ApiSerializer)
         public bool IncludeLabels { get; set; } // inject *Label companion fields via ApiNameDictionary
+        public string ContentType { get; set; } // null = default application/json
+        public byte[] RawBody { get; set; }     // null = use Body + serializer
     }
 }

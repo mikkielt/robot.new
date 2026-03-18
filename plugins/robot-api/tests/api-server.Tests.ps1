@@ -411,6 +411,42 @@ Describe 'Robot.ApiServer' {
         }
     }
 
+    Context 'ApiResponse RawBody support' {
+        It 'ApiResponse has ContentType and RawBody properties' {
+            $Resp = [Robot.ApiResponse]::new()
+            $Resp.ContentType = 'text/html; charset=utf-8'
+            $Resp.RawBody = [System.Text.Encoding]::UTF8.GetBytes('<h1>Test</h1>')
+            $Resp.StatusCode = 200
+
+            $Resp.ContentType | Should -Be 'text/html; charset=utf-8'
+            $Resp.RawBody.Length | Should -BeGreaterThan 0
+            $Resp.StatusCode | Should -Be 200
+        }
+
+        It 'ApiResponse defaults ContentType and RawBody to null' {
+            $Resp = [Robot.ApiResponse]::new()
+            $Resp.ContentType | Should -BeNullOrEmpty
+            $Resp.RawBody | Should -BeNullOrEmpty
+        }
+
+        It 'ApiResponse RawBody coexists with other properties' {
+            $Resp = [Robot.ApiResponse]::new()
+            $Resp.StatusCode = 200
+            $Resp.Body = @{ test = 'value' }
+            $Resp.RawJson = '{"test":"value"}'
+            $Resp.IncludeLabels = $true
+            $Resp.ContentType = 'application/octet-stream'
+            $Resp.RawBody = [byte[]]@(1, 2, 3)
+
+            # All properties should be independently set
+            $Resp.Body.test | Should -Be 'value'
+            $Resp.RawJson | Should -Be '{"test":"value"}'
+            $Resp.IncludeLabels | Should -BeTrue
+            $Resp.ContentType | Should -Be 'application/octet-stream'
+            $Resp.RawBody | Should -HaveCount 3
+        }
+    }
+
     Context 'SSE manager' {
         It 'exposes SseManager after Start()' {
             $Server = [Robot.ApiServer]::new()

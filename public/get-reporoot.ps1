@@ -39,7 +39,10 @@ function Get-RepoRoot {
     #>
     [CmdletBinding()] param(
         [Parameter(HelpMessage = "Override the module directory for testing. Defaults to `$script:ModuleRoot set at import time.")]
-        [string]$ModuleRoot
+        [string]$ModuleRoot,
+
+        [Parameter(HelpMessage = "Return `$null instead of throwing when no repository is found.")]
+        [switch]$Optional
     )
 
     # Set-DataDirectory override takes precedence over git traversal
@@ -56,6 +59,7 @@ function Get-RepoRoot {
         $ModuleRoot = $script:ModuleRoot
     }
     if (-not $ModuleRoot) {
+        if ($Optional) { return $null }
         throw "Module root not resolved. Load the robot module via Import-Module before calling Get-RepoRoot."
     }
 
@@ -80,6 +84,7 @@ function Get-RepoRoot {
         return $ModuleRoot
     }
 
+    if ($Optional) { return $null }
     throw "No git repository found in any parent of the module directory '$ModuleRoot'."
 }
 

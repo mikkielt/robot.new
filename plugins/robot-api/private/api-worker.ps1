@@ -1,18 +1,18 @@
 <#
     .SYNOPSIS
-    RunspacePool-based worker thread management for the REST API plugin.
+    Runspace-based worker pool management for the REST API plugin.
 
     .DESCRIPTION
     This file contains Start-ApiWorkerPool and Stop-ApiWorkerPool — lifecycle
-    functions for the PowerShell worker threads that execute API handler
-    functions.
+    functions for the PowerShell workers that execute API handler functions.
 
-    Each worker thread owns an independent Runspace with the Robot module
-    imported and four handler files dot-sourced (api-handlers-read,
-    api-handlers-write, api-handlers-auth, api-token-helpers). Workers
-    dequeue ApiRequest objects from the C# server's BlockingCollection
-    via Take() (blocking), invoke the named handler function, and set
-    the TaskCompletionSource result to unblock the awaiting HTTP thread.
+    Each worker owns an independent Runspace with the Robot module imported
+    and handler files dot-sourced (api-handlers-read, api-handlers-write,
+    api-handlers-auth, api-handlers-dashboard, api-token-helpers). Workers
+    dequeue ApiRequest objects from the C# server's BlockingCollection via
+    Take() (blocking), invoke the named handler function directly within
+    the runspace, and set the TaskCompletionSource result to unblock the
+    awaiting HTTP thread.
 
     Cache coherence: each worker tracks a local cache version counter.
     Before processing a request, it compares against the shared static
@@ -21,33 +21,31 @@
     calls Clear-ParseCaches to refresh its runspace's entity/session
     data, ensuring read-after-write consistency across worker threads.
 
-    Thread model: N background .NET Threads (not ThreadPool) with
-    dedicated runspaces. Background threads auto-terminate when the
-    process exits. Worker count is configurable via plugin config
-    (default 8). Each thread is named "RobotApiWorker-{i}" for
-    diagnostics.
+    Thread model: each worker runs via PowerShell.BeginInvoke() on its
+    dedicated Runspace. BeginInvoke dispatches the dequeue loop to a
+    background thread with the Runspace attached, so all PS commands
+    (handler calls, Clear-ParseCaches) execute natively. Worker count
+    is configurable via plugin config (default 8).
 
     Request processing pipeline per dequeue:
     1. Cache version check + optional Clear-ParseCaches
     2. Handler name validation against $HandlerMap (rejects stale routes)
     3. Build $ApiContext hashtable from ApiRequest fields
     4. Parse JSON body from BodyBytes if present (400 on invalid JSON)
-    5. Invoke handler, extract StatusCode/Body from result hashtable
+    5. Invoke handler directly via & $HandlerName
     6. Increment CacheVersion for write methods (POST/PUT/DELETE)
     7. Set [Robot.ApiResponse] on TaskCompletionSource
 
     Helpers:
-    - Start-ApiWorkerPool: creates N runspaces + threads, starts dequeue loops
-    - Stop-ApiWorkerPool: disposes runspaces and nulls thread references
+    - Start-ApiWorkerPool: creates N runspaces, starts dequeue loops via BeginInvoke
+    - Stop-ApiWorkerPool: stops pipelines, disposes runspaces
 
     Module-level data:
-    - $script:ApiWorkerThreads: List of active worker Thread objects
-    - $script:ApiWorkerRunspaces: List of {Runspace, PowerShell} entries
-      (each entry is a hashtable with Runspace and PowerShell keys)
+    - $script:ApiWorkerRunspaces: List of {Runspace, PowerShell, AsyncResult}
+      entries for lifecycle management
 #>
 
 # Worker pool state — initialized by Start-ApiWorkerPool, cleared by Stop-ApiWorkerPool
-$script:ApiWorkerThreads   = $null
 $script:ApiWorkerRunspaces = $null
 
 function Start-ApiWorkerPool {
@@ -57,11 +55,118 @@ function Start-ApiWorkerPool {
         [int]$WorkerCount = 8
     )
 
-    $ModRoot = $script:ModuleRoot
-    $Queue   = $Server.RequestQueue
+    $ModRoot          = $script:ModuleRoot
+    $Queue            = $Server.RequestQueue
+    $DataDirOverride  = $script:DataDirectoryOverride
 
-    $script:ApiWorkerThreads   = [System.Collections.Generic.List[System.Threading.Thread]]::new()
     $script:ApiWorkerRunspaces = [System.Collections.Generic.List[object]]::new()
+
+    # Dequeue loop script — runs inside each worker's dedicated Runspace via
+    # BeginInvoke, so handler functions and Clear-ParseCaches are callable
+    # directly without PS.AddCommand/Invoke round-trips.
+    $WorkerLoopScript = @'
+        param($Queue, $HandlerMap)
+        $LocalCacheVersion = 0
+
+        while (-not $Queue.IsCompleted) {
+            $Req = $null
+            try {
+                $Req = $Queue.Take()
+            } catch [System.OperationCanceledException] {
+                break
+            } catch [System.InvalidOperationException] {
+                break
+            }
+
+            if ($null -eq $Req) { continue }
+
+            try {
+                # Cache coherence: check shared version
+                $SharedVersion = [System.Threading.Interlocked]::Read(
+                    [ref][Robot.ApiServer]::CacheVersion)
+                if ($SharedVersion -ne $LocalCacheVersion) {
+                    Clear-ParseCaches
+                    $LocalCacheVersion = $SharedVersion
+                }
+
+                # Reject unknown handlers early (routing mismatch or stale HandlerMap)
+                $HandlerName = $Req.HandlerName
+                if (-not $HandlerMap.ContainsKey($HandlerName)) {
+                    $Req.ResponseSource.SetResult([Robot.ApiResponse]@{
+                        StatusCode = 500
+                        RawJson = '{"error":"Handler not found: ' + $HandlerName + '","status":500}'
+                    })
+                    continue
+                }
+
+                # Build context hashtable for the handler
+                $Ctx = @{
+                    PathParams  = $Req.PathParams
+                    QueryParams = $Req.QueryParams
+                    Body        = $null
+                    Method      = $Req.Method
+                    Path        = $Req.Path
+                    TokenName   = $Req.TokenName
+                    TokenScopes = $Req.TokenScopes
+                }
+
+                # Parse JSON body if present
+                if ($Req.BodyBytes -and $Req.BodyBytes.Length -gt 0) {
+                    $BodyText = [System.Text.Encoding]::UTF8.GetString($Req.BodyBytes)
+                    try {
+                        $Ctx.Body = $BodyText | ConvertFrom-Json
+                    } catch {
+                        $Req.ResponseSource.SetResult([Robot.ApiResponse]@{
+                            StatusCode = 400
+                            RawJson = '{"error":"Invalid JSON body","status":400}'
+                        })
+                        continue
+                    }
+                }
+
+                # Invoke handler directly — runspace has all handlers loaded
+                $HandlerResult = & $HandlerName -ApiContext $Ctx
+
+                if ($null -eq $HandlerResult) {
+                    $HandlerResult = @{ StatusCode = 204 }
+                }
+
+                # Invalidate caches after mutations so next read sees fresh data
+                if ($Req.Method -in @('POST', 'PUT', 'DELETE')) {
+                    [System.Threading.Interlocked]::Increment(
+                        [ref][Robot.ApiServer]::CacheVersion)
+                }
+
+                $Resp = [Robot.ApiResponse]::new()
+                $Resp.StatusCode = if ($HandlerResult.StatusCode) {
+                    $HandlerResult.StatusCode
+                } else { 200 }
+                $Resp.Body = $HandlerResult.Body
+
+                # IncludeLabels tells the C# serializer to emit field name annotations
+                if ($HandlerResult.IncludeLabels) {
+                    $Resp.IncludeLabels = $true
+                }
+
+                # RawBody + ContentType for non-JSON responses (HTML, binary, etc.)
+                if ($HandlerResult.RawBody) {
+                    $Resp.RawBody     = $HandlerResult.RawBody
+                    $Resp.ContentType = $HandlerResult.ContentType
+                }
+
+                $Req.ResponseSource.SetResult($Resp)
+
+            } catch {
+                try {
+                    $ErrResp = [Robot.ApiResponse]::new()
+                    $ErrResp.StatusCode = 500
+                    $ErrResp.RawJson = '{"error":"' +
+                        ($_.Exception.Message -replace '"', '\\"') + '","status":500}'
+                    $Req.ResponseSource.SetResult($ErrResp)
+                } catch { }
+            }
+        }
+'@
 
     for ($i = 0; $i -lt $WorkerCount; $i++) {
         # Each worker gets its own runspace with the module imported
@@ -76,12 +181,22 @@ function Start-ApiWorkerPool {
         [void]$PS.Invoke()
         $PS.Commands.Clear()
 
+        # Propagate data directory override so workers resolve the same root
+        if ($DataDirOverride) {
+            $PS.Commands.Clear()
+            [void]$PS.AddCommand('Set-DataDirectory')
+            [void]$PS.AddParameter('Path', $DataDirOverride)
+            [void]$PS.Invoke()
+            $PS.Commands.Clear()
+        }
+
         # Dot-source handler files so each runspace has all API functions available
         $HandlerDir = [System.IO.Path]::GetDirectoryName($PSScriptRoot)
         $HandlerFiles = @(
             "$HandlerDir/private/api-handlers-read.ps1"
             "$HandlerDir/private/api-handlers-write.ps1"
             "$HandlerDir/private/api-handlers-auth.ps1"
+            "$HandlerDir/private/api-handlers-dashboard.ps1"
             "$HandlerDir/private/api-token-helpers.ps1"  # needed by auth handlers
         )
         foreach ($HF in $HandlerFiles) {
@@ -93,138 +208,25 @@ function Start-ApiWorkerPool {
             }
         }
 
-        $script:ApiWorkerRunspaces.Add(@{ Runspace = $Runspace; PowerShell = $PS })
+        # Run dequeue loop asynchronously in the dedicated runspace
+        $PS.Commands.Clear()
+        [void]$PS.AddScript($WorkerLoopScript)
+        [void]$PS.AddParameter('Queue', $Queue)
+        [void]$PS.AddParameter('HandlerMap', $HandlerMap)
+        $AsyncResult = $PS.BeginInvoke()
 
-        # Capture state for the ParameterizedThreadStart closure
-        $WorkerState = @{
-            Queue      = $Queue
-            HandlerMap = $HandlerMap
-            PS         = $PS
-            WorkerId   = $i
-        }
-
-        $ThreadStart = {
-            param($State)
-            $Q  = $State.Queue
-            $HM = $State.HandlerMap
-            $PS = $State.PS
-            $LocalCacheVersion = 0  # compared against shared [Robot.ApiServer]::CacheVersion
-
-            while (-not $Q.IsCompleted) {
-                $Req = $null
-                try {
-                    $Req = $Q.Take()  # blocks until item available or CompleteAdding called
-                } catch [System.OperationCanceledException] {
-                    break
-                } catch [System.InvalidOperationException] {
-                    break  # BlockingCollection was completed
-                }
-
-                if ($null -eq $Req) { continue }
-
-                try {
-                    # Cache coherence: check shared version
-                    $SharedVersion = [System.Threading.Interlocked]::Read(
-                        [ref][Robot.ApiServer]::CacheVersion)
-                    if ($SharedVersion -ne $LocalCacheVersion) {
-                        $PS.Commands.Clear()
-                        [void]$PS.AddCommand('Clear-ParseCaches')
-                        [void]$PS.Invoke()
-                        $PS.Commands.Clear()
-                        $LocalCacheVersion = $SharedVersion
-                    }
-
-                    # Reject unknown handlers early (routing mismatch or stale HandlerMap)
-                    $HandlerName = $Req.HandlerName
-                    if (-not $HM.ContainsKey($HandlerName)) {
-                        $Req.ResponseSource.SetResult([Robot.ApiResponse]@{
-                            StatusCode = 500
-                            RawJson = '{"error":"Handler not found: ' + $HandlerName + '","status":500}'
-                        })
-                        continue
-                    }
-
-                    # Build context hashtable for the handler
-                    $Ctx = @{
-                        PathParams  = $Req.PathParams
-                        QueryParams = $Req.QueryParams
-                        Body        = $null
-                        Method      = $Req.Method
-                        Path        = $Req.Path
-                    }
-
-                    # Parse JSON body if present
-                    if ($Req.BodyBytes -and $Req.BodyBytes.Length -gt 0) {
-                        $BodyText = [System.Text.Encoding]::UTF8.GetString($Req.BodyBytes)
-                        try {
-                            $Ctx.Body = $BodyText | ConvertFrom-Json
-                        } catch {
-                            $Req.ResponseSource.SetResult([Robot.ApiResponse]@{
-                                StatusCode = 400
-                                RawJson = '{"error":"Invalid JSON body","status":400}'
-                            })
-                            continue
-                        }
-                    }
-
-                    # Invoke handler via PowerShell
-                    $PS.Commands.Clear()
-                    [void]$PS.AddCommand($HandlerName)
-                    [void]$PS.AddParameter('ApiContext', $Ctx)
-                    $Result = $PS.Invoke()
-                    $PS.Commands.Clear()
-
-                    # Handler returns hashtable with StatusCode + Body; default 204 for empty
-                    $HandlerResult = if ($Result -and $Result.Count -gt 0) {
-                        $Result[0]
-                    } else {
-                        @{ StatusCode = 204 }
-                    }
-
-                    # Invalidate caches after mutations so next read sees fresh data
-                    if ($Req.Method -in @('POST', 'PUT', 'DELETE')) {
-                        [System.Threading.Interlocked]::Increment(
-                            [ref][Robot.ApiServer]::CacheVersion)
-                    }
-
-                    $Resp = [Robot.ApiResponse]::new()
-                    $Resp.StatusCode = if ($HandlerResult.StatusCode) {
-                        $HandlerResult.StatusCode
-                    } else { 200 }
-                    $Resp.Body = $HandlerResult.Body
-
-                    # IncludeLabels tells the C# serializer to emit field name annotations
-                    if ($HandlerResult.IncludeLabels) {
-                        $Resp.IncludeLabels = $true
-                    }
-
-                    $Req.ResponseSource.SetResult($Resp)
-
-                } catch {
-                    try {
-                        $ErrResp = [Robot.ApiResponse]::new()
-                        $ErrResp.StatusCode = 500
-                        $ErrResp.RawJson = '{"error":"' +
-                            ($_.Exception.Message -replace '"', '\\"') + '","status":500}'
-                        $Req.ResponseSource.SetResult($ErrResp)
-                    } catch { }
-                }
-            }
-        }
-
-        $Thread = [System.Threading.Thread]::new(
-            [System.Threading.ParameterizedThreadStart]$ThreadStart)
-        $Thread.IsBackground = $true
-        $Thread.Name = "RobotApiWorker-$i"
-        $Thread.Start($WorkerState)
-
-        $script:ApiWorkerThreads.Add($Thread)
+        [void]$script:ApiWorkerRunspaces.Add(@{
+            Runspace    = $Runspace
+            PowerShell  = $PS
+            AsyncResult = $AsyncResult
+        })
     }
 }
 
 function Stop-ApiWorkerPool {
     if ($script:ApiWorkerRunspaces) {
         foreach ($Entry in $script:ApiWorkerRunspaces) {
+            try { $Entry.PowerShell.Stop() } catch { }
             try {
                 $Entry.PowerShell.Dispose()
                 $Entry.Runspace.Close()
@@ -233,5 +235,4 @@ function Stop-ApiWorkerPool {
         }
         $script:ApiWorkerRunspaces = $null
     }
-    $script:ApiWorkerThreads = $null
 }

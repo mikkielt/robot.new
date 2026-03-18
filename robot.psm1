@@ -172,7 +172,7 @@ function Write-RobotInfo {
 $FunctionFiles = [System.IO.Directory]::GetFiles($ModuleRoot, '*.ps1', [System.IO.SearchOption]::AllDirectories)
 
 # Only Verb-Noun files are auto-loaded; helpers are dot-sourced on demand
-$VerbNounPattern = [regex]::new('^(Get|Set|New|Remove|Resolve|Test|Invoke|Send|Export)-\w+$', [System.Text.RegularExpressions.RegexOptions]::IgnoreCase)
+$VerbNounPattern = [regex]::new('^(Get|Set|New|Remove|Resolve|Test|Invoke|Send|Export|Import|Add|Start|Stop|ConvertTo)-\w+$', [System.Text.RegularExpressions.RegexOptions]::IgnoreCase)
 
 $ExportedFunctions = [System.Collections.Generic.HashSet[string]]::new(
     [System.StringComparer]::OrdinalIgnoreCase)
@@ -477,6 +477,16 @@ function Get-LoadedPlugins {
 [void]$ExportedFunctions.Add('Get-PluginConfig')
 [void]$ExportedFunctions.Add('Get-LoadedPlugins')
 [void]$ExportedFunctions.Add('Clear-ParseCaches')
+
+# ── Argument Completers ────────────────────────────────────────────────────
+# Tab-completion for -Name parameters on entity/player functions.
+
+$CompleterPath = [System.IO.Path]::Combine($ModuleRoot, 'private', 'argument-completers.ps1')
+if ([System.IO.File]::Exists($CompleterPath)) {
+    try { . $CompleterPath } catch {
+        [System.Console]::Error.WriteLine("[WARN robot.psm1] Failed to load argument completers: $_")
+    }
+}
 
 # ── Module Cleanup ─────────────────────────────────────────────────────────
 # Stop API server and worker pool on Remove-Module to prevent resource leaks.

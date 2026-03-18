@@ -46,6 +46,20 @@ Test-PlayerCharacterPUAssignment                        # validate PU data quali
 Invoke-Pester ./tests/ -Output Detailed
 ```
 
+## Web Dashboard
+
+```powershell
+Invoke-RobotDashboard
+```
+
+Starts the REST API server (if not already running) and opens a self-contained HTML dashboard in the default browser. The API exposes entities, sessions, players, currency, and reporting endpoints on `http://localhost:8642/api/`.
+
+To launch without importing the module first:
+
+```powershell
+iwr https://raw.githubusercontent.com/mikkielt/robot.new/main/tools/dashboard.ps1 | iex
+```
+
 ## Interactive CLI
 
 ```powershell

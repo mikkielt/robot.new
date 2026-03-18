@@ -53,9 +53,16 @@ Describe 'Worker Pool' {
             $HandlerDir = Split-Path -Parent $PSScriptRoot
             $ReadFile = "$HandlerDir/private/api-handlers-read.ps1"
             $WriteFile = "$HandlerDir/private/api-handlers-write.ps1"
+            $DashboardFile = "$HandlerDir/private/api-handlers-dashboard.ps1"
 
             $ReadFile | Should -Exist
             $WriteFile | Should -Exist
+            $DashboardFile | Should -Exist
+        }
+
+        It 'worker script references dashboard handler file' {
+            $WorkerContent = [System.IO.File]::ReadAllText("$PSScriptRoot/../private/api-worker.ps1")
+            $WorkerContent | Should -BeLike '*api-handlers-dashboard.ps1*'
         }
     }
 

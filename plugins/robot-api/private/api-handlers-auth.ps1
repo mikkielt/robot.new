@@ -1,26 +1,28 @@
 <#
     .SYNOPSIS
-    Auth API endpoint handlers for token management via REST.
+    Auth API endpoint handlers for token management and identity via REST.
 
     .DESCRIPTION
-    This file contains three exported handlers for the /auth/* endpoints,
-    all gated by the auth:manage scope in the route table (api-routes.ps1):
+    This file contains handlers for the /auth/* endpoints:
 
-    - Invoke-ApiCreateToken: POST /auth/token — validates JSON body for
-      required name/scopes fields, delegates to New-RobotApiToken, returns
-      the one-time plaintext token in the 201 response (only time it is
-      visible). Catches duplicate-name and validation errors as 422.
-    - Invoke-ApiDeleteToken: DELETE /auth/token/:name — extracts token name
-      from path parameter, delegates to Remove-RobotApiToken. Returns 422
-      on not-found or other failures.
-    - Invoke-ApiGetAuthStatus: GET /auth/status — enumerates all stored
-      tokens via Get-RobotApiToken and returns metadata (name, scopes,
-      createdAt) without exposing plaintext token values.
+    - Invoke-ApiCreateToken: POST /auth/token (auth:manage) — validates
+      JSON body for required name/scopes fields, delegates to
+      New-RobotApiToken, returns the one-time plaintext token in the 201
+      response (only time it is visible).
+    - Invoke-ApiDeleteToken: DELETE /auth/token/:name (auth:manage) —
+      extracts token name from path parameter, delegates to
+      Remove-RobotApiToken.
+    - Invoke-ApiGetAuthStatus: GET /auth/status (auth:manage) — enumerates
+      all stored tokens via Get-RobotApiToken and returns metadata (name,
+      scopes, createdAt) without exposing plaintext token values.
+    - Invoke-ApiGetWhoami: GET /auth/whoami (any authenticated token) —
+      returns the calling token's name and scopes.
 
     All handlers follow the standard handler contract: accept a single
-    $ApiContext hashtable (PathParams, QueryParams, Body, Method, Path)
-    and return a hashtable with StatusCode and Body keys. The worker
-    pool serializes Body to JSON before sending the HTTP response.
+    $ApiContext hashtable (PathParams, QueryParams, Body, Method, Path,
+    TokenName, TokenScopes) and return a hashtable with StatusCode and
+    Body keys. The worker pool serializes Body to JSON before sending
+    the HTTP response.
 #>
 
 function Invoke-ApiCreateToken {
@@ -131,6 +133,26 @@ function Invoke-ApiGetAuthStatus {
         Body = @{
             tokenCount = $TokenList.Count
             tokens     = $TokenList.ToArray()
+        }
+    }
+}
+
+function Invoke-ApiGetWhoami {
+    <#
+        .SYNOPSIS
+        Returns the calling token's identity and scopes. Any authenticated
+        token can access this endpoint (no specific scope required).
+    #>
+
+    [CmdletBinding()] param(
+        [Parameter(Mandatory)] [hashtable]$ApiContext
+    )
+
+    return @{
+        StatusCode = 200
+        Body = @{
+            name   = $ApiContext.TokenName
+            scopes = @($ApiContext.TokenScopes)
         }
     }
 }

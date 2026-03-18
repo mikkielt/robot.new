@@ -15,11 +15,13 @@
     - Invoke-ApiUpdateCurrency: PUT /currency/:name — adjusts via Set-CurrencyEntity
     - Invoke-ApiCreatePlayer:   POST /players — creates player+character via New-Player
     - Invoke-ApiCreateCharacter: POST /players/:name/characters — adds via New-PlayerCharacter
+    - Invoke-ApiCreateSession:  POST /sessions — creates session via Add-Session
     - Invoke-ApiRebuildGraph:   POST /workflow/session-graph — rebuilds index
     - Invoke-ApiRebuildHashes:  POST /workflow/session-hash — updates hashes
 
     All handlers pass -Confirm:$false to skip interactive prompts. After each
-    successful write, Clear-ParseCaches is called to invalidate memory caches.
+    successful write, Clear-ParseCaches is called to invalidate memory caches
+    (except Add-Session which handles its own cache invalidation).
     The worker pool then increments CacheVersion so other runspaces detect
     the invalidation and refresh their caches on next request.
 
@@ -33,6 +35,11 @@
 # ═══════════════════════════════════════════════════════════════════════
 
 function Invoke-ApiCreateEntity {
+    <#
+        .SYNOPSIS
+        Creates a new entity with optional tags and temporal validity.
+    #>
+
     param([hashtable]$ApiContext)
 
     $B = $ApiContext.Body
@@ -69,6 +76,11 @@ function Invoke-ApiCreateEntity {
 }
 
 function Invoke-ApiUpdateEntity {
+    <#
+        .SYNOPSIS
+        Updates entity tags via Set-Entity.
+    #>
+
     param([hashtable]$ApiContext)
 
     $Name = $ApiContext.PathParams['name']
@@ -105,6 +117,11 @@ function Invoke-ApiUpdateEntity {
 }
 
 function Invoke-ApiDeleteEntity {
+    <#
+        .SYNOPSIS
+        Soft-deletes an entity by marking it as Usunięty.
+    #>
+
     param([hashtable]$ApiContext)
 
     $Name = $ApiContext.PathParams['name']
@@ -134,6 +151,11 @@ function Invoke-ApiDeleteEntity {
 # ═══════════════════════════════════════════════════════════════════════
 
 function Invoke-ApiCreateCurrency {
+    <#
+        .SYNOPSIS
+        Creates a Przedmiot-type entity with currency tags.
+    #>
+
     param([hashtable]$ApiContext)
 
     $B = $ApiContext.Body
@@ -169,6 +191,11 @@ function Invoke-ApiCreateCurrency {
 }
 
 function Invoke-ApiUpdateCurrency {
+    <#
+        .SYNOPSIS
+        Adjusts currency amount or ownership via Set-CurrencyEntity.
+    #>
+
     param([hashtable]$ApiContext)
 
     $Name = $ApiContext.PathParams['name']
@@ -203,6 +230,11 @@ function Invoke-ApiUpdateCurrency {
 # ═══════════════════════════════════════════════════════════════════════
 
 function Invoke-ApiCreatePlayer {
+    <#
+        .SYNOPSIS
+        Creates a new player with optional initial character.
+    #>
+
     param([hashtable]$ApiContext)
 
     $B = $ApiContext.Body
@@ -238,6 +270,11 @@ function Invoke-ApiCreatePlayer {
 }
 
 function Invoke-ApiCreateCharacter {
+    <#
+        .SYNOPSIS
+        Adds a new character to an existing player.
+    #>
+
     param([hashtable]$ApiContext)
 
     $PlayerName = $ApiContext.PathParams['name']
@@ -276,10 +313,165 @@ function Invoke-ApiCreateCharacter {
 }
 
 # ═══════════════════════════════════════════════════════════════════════
+# SESSIONS
+# ═══════════════════════════════════════════════════════════════════════
+
+function Invoke-ApiCreateSession {
+    <#
+        .SYNOPSIS
+        Creates one or more sessions via Add-Session. Supports single session
+        (flat body fields) and batch mode (sessions array).
+    #>
+
+    [CmdletBinding()] param(
+        [Parameter(Mandatory)] [hashtable]$ApiContext
+    )
+
+    $B = $ApiContext.Body
+    if (-not $B) {
+        return @{ StatusCode = 400; Body = @{ error = 'Request body required' } }
+    }
+
+    # Batch mode: body contains a "sessions" array
+    if ($B.sessions) {
+        if (-not $B.path) {
+            return @{ StatusCode = 400; Body = @{ error = 'path is required' } }
+        }
+
+        $BatchSpecs = [System.Collections.Generic.List[hashtable]]::new()
+        foreach ($S in $B.sessions) {
+            if (-not $S.title -or -not $S.narrator -or -not $S.date) {
+                return @{
+                    StatusCode = 400
+                    Body = @{ error = 'Each session requires title, narrator, and date' }
+                }
+            }
+            $Spec = @{
+                Date     = [datetime]::Parse([string]$S.date)
+                Title    = [string]$S.title
+                Narrator = [string]$S.narrator
+            }
+            if ($S.dateEnd)            { $Spec.DateEnd            = [datetime]::Parse([string]$S.dateEnd) }
+            if ($S.metadataNarrators)  { $Spec.MetadataNarrators  = @($S.metadataNarrators) }
+            if ($S.locations)          { $Spec.Locations          = @($S.locations) }
+            if ($S.logs)               { $Spec.Logs               = @($S.logs) }
+            if ($S.content)            { $Spec.Content            = [string]$S.content }
+            if ($S.pu) {
+                $Spec.PU = @($S.pu).ForEach({
+                    [PSCustomObject]@{ Character = [string]$_.character; Value = [decimal]$_.value }
+                })
+            }
+            if ($S.changes) {
+                $Spec.Changes = @($S.changes).ForEach({
+                    [PSCustomObject]@{
+                        EntityName = [string]$_.entityName
+                        Tags = @($_.tags).ForEach({
+                            [PSCustomObject]@{ Tag = [string]$_.tag; Value = [string]$_.value }
+                        })
+                    }
+                })
+            }
+            if ($S.intel) {
+                $Spec.Intel = @($S.intel).ForEach({
+                    [PSCustomObject]@{ RawTarget = [string]$_.rawTarget; Message = [string]$_.message }
+                })
+            }
+            [void]$BatchSpecs.Add($Spec)
+        }
+
+        try {
+            $Headers = Add-Session -Path @($B.path) -Sessions $BatchSpecs.ToArray() -Confirm:$false
+            return @{
+                StatusCode = 201
+                Body = @{
+                    headers = @($Headers)
+                    paths   = @($B.path)
+                    count   = @($Headers).Count
+                }
+            }
+        } catch {
+            return @{ StatusCode = 422; Body = @{ error = $_.Exception.Message } }
+        }
+    }
+
+    # Single mode: flat body fields
+    if (-not $B.title -or -not $B.narrator -or -not $B.date -or -not $B.path) {
+        return @{
+            StatusCode = 400
+            Body = @{ error = 'title, narrator, date, and path are required' }
+        }
+    }
+
+    try {
+        $ParsedDate = [datetime]::Parse([string]$B.date)
+    } catch {
+        return @{ StatusCode = 400; Body = @{ error = "Invalid date format: $($B.date)" } }
+    }
+
+    $Params = @{
+        Path     = @($B.path)
+        Date     = $ParsedDate
+        Title    = [string]$B.title
+        Narrator = [string]$B.narrator
+        Confirm  = $false
+    }
+
+    if ($B.dateEnd) {
+        try { $Params.DateEnd = [datetime]::Parse([string]$B.dateEnd) }
+        catch { return @{ StatusCode = 400; Body = @{ error = "Invalid dateEnd format: $($B.dateEnd)" } } }
+    }
+    if ($B.metadataNarrators) { $Params.MetadataNarrators = @($B.metadataNarrators) }
+    if ($B.locations)         { $Params.Locations         = @($B.locations) }
+    if ($B.logs)              { $Params.Logs              = @($B.logs) }
+    if ($B.content)           { $Params.Content           = [string]$B.content }
+
+    if ($B.pu) {
+        $Params.PU = @($B.pu).ForEach({
+            [PSCustomObject]@{ Character = [string]$_.character; Value = [decimal]$_.value }
+        })
+    }
+
+    if ($B.changes) {
+        $Params.Changes = @($B.changes).ForEach({
+            [PSCustomObject]@{
+                EntityName = [string]$_.entityName
+                Tags = @($_.tags).ForEach({
+                    [PSCustomObject]@{ Tag = [string]$_.tag; Value = [string]$_.value }
+                })
+            }
+        })
+    }
+
+    if ($B.intel) {
+        $Params.Intel = @($B.intel).ForEach({
+            [PSCustomObject]@{ RawTarget = [string]$_.rawTarget; Message = [string]$_.message }
+        })
+    }
+
+    try {
+        $Headers = Add-Session @Params
+        return @{
+            StatusCode = 201
+            Body = @{
+                headers = @($Headers)
+                paths   = @($B.path)
+            }
+        }
+    } catch {
+        return @{ StatusCode = 422; Body = @{ error = $_.Exception.Message } }
+    }
+}
+
+# ═══════════════════════════════════════════════════════════════════════
 # WORKFLOW
 # ═══════════════════════════════════════════════════════════════════════
 
 function Invoke-ApiRebuildGraph {
+    <#
+        .SYNOPSIS
+        Triggers session graph index rebuild via Set-SessionGraph.
+    #>
+
     param([hashtable]$ApiContext)
 
     $B      = $ApiContext.Body
@@ -300,6 +492,11 @@ function Invoke-ApiRebuildGraph {
 }
 
 function Invoke-ApiRebuildHashes {
+    <#
+        .SYNOPSIS
+        Updates session content hashes via Set-SessionHash.
+    #>
+
     param([hashtable]$ApiContext)
 
     $B      = $ApiContext.Body

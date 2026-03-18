@@ -5,8 +5,8 @@
     .DESCRIPTION
     This file defines handler functions that are dot-sourced into each worker
     runspace at startup. Each handler accepts a [hashtable]$ApiContext with
-    PathParams, QueryParams, Body, Method, and Path, and returns a hashtable
-    with StatusCode, Body, and optionally IncludeLabels.
+    PathParams, QueryParams, Body, Method, Path, TokenName, and TokenScopes,
+    and returns a hashtable with StatusCode, Body, and optionally IncludeLabels.
 
     Helpers:
     - Invoke-ApiEntityListQuery: reusable RSQL query pipeline (filter -> sort
@@ -30,6 +30,7 @@
                 Invoke-ApiGetLocations, Invoke-ApiGetLocationGraph,
                 Invoke-ApiGetPULog, Invoke-ApiGetNotifications,
                 Invoke-ApiGetDeliveryLog
+    Parsing:    Invoke-ApiParseLog, Invoke-ApiSessionPreview
 
     Handlers follow a common pattern: extract query parameters, build a
     splatted parameter hashtable for the backing module function (with -Quiet
@@ -108,6 +109,11 @@ function Invoke-ApiEntityListQuery {
 # ═══════════════════════════════════════════════════════════════════════
 
 function Invoke-ApiGetEntities {
+    <#
+        .SYNOPSIS
+        Returns paginated entity list with RSQL query, sort, and fieldset support.
+    #>
+
     param([hashtable]$ApiContext)
 
     $QP       = $ApiContext.QueryParams
@@ -121,6 +127,11 @@ function Invoke-ApiGetEntities {
 }
 
 function Invoke-ApiGetEntity {
+    <#
+        .SYNOPSIS
+        Returns a single entity by name, with fuzzy resolution fallback.
+    #>
+
     param([hashtable]$ApiContext)
 
     $Name     = $ApiContext.PathParams['name']
@@ -147,6 +158,11 @@ function Invoke-ApiGetEntity {
 }
 
 function Invoke-ApiGetEntityHistory {
+    <#
+        .SYNOPSIS
+        Returns temporal changelog entries for a named entity.
+    #>
+
     param([hashtable]$ApiContext)
 
     $Name     = $ApiContext.PathParams['name']
@@ -166,6 +182,11 @@ function Invoke-ApiGetEntityHistory {
 }
 
 function Invoke-ApiGetEntityDelta {
+    <#
+        .SYNOPSIS
+        Returns property diff for an entity between two dates.
+    #>
+
     param([hashtable]$ApiContext)
 
     $Name = $ApiContext.PathParams['name']
@@ -187,6 +208,11 @@ function Invoke-ApiGetEntityDelta {
 }
 
 function Invoke-ApiGetEntityState {
+    <#
+        .SYNOPSIS
+        Returns enriched entity state with session-derived overrides.
+    #>
+
     param([hashtable]$ApiContext)
 
     $QP     = $ApiContext.QueryParams
@@ -207,6 +233,11 @@ function Invoke-ApiGetEntityState {
 # ═══════════════════════════════════════════════════════════════════════
 
 function Invoke-ApiGetPlayers {
+    <#
+        .SYNOPSIS
+        Returns all players with character rosters and PU data.
+    #>
+
     param([hashtable]$ApiContext)
 
     $Players = @(Get-Player)
@@ -214,6 +245,11 @@ function Invoke-ApiGetPlayers {
 }
 
 function Invoke-ApiGetPlayer {
+    <#
+        .SYNOPSIS
+        Returns a single player by name.
+    #>
+
     param([hashtable]$ApiContext)
 
     $Name    = $ApiContext.PathParams['name']
@@ -231,6 +267,11 @@ function Invoke-ApiGetPlayer {
 # ═══════════════════════════════════════════════════════════════════════
 
 function Invoke-ApiGetSessions {
+    <#
+        .SYNOPSIS
+        Returns sessions with optional date filtering and format labels.
+    #>
+
     param([hashtable]$ApiContext)
 
     $QP     = $ApiContext.QueryParams
@@ -264,6 +305,11 @@ function Invoke-ApiGetSessions {
 # ═══════════════════════════════════════════════════════════════════════
 
 function Invoke-ApiGetEntityProfile {
+    <#
+        .SYNOPSIS
+        Returns session participation profile for a named entity.
+    #>
+
     param([hashtable]$ApiContext)
 
     $Name   = $ApiContext.PathParams['name']
@@ -281,6 +327,11 @@ function Invoke-ApiGetEntityProfile {
 }
 
 function Invoke-ApiCompareParticipation {
+    <#
+        .SYNOPSIS
+        Compares session participation overlap across multiple entities.
+    #>
+
     param([hashtable]$ApiContext)
 
     $QP    = $ApiContext.QueryParams
@@ -304,6 +355,11 @@ function Invoke-ApiCompareParticipation {
 }
 
 function Invoke-ApiGetLeaderboard {
+    <#
+        .SYNOPSIS
+        Returns top entities ranked by session participation count.
+    #>
+
     param([hashtable]$ApiContext)
 
     $QP     = $ApiContext.QueryParams
@@ -328,6 +384,11 @@ function Invoke-ApiGetLeaderboard {
 # ═══════════════════════════════════════════════════════════════════════
 
 function Invoke-ApiGetCurrency {
+    <#
+        .SYNOPSIS
+        Returns currency holdings with optional owner/denomination filters.
+    #>
+
     param([hashtable]$ApiContext)
 
     $QP     = $ApiContext.QueryParams
@@ -350,6 +411,11 @@ function Invoke-ApiGetCurrency {
 }
 
 function Invoke-ApiGetEconomicSnapshot {
+    <#
+        .SYNOPSIS
+        Returns point-in-time economic analysis with Gini coefficients.
+    #>
+
     param([hashtable]$ApiContext)
 
     $QP     = $ApiContext.QueryParams
@@ -369,6 +435,11 @@ function Invoke-ApiGetEconomicSnapshot {
 }
 
 function Invoke-ApiGetEconomicTimeline {
+    <#
+        .SYNOPSIS
+        Returns monthly economic trends between two dates.
+    #>
+
     param([hashtable]$ApiContext)
 
     $QP = $ApiContext.QueryParams
@@ -395,6 +466,11 @@ function Invoke-ApiGetEconomicTimeline {
 }
 
 function Invoke-ApiGetTransactions {
+    <#
+        .SYNOPSIS
+        Returns currency transaction ledger entries.
+    #>
+
     param([hashtable]$ApiContext)
 
     $QP     = $ApiContext.QueryParams
@@ -418,6 +494,11 @@ function Invoke-ApiGetTransactions {
 # ═══════════════════════════════════════════════════════════════════════
 
 function Invoke-ApiResolveName {
+    <#
+        .SYNOPSIS
+        Resolves a name query to an entity via exact, alias, and fuzzy matching.
+    #>
+
     param([hashtable]$ApiContext)
 
     $Name = $ApiContext.PathParams['name']
@@ -435,6 +516,11 @@ function Invoke-ApiResolveName {
 # ═══════════════════════════════════════════════════════════════════════
 
 function Invoke-ApiValidatePU {
+    <#
+        .SYNOPSIS
+        Validates PU assignment consistency for a date range.
+    #>
+
     param([hashtable]$ApiContext)
 
     $QP     = $ApiContext.QueryParams
@@ -454,6 +540,11 @@ function Invoke-ApiValidatePU {
 }
 
 function Invoke-ApiValidateCurrency {
+    <#
+        .SYNOPSIS
+        Runs currency reconciliation checks.
+    #>
+
     param([hashtable]$ApiContext)
 
     $QP     = $ApiContext.QueryParams
@@ -470,6 +561,11 @@ function Invoke-ApiValidateCurrency {
 }
 
 function Invoke-ApiValidateSessions {
+    <#
+        .SYNOPSIS
+        Runs session integrity checks with optional full mode.
+    #>
+
     param([hashtable]$ApiContext)
 
     $QP     = $ApiContext.QueryParams
@@ -487,6 +583,11 @@ function Invoke-ApiValidateSessions {
 }
 
 function Invoke-ApiValidateGraph {
+    <#
+        .SYNOPSIS
+        Validates session graph index integrity.
+    #>
+
     param([hashtable]$ApiContext)
 
     $Params = @{ Quiet = $true }
@@ -504,6 +605,11 @@ function Invoke-ApiValidateGraph {
 # ═══════════════════════════════════════════════════════════════════════
 
 function Invoke-ApiGetChangelog {
+    <#
+        .SYNOPSIS
+        Returns entity change audit log with optional filters.
+    #>
+
     param([hashtable]$ApiContext)
 
     $QP     = $ApiContext.QueryParams
@@ -523,6 +629,11 @@ function Invoke-ApiGetChangelog {
 }
 
 function Invoke-ApiGetDormancy {
+    <#
+        .SYNOPSIS
+        Returns inactive entity report based on dormancy threshold.
+    #>
+
     param([hashtable]$ApiContext)
 
     $QP     = $ApiContext.QueryParams
@@ -541,6 +652,11 @@ function Invoke-ApiGetDormancy {
 }
 
 function Invoke-ApiGetFrequency {
+    <#
+        .SYNOPSIS
+        Returns session frequency trend data.
+    #>
+
     param([hashtable]$ApiContext)
 
     $QP     = $ApiContext.QueryParams
@@ -558,6 +674,11 @@ function Invoke-ApiGetFrequency {
 }
 
 function Invoke-ApiGetNarrators {
+    <#
+        .SYNOPSIS
+        Returns narrator statistics and resolution status.
+    #>
+
     param([hashtable]$ApiContext)
 
     $QP     = $ApiContext.QueryParams
@@ -577,6 +698,11 @@ function Invoke-ApiGetNarrators {
 }
 
 function Invoke-ApiGetLocations {
+    <#
+        .SYNOPSIS
+        Returns location entities via the standard query pipeline.
+    #>
+
     param([hashtable]$ApiContext)
 
     # Return entities of type Lokacja as a location reference dataset
@@ -586,6 +712,11 @@ function Invoke-ApiGetLocations {
 }
 
 function Invoke-ApiGetLocationGraph {
+    <#
+        .SYNOPSIS
+        Returns location containment and movement topology.
+    #>
+
     param([hashtable]$ApiContext)
 
     $QP     = $ApiContext.QueryParams
@@ -604,6 +735,11 @@ function Invoke-ApiGetLocationGraph {
 }
 
 function Invoke-ApiGetPULog {
+    <#
+        .SYNOPSIS
+        Returns PU assignment processing history.
+    #>
+
     param([hashtable]$ApiContext)
 
     $QP     = $ApiContext.QueryParams
@@ -621,6 +757,11 @@ function Invoke-ApiGetPULog {
 }
 
 function Invoke-ApiGetNotifications {
+    <#
+        .SYNOPSIS
+        Returns notification audit log entries.
+    #>
+
     param([hashtable]$ApiContext)
 
     $QP     = $ApiContext.QueryParams
@@ -640,6 +781,11 @@ function Invoke-ApiGetNotifications {
 }
 
 function Invoke-ApiGetDeliveryLog {
+    <#
+        .SYNOPSIS
+        Returns Discord webhook delivery history.
+    #>
+
     param([hashtable]$ApiContext)
 
     $QP     = $ApiContext.QueryParams
@@ -656,5 +802,159 @@ function Invoke-ApiGetDeliveryLog {
         return @{ StatusCode = 200; Body = @{ count = $Log.Count; deliveryLog = $Log } }
     } catch {
         return @{ StatusCode = 422; Body = @{ error = $_.Exception.Message } }
+    }
+}
+
+# ═══════════════════════════════════════════════════════════════════════
+# PARSING
+# ═══════════════════════════════════════════════════════════════════════
+
+function Invoke-ApiParseLog {
+    <#
+        .SYNOPSIS
+        Parses raw log text into structured data via ConvertFrom-LogContent.
+    #>
+
+    [CmdletBinding()] param(
+        [Parameter(Mandatory)] [hashtable]$ApiContext
+    )
+
+    $B = $ApiContext.Body
+    if (-not $B -or -not $B.content) {
+        return @{ StatusCode = 400; Body = @{ error = 'content field required' } }
+    }
+
+    try {
+        $Result = ConvertFrom-LogContent -Content ([string]$B.content)
+        return @{ StatusCode = 200; Body = $Result }
+    } catch {
+        return @{ StatusCode = 422; Body = @{ error = $_.Exception.Message } }
+    }
+}
+
+function Invoke-ApiSessionPreview {
+    <#
+        .SYNOPSIS
+        Generates a Gen4 session markdown preview with location name validation.
+    #>
+
+    [CmdletBinding()] param(
+        [Parameter(Mandatory)] [hashtable]$ApiContext
+    )
+
+    $B = $ApiContext.Body
+    if (-not $B) {
+        return @{ StatusCode = 400; Body = @{ error = 'Request body required' } }
+    }
+    if (-not $B.title -or -not $B.narrator -or -not $B.date) {
+        return @{ StatusCode = 400; Body = @{ error = 'title, narrator, and date are required' } }
+    }
+
+    try {
+        $ParsedDate = [datetime]::Parse([string]$B.date)
+    } catch {
+        return @{ StatusCode = 400; Body = @{ error = "Invalid date format: $($B.date)" } }
+    }
+
+    $Params = @{
+        Date     = $ParsedDate
+        Title    = [string]$B.title
+        Narrator = [string]$B.narrator
+    }
+
+    if ($B.dateEnd) {
+        try { $Params.DateEnd = [datetime]::Parse([string]$B.dateEnd) }
+        catch { return @{ StatusCode = 400; Body = @{ error = "Invalid dateEnd format: $($B.dateEnd)" } } }
+    }
+    if ($B.locations)         { $Params.Locations         = @($B.locations) }
+    if ($B.metadataNarrators) { $Params.MetadataNarrators = @($B.metadataNarrators) }
+    if ($B.logs)              { $Params.Logs              = @($B.logs) }
+    if ($B.content)           { $Params.Content           = [string]$B.content }
+
+    if ($B.pu) {
+        $Params.PU = @($B.pu).ForEach({
+            [PSCustomObject]@{ Character = [string]$_.character; Value = [decimal]$_.value }
+        })
+    }
+
+    if ($B.changes) {
+        $Params.Changes = @($B.changes).ForEach({
+            [PSCustomObject]@{
+                EntityName = [string]$_.entityName
+                Tags = @($_.tags).ForEach({
+                    [PSCustomObject]@{ Tag = [string]$_.tag; Value = [string]$_.value }
+                })
+            }
+        })
+    }
+
+    if ($B.intel) {
+        $Params.Intel = @($B.intel).ForEach({
+            [PSCustomObject]@{ RawTarget = [string]$_.rawTarget; Message = [string]$_.message }
+        })
+    }
+
+    try {
+        $Markdown = New-Session @Params
+
+        # Validate location names
+        $Warnings = [System.Collections.Generic.List[string]]::new()
+        $ResolvedLocations = @()
+        if ($B.locations) {
+            $ResolvedLocations = @($B.locations).ForEach({
+                $R = Resolve-Name -Query ([string]$_) -OwnerType 'Lokacja' -NoFuzzy
+                if (-not $R) {
+                    [void]$Warnings.Add("Location not found: $_")
+                    [PSCustomObject]@{ query = [string]$_; resolved = $null; found = $false }
+                } else {
+                    [PSCustomObject]@{ query = [string]$_; resolved = $R.Name; found = $true }
+                }
+            })
+        }
+
+        return @{
+            StatusCode = 200
+            Body = @{
+                markdown          = $Markdown
+                resolvedLocations = $ResolvedLocations
+                warnings          = @($Warnings)
+            }
+        }
+    } catch {
+        return @{ StatusCode = 422; Body = @{ error = $_.Exception.Message } }
+    }
+}
+
+function Invoke-ApiGetFiles {
+    <#
+        .SYNOPSIS
+        Returns .md file paths relative to the repository root for path autocomplete.
+    #>
+
+    [CmdletBinding()] param(
+        [Parameter(Mandatory)] [hashtable]$ApiContext
+    )
+
+    $Root = Get-RepoRoot
+    $Files = [System.IO.Directory]::GetFiles($Root, '*.md', [System.IO.SearchOption]::AllDirectories)
+
+    $RelPaths = [System.Collections.Generic.List[string]]::new()
+    $RootLen = $Root.Length + 1  # +1 for trailing separator
+
+    foreach ($F in $Files) {
+        # Skip hidden directories (.robot.new, .git, etc.)
+        $Rel = $F.Substring($RootLen).Replace('\', '/')
+        if ($Rel.StartsWith('.')) { continue }
+        [void]$RelPaths.Add($Rel)
+    }
+
+    $RelPaths.Sort()
+
+    return @{
+        StatusCode = 200
+        Body = @{
+            files = $RelPaths.ToArray()
+            count = $RelPaths.Count
+        }
     }
 }

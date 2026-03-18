@@ -82,6 +82,45 @@ Describe 'Get-RepoRoot' {
             $RepoRoot | Should -Be $script:ExpectedRepoRoot
         }
     }
+
+    Context '-Optional switch' {
+        It 'returns $null when no repo found with -Optional' {
+            $TempRoot = Join-Path ([System.IO.Path]::GetTempPath()) ("robot-optional-test-" + [System.Guid]::NewGuid().ToString('N'))
+            $TempModule = Join-Path $TempRoot 'fake-module'
+            try {
+                [void][System.IO.Directory]::CreateDirectory($TempModule)
+                $Result = Get-RepoRoot -ModuleRoot $TempModule -Optional
+                $Result | Should -BeNullOrEmpty
+            }
+            finally {
+                if ([System.IO.Directory]::Exists($TempRoot)) {
+                    [System.IO.Directory]::Delete($TempRoot, $true)
+                }
+            }
+        }
+
+        It 'still returns repo root when found with -Optional' {
+            $Result = Get-RepoRoot -Optional
+            $Result | Should -Not -BeNullOrEmpty
+            $NormResult = [System.IO.Path]::GetFullPath($Result).TrimEnd('\', '/')
+            $NormResult | Should -Be $script:ExpectedRepoRoot
+        }
+
+        It 'returns $null with -Optional when ModuleRoot has no repo' {
+            $TempRoot = Join-Path ([System.IO.Path]::GetTempPath()) ("robot-optional-norep-" + [System.Guid]::NewGuid().ToString('N'))
+            $TempModule = Join-Path $TempRoot 'fake-module'
+            try {
+                [void][System.IO.Directory]::CreateDirectory($TempModule)
+                $Result = Get-RepoRoot -ModuleRoot $TempModule -Optional
+                $Result | Should -BeNullOrEmpty
+            }
+            finally {
+                if ([System.IO.Directory]::Exists($TempRoot)) {
+                    [System.IO.Directory]::Delete($TempRoot, $true)
+                }
+            }
+        }
+    }
 }
 
 Describe 'Get-ParentRepoRoot' {
