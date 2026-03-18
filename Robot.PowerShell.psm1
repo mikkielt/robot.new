@@ -124,7 +124,7 @@ if ([System.IO.Directory]::Exists($LibDir)) {
                 Add-Type -TypeDefinition $AllSource.ToString() -Language CSharp
             }
             catch {
-                [System.Console]::Error.WriteLine("[WARN robot.psm1] Failed to compile lib/*.cs: $_")
+                [System.Console]::Error.WriteLine("[WARN Robot.PowerShell.psm1] Failed to compile lib/*.cs: $_")
             }
         }
     }
@@ -184,7 +184,7 @@ foreach ($FilePath in $FunctionFiles) {
     $FileName = [System.IO.Path]::GetFileName($FilePath)
 
     # Skip the module file itself and core.ps1 (loaded separately)
-    if ($FileName -ieq 'robot.psm1' -or $FileName -ieq 'core.ps1') { continue }
+    if ($FileName -ieq 'Robot.PowerShell.psm1' -or $FileName -ieq 'core.ps1') { continue }
 
     # Skip files inside plugins/ — loaded in Phase 2 with dependency ordering
     $RelPath = $FilePath.Substring($ModuleRoot.Length)
@@ -201,7 +201,7 @@ foreach ($FilePath in $FunctionFiles) {
         . "$FilePath"
     }
     catch {
-        [System.Console]::Error.WriteLine("[WARN robot.psm1] Failed to load function file '$FileName': $_")
+        [System.Console]::Error.WriteLine("[WARN Robot.PowerShell.psm1] Failed to load function file '$FileName': $_")
         continue
     }
 
@@ -253,14 +253,14 @@ if ([System.IO.Directory]::Exists($PluginsDir)) {
         }
         catch {
             [System.Console]::Error.WriteLine(
-                "[WARN robot.psm1] Failed to parse plugin manifest '$ManifestPath': $_")
+                "[WARN Robot.PowerShell.psm1] Failed to parse plugin manifest '$ManifestPath': $_")
             continue
         }
 
         # Name + Version are mandatory — reject malformed manifests early
         if (-not $Manifest.Name -or -not $Manifest.Version) {
             [System.Console]::Error.WriteLine(
-                "[WARN robot.psm1] Plugin at '$PluginDir' missing Name or Version - skipped")
+                "[WARN Robot.PowerShell.psm1] Plugin at '$PluginDir' missing Name or Version - skipped")
             continue
         }
 
@@ -268,7 +268,7 @@ if ([System.IO.Directory]::Exists($PluginsDir)) {
         if ($Manifest.MinCoreVersion -and $CoreVersion) {
             if ([version]$Manifest.MinCoreVersion -gt [version]$CoreVersion) {
                 [System.Console]::Error.WriteLine(
-                    "[WARN robot.psm1] Plugin '$($Manifest.Name)' requires core v$($Manifest.MinCoreVersion)" +
+                    "[WARN Robot.PowerShell.psm1] Plugin '$($Manifest.Name)' requires core v$($Manifest.MinCoreVersion)" +
                     " but current is v$CoreVersion - skipped")
                 continue
             }
@@ -313,7 +313,7 @@ if ([System.IO.Directory]::Exists($PluginsDir)) {
                 # Prevent plugin functions from shadowing core — would cause silent behavior changes
                 if ($ExportedFunctions.Contains($FuncName)) {
                     [System.Console]::Error.WriteLine(
-                        "[WARN robot.psm1] Plugin '$PluginName' function '$FuncName'" +
+                        "[WARN Robot.PowerShell.psm1] Plugin '$PluginName' function '$FuncName'" +
                         " collides with existing function - skipped")
                     continue
                 }
@@ -323,7 +323,7 @@ if ([System.IO.Directory]::Exists($PluginsDir)) {
                 }
                 catch {
                     [System.Console]::Error.WriteLine(
-                        "[WARN robot.psm1] Plugin '$PluginName' failed to load '$FuncName': $_")
+                        "[WARN Robot.PowerShell.psm1] Plugin '$PluginName' failed to load '$FuncName': $_")
                     continue
                 }
 
@@ -412,7 +412,7 @@ function Clear-ParseCaches {
     if (([System.Management.Automation.PSTypeName]'Robot.ParseCacheHelper').Type) {
         try {
             $RepoRoot = Get-RepoRoot
-            $CacheDir = [System.IO.Path]::Combine($RepoRoot, '.robot-cache')
+            $CacheDir = [System.IO.Path]::Combine($RepoRoot, '.robot.local', '.cache')
             [Robot.ParseCacheHelper]::DeleteCacheDirectory($CacheDir)
         } catch {
             # Best-effort: disk cache deletion failure doesn't affect memory invalidation
@@ -484,7 +484,7 @@ function Get-LoadedPlugins {
 $CompleterPath = [System.IO.Path]::Combine($ModuleRoot, 'private', 'argument-completers.ps1')
 if ([System.IO.File]::Exists($CompleterPath)) {
     try { . $CompleterPath } catch {
-        [System.Console]::Error.WriteLine("[WARN robot.psm1] Failed to load argument completers: $_")
+        [System.Console]::Error.WriteLine("[WARN Robot.PowerShell.psm1] Failed to load argument completers: $_")
     }
 }
 

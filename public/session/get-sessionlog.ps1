@@ -101,7 +101,7 @@ function Get-SessionLog {
                 if (-not $Url.StartsWith('http', [System.StringComparison]::OrdinalIgnoreCase)) {
                     # Local path: read from .robot/ directory (legacy pre-HTTP log storage)
                     if (-not $LocalPaths.ContainsKey($Url)) {
-                        $FullPath = [System.IO.Path]::Combine($RepoRoot, '.robot', $Url)
+                        $FullPath = [System.IO.Path]::Combine($RepoRoot, '.robot.local', $Url)
                         if ([System.IO.File]::Exists($FullPath)) {
                             $LocalPaths[$Url] = [System.IO.File]::ReadAllText($FullPath)
                         }

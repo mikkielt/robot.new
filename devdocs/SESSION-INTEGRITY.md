@@ -46,7 +46,7 @@ public/reporting/test-sessionintegrity.ps1   Integrity validator (exported, read
 Hashes are stored as JSON sidecar files under `{ResDir}/session-hashes/`, mirroring the repository's directory structure:
 
 ```
-.robot/res/session-hashes/
+.robot.local/res/session-hashes/
 ├── _meta.json                    Operational metadata (timestamps, version)
 ├── Archiwum/
 │   ├── sesje-2024.md.json        Hashes for Archiwum/sesje-2024.md
@@ -153,7 +153,7 @@ Exclusion rules:
 
 | Rule | Mechanism |
 |---|---|
-| Dot directories (`.git/`, `.robot/`, `.robot.new/`) | Component scan: any directory starting with `.` |
+| Dot directories (`.git/`, `.robot.local/`, `.robot.powershell/`) | Component scan: any directory starting with `.` |
 | `Nerthus/` subdirectory | Component scan: case-insensitive match on `Nerthus` |
 | User-specified directories | Absolute prefix matching via `$ExcludePrefixes` |
 

@@ -27,7 +27,7 @@ The new system operates on two data sources simultaneously:
 
 When reading data, the system merges both sources in memory — entities from `entities.md` override values from `Gracze.md` where they exist. This means no data is lost during transition, and the switch is gradual.
 
-The file `.robot/robot-data.psd1` tells the module where to find `entities.md`. Without it, some commands would default to writing inside the `.robot.new` directory instead of the repository root. The migration script creates this manifest automatically during Phase 0.
+The file `.robot.local/robot-data.psd1` tells the module where to find `entities.md`. Without it, some commands would default to writing inside the `.robot.powershell` directory instead of the repository root. The migration script creates this manifest automatically during Phase 0.
 
 Session records exist in four format generations, accumulated over the project's history:
 
@@ -58,7 +58,7 @@ The migration is divided into phases (0-8). Not all require involvement from the
 
 Total estimated time is 4-6 weeks, most of which is the parallel/cutover period.
 
-Each migration run produces a diagnostic log file in `.robot/res/`. This log captures every step, warning, and error with timestamps and detailed repair instructions. The log is overwritten on each run and contains results from the last run only. The Coordinator can review this file after running the migration to see all issues that were encountered and their suggested fixes.
+Each migration run produces a diagnostic log file in `.robot.local/res/`. This log captures every step, warning, and error with timestamps and detailed repair instructions. The log is overwritten on each run and contains results from the last run only. The Coordinator can review this file after running the migration to see all issues that were encountered and their suggested fixes.
 
 Migration progress is saved after each step. If a migration run is interrupted (e.g., terminal closed, system crash), the Coordinator can resume from where it left off — no progress is lost. A backup of the previous state is kept automatically, so even if the save itself is interrupted, the prior state is recoverable.
 
@@ -66,11 +66,11 @@ Migration progress is saved after each step. If a migration run is interrupted (
 
 The Coordinator secures the current state before any changes, then generates the entity store from legacy data. This phase combines preparation and bootstrap into a single step.
 
-The phase proceeds through the following steps. The system verifies a clean git state (no uncommitted changes allowed before migration starts). It creates a safety tag (`pre-migration`) providing a rollback point to the exact pre-migration state. It verifies the PU state file, ensuring the processing history file (`pu-sessions.json`) is preserved and continues to be used. It verifies the submodule (`.robot.new` must be registered as a git submodule) and confirms all commands are available. It creates the data manifest (`.robot/robot-data.psd1`) ensuring all commands write to the correct `entities.md` location. Finally, it generates the entity store by reading all current player and character data from the existing player database and writing it into `entities.md`. The system creates one new file containing all players, their characters, and associated metadata (PU values, aliases, group memberships). The original player database remains untouched. Additional entity sections (NPC, Group, Location, Item) are added for future use.
+The phase proceeds through the following steps. The system verifies a clean git state (no uncommitted changes allowed before migration starts). It creates a safety tag (`pre-migration`) providing a rollback point to the exact pre-migration state. It verifies the PU state file, ensuring the processing history file (`pu-sessions.json`) is preserved and continues to be used. It verifies the submodule (`.robot.powershell` must be registered as a git submodule) and confirms all commands are available. It creates the data manifest (`.robot.local/robot-data.psd1`) ensuring all commands write to the correct `entities.md` location. It converts legacy state files from Markdown to structured JSON format — the PU processing history and Discord delivery log are migrated so that all future state access uses JSON. Finally, it generates the entity store by reading all current player and character data from the existing player database and writing it into `entities.md`. The system creates one new file containing all players, their characters, and associated metadata (PU values, aliases, group memberships). The original player database remains untouched. Additional entity sections (NPC, Group, Location, Item) are added for future use.
 
 ## Phase 1 — Baseline integralnosci sesji
 
-A read-only phase that computes and stores baseline SHA-256 content hashes for all session files. These hashes provide tamper detection and change tracking for session content going forward. The baseline is stored in `.robot/res/session-hashes/` and serves as the reference point for the session integrity validator.
+A read-only phase that computes and stores baseline SHA-256 content hashes for all session files. These hashes provide tamper detection and change tracking for session content going forward. The baseline is stored in `.robot.local/res/session-hashes/` and serves as the reference point for the session integrity validator.
 
 ## Phase 2 — Walidacja i naprawa danych
 
@@ -117,9 +117,9 @@ After the format upgrade, narrator names are verified against normalization mapp
 
 A location report analyzes all location names used in active sessions. It compares them against registered Lokacja entities and flags unresolved locations (names that do not match any registered entity, where the Coordinator must either create the missing entity or mark the value as a non-location) and warnings (fuzzy matches, case variants, or hierarchy inconsistencies, shown for awareness but do not block the process).
 
-Non-location exclusions are stored in `.robot/res/location-exclusions.txt` and persist across re-runs. The commit step is blocked until all truly unresolved locations are handled.
+Non-location exclusions are stored in `.robot.local/res/location-exclusions.txt` and persist across re-runs. The commit step is blocked until all truly unresolved locations are handled.
 
-After the format upgrade and location review, a review file (`all-sessions-to-review.md`) is generated in `.robot/res/`. This file contains every session sorted chronologically, with source file paths embedded as HTML comments. The Coordinator can edit session content directly in the review file (fix typos, upgrade old formats, correct metadata), delete session blocks to remove them from source files, or add new session blocks (these are placed in `.robot/res/review-additions/` for manual integration).
+After the format upgrade and location review, a review file (`all-sessions-to-review.md`) is generated in `.robot.local/res/`. This file contains every session sorted chronologically, with source file paths embedded as HTML comments. The Coordinator can edit session content directly in the review file (fix typos, upgrade old formats, correct metadata), delete session blocks to remove them from source files, or add new session blocks (these are placed in `.robot.local/res/review-additions/` for manual integration).
 
 On subsequent runs of Phase 5, the Coordinator can choose to apply edits from the review file back to source files, regenerate the review file, or refresh hashes after manual source edits. The review workflow is optional — Phase 5 can complete without it.
 
@@ -153,7 +153,7 @@ The cutover steps are the official switch to the new system as the sole operatio
 
 ## Inputs Required
 
-For the initial migration, the Coordinator needs access to the existing player database (`Gracze.md`, read-only, never modified) and a working copy of the repository with the `.robot.new` module available.
+For the initial migration, the Coordinator needs access to the existing player database (`Gracze.md`, read-only, never modified) and a working copy of the repository with the `.robot.powershell` module available.
 
 For ongoing operations, the system requires session files with proper headers (`### YYYY-MM-DD, Title, Narrator`) and metadata blocks, player webhook addresses for Discord notifications (optional but recommended), and character names that match registered names or aliases exactly.
 
@@ -212,12 +212,12 @@ The new system never modifies `Gracze.md`. The old system always has access to i
 
 ## Audit Trail / Evidence of Completion
 
-- PU processing log (`.robot/res/pu-sessions.json`) — timestamped entries listing which sessions were processed in each run, used to prevent double-counting
+- PU processing log (`.robot.local/res/pu-sessions.json`) — timestamped entries listing which sessions were processed in each run, used to prevent double-counting
 - Entity store changes — all player and character updates are committed to the repository, providing full Git history
 - Discord notifications — each player receives a message confirming awarded PU, current totals, and overflow pool usage
 - Diagnostic reports — the validation tool produces a structured report showing whether all checks passed, with details on any issues found
-- Location report (`.robot/res/location-report.txt`) — optional export of all location names with resolution status, variants, and conflicts
-- Migration state (`.robot/res/migration-state.json`) — tracks per-phase completion, checklist items, and diagnostic history across runs
+- Location report (`.robot.local/res/location-report.txt`) — optional export of all location names with resolution status, variants, and conflicts
+- Migration state (`.robot.local/res/migration-state.json`) — tracks per-phase completion, checklist items, and diagnostic history across runs
 
 ## Related Documents
 

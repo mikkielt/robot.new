@@ -54,6 +54,7 @@ ReconciliationWarning ────────────── Individual warn
 EconomicSnapshot ─────────────────── Point-in-time economic state
 EconomicTimelineEntry ────────────── Monthly economic data point
 MaterializationReport ────────────── Physical vs virtual analysis
+LocationEntity ───────────────────── Enriched location query result
 LocationGraphEdge ────────────────── Location connectivity edge
 SessionGraphParticipant ──────────── Entity participation record
 SessionGraphSummary ──────────────── Graph-level statistics
@@ -947,6 +948,39 @@ Returned by `Get-ItemEntity`. Enriched Przedmiot entity with owner classificatio
 
 ---
 
+## Location Entity Object
+
+Returned by `Get-LocationEntity` in `public/location/get-locationentity.ps1`. Enriched Lokacja (or Mapa with `-IncludeMaps`) entity with hierarchy, door connections, and map metadata.
+
+| Property | Type | Description |
+|---|---|---|
+| `Entity` | object | Original Robot.Entity object from `Get-EntityState` |
+| `EntityName` | string | Entity display name |
+| `Type` | string | Entity type: Lokacja or Mapa |
+| `Parent` | string | Parent location name (from `@lokacja`) |
+| `Children` | object[] | Child location/map entities |
+| `ChildCount` | int | Number of children |
+| `DoorTargets` | object[] | Resolved door connection entities (or `@{ Name; Resolved = $false }` stubs) |
+| `DoorCount` | int | Number of door connections |
+| `IsExterior` | bool | Whether the entity has coordinates (exterior/outdoor map) |
+| `Coordinates` | hashtable | `@{ X = int; Y = int }` (or `$null`) |
+| `HierarchicalPath` | string | Canonical name (CN) from entity state — `Lokacja/Parent/.../Name` |
+| `NerthusName` | string | RP override name (Nerthus server name for a Margonem location) |
+| `EntityCount` | int | Count of non-location entities at this location |
+| `Status` | string | Entity status (Aktywny default) |
+| `MapData` | object | Mapa-specific metadata (only for `Type = 'Mapa'`, else `$null`) |
+
+MapData subobject (for Mapa entities, extracted from `Entity.Overrides`):
+
+| Property | Type | Description |
+|---|---|---|
+| `Slug` | string | URL-safe slug (`@slug` override) |
+| `Url` | string | CDN map image URL (`@url` override) |
+| `UrlNerthus` | string | Nerthus map image URL (`@url_nerthus` override) |
+| `Dimensions` | string | Tile dimensions (`@wymiary` override) |
+
+---
+
 ## Resolve-Entity Result
 
 Returned by `Resolve-Entity`. Passes through original `Robot.Entity` objects — no enrichment or projection. Filter parameters are AND-combined: Owner, Location, Group, Type, Status, Name (substring).
@@ -1025,6 +1059,8 @@ Scalar comparison uses `OrdinalIgnoreCase` with null→empty normalization. Mult
 | `tests/resolve-name.Tests.ps1` | NameIndex, IndexEntry, BK-tree results |
 | `tests/get-itementity.Tests.ps1` | ItemEntity object, owner type, currency exclusion |
 | `tests/resolve-entity.Tests.ps1` | Resolve-Entity filtering, status gates |
+| `tests/get-locationentity.Tests.ps1` | LocationEntity object, children/doors enrichment, MapData, filters |
+| `tests/new-mapentity.Tests.ps1` | MapEntity creation, slug uniqueness, dimensions validation, parent check |
 | `tests/get-dormancyreport.Tests.ps1` | DormancyReport object, threshold filtering, LastSource |
 | `tests/get-sessionfrequencytrend.Tests.ps1` | SessionFrequencyTrend object, narrator dedup, format breakdown |
 | `tests/get-entitydelta.Tests.ps1` | EntityDelta object, scalar/multi-valued diffs, alias resolution |

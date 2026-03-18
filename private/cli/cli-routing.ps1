@@ -85,7 +85,7 @@ function Get-RegistryEntry {
 
 function Merge-PluginMenuItems {
     # Plugins populate $script:PluginMenuCategories, $script:PluginMenuItems,
-    # and $script:PluginHelpContent during robot.psm1 import. Each section
+    # and $script:PluginHelpContent during Robot.PowerShell.psm1 import. Each section
     # handles its own empty check because a plugin may provide any subset.
 
     # Categories must merge first so new menu items can reference them

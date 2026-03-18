@@ -36,6 +36,27 @@ Every entity property that changes over time (location, status, groups, owner, a
 
 ---
 
+## Location and Map Entity Data
+
+When querying locations, the system returns enriched records that combine the entity's base properties with hierarchy and connectivity information:
+
+| Field | What it holds |
+|---|---|
+| Entity name | The location or map display name |
+| Type | Lokacja (conceptual place) or Mapa (concrete game map) |
+| Parent | The parent location in the hierarchy |
+| Children | Child locations and maps contained within this location |
+| Door connections | Physical links to other locations, with resolution status |
+| Coordinates | Map tile position (X, Y) for exterior locations |
+| Hierarchical path | Full path through the location tree (e.g., Antagarich/Erathia/Zamek Steadwick) |
+| Nerthus name | The RP override name for Margonem locations |
+| Entity count | How many non-location entities are present at this location |
+| Status | Active, inactive, or removed |
+
+Mapa entities carry additional map-specific metadata: a unique slug for disambiguation, a CDN image URL, an optional Nerthus-specific image URL, and tile dimensions.
+
+---
+
 ## Session Data
 
 A session record captures everything that happened during one game session:

@@ -7,9 +7,7 @@
     This file contains the lowest-level interactive building blocks consumed
     by the entire CLI stack. Dot-sourced on demand (not at module import).
 
-    The interactive menu components (Show-ArrowMenu, Show-ResultTable) live in
-    cli-menus.ps1, which is chain-loaded via dot-source at the end of this file.
-    The TUI engine files (engine/*.ps1) are also chain-loaded in dependency
+    The TUI engine files (engine/*.ps1) are chain-loaded in dependency
     order from this file.
 
     Active helpers (NOT deprecated):
@@ -27,10 +25,6 @@
     - Complete-ProgressGroup: finalize group with total elapsed on title line
 
     - Show-InfoBox:       simple pre-checks info display for workflow screens
-
-    DEPRECATED helpers (use engine equivalents instead):
-    - Read-ArrowKey:      → engine input handling (Start-InputLoop)
-    - Clear-MenuArea:     → engine buffer (Write-BufferRegion)
 
     Module-level data:
     - $script:CLIColorScheme: dark/light adaptive color mappings (7 semantic
@@ -349,29 +343,6 @@ function Initialize-WorkflowScreen {
     return $Colors
 }
 
-# ── Read-ArrowKey ────────────────────────────────────────────────────────────
-# DEPRECATED: Use engine input handling (Start-InputLoop) instead.
-
-function Read-ArrowKey {
-    $KeyInfo = [System.Console]::ReadKey($true)
-    return $KeyInfo
-}
-
-# ── Clear-MenuArea ───────────────────────────────────────────────────────────
-# DEPRECATED: Use engine buffer (Write-BufferRegion) instead.
-function Clear-MenuArea {
-    param(
-        [int]$StartRow,
-        [int]$LineCount
-    )
-    $Blank = ' ' * ([System.Console]::WindowWidth - 1)
-    for ($I = 0; $I -lt $LineCount; $I++) {
-        $Host.UI.RawUI.CursorPosition = [System.Management.Automation.Host.Coordinates]::new(0, $StartRow + $I)
-        Write-Host $Blank -NoNewline
-    }
-    $Host.UI.RawUI.CursorPosition = [System.Management.Automation.Host.Coordinates]::new(0, $StartRow)
-}
-
 # ── Show-InfoBox ─────────────────────────────────────────────────────────────
 # Displays a simple pre-checks info list for workflow screens (Write-Host context).
 
@@ -387,10 +358,6 @@ function Show-InfoBox {
     }
     Write-Host ''
 }
-
-# ── Chain-load interactive menu components (deprecated layer) ────────────────
-
-. "$PSScriptRoot/cli-menus.ps1"
 
 # ── Chain-load TUI engine files in dependency order ─────────────────────────────
 

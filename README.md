@@ -1,6 +1,6 @@
 # Robot PowerShell Module
 
-A PowerShell module for managing an online RPG lore repository ([Nerthus](https://nerthus.pl/)). Runs as a Git submodule at `.robot.new/` inside the lore repository, parsing Markdown files into structured, queryable data.
+A PowerShell module for managing an online RPG lore repository ([Nerthus](https://nerthus.pl/)). Runs as a Git submodule at `.robot.powershell/` inside the lore repository, parsing Markdown files into structured, queryable data.
 
 - Players and Characters — full CRUD for players, characters, and their state. Characters use a three-layer merge model (entity registry → character file → session overrides) for a unified view.
 - Entities — NPCs, groups, locations, and items with temporal scoping. Every tag change carries an effective date, enabling point-in-time queries. Entities are soft-deleted, preserving full history.
@@ -23,14 +23,14 @@ A PowerShell module for managing an online RPG lore repository ([Nerthus](https:
 From the root of your lore repository:
 
 ```bash
-git submodule add git@github.com:mikkielt/robot.new.git .robot.new
+git submodule add git@github.com:mikkielt/robot.new.git .robot.powershell
 git submodule update --init
 ```
 
 ## Quick Start
 
 ```powershell
-Import-Module ./.robot.new/robot.psd1
+Import-Module ./.robot.powershell/Robot.PowerShell.psd1
 
 Get-Player                                              # all players with characters
 Get-Entity -ActiveOn (Get-Date)                         # entities active today
@@ -57,7 +57,7 @@ Starts the REST API server (if not already running) and opens a self-contained H
 To launch without importing the module first:
 
 ```powershell
-iwr https://raw.githubusercontent.com/mikkielt/robot.new/main/tools/dashboard.ps1 | iex
+iwr https://raw.githubusercontent.com/mikkielt/robot.powershell/main/tools/dashboard.ps1 | iex
 ```
 
 ## Interactive CLI

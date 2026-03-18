@@ -65,7 +65,7 @@ private/entity-writehelpers.ps1        Cross-cutting staleness marker
 The graph uses a single index file (not per-file sidecars like session-hashes) because sessions span multiple source files via `Merge-SessionGroup`:
 
 ```
-.robot/res/session-graph/
+.robot.local/res/session-graph/
 ├── _meta.json         Operational metadata (timestamps, name version, count, staleness)
 ├── _index.json        All sessions with their participant lists
 └── _mentions.json     Tier 2 mention cache (keyed by NameIndexVersion + content hash)
@@ -420,7 +420,7 @@ Defined in `private/entity-writehelpers.ps1`, this function marks the session gr
 | Parameter | Type | Mandatory | Description |
 |---|---|---|---|
 | `Reason` | string | Yes | Human-readable reason for staleness (e.g. entity name change, alias update) |
-| `ResDir` | string | Yes | Path to the `.robot/res/` directory |
+| `ResDir` | string | Yes | Path to the `.robot.local/res/` directory |
 
 Algorithm: (1) Guard-loads `Read-SessionGraphMeta` and `Write-SessionGraphMeta` from `session-graphhelpers.ps1` if not already available. (2) Computes the path `$ResDir/session-graph/_meta.json`. (3) If `_meta.json` exists, reads it, sets `Tier2Stale = $true` and `Tier2StaleReason = $Reason`, then writes it back. (4) If `_meta.json` does not exist, does nothing (no graph to mark as stale).
 

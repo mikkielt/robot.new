@@ -4,7 +4,7 @@
 
     .DESCRIPTION
     Non-exported helper functions consumed by New-Session and Set-Session via
-    dot-sourcing. Not auto-loaded by robot.psm1 (non-Verb-Noun filename).
+    dot-sourcing. Not auto-loaded by Robot.PowerShell.psm1 (non-Verb-Noun filename).
 
     Helpers:
     - ConvertTo-Gen4MetadataBlock: renders a single Gen4 @-prefixed metadata block

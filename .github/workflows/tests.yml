@@ -31,7 +31,7 @@ jobs:
             './public/*.ps1',
             './public/**/*.ps1',
             './private/**/*.ps1',
-            './robot.psm1'
+            './Robot.PowerShell.psm1'
           )
           $result = Invoke-Pester -Configuration $config
           exit $result.FailedCount

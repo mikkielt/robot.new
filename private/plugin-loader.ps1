@@ -3,7 +3,7 @@
     Plugin discovery, dependency resolution, and configuration loading.
 
     .DESCRIPTION
-    Non-exported helper functions consumed by robot.psm1 during the plugin
+    Non-exported helper functions consumed by Robot.PowerShell.psm1 during the plugin
     loading phase. Not auto-loaded (non-Verb-Noun filename).
 
     Helpers:

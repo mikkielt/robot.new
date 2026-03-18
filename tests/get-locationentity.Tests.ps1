@@ -17,7 +17,7 @@ BeforeAll {
 
     function Get-RepoRoot { return $script:TempRoot }
 
-    Import-Module $script:ModuleRoot/robot.psd1 -Force
+    Import-Module $script:ModuleRoot/Robot.PowerShell.psd1 -Force
 
     # Mock entity objects matching Get-EntityState output shape
     $script:MockEntities = @(

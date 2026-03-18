@@ -25,7 +25,7 @@
 #>
 
 # C# types: Robot.NarratorResult, Robot.Narrator (lib/NarratorResult.cs)
-# Compiled centrally in robot.psm1 at module import time.
+# Compiled centrally in Robot.PowerShell.psm1 at module import time.
 
 function Resolve-NarratorCandidate {
     param(

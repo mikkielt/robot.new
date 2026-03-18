@@ -60,7 +60,7 @@
 #>
 
 # C# types: Robot.TemporalEntry (lib/TemporalEntry.cs), Robot.Entity (lib/EntityModel.cs)
-# Compiled centrally in robot.psm1 at module import time.
+# Compiled centrally in Robot.PowerShell.psm1 at module import time.
 
 . "$script:ModuleRoot/private/temporal-helpers.ps1"
 function Resolve-EntityCN {

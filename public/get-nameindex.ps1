@@ -31,7 +31,7 @@
 
 . "$script:ModuleRoot/private/string-helpers.ps1"
 
-# C# type: Robot.BKTree (lib/BKTree.cs) — compiled centrally in robot.psm1.
+# C# type: Robot.BKTree (lib/BKTree.cs) — compiled centrally in Robot.PowerShell.psm1.
 # Eliminates PowerShell interpretation overhead on the hottest path
 # (16,500+ calls per Get-Session run for fuzzy name resolution).
 

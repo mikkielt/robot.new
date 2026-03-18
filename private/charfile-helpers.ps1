@@ -5,7 +5,7 @@
     .DESCRIPTION
     Non-exported helper functions consumed by Get-PlayerCharacter (-IncludeState),
     Set-PlayerCharacter, and New-PlayerCharacter via dot-sourcing. Not auto-loaded
-    by robot.psm1 (non-Verb-Noun filename).
+    by Robot.PowerShell.psm1 (non-Verb-Noun filename).
 
     Helpers:
     - Find-CharacterSection:       locates **Header:** section boundaries in character file lines

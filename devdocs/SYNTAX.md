@@ -246,7 +246,7 @@ $Text.StartsWith($Prefix)  # ordinal by default, acceptable for known-ASCII pref
 `-ieq` is used for simple single-value guards:
 
 ```powershell
-if ($FileName -ieq 'robot.psm1') { continue }
+if ($FileName -ieq 'Robot.PowerShell.psm1') { continue }
 ```
 
 ---
@@ -533,7 +533,7 @@ The manifest uses PowerShell data syntax (`@{ }`) with inline `#` comments for f
 ```powershell
 @{
     # Script module or binary module file associated with this manifest
-    RootModule = 'Robot.psm1'
+    RootModule = 'Robot.PowerShell.psm1'
 
     # Version number of this module
     ModuleVersion = '1.0.0'

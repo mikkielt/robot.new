@@ -172,7 +172,7 @@ The type check ensures the class is loaded only once per session, even if `get-n
 
 ## `Robot.DeclensionEngine`
 
-Source: `lib/DeclensionEngine.cs` — compiled centrally in `robot.psm1`.
+Source: `lib/DeclensionEngine.cs` — compiled centrally in `Robot.PowerShell.psm1`.
 
 `Robot.DeclensionEngine` is a Polish noun declension engine for name resolution. It iterates suffix and alternation arrays using `.EndsWith()` + `.Substring()` with `OrdinalIgnoreCase` comparison. Constructed once at module load by `public/resolve/resolve-name.ps1` with Polish declension tables (locative, genitive, instrumental, dative suffixes and consonant alternation pairs).
 

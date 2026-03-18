@@ -40,12 +40,12 @@
     Uses item-helpers.ps1 and currency-helpers.ps1 (lazy-loaded on first
     @Transfer) for the unified item lookup layer (Build-ItemLookup). Uses
     Robot.TemporalSorter (lib/TemporalSorter.cs, compiled centrally in
-    robot.psm1) — compiled C# temporal sort comparer invoked O(n log n) times
+    Robot.PowerShell.psm1) — compiled C# temporal sort comparer invoked O(n log n) times
     per sort across 9 history lists per entity.
 #>
 
 # C# types: Robot.TemporalEntry, Robot.Entity, Robot.TemporalSorter
-# Compiled centrally in robot.psm1 at module import time.
+# Compiled centrally in Robot.PowerShell.psm1 at module import time.
 
 function Get-EntityState {
     <#

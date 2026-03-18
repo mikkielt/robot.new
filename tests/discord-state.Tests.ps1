@@ -12,6 +12,7 @@ BeforeAll {
     . "$PSScriptRoot/TestHelpers.ps1"
     . (Join-Path $script:ModuleRoot 'private' 'admin-state.ps1')
     . (Join-Path $script:ModuleRoot 'private' 'discord-state.ps1')
+    . (Join-Path $script:ModuleRoot 'migration' 'phase0-helpers.ps1')
 }
 
 Describe 'Add-DiscordDeliveryEntry' {

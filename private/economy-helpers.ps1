@@ -23,7 +23,7 @@
     (NPC/Grupa/Gracz owners).
 #>
 
-# C# type: Robot.EconomicAnalyzer (lib/EconomicAnalyzer.cs) — compiled centrally in robot.psm1.
+# C# type: Robot.EconomicAnalyzer (lib/EconomicAnalyzer.cs) — compiled centrally in Robot.PowerShell.psm1.
 # Gini coefficient and top-holder extraction without scriptblock comparers.
 
 function New-EconomicSnapshotData {

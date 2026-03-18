@@ -196,13 +196,13 @@ Edge cases:
 
 | Parameter | Type | Mandatory | Description |
 |---|---|---|---|
-| `Path` | string | No | Path to the PU sessions state file. Default: `<CWD>/.robot/res/pu-sessions.json` |
+| `Path` | string | No | Path to the PU sessions state file. Default: `<CWD>/.robot.local/res/pu-sessions.json` |
 | `MinDate` | datetime | No | Filter runs by `ProcessedAt` timestamp |
 | `MaxDate` | datetime | No | Filter runs by `ProcessedAt` timestamp |
 
 Algorithm:
 
-1. Default `$Path` to `Join-Path (Get-Location) '.robot/res/pu-sessions.json'`
+1. Default `$Path` to `Join-Path (Get-Location) '.robot.local/res/pu-sessions.json'`
 2. Read file via `[System.IO.File]::ReadAllText()` (UTF-8 no BOM)
 3. Line-by-line parsing with two precompiled regex patterns: timestamp line `^\s*-\s+(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2})\s+\(([^)]+)\):\s*$` (captures datetime and timezone) and session header line `^\s+-\s+###\s+(.+)$` (reuses `$script:HistoryEntryPattern` from `admin-state.ps1`)
 4. Groups session headers under their preceding timestamp

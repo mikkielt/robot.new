@@ -271,7 +271,7 @@ Headers are sorted chronologically using `[StringComparer]::Ordinal` (string-lex
 
 File creation: If `pu-sessions.json` does not exist, it is created with an empty `runs` array.
 
-File location: `$Config.ResDir` -> `<RepoRoot>/.robot/res/pu-sessions.json`.
+File location: `$Config.ResDir` -> `<RepoRoot>/.robot.local/res/pu-sessions.json`.
 
 ReconcileCurrency runs `Test-CurrencyReconciliation` on the sessions used in the pipeline. Results are logged to stderr and attached to the assignment results via `Add-Member -NotePropertyName 'CurrencyReconciliation'`.
 

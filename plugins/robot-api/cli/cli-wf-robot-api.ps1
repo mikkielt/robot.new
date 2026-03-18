@@ -10,7 +10,7 @@
 
     Each workflow takes $State (CLI state object) and $Entry (menu item
     hashtable), uses CLI primitive functions for colored output, and blocks
-    on Read-ArrowKey before returning to the menu.
+    on a keypress before returning to the menu.
 
     Helpers:
     - Invoke-ApiStartWorkflow: displays resolved config, starts API server
@@ -43,7 +43,7 @@ function Invoke-ApiStartWorkflow {
         Write-CLILine -Text "  Czas dzialania: $Uptime min, zapytan: $($S['requestCount'])" -Color $DimColor
         Write-Host ''
         Write-CLILine -Text '  Nacisnij dowolny klawisz...' -Color $DimColor
-        [void](Read-ArrowKey)
+        [void][System.Console]::ReadKey($true)
         return
     }
 
@@ -72,7 +72,7 @@ function Invoke-ApiStartWorkflow {
 
     Write-Host ''
     Write-CLILine -Text '  Nacisnij dowolny klawisz...' -Color $DimColor
-    [void](Read-ArrowKey)
+    [void][System.Console]::ReadKey($true)
 }
 
 function Invoke-ApiStopWorkflow {
@@ -93,7 +93,7 @@ function Invoke-ApiStopWorkflow {
         Write-CLILine -Text '  REST API nie jest aktywne.' -Color $InfoColor
         Write-Host ''
         Write-CLILine -Text '  Nacisnij dowolny klawisz...' -Color $DimColor
-        [void](Read-ArrowKey)
+        [void][System.Console]::ReadKey($true)
         return
     }
 
@@ -115,7 +115,7 @@ function Invoke-ApiStopWorkflow {
 
     Write-Host ''
     Write-CLILine -Text '  Nacisnij dowolny klawisz...' -Color $DimColor
-    [void](Read-ArrowKey)
+    [void][System.Console]::ReadKey($true)
 }
 
 function Invoke-ApiStatusWorkflow {
@@ -138,7 +138,7 @@ function Invoke-ApiStatusWorkflow {
         Write-CLILine -Text '  Uzyj "Uruchom REST API" aby wystartowac serwer.' -Color $DimColor
         Write-Host ''
         Write-CLILine -Text '  Nacisnij dowolny klawisz...' -Color $DimColor
-        [void](Read-ArrowKey)
+        [void][System.Console]::ReadKey($true)
         return
     }
 
@@ -155,5 +155,5 @@ function Invoke-ApiStatusWorkflow {
 
     Write-Host ''
     Write-CLILine -Text '  Nacisnij dowolny klawisz...' -Color $DimColor
-    [void](Read-ArrowKey)
+    [void][System.Console]::ReadKey($true)
 }

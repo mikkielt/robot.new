@@ -225,7 +225,7 @@ Fixtures:
 
 ## Compiled C# Type — Robot.EconomicAnalyzer
 
-Source: `lib/EconomicAnalyzer.cs` -- compiled centrally in `robot.psm1`.
+Source: `lib/EconomicAnalyzer.cs` -- compiled centrally in `Robot.PowerShell.psm1`.
 
 `Robot.EconomicAnalyzer` provides economic analysis for snapshot and timeline reporting. Two static operations:
 
@@ -233,7 +233,7 @@ Source: `lib/EconomicAnalyzer.cs` -- compiled centrally in `robot.psm1`.
 
 `GetTopHolders(string[] ownerNames, int[] ownerWealth, string[] ownerCategories, int top, out string[] topNames, out int[] topWealth, out string[] topCategories)` performs top-N extraction via index-array sort. Uses full sort (simpler than partial sort for typical sizes of 50--200 holders). Returns parallel arrays through `out` parameters for direct PowerShell consumption via `[ref]`. Returns empty arrays when input is null/empty or `top <= 0`. Sorts by wealth descending via index indirection to preserve parallel array alignment.
 
-Compiled centrally in `robot.psm1` at module import time. Consumer code checks availability with `([System.Management.Automation.PSTypeName]'Robot.EconomicAnalyzer').Type` and falls back to an equivalent PowerShell implementation when the type is unavailable.
+Compiled centrally in `Robot.PowerShell.psm1` at module import time. Consumer code checks availability with `([System.Management.Automation.PSTypeName]'Robot.EconomicAnalyzer').Type` and falls back to an equivalent PowerShell implementation when the type is unavailable.
 
 Consumer: `New-EconomicSnapshotData` (`private/economy-helpers.ps1`) -- calls both `ComputeGini` and `GetTopHolders` when the C# type is available, falling back to PowerShell Sort-Object/ScriptBlock comparisons otherwise.
 

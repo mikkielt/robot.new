@@ -41,7 +41,7 @@
 
 # C# types: Robot.SessionTagParser (lib/SessionTagParser.cs),
 # Robot.SessionPU/SessionChange/SessionTag/SessionIntel/SessionTransfer (lib/SessionMetadata.cs)
-# Compiled centrally in robot.psm1 at module import time.
+# Compiled centrally in Robot.PowerShell.psm1 at module import time.
 
 # PU section header pattern - matches "- PU:" or "- @PU:" list markers in session content.
 # Used by Test-PlayerCharacterPUAssignment and Test-SessionIntegrity for diagnostics.

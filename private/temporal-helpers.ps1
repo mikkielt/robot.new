@@ -5,7 +5,7 @@
     .DESCRIPTION
     Shared temporal utility functions extracted from get-entity.ps1 so they
     can be consumed by multiple subsystems without circular dot-source
-    dependencies. Not auto-loaded by robot.psm1 (non-Verb-Noun filename).
+    dependencies. Not auto-loaded by Robot.PowerShell.psm1 (non-Verb-Noun filename).
 
     Helpers:
     - ConvertFrom-ValidityString:   splits "Value (2025-02:)" into { Text, ValidFrom, ValidTo, Season }

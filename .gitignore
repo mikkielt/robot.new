@@ -1,0 +1,5 @@
+.robot.local/.cache/
+.robot.powershell/local.config.psd1
+
+.DS_Store
+Thumbs.db

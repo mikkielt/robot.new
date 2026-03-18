@@ -88,10 +88,9 @@ namespace Robot {
     /// rate. ConcurrentDictionary provides lock-free per-IP state; stale buckets
     /// (no requests for 10 minutes) are lazily evicted on next access.
     ///
-    /// Auth pipeline (three tiers, checked in order):
+    /// Auth pipeline (two tiers, checked in order):
     /// 1. Multi-token store (ApiTokenStore) — preferred, scope-aware
-    /// 2. Legacy single Bearer token — backward compat, grants admin:all
-    /// 3. Open access (no AuthToken set) — grants admin:all to all requests
+    /// 2. Open access (no auth configured) — grants admin:all to all requests
     /// All token comparisons use FixedTimeEquals to prevent timing attacks.
     ///
     /// Thread safety: all mutable state is in ConcurrentDictionary (_buckets)
@@ -114,9 +113,8 @@ namespace Robot {
 
         /// Authenticate request and return token info.
         /// Returns null if authentication fails (caller should 401).
-        /// Multi-token path (TokenStore) takes precedence over legacy single token.
         public ApiTokenInfo Authenticate(HttpListenerRequest request) {
-            // Multi-token path (preferred)
+            // Multi-token store (preferred)
             if (TokenStore != null && !TokenStore.IsEmpty) {
                 string header = request.Headers["Authorization"];
                 if (string.IsNullOrEmpty(header) ||
@@ -125,18 +123,12 @@ namespace Robot {
                 return TokenStore.Authenticate(header.Substring(7));
             }
 
-            // Legacy single-token path (backward compat)
+            // Open access (no auth configured)
             if (string.IsNullOrEmpty(AuthToken))
                 return new ApiTokenInfo { Name = "_open", Scopes = new[] { "admin:all" } };
 
-            string hdr = request.Headers["Authorization"];
-            if (string.IsNullOrEmpty(hdr) ||
-                !hdr.StartsWith("Bearer ", StringComparison.Ordinal))
-                return null;
-
-            return FixedTimeEquals(hdr.Substring(7), AuthToken)
-                ? new ApiTokenInfo { Name = "_legacy", Scopes = new[] { "admin:all" } }
-                : null;
+            // AuthToken set but no TokenStore — reject (fail-closed)
+            return null;
         }
 
         /// Check whether a token has a required scope.
@@ -153,11 +145,6 @@ namespace Robot {
                     return true;
             }
             return false;
-        }
-
-        /// Legacy CheckAuth — kept for backward compatibility.
-        public bool CheckAuth(HttpListenerRequest request) {
-            return Authenticate(request) != null;
         }
 
         /// Inject CORS headers if CorsOrigin is configured. Returns true if

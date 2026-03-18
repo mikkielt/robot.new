@@ -79,7 +79,7 @@ Behavior: (1) Invokes `Invoke-PluginHook -Operation 'Write-CharacterFile' -Phase
 
 ## Template System
 
-Template files are located in `.robot.new/templates/`:
+Template files are located in `.robot.powershell/templates/`:
 
 | File | Purpose |
 |---|---|

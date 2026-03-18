@@ -184,7 +184,7 @@ Consumers: `Parse-LogContent` (`private/parse-logcontent.ps1`) dispatches to `Ro
 | `DelayMs` | int | No | Throttle between HTTP requests (default 500ms) |
 | `SkipFetch` | switch | No | Read only from disk, no HTTP requests |
 
-When `.Logs` contains local file paths (non-HTTP entries such as `res/logs/filename`), they are read directly from disk via `[System.IO.File]::ReadAllText()` without HTTP requests. Mixed URLs and local paths in the same session are fully supported -- URLs go through `Invoke-LogBatchFetch` while local paths are resolved against `Get-RepoRoot`'s `.robot/` directory and merged into the fetched content dictionary before parsing.
+When `.Logs` contains local file paths (non-HTTP entries such as `res/logs/filename`), they are read directly from disk via `[System.IO.File]::ReadAllText()` without HTTP requests. Mixed URLs and local paths in the same session are fully supported -- URLs go through `Invoke-LogBatchFetch` while local paths are resolved against `Get-RepoRoot`'s `.robot.local/` directory and merged into the fetched content dictionary before parsing.
 
 Uses collect-then-emit pattern: (1) `begin` block initializes `$CollectedSessions` list. (2) `process` block collects all sessions into the list. (3) `end` block collects all log URLs across all sessions, deduplicates and batch-fetches (via `Invoke-LogBatchFetch`) or reads from disk with `-SkipFetch`, parses each log via `ConvertFrom-LogContent`, builds cross-referenced output, emits one result per session that has parseable logs. This ensures each unique URL is fetched/parsed only once, even when shared across sessions.
 

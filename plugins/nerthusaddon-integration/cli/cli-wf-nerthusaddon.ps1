@@ -28,7 +28,7 @@ function Invoke-NerthusAddonImportWorkflow {
             Write-CLILine -Text '  Brak danych map w maps.json.' -Color (Get-CLIColor -Role 'Warning')
             Write-Host ''
             Write-CLILine -Text '  Naciśnij dowolny klawisz...' -Color (Get-CLIColor -Role 'Disabled')
-            [void](Read-ArrowKey)
+            [void][System.Console]::ReadKey($true)
             return
         }
 
@@ -58,7 +58,7 @@ function Invoke-NerthusAddonImportWorkflow {
 
     Write-Host ''
     Write-CLILine -Text '  Naciśnij dowolny klawisz...' -Color (Get-CLIColor -Role 'Disabled')
-    [void](Read-ArrowKey)
+    [void][System.Console]::ReadKey($true)
 }
 
 function Invoke-NerthusAddonReportWorkflow {
@@ -103,5 +103,5 @@ function Invoke-NerthusAddonReportWorkflow {
 
     Write-Host ''
     Write-CLILine -Text '  Naciśnij dowolny klawisz...' -Color (Get-CLIColor -Role 'Disabled')
-    [void](Read-ArrowKey)
+    [void][System.Console]::ReadKey($true)
 }

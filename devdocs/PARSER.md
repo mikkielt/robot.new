@@ -52,9 +52,9 @@ Key API: `MarkdownScanner.Parse(string[] lines)` -- static, stateless, thread-sa
 
 Consumers: `private/parse-markdownfile.ps1` (primary scanner call), `public/get-markdown.ps1` (type pre-loading for RunspacePool workers).
 
-`Robot.ParseCacheHelper` (`lib/ParseCacheHelper.cs`) is a disk sidecar persistence layer for `MarkdownScanner.ScanResult` objects. Enables cross-session and cross-process cache reuse without re-parsing Markdown files. Called by `public/get-markdown.ps1` (6 call sites for the disk cache tier) and `robot.psm1` (cache clear on module reload).
+`Robot.ParseCacheHelper` (`lib/ParseCacheHelper.cs`) is a disk sidecar persistence layer for `MarkdownScanner.ScanResult` objects. Enables cross-session and cross-process cache reuse without re-parsing Markdown files. Called by `public/get-markdown.ps1` (6 call sites for the disk cache tier) and `Robot.PowerShell.psm1` (cache clear on module reload).
 
-It serializes and deserializes `ScanResult` to/from JSON cache files on disk. The cache directory lives at `{RepoRoot}/.robot-cache/markdown/`. Each parsed Markdown file gets a corresponding `.json` sidecar in the cache directory, populated lazily on first parse and checked before re-parsing on subsequent loads.
+It serializes and deserializes `ScanResult` to/from JSON cache files on disk. The cache directory lives at `{RepoRoot}/.robot.local/.cache/markdown/`. Each parsed Markdown file gets a corresponding `.json` sidecar in the cache directory, populated lazily on first parse and checked before re-parsing on subsequent loads.
 
 Serialization uses hand-rolled `StringBuilder` serialization with compact single-character JSON keys to minimize disk footprint and parse time:
 
@@ -79,11 +79,11 @@ Public methods:
 | `ReadScanResultFromFile(string)` | Returns `ScanResult` or `null` if missing/corrupt |
 | `WriteMetaFile(string, IDictionary)` | Writes meta/index dictionary via `Robot.JsonHelper.WriteSortedJson` for deterministic key ordering |
 | `ReadMetaFile(string)` | Returns case-insensitive `Hashtable`; empty on missing/corrupt file |
-| `DeleteCacheDirectory(string)` | Deletes entire `.robot-cache` directory tree; best-effort on locked files |
+| `DeleteCacheDirectory(string)` | Deletes entire `.robot.local/.cache` directory tree; best-effort on locked files |
 
 All methods are static and stateless. File I/O is not locked -- callers must ensure no concurrent writes to the same path. All written files use UTF-8 no BOM encoding.
 
-Consumers: `public/get-markdown.ps1` (6 call sites for disk cache read/write/invalidation), `robot.psm1` (2 call sites for cache clear on module reload).
+Consumers: `public/get-markdown.ps1` (6 call sites for disk cache read/write/invalidation), `Robot.PowerShell.psm1` (2 call sites for cache clear on module reload).
 
 ---
 

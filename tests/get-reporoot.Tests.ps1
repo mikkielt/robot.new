@@ -10,7 +10,7 @@
 
 BeforeAll {
     $script:ModuleRoot = Split-Path $PSScriptRoot -Parent
-    $script:ManifestPath = Join-Path $script:ModuleRoot 'robot.psd1'
+    $script:ManifestPath = Join-Path $script:ModuleRoot 'Robot.PowerShell.psd1'
     Remove-Module -Name robot -Force -ErrorAction SilentlyContinue
     Import-Module $script:ManifestPath -Force -ErrorAction Stop
     . (Join-Path $script:ModuleRoot 'public' 'get-reporoot.ps1')

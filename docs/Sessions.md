@@ -145,6 +145,12 @@ When writing new sessions, always use the current format (with `@` prefix).
 
 The main difference between Gen3 (2024-2026) and Gen4 (current) is the `@` prefix on metadata tags. Gen4 uses `@Lokacje` (instead of `Lokalizacje`), `@Logi` (instead of `Logi`), `@PU` (instead of `PU`), and `@Zmiany` (instead of `Zmiany`). Gen4 also introduces `@Transfer`, `@Intel`, `@Narrator`, and `@Data` metadata blocks. Entity-level tags inside `@Zmiany` always used the `@` prefix in both formats.
 
+## Adding Sessions Programmatically
+
+The Coordinator can add new sessions to files without manually editing Markdown. The system generates properly formatted Gen4 session markdown and inserts it at the correct chronological position within the target file. Multiple sessions can be added to the same file in a single operation.
+
+The system validates that no duplicate session header already exists in the target file. If the file does not yet exist, it is created. After insertion, any connected subsystems (session graph, parse caches, plugins) are updated automatically.
+
 ## Editing Existing Sessions
 
 Coordinators can modify the metadata of an existing session (locations, PU, logs, changes, Intel, and body text) without manually editing the Markdown file. The system locates the session by its header, replaces the specified metadata blocks, and preserves any non-metadata content (such as Objaśnienia or Efekty blocks).

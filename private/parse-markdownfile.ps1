@@ -18,7 +18,7 @@
         - Links:     list of link objects (MarkdownLink with Text+Url, or PlainUrl with Url)
 
     Two parsing paths:
-    1. C# fast path (Robot.MarkdownScanner): compiled centrally by robot.psm1
+    1. C# fast path (Robot.MarkdownScanner): compiled centrally by Robot.PowerShell.psm1
        at module import time; AppDomain-wide, so RunspacePool workers share it. Returns ListEntry class objects directly,
        with ParentIndex converted from global to
        section-local and LocalIndex set for O(1) parent→children lookups.
@@ -44,7 +44,7 @@ param([string]$FilePath)
 $Lines = [System.IO.File]::ReadAllLines($FilePath)
 
 # C# path: compiled scanner with mixed struct/class output, then reconstruct object references.
-# Robot.MarkdownScanner compiled centrally in robot.psm1 — AppDomain-wide, shared by all
+# Robot.MarkdownScanner compiled centrally in Robot.PowerShell.psm1 — AppDomain-wide, shared by all
 # RunspacePool workers. In test mode (direct script invocation without module import)
 # the type may not be loaded; PSTypeName check handles both cases.
 if (([System.Management.Automation.PSTypeName]'Robot.MarkdownScanner').Type) {

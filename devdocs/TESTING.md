@@ -21,7 +21,7 @@ Install-Module Pester -MinimumVersion 5.0 -Force -SkipPublisherCheck
 ## Running Tests
 
 ```powershell
-# From the .robot.new/ directory:
+# From the .robot.powershell/ directory:
 
 # Run all tests
 Invoke-Pester ./tests/ -Output Detailed
@@ -80,12 +80,14 @@ tests/
 +-- get-markdown.Tests.ps1
 +-- parse-markdownfile.Tests.ps1
 +-- operation-context.Tests.ps1
++-- argument-completers.Tests.ps1
 |
 |   # Entity data access
 +-- get-entity.Tests.ps1
 +-- get-entitystate.Tests.ps1
 +-- get-nameindex.Tests.ps1
 +-- resolve-name.Tests.ps1
++-- get-entity-mapa.Tests.ps1
 |
 |   # Entity CRUD
 +-- new-entity.Tests.ps1
@@ -94,6 +96,7 @@ tests/
 +-- entity-writehelpers.Tests.ps1
 +-- entity-status.Tests.ps1
 +-- przedmiot-entity.Tests.ps1
++-- resolve-entity.Tests.ps1
 |
 |   # Currency
 +-- new-currencyentity.Tests.ps1
@@ -105,14 +108,23 @@ tests/
 +-- get-currencyreport.Tests.ps1
 +-- test-currencyreconciliation.Tests.ps1
 |
+|   # Item
++-- get-itementity.Tests.ps1
++-- transfer-items.Tests.ps1
+|
 |   # Sessions
 +-- get-session.Tests.ps1
 +-- set-session.Tests.ps1
 +-- new-session.Tests.ps1
++-- add-session.Tests.ps1
 +-- format-sessionblock.Tests.ps1
 +-- resolve-narrator.Tests.ps1
++-- session-parsehelpers.Tests.ps1
++-- session-parsehelpers-local-logs.Tests.ps1
++-- session-decomposehelpers-localization.Tests.ps1
 +-- get-sessionlog.Tests.ps1
 +-- invoke-sessionlogfetch.Tests.ps1
++-- parse-logcontent.Tests.ps1
 +-- test-sessionintegrity.Tests.ps1
 |
 |   # Player & character
@@ -134,14 +146,26 @@ tests/
 +-- get-gitchangelog.Tests.ps1
 +-- send-discordmessage.Tests.ps1
 |
+|   # Discord
++-- discord-state.Tests.ps1
++-- get-discorddeliverylog.Tests.ps1
+|
 |   # Reporting & auditing
 +-- get-changelog.Tests.ps1
 +-- get-entityhistory.Tests.ps1
++-- get-entitydelta.Tests.ps1
 +-- get-notificationlog.Tests.ps1
 +-- get-puassignmentlog.Tests.ps1
 +-- get-transactionledger.Tests.ps1
 +-- get-narratorreport.Tests.ps1
 +-- get-namedloglocationreport.Tests.ps1
++-- get-dormancyreport.Tests.ps1
++-- get-sessionfrequencytrend.Tests.ps1
+|
+|   # Economy
++-- get-economicsnapshot.Tests.ps1
++-- get-economictimeline.Tests.ps1
++-- get-materializationreport.Tests.ps1
 |
 |   # CLI
 +-- cli-fuzzy.Tests.ps1
@@ -153,6 +177,7 @@ tests/
 +-- cli-buffer.Tests.ps1
 +-- cli-components.Tests.ps1
 +-- cli-input.Tests.ps1
++-- cli-progress.Tests.ps1
 |
 |   # Session graph
 +-- get-sessiongraph.Tests.ps1
@@ -163,21 +188,27 @@ tests/
 +-- compare-sessionparticipation.Tests.ps1
 +-- get-sessiongraphleaderboard.Tests.ps1
 |
-|   # Location graph
+|   # Location graph & CRUD
 +-- koordynaty-parsing.Tests.ps1
 +-- get-namedlocationreport.Tests.ps1
 +-- get-locationgraph.Tests.ps1
 +-- get-locationgraph-integration.Tests.ps1
++-- get-locationentity.Tests.ps1
++-- new-locationentity.Tests.ps1
++-- set-locationentity.Tests.ps1
++-- new-mapentity.Tests.ps1
 +-- seasonal-and-location.Tests.ps1
 +-- mapa-entity.Tests.ps1
 |
-|   # Infrastructure extras
-+-- get-entity-mapa.Tests.ps1
-+-- migration-phase5-location-import.Tests.ps1
+|   # API
++-- export-staticapi.Tests.ps1
 |
 |   # Plugins & migration
 +-- plugin-system.Tests.ps1
 +-- narrator-normalization.Tests.ps1
++-- migration-phase4-log-download.Tests.ps1
++-- migration-phase5-location-import.Tests.ps1
++-- migration-phase6-door-inference.Tests.ps1
 |
 +-- fixtures/
     |   # Player database
@@ -214,6 +245,13 @@ tests/
     +-- entities-status-transitions.md              # Complex status transitions
     +-- entities-unicode-names.md                   # Unicode entity names
     +-- entities-unresolved.md                      # Unresolved references
+    +-- entities-item-transfer.md                   # Item transfer scenarios
+    +-- entities-location-crud.md                   # Location CRUD operations
+    +-- entities-location-graph.md                  # Location graph test data
+    +-- entities-mapa.md                            # Mapa entity test data
+    +-- entities-seasonal.md                        # Seasonal temporal scoping
+    +-- entities-slug.md                            # @slug tag test data
+    +-- entities-temporal-plik.md                   # Temporal @plik tag test data
     |
     |   # Session fixtures
     +-- sessions-gen1.md                            # Gen1 format
@@ -237,6 +275,10 @@ tests/
     +-- sessions-unicode.md                         # Unicode in session content
     +-- sessions-unresolved.md                      # Unresolved references
     +-- sessions-zmiany.md                          # Zmiany override test data
+    +-- sessions-item-transfer.md                   # Item transfer session data
+    +-- sessions-location-graph.md                  # Location graph session data
+    +-- sessions-plik-zmiany.md                     # @plik Zmiany test data
+    +-- sessions-transfer-fuzzy.md                  # Fuzzy transfer resolution data
     +-- sessions-integrity/                         # Session integrity check fixtures
     |   +-- base.md
     |   +-- duplicate-pu.md
@@ -262,11 +304,17 @@ tests/
     |
     |   # Other
     +-- minimal-entity.md                           # Minimal entity for writes
-    +-- pu-sessions.json                             # PU session history
-    +-- pu-sessions-sample.md                       # Sample PU history
+    +-- pu-sessions.json                            # PU session history (JSON)
+    +-- pu-sessions.md                              # PU session history (Markdown)
+    +-- pu-sessions-sample.json                     # Sample PU history (JSON)
+    +-- pu-sessions-sample.md                       # Sample PU history (Markdown)
     +-- local.config.psd1                           # Config fixture
+    +-- maps-test.json                              # Map data test fixture
     +-- log-chatlog.txt                             # Chat log fixture
+    +-- log-chatlog-avlee.txt                       # Chat log Avlee fixture
+    +-- log-chatlog-route.txt                       # Chat log route fixture
     +-- log-prose.txt                               # Prose log fixture
+    +-- log-prose-dungeon.txt                       # Prose dungeon log fixture
     |
     +-- templates/                                  # Template subset (2 of 8)
         +-- player-character-file.md.template       # Character file skeleton
@@ -282,7 +330,7 @@ The `templates/` fixture directory contains only the 2 templates used by write t
 Path variables:
 
 ```powershell
-$script:ModuleRoot   = # .robot.new/ (parent of tests directory)
+$script:ModuleRoot   = # .robot.powershell/ (parent of tests directory)
 $script:FixturesRoot = # tests/fixtures/
 $script:TempRoot     = # GUID-based temp directory (per test run)
 ```
@@ -294,7 +342,7 @@ Functions:
 | `New-TestTempDir` | Creates a GUID-based disposable temp directory for write tests |
 | `Remove-TestTempDir` | Cleans up the temp directory (called in `AfterAll`) |
 | `Copy-FixtureToTemp` | Copies fixture files to temp, with optional rename and parent dir creation |
-| `Import-RobotModule` | Imports `robot.psd1 -Force` |
+| `Import-RobotModule` | Imports `Robot.PowerShell.psd1 -Force` |
 | `Import-RobotHelpers` | Dot-sources helper files by name from module root |
 | `Write-TestFile` | Writes UTF-8 no-BOM content to a file path |
 
@@ -483,9 +531,9 @@ Format generation tests use separate fixture files per format generation to ensu
 
 | Metric | Count |
 |---|---|
-| Test files | ~80 |
-| Test cases (`It` blocks) | ~1,660 |
-| Fixture files | ~60 |
+| Test files | 105 |
+| Test cases (`It` blocks) | ~2,160 |
+| Fixture files | ~90 |
 | Loading patterns | 5 (A: exported, B: internal+dot-source, C: standalone helper, D: parser, E: engine component) |
 
 ---

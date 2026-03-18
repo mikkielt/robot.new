@@ -66,8 +66,8 @@ Describe 'Find-DataManifest' {
         $Result | Should -BeNullOrEmpty
     }
 
-    It 'finds manifest at fixed .robot/ path' {
-        $RobotDir = Join-Path $script:TempDir '.robot'
+    It 'finds manifest at fixed .robot.local/ path' {
+        $RobotDir = Join-Path $script:TempDir '.robot.local'
         [void][System.IO.Directory]::CreateDirectory($RobotDir)
         $ManifestContent = "@{ EntitiesFile = 'data/entities.md' }"
         Write-TestFile -Path (Join-Path $RobotDir 'robot-data.psd1') -Content $ManifestContent
@@ -79,7 +79,7 @@ Describe 'Find-DataManifest' {
     }
 
     It 'caches result across calls' {
-        $RobotDir = Join-Path $script:TempDir '.robot'
+        $RobotDir = Join-Path $script:TempDir '.robot.local'
         [void][System.IO.Directory]::CreateDirectory($RobotDir)
         $ManifestContent = "@{ PlayersFile = 'Gracze.md' }"
         Write-TestFile -Path (Join-Path $RobotDir 'robot-data.psd1') -Content $ManifestContent

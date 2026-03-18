@@ -4,13 +4,13 @@
 
     .DESCRIPTION
     Non-exported helper functions consumed by New-PlayerCharacter and other
-    admin commands via dot-sourcing. Not auto-loaded by robot.psm1
+    admin commands via dot-sourcing. Not auto-loaded by Robot.PowerShell.psm1
     (non-Verb-Noun filename).
 
     Helpers:
     - Resolve-ConfigValue:   priority-chain resolution for a single config key
     - Test-PathUnderRoot:    validates a resolved path stays within the repository root (prevents traversal)
-    - Find-DataManifest:     checks for .robot/robot-data.psd1 at a fixed path within the repo root
+    - Find-DataManifest:     checks for .robot.local/robot-data.psd1 at a fixed path within the repo root
     - Get-AdminConfig:       resolves config values from parameter/env/config file/manifest
     - Get-AdminTemplate:     loads and renders template files with variable substitution
 
@@ -21,11 +21,11 @@
     Config resolution uses a four-tier priority chain to determine each value:
     1. Explicit parameter value (caller passes directly)
     2. Environment variable (e.g. $env:NERTHUS_REPO_WEBHOOK)
-    3. Local config file (.robot.new/local.config.psd1, git-ignored)
+    3. Local config file (.robot.powershell/local.config.psd1, git-ignored)
     4. Return $null (caller decides whether to fail or use a default)
 
-    Data manifest (.robot/robot-data.psd1) provides path overrides relative
-    to its own directory. Located at a fixed path {RepoRoot}/.robot/robot-data.psd1
+    Data manifest (.robot.local/robot-data.psd1) provides path overrides relative
+    to its own directory. Located at a fixed path {RepoRoot}/.robot.local/robot-data.psd1
     and cached per session via $script:CachedManifest to avoid repeated
     Import-PowerShellDataFile calls. The -Force switch on Find-DataManifest
     bypasses the cache for test scenarios. All manifest-resolved paths are
@@ -37,7 +37,7 @@
     (RepoWebhook, BotUsername) and any additional caller-supplied overrides
     into a single hashtable consumed by admin commands.
 
-    Templates live in .robot.new/templates/ as standalone .md.template files.
+    Templates live in .robot.powershell/templates/ as standalone .md.template files.
     Rendering uses simple {Placeholder} token replacement via String.Replace,
     iterating the caller-supplied Variables hashtable.
 #>
@@ -106,7 +106,7 @@ function Find-DataManifest {
         $RepoRoot = Get-RepoRoot
     }
 
-    $ManifestDir  = [System.IO.Path]::Combine($RepoRoot, '.robot')
+    $ManifestDir  = [System.IO.Path]::Combine($RepoRoot, '.robot.local')
     $ManifestPath = [System.IO.Path]::Combine($ManifestDir, 'robot-data.psd1')
 
     if (-not [System.IO.File]::Exists($ManifestPath)) {
@@ -161,11 +161,13 @@ function Get-AdminConfig {
     $Config = @{
         RepoRoot       = $RepoRoot
         ModuleRoot     = $ModuleRoot
-        EntitiesFile   = if ($ManifestPaths.ContainsKey('EntitiesFile')) { $ManifestPaths['EntitiesFile'] } else { [System.IO.Path]::Combine($RepoRoot, '.robot.new', 'entities.md') }
+        EntitiesFile   = if ($ManifestPaths.ContainsKey('EntitiesFile')) { $ManifestPaths['EntitiesFile'] } else { [System.IO.Path]::Combine($RepoRoot, 'entities.md') }
         TemplatesDir   = [System.IO.Path]::Combine($ModuleRoot, 'templates')
-        ResDir         = if ($ManifestPaths.ContainsKey('ResDir')) { $ManifestPaths['ResDir'] } else { [System.IO.Path]::Combine($RepoRoot, '.robot', 'res') }
+        ResDir         = if ($ManifestPaths.ContainsKey('ResDir')) { $ManifestPaths['ResDir'] } else { [System.IO.Path]::Combine($RepoRoot, '.robot.local', 'res') }
         CharactersDir  = if ($ManifestPaths.ContainsKey('CharactersDir')) { $ManifestPaths['CharactersDir'] } else { [System.IO.Path]::Combine($RepoRoot, 'Postaci', 'Gracze') }
         PlayersFile    = if ($ManifestPaths.ContainsKey('PlayersFile')) { $ManifestPaths['PlayersFile'] } else { [System.IO.Path]::Combine($RepoRoot, 'Gracze.md') }
+        CacheDir       = [System.IO.Path]::Combine($RepoRoot, '.robot.local', '.cache')
+        SeasonMapping  = if ($LocalConfig.SeasonMapping) { $LocalConfig.SeasonMapping } else { $null }
 
         RepoWebhook    = Resolve-ConfigValue `
             -ExplicitValue ($Overrides['RepoWebhook']) `

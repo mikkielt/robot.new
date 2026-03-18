@@ -35,5 +35,5 @@ function Invoke-DashboardOpen {
 
     Write-Host ''
     Write-CLILine -Text '  [Enter] Powrot' -Color $DimColor
-    [void](Read-ArrowKey)
+    [void][System.Console]::ReadKey($true)
 }

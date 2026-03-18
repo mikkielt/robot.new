@@ -1,5 +1,5 @@
 BeforeAll {
-    Import-Module "$PSScriptRoot/../../../robot.psm1" -Force -WarningAction SilentlyContinue
+    Import-Module "$PSScriptRoot/../../../Robot.PowerShell.psm1" -Force -WarningAction SilentlyContinue
     . "$PSScriptRoot/../private/api-token-helpers.ps1"
     . "$PSScriptRoot/../private/api-handlers-auth.ps1"
 }

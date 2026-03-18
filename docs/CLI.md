@@ -67,10 +67,11 @@ Commands execute immediately — there is no need to press Enter after the lette
 | PU | Monthly PU assignment, PU diagnostics |
 | Raporty i Narzędzia | Reporting, auditing, session graph, location graph, participation comparison, leaderboard, and utilities |
 | Migracja | Migration tools (when migration files are available) |
+| API | Start, stop, and monitor the REST API server; open the web dashboard (added by the API and Dashboard plugins) |
 
 Each category shows the number of available actions. Select a category to see its items. Some items are marked with a role badge — N for Narrator-only, K for Coordinator-only, or N/K for both.
 
-Plugins can add their own menu items to existing categories or introduce entirely new categories. Plugin-provided items appear alongside core items and work the same way.
+Plugins can add their own menu items to existing categories or introduce entirely new categories. Plugin-provided items appear alongside core items and work the same way. The API category, for example, is added by plugins and provides items for starting and stopping the REST API server, viewing server status, and opening the web dashboard in a browser.
 
 ## Pomoc
 

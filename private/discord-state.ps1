@@ -5,19 +5,19 @@
     .DESCRIPTION
     Non-exported helper functions consumed by Invoke-PlayerCharacterPUAssignment,
     Invoke-DiscordAnnouncementWorkflow, and Get-DiscordDeliveryLog via dot-sourcing.
-    Not auto-loaded by robot.psm1 (non-Verb-Noun filename).
+    Not auto-loaded by Robot.PowerShell.psm1 (non-Verb-Noun filename).
 
     Helpers:
     - Add-DiscordDeliveryEntry:         appends delivery record to JSON state file
     - Get-DiscordDeliveryEntries:       parses JSON state file into structured objects
-    - Convert-DiscordDeliveryToJson:    converts legacy discord-delivery.md to JSON
+    - Convert-DiscordDeliveryToJson:    (moved to migration/phase0-helpers.ps1)
 
     Module-level data:
     - $script:DiscordDeliveryPattern:        precompiled regex for legacy Markdown parsing (migration only)
     - $script:DiscordDeliveryContextPattern:  precompiled regex for legacy context sub-lines (migration only)
     - $script:DiscordDeliveryErrorPattern:    precompiled regex for legacy error sub-lines (migration only)
 
-    State file (`.robot/res/discord-delivery.json`) uses a structured JSON format:
+    State file (`.robot.local/res/discord-delivery.json`) uses a structured JSON format:
 
         {
           "version": 1,
@@ -44,27 +44,8 @@
     (Timestamp, Timezone, Status, Operation, Recipient, StatusCode, Context,
     ErrorMessage) — all downstream consumers are transparent.
 
-    Convert-DiscordDeliveryToJson is a one-shot migration converter that
-    parses the legacy append-only Markdown format (one-line entries with
-    optional context/error sub-lines) into the versioned JSON structure.
-    Called by phase0-setup.ps1 during repository migration.
-
     Depends on Save-JsonStateFile / Read-JsonStateFile from admin-state.ps1.
 #>
-
-# Legacy regex patterns — preserved for Convert-DiscordDeliveryToJson migration converter
-$script:DiscordDeliveryPattern = [regex]::new(
-    '^\s*-\s+(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2})\s+\(([^)]+)\)\s+\[(OK|FAIL)\]\s+(\w+(?:-\w+)*)\s+->\s+(.+?)(?:\s+\(HTTP\s+(\d+)\))?\s*$',
-    [System.Text.RegularExpressions.RegexOptions]::Compiled
-)
-$script:DiscordDeliveryContextPattern = [regex]::new(
-    '^\s+-\s+(?!ERROR:\s)(.+)$',
-    [System.Text.RegularExpressions.RegexOptions]::Compiled
-)
-$script:DiscordDeliveryErrorPattern = [regex]::new(
-    '^\s+-\s+ERROR:\s+(.+)$',
-    [System.Text.RegularExpressions.RegexOptions]::Compiled
-)
 
 function Add-DiscordDeliveryEntry {
     param(
@@ -163,88 +144,3 @@ function Get-DiscordDeliveryEntries {
     return , @($Result)
 }
 
-# ── Legacy MD → JSON Migration Converter ─────────────────────────────────────
-
-function Convert-DiscordDeliveryToJson {
-    param(
-        [Parameter(Mandatory)] [string]$SourcePath,
-        [Parameter(Mandatory)] [string]$TargetPath,
-        [switch]$Force
-    )
-
-    if ([System.IO.File]::Exists($TargetPath) -and -not $Force) {
-        Write-RobotWarning "[WARN Convert-DiscordDeliveryToJson] Target file already exists: '$TargetPath'. Use -Force to overwrite."
-        return $false
-    }
-
-    if (-not [System.IO.File]::Exists($SourcePath)) {
-        # No delivery history yet — not an error
-        return $true
-    }
-
-    # Parse existing Markdown using legacy regex patterns
-    $UTF8NoBOM = [System.Text.UTF8Encoding]::new($false)
-    $Content = [System.IO.File]::ReadAllText($SourcePath, $UTF8NoBOM)
-    $Lines = $Content.Split([string[]]@("`r`n", "`n"), [System.StringSplitOptions]::None)
-
-    $MdEntries = [System.Collections.Generic.List[object]]::new()
-    $Current = $null
-
-    foreach ($Line in $Lines) {
-        $Match = $script:DiscordDeliveryPattern.Match($Line)
-        if ($Match.Success) {
-            if ($null -ne $Current) { [void]$MdEntries.Add($Current) }
-
-            $TsStr = $Match.Groups[1].Value
-            $Current = [PSCustomObject]@{
-                Timestamp    = [datetime]::ParseExact($TsStr, 'yyyy-MM-dd HH:mm:ss',
-                    [System.Globalization.CultureInfo]::InvariantCulture)
-                Timezone     = $Match.Groups[2].Value
-                Status       = $Match.Groups[3].Value
-                Operation    = $Match.Groups[4].Value
-                Recipient    = $Match.Groups[5].Value
-                StatusCode   = if ($Match.Groups[6].Success) { [int]$Match.Groups[6].Value } else { $null }
-                Context      = $null
-                ErrorMessage = $null
-            }
-            continue
-        }
-
-        if ($null -eq $Current) { continue }
-
-        $ErrMatch = $script:DiscordDeliveryErrorPattern.Match($Line)
-        if ($ErrMatch.Success) {
-            $Current.ErrorMessage = $ErrMatch.Groups[1].Value
-            continue
-        }
-
-        $CtxMatch = $script:DiscordDeliveryContextPattern.Match($Line)
-        if ($CtxMatch.Success) {
-            $Current.Context = $CtxMatch.Groups[1].Value
-        }
-    }
-
-    if ($null -ne $Current) { [void]$MdEntries.Add($Current) }
-
-    $Entries = [System.Collections.Generic.List[object]]::new()
-    foreach ($E in $MdEntries) {
-        [void]$Entries.Add([ordered]@{
-            timestamp    = $E.Timestamp.ToString('yyyy-MM-ddTHH:mm:ss')
-            timezone     = $E.Timezone
-            status       = $E.Status
-            operation    = $E.Operation
-            recipient    = $E.Recipient
-            statusCode   = $E.StatusCode
-            context      = $E.Context
-            errorMessage = $E.ErrorMessage
-        })
-    }
-
-    $State = [ordered]@{
-        version = 1
-        entries = @($Entries)
-    }
-
-    Save-JsonStateFile -Path $TargetPath -Data $State
-    return $true
-}

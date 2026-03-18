@@ -4,7 +4,7 @@
 
 ## Scope
 
-This document covers the plugin system for extending Robot module functionality without modifying core code: `private/plugin-loader.ps1` (discovery, manifest validation, dependency resolution, function loading), `private/plugin-hooks.ps1` (hook registry, invocation, handler contract), the plugin loading phase in `robot.psm1`, and the exported management functions `Get-PluginConfig` and `Get-LoadedPlugins` (defined inline in `robot.psm1`).
+This document covers the plugin system for extending Robot module functionality without modifying core code: `private/plugin-loader.ps1` (discovery, manifest validation, dependency resolution, function loading), `private/plugin-hooks.ps1` (hook registry, invocation, handler contract), the plugin loading phase in `Robot.PowerShell.psm1`, and the exported management functions `Get-PluginConfig` and `Get-LoadedPlugins` (defined inline in `Robot.PowerShell.psm1`).
 
 Individual plugin implementations are documented separately. Core entity write operations are in [ENTITY-WRITES.md](ENTITY-WRITES.md). Configuration resolution for the core module is in [CONFIG-STATE.md](CONFIG-STATE.md).
 
@@ -13,7 +13,7 @@ Individual plugin implementations are documented separately. Core entity write o
 ## Architecture Overview
 
 ```
-robot.psm1 (module entry point)
+Robot.PowerShell.psm1 (module entry point)
     |
     +-- Core functions loaded (public/, private/)
     |
@@ -40,7 +40,7 @@ Hook Registry (private/plugin-hooks.ps1)
     +-- New-PlayerCharacter -> AfterCreate
 ```
 
-Core functions are loaded first. Plugins are discovered, validated, and loaded in dependency order. Plugin public functions are exported alongside core functions via a single `Export-ModuleMember` call at the end of `robot.psm1`. The hook registry connects plugin handlers to core write operations.
+Core functions are loaded first. Plugins are discovered, validated, and loaded in dependency order. Plugin public functions are exported alongside core functions via a single `Export-ModuleMember` call at the end of `Robot.PowerShell.psm1`. The hook registry connects plugin handlers to core write operations.
 
 ---
 
@@ -67,6 +67,15 @@ plugins/
 ```
 
 Plugins are git submodules under `plugins/`. This enables independent versioning and clean separation from the core module. Each plugin directory must contain a `plugin.psd1` manifest. Directories without a manifest are silently skipped. Public functions in `public/` follow the same `Verb-Noun` naming convention as core functions. Private helpers in `private/` are dot-sourced into the module scope but not exported.
+
+Installed plugins:
+
+| Plugin | Description | DependsOn | Exported Functions |
+|---|---|---|---|
+| `robot-api` | REST API with compiled C# server engine | -- | `Start-RobotApi`, `Stop-RobotApi`, `Get-RobotApiStatus`, `New-RobotApiToken`, `Remove-RobotApiToken`, `Get-RobotApiToken` |
+| `robot-dashboard` | Web dashboard for session creation and data browsing | `robot-api` | `Invoke-RobotDashboard` |
+| `margoworld-datasource` | Pulls canonical map data from MargoWorld.pl | -- | `Invoke-MargoWorldMapCheckup`, `Get-MargoWorldMapList`, `Get-MargoWorldLocationReport`, `ConvertTo-MapsJsonFromMarkdown`, `Invoke-MargoWorldMapCoordinates`, `Set-MargoWorldMapTileData`, `Export-MargoWorldAsciiMap` |
+| `nerthusaddon-integration` | Cross-references entities with nerthusaddon map data | -- | `Import-NerthusAddonMaps`, `Get-NerthusLocationReport`, `Export-NerthusLocationData` |
 
 ---
 
@@ -157,7 +166,7 @@ Complete example:
 
 ## Plugin Discovery and Loading
 
-Step-by-step sequence executed during module import in `robot.psm1`:
+Step-by-step sequence executed during module import in `Robot.PowerShell.psm1`:
 
 1. Scan `plugins/` directory for subdirectories containing `plugin.psd1`
 2. Parse each manifest via `Import-PowerShellDataFile` with error handling
@@ -166,7 +175,7 @@ Step-by-step sequence executed during module import in `robot.psm1`:
 5. Topological sort by `DependsOn` via `Resolve-PluginLoadOrder` (detect circular dependencies)
 6. Per plugin (in dependency order): resolve config via `Resolve-PluginConfig` (see the Plugin Config System section); dot-source `public/*.ps1` Verb-Noun functions into module scope (private helpers are loaded on-demand by plugin functions, same as core); collision detection skips conflicting function names with a warning to stderr; register hooks from manifest `Hooks` array (see the Lifecycle Hook System section); extract CLI metadata into `$script:PluginMenuItems`, `$script:PluginMenuCategories`, `$script:PluginHelpContent` (each item tagged with `_PluginName`)
 7. Sort all registered hooks by priority (ascending, lower = earlier)
-8. Single `Export-ModuleMember` at end of `robot.psm1` exports core functions + all plugin public functions
+8. Single `Export-ModuleMember` at end of `Robot.PowerShell.psm1` exports core functions + all plugin public functions
 
 CLI metadata is stored in module-scoped lists and merged later by `Merge-PluginMenuItems` when `Invoke-RobotCLI` starts (see [CLI.md](CLI.md)).
 
@@ -187,7 +196,7 @@ Parameters:
 |---|---|---|
 | `Manifest` | hashtable | Parsed `plugin.psd1` manifest (must have `Name` and `Config` keys) |
 | `PluginDir` | string | Absolute path to the plugin's directory |
-| `ModuleRoot` | string | Absolute path to the `.robot.new/` module root |
+| `ModuleRoot` | string | Absolute path to the `.robot.powershell/` module root |
 
 Algorithm:
 1. Return empty `@{}` if manifest has no `Config` section
@@ -289,7 +298,7 @@ For each declared config key, values are resolved in priority order:
 |---|---|---|
 | 1 | Environment variable | `$env:ROBOT_LLM_ENDPOINT` (from `EnvVar` field) |
 | 2 | Plugin `local.config.psd1` | `plugins/llm-validator/local.config.psd1` |
-| 3 | Core `local.config.psd1` (namespaced) | `.robot.new/local.config.psd1` with key `llm-validator.ApiEndpoint` |
+| 3 | Core `local.config.psd1` (namespaced) | `.robot.powershell/local.config.psd1` with key `llm-validator.ApiEndpoint` |
 | 4 | Manifest default | `Default` field in `Config` declaration |
 | 5 | Warning if required | `Write-Warning` if `Required = $true` and no value resolved |
 
@@ -444,7 +453,7 @@ Add tests in `plugins/my-plugin/tests/my-plugin.Tests.ps1`:
 ```powershell
 Describe 'my-plugin' {
     BeforeAll {
-        Import-Module "$PSScriptRoot/../../robot.psm1" -Force
+        Import-Module "$PSScriptRoot/../../Robot.PowerShell.psm1" -Force
     }
     It 'Get-MyData returns expected output' {
         $Result = Get-MyData -Name 'test'
@@ -653,7 +662,7 @@ function Import-HomebrewData {
 Adding a plugin as submodule:
 
 ```bash
-cd /path/to/lore-repo/.robot.new
+cd /path/to/lore-repo/.robot.powershell
 git submodule add https://github.com/org/my-plugin.git plugins/my-plugin
 git commit -m "Add my-plugin plugin submodule"
 ```
@@ -662,12 +671,12 @@ The Robot module is itself a submodule inside a parent lore repository. Plugins 
 
 ```
 lore-repo/                          # Parent repository
-+-- .robot.new/                     # Submodule: Robot module
++-- .robot.powershell/                     # Submodule: Robot module
     +-- plugins/
         +-- my-plugin/              # Submodule: plugin
 ```
 
-This means `.gitmodules` entries exist at two levels: `lore-repo/.gitmodules` references `.robot.new`, and `.robot.new/.gitmodules` references `plugins/my-plugin`.
+This means `.gitmodules` entries exist at two levels: `lore-repo/.gitmodules` references `.robot.powershell`, and `.robot.powershell/.gitmodules` references `plugins/my-plugin`.
 
 To clone a lore repository with all nested submodules:
 
@@ -684,7 +693,7 @@ git submodule update --init --recursive
 Bumping plugin versions:
 
 ```bash
-cd .robot.new/plugins/my-plugin
+cd .robot.powershell/plugins/my-plugin
 git fetch origin
 git checkout v1.3.0
 cd ../..

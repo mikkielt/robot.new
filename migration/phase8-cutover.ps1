@@ -141,7 +141,7 @@ function Invoke-MigrationPhase8 {
     if ($Diag.OK -and -not ($State.Phases['8'].Checklist.ContainsKey('PUCycleValidated') -and $State.Phases['8'].Checklist['PUCycleValidated'])) {
         if (Request-YesNo -Prompt 'Czy porównano wyniki PU z starym systemem i są zgodne?' -Default $false -HelpText @(
             'Potwierdzenie, że wyniki przydziału PU z nowego systemu',
-            '(.robot.new) zgadzają się z wynikami starego systemu.',
+            '(.robot.powershell) zgadzają się z wynikami starego systemu.',
             '',
             'To jednorazowa bramka — po potwierdzeniu kryterium',
             '"Min. 1 pełny cykl PU bez rozbieżności" zostanie',
@@ -194,7 +194,7 @@ function Invoke-MigrationPhase8 {
     # Step 6: Freeze Gracze.md with read-only comment header
     Write-Step -Number 6 -Text 'Zamrożenie Gracze.md...'
     $GraczePath = [System.IO.Path]::Combine($RepoRoot, 'Gracze.md')
-    $FreezeComment = "<!-- UWAGA: Ten plik jest zamrożony (read-only) od $([datetime]::Now.ToString('yyyy-MM-dd')).`n     Wszelkie zmiany wprowadzaj przez moduł .robot.new i plik entities.md.`n     Ten plik zachowany jest wyłącznie jako archiwum historyczne. -->"
+    $FreezeComment = "<!-- UWAGA: Ten plik jest zamrożony (read-only) od $([datetime]::Now.ToString('yyyy-MM-dd')).`n     Wszelkie zmiany wprowadzaj przez moduł .robot.powershell i plik entities.md.`n     Ten plik zachowany jest wyłącznie jako archiwum historyczne. -->"
 
     if ([System.IO.File]::Exists($GraczePath)) {
         $UTF8NoBOM = [System.Text.UTF8Encoding]::new($false)
@@ -212,7 +212,7 @@ function Invoke-MigrationPhase8 {
                 '',
                 'Od tego momentu Gracze.md staje się archiwum.',
                 'Wszelkie zmiany danych graczy odbywają się',
-                'wyłącznie przez entities.md i moduł .robot.new.',
+                'wyłącznie przez entities.md i moduł .robot.powershell.',
                 '',
                 'Tak = dodaj komentarz i zacommituj zmianę',
                 'Nie = pomiń, Gracze.md pozostanie bez oznaczenia'
@@ -271,7 +271,7 @@ function Invoke-MigrationPhase8 {
             'Wykona pełny przydział PU za bieżący miesiąc:',
             '- zaktualizuje pliki postaci (Postaci/Gracze/*.md)',
             '- wyśle powiadomienia Discord do graczy',
-            '- dopisze wpis do logu PU (.robot/res/pu-sessions.json)',
+            '- dopisze wpis do logu PU (.robot.local/res/pu-sessions.json)',
             '',
             'Tak = wykonaj przydział PU i wyślij powiadomienia',
             'Nie = pomiń, przydział PU można wykonać później ręcznie'
@@ -301,7 +301,7 @@ function Invoke-MigrationPhase8 {
         if ($WhatIf) {
             Write-StepWarning "[SUCHY PRZEBIEG] Utworzyłbym tag 'post-migration'"
         } else {
-            & git -C $RepoRoot tag 'post-migration' -m 'Migracja na .robot.new zakończona' 2>&1
+            & git -C $RepoRoot tag 'post-migration' -m 'Migracja na .robot.powershell zakończona' 2>&1
             if ($LASTEXITCODE -eq 0) {
                 Write-StepOK "Utworzono tag 'post-migration'"
             }
@@ -315,7 +315,7 @@ function Invoke-MigrationPhase8 {
     Write-Host '  Skopiuj i wyślij na Discord:' -ForegroundColor White
     Write-Host '  ────────────────────────────────────────────' -ForegroundColor DarkGray
     Write-Host '  Migracja systemu administracyjnego zakończona.' -ForegroundColor Cyan
-    Write-Host '  Od teraz wszystkie operacje przez moduł .robot.new.' -ForegroundColor Cyan
+    Write-Host '  Od teraz wszystkie operacje przez moduł .robot.powershell.' -ForegroundColor Cyan
     Write-Host '  Sesje prosimy zapisywać w formacie z prefiksem @.' -ForegroundColor Cyan
     Write-Host '  Stary system (.robot/robot.ps1) nie jest już używany.' -ForegroundColor Cyan
     Write-Host '  W razie pytań - kontakt z koordynatorem.' -ForegroundColor Cyan
@@ -341,7 +341,7 @@ function Invoke-MigrationPhase8 {
     Set-PhaseCompleted -State $State -Phase 8
     Write-PhaseSummary -Phase 8 -Status 'Completed' -Lines @(
         '[OK] Migracja zakończona!',
-        '[OK] System .robot.new jest aktywny',
+        '[OK] System .robot.powershell jest aktywny',
         '[OK] Gracze.md zamrożony jako archiwum'
     )
 

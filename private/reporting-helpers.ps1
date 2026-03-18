@@ -6,7 +6,7 @@
     Centralizes the session fetching and directive iteration boilerplate shared
     by Get-ChangeLog, Get-NotificationLog, and Get-TransactionLedger. Eliminates
     ~50 lines of duplicated session-fetch + date-filter + sub-collection-extract
-    logic per caller. Not auto-loaded by robot.psm1 (non-Verb-Noun filename).
+    logic per caller. Not auto-loaded by Robot.PowerShell.psm1 (non-Verb-Noun filename).
 
     Helpers:
     - Get-SessionsForReport:      fetches sessions on demand or passes through pre-supplied ones

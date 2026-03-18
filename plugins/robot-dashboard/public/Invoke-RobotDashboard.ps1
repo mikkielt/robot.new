@@ -19,25 +19,43 @@ function Invoke-RobotDashboard {
 
     [CmdletBinding()] param(
         [Parameter(HelpMessage = "Override the API port (default: from plugin config or 8642)")]
-        [int]$Port
+        [int]$Port,
+        [switch]$Force
     )
 
-    # Ensure API is running
-    $Status = Get-RobotApiStatus
-    if (-not $Status.IsRunning) {
-        $StartParams = @{ Quiet = $true }
-        if ($Port) { $StartParams.Port = $Port }
-        Start-RobotApi @StartParams
-        $Status = Get-RobotApiStatus
-    }
-
-    # Determine actual port from status or config
-    if (-not $Port) {
+    # Resolve effective port — needed for external probe and URL construction
+    $EffectivePort = $Port
+    if (-not $EffectivePort) {
         $Config = Get-PluginConfig -PluginName 'robot-api'
-        $Port = if ($Config.ListenPort) { $Config.ListenPort } else { 8642 }
+        $EffectivePort = if ($Config.ListenPort) { $Config.ListenPort } else { 8642 }
     }
 
-    $Url = "http://localhost:$Port/api/dashboard"
+    # Ensure API is running (in-process or external)
+    $Status = Get-RobotApiStatus
+    if ($Force -or -not $Status.IsRunning) {
+        # Probe port for an external API instance (e.g. from a previous session)
+        $ExternalApi = $false
+        if (-not $Status.IsRunning) {
+            try {
+                $TcpProbe = [System.Net.Sockets.TcpClient]::new()
+                $TcpProbe.Connect('localhost', $EffectivePort)
+                [void]$TcpProbe.Dispose()
+                $ExternalApi = $true
+            } catch { }
+        }
+
+        if ($ExternalApi -and -not $Force) {
+            # External process is serving on this port — reuse it
+            Write-RobotInfo "[Invoke-RobotDashboard] Reusing existing API on port $EffectivePort"
+        } else {
+            $StartParams = @{ Quiet = $true }
+            if ($Port)  { $StartParams.Port  = $Port }
+            if ($Force) { $StartParams.Force = $true }
+            Start-RobotApi @StartParams
+        }
+    }
+
+    $Url = "http://localhost:$EffectivePort/api/dashboard"
 
     # Cross-platform browser open
     if ($IsMacOS -or ($PSVersionTable.OS -and $PSVersionTable.OS.Contains('Darwin'))) {

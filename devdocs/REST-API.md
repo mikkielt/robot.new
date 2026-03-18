@@ -73,11 +73,30 @@ Player endpoints:
 | POST | `/players` | `Invoke-ApiCreatePlayer` | Create player |
 | POST | `/players/:name/characters` | `Invoke-ApiCreateCharacter` | Create player character |
 
+Location endpoints:
+
+| Method | Path | Handler | Description |
+|---|---|---|---|
+| GET | `/locations` | `Invoke-ApiGetLocationList` | Enriched location list with filters |
+| GET | `/locations/:name` | `Invoke-ApiGetLocation` | Single location with children and doors |
+| GET | `/locations/:name/contents` | `Invoke-ApiGetLocationContents` | Entities at this location |
+| POST | `/locations` | `Invoke-ApiCreateLocation` | Create location with domain validation |
+| PUT | `/locations/:name` | `Invoke-ApiUpdateLocation` | Update location (parent, doors, coordinates) |
+| DELETE | `/locations/:name` | `Invoke-ApiDeleteLocation` | Soft-delete location |
+
+Map endpoints:
+
+| Method | Path | Handler | Description |
+|---|---|---|---|
+| GET | `/maps` | `Invoke-ApiGetMaps` | List all Mapa entities |
+| POST | `/maps` | `Invoke-ApiCreateMap` | Create map entity |
+
 Session endpoints:
 
 | Method | Path | Handler | Description |
 |---|---|---|---|
 | GET | `/sessions` | `Invoke-ApiGetSessions` | List sessions |
+| POST | `/sessions` | `Invoke-ApiCreateSession` | Create session (single or batch) |
 | GET | `/session-graph/entity/:name` | `Invoke-ApiGetEntityProfile` | Participation profile |
 | GET | `/session-graph/compare` | `Invoke-ApiCompareParticipation` | Overlap analysis |
 | GET | `/session-graph/leaderboard` | `Invoke-ApiGetLeaderboard` | Top entities by session count |
@@ -114,19 +133,30 @@ Name resolution, validation, report, and workflow endpoints:
 | POST | `/workflow/session-graph` | `Invoke-ApiRebuildGraph` | Rebuild session graph index |
 | POST | `/workflow/session-hash` | `Invoke-ApiRebuildHashes` | Update session content hashes |
 
-Auth management endpoints (require `auth:manage` scope):
+Parse, file, and dashboard endpoints:
+
+| Method | Path | Handler | Description |
+|---|---|---|---|
+| POST | `/parse/log` | `Invoke-ApiParseLog` | Parse raw log text into structured data |
+| POST | `/logs/fetch` | `Invoke-ApiFetchLogContent` | Fetch raw log content by URLs (disk cache then HTTP) |
+| POST | `/parse/session-preview` | `Invoke-ApiSessionPreview` | Preview session markdown with name resolution |
+| GET | `/files` | `Invoke-ApiGetFiles` | List .md file paths for autocomplete |
+| GET | `/dashboard` | `Invoke-ApiGetDashboard` | Web dashboard SPA (text/html) |
+
+Auth management endpoints:
 
 | Method | Path | Handler | Description |
 |---|---|---|---|
 | POST | `/auth/token` | `Invoke-ApiCreateToken` | Create a new scoped token |
 | DELETE | `/auth/token/:name` | `Invoke-ApiDeleteToken` | Delete a token by name |
 | GET | `/auth/status` | `Invoke-ApiGetAuthStatus` | List tokens and count |
+| GET | `/auth/whoami` | `Invoke-ApiGetWhoami` | Current token identity and scopes |
 
 ## Authentication & Authorization
 
 The API supports three auth modes, resolved in priority order:
 
-1. Multi-token store (preferred): tokens stored in `.robot/res/api-tokens.psd1`, each with a name and scope list. Created via `New-RobotApiToken` or `POST /auth/token`. The token file must be gitignored — startup fails with a security error otherwise.
+1. Multi-token store (preferred): tokens stored in `.robot.local/res/api-tokens.psd1`, each with a name and scope list. Created via `New-RobotApiToken` or `POST /auth/token`. The token file must be gitignored — startup fails with a security error otherwise.
 2. Single token: `AuthToken` config value or `ROBOT_API_TOKEN` env var. Token gets synthetic `admin:all` scope.
 3. Open access: no tokens configured and no `AuthToken` set. All requests pass auth with synthetic `admin:all`.
 
@@ -149,12 +179,13 @@ Scope matching rules (implemented in `ApiMiddleware.HasScope`):
 
 | Scope | Routes |
 |---|---|
-| _(none)_ | Static: /health, /routes, /metrics, /schema; SSE: /events |
-| `entity:read` | GET /entities, /entities/:name, /entity-state, /entities/:name/history, /entities/:name/delta, /resolve/:name, /currency, /economy/snapshot, /economy/timeline, /transactions |
-| `entity:write` | POST /entities, PUT /entities/:name, DELETE /entities/:name, POST /currency, PUT /currency/:name |
+| _(none)_ | Static: /health, /routes, /metrics, /schema; SSE: /events; GET /dashboard, /auth/whoami |
+| `entity:read` | GET /entities, /entities/:name, /entity-state, /entities/:name/history, /entities/:name/delta, /resolve/:name, /currency, /economy/snapshot, /economy/timeline, /transactions, /locations, /locations/:name, /locations/:name/contents, /maps |
+| `entity:write` | POST /entities, PUT /entities/:name, DELETE /entities/:name, POST /currency, PUT /currency/:name, POST /locations, PUT /locations/:name, DELETE /locations/:name, POST /maps |
 | `player:read` | GET /players, /players/:name |
 | `player:write` | POST /players, POST /players/:name/characters |
-| `session:read` | GET /sessions, /session-graph/entity/:name, /session-graph/compare, /session-graph/leaderboard |
+| `session:read` | GET /sessions, /session-graph/entity/:name, /session-graph/compare, /session-graph/leaderboard, /files; POST /parse/log, /logs/fetch, /parse/session-preview |
+| `session:write` | POST /sessions |
 | `admin:read` | GET /validate/\*, /reports/\* |
 | `admin:write` | POST /workflow/\* |
 | `auth:manage` | POST /auth/token, DELETE /auth/token/:name, GET /auth/status |
@@ -316,7 +347,7 @@ Worker initialization (`Start-ApiWorkerPool`):
 
 1. For each of N workers (configurable, default 8): create an isolated `System.Management.Automation.Runspaces.Runspace`
 2. Open the runspace and import the Robot module via `AddScript('Import-Module ...')`
-3. Dot-source handler files: `api-handlers-read.ps1`, `api-handlers-write.ps1`
+3. Dot-source handler files: `api-handlers-read.ps1`, `api-handlers-write.ps1`, `api-handlers-auth.ps1`, `api-handlers-dashboard.ps1`, `api-token-helpers.ps1`
 4. Each worker gets its own `PowerShell` instance bound to its runspace
 
 Worker dequeue loop:
@@ -435,9 +466,10 @@ plugins/robot-api/
 +-- private/
 |   +-- api-routes.ps1               # Route registration (static + dynamic)
 |   +-- api-worker.ps1               # RunspacePool worker threads
-|   +-- api-handlers-read.ps1        # 28 read handlers
-|   +-- api-handlers-write.ps1       # 9 write handlers
-|   +-- api-handlers-auth.ps1        # Auth token API handlers
+|   +-- api-handlers-read.ps1        # 37 read handlers + 1 helper
+|   +-- api-handlers-write.ps1       # 14 write handlers
+|   +-- api-handlers-auth.ps1        # Auth token API handlers (4 handlers)
+|   +-- api-handlers-dashboard.ps1   # Dashboard SPA endpoint handler
 |   +-- api-handlers-events.ps1      # SSE broadcast hook handler
 |   +-- api-token-helpers.ps1        # Token file I/O and generation helpers
 +-- cli/

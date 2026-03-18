@@ -201,7 +201,7 @@ Describe 'Get-HashableFiles' {
         $SubDirs = @(
             'Archiwum',
             'Postaci',
-            '.robot',
+            '.robot.powershell',
             '.git',
             'Nerthus'
         )
@@ -212,7 +212,7 @@ Describe 'Get-HashableFiles' {
         # Create .md files in various locations
         Write-TestFile -Path (Join-Path $script:TempDir 'Archiwum' 'sesje.md') -Content '# Test'
         Write-TestFile -Path (Join-Path $script:TempDir 'Postaci' 'npc.md') -Content '# Test'
-        Write-TestFile -Path (Join-Path $script:TempDir '.robot' 'state.md') -Content '# Test'
+        Write-TestFile -Path (Join-Path $script:TempDir '.robot.powershell' 'state.md') -Content '# Test'
         Write-TestFile -Path (Join-Path $script:TempDir '.git' 'readme.md') -Content '# Test'
         Write-TestFile -Path (Join-Path $script:TempDir 'Nerthus' 'lore.md') -Content '# Test'
         Write-TestFile -Path (Join-Path $script:TempDir 'top-level.md') -Content '# Test'
@@ -232,7 +232,7 @@ Describe 'Get-HashableFiles' {
     It 'excludes dot directories' {
         $Files = Get-HashableFiles -RepoRoot $script:TempDir
         $RelPaths = $Files | ForEach-Object { $_.Substring($script:TempDir.Length + 1).Replace('\', '/') }
-        $RelPaths | Should -Not -Contain '.robot/state.md'
+        $RelPaths | Should -Not -Contain '.robot.powershell/state.md'
         $RelPaths | Should -Not -Contain '.git/readme.md'
     }
 
@@ -271,7 +271,7 @@ Describe 'Set-SessionHash' {
         $script:TempDir = New-TestTempDir
 
         # Create minimal repo structure
-        $ResDir = Join-Path $script:TempDir '.robot' 'res'
+        $ResDir = Join-Path $script:TempDir '.robot.local' 'res'
         [void][System.IO.Directory]::CreateDirectory($ResDir)
 
         # Copy fixture file
@@ -292,7 +292,7 @@ Describe 'Set-SessionHash' {
         $Result.FilesProcessed | Should -BeGreaterThan 0
         $Result.HashesComputed | Should -BeGreaterThan 0
 
-        $JsonPath = Join-Path $script:TempDir '.robot' 'res' 'session-hashes' 'base.md.json'
+        $JsonPath = Join-Path $script:TempDir '.robot.local' 'res' 'session-hashes' 'base.md.json'
         [System.IO.File]::Exists($JsonPath) | Should -BeTrue
     }
 
@@ -302,7 +302,7 @@ Describe 'Set-SessionHash' {
         $DstFile = Join-Path $script:TempDir 'base.md'
         Set-SessionHash -File @($DstFile) -WhatIf
 
-        $JsonPath = Join-Path $script:TempDir '.robot' 'res' 'session-hashes' 'base.md.json'
+        $JsonPath = Join-Path $script:TempDir '.robot.local' 'res' 'session-hashes' 'base.md.json'
         [System.IO.File]::Exists($JsonPath) | Should -BeFalse
     }
 
@@ -328,7 +328,7 @@ Describe 'Test-SessionIntegrity' {
         $script:TempDir = New-TestTempDir
 
         # Create minimal repo structure
-        $ResDir = Join-Path $script:TempDir '.robot' 'res'
+        $ResDir = Join-Path $script:TempDir '.robot.local' 'res'
         [void][System.IO.Directory]::CreateDirectory($ResDir)
     }
     AfterEach {

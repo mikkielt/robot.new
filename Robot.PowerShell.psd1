@@ -1,6 +1,6 @@
 @{
     # Script module or binary module file associated with this manifest
-    RootModule = 'robot.psm1'
+    RootModule = 'Robot.PowerShell.psm1'
     
     # Version number of this module
     ModuleVersion = '2.0.0'
@@ -27,7 +27,7 @@
     PowerShellVersion = '5.1'
     
     # Functions to export from this module
-    # Wildcard delegates export control to Export-ModuleMember in Robot.psm1,
+    # Wildcard delegates export control to Export-ModuleMember in Robot.PowerShell.psm1,
     # which auto-discovers Verb-Noun functions from .ps1 filenames.
     # This prevents the manifest from silently blocking newly added functions.
     FunctionsToExport = '*'

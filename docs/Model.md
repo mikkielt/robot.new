@@ -23,7 +23,7 @@ The lore repository contains four categories of files that the system reads:
 | Character files | `Postaci/Gracze/` folder | One file per character with condition, reputation, special items, and session descriptions |
 | Session files | Anywhere in the repository | Game session records with world-state changes, PU awards, transfers, and intelligence |
 
-The module itself lives in the `.robot.new/` folder as a submodule. Runtime state (PU history, session integrity checks, participation graphs) is stored in `.robot/res/`.
+The module itself lives in the `.robot.powershell/` folder as a submodule. Runtime state (PU history, session integrity checks, participation graphs) is stored in `.robot.local/res/`.
 
 ---
 

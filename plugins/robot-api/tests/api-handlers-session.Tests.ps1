@@ -9,7 +9,7 @@
 #>
 
 BeforeAll {
-    Import-Module "$PSScriptRoot/../../../robot.psm1" -Force -WarningAction SilentlyContinue
+    Import-Module "$PSScriptRoot/../../../Robot.PowerShell.psm1" -Force -WarningAction SilentlyContinue
     . "$PSScriptRoot/../private/api-handlers-auth.ps1"
     . "$PSScriptRoot/../private/api-handlers-read.ps1"
     . "$PSScriptRoot/../private/api-handlers-write.ps1"

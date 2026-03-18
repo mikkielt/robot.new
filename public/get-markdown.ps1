@@ -27,7 +27,7 @@
     Three-tier caching (WP-2 + WP-8):
     1. Memory cache ($script:MarkdownCache): fastest, per-session lifetime, keyed by
        FilePath -> {ModTime, Result}. Checked first on every call.
-    2. Disk cache ({RepoRoot}/.robot-cache/markdown/): persists across sessions. On memory
+    2. Disk cache ({RepoRoot}/.robot.local/.cache/markdown/): persists across sessions. On memory
        miss, check disk index for matching ModTime. Reads deserialize ScanResult from JSON
        and reconstruct PSCustomObject references (same as fresh MarkdownScanner output).
        Requires Robot.ParseCacheHelper and Robot.MarkdownScanner to be available.
@@ -179,7 +179,7 @@ function Get-Markdown {
     if ($HasDiskCache -and $Uncached.Count -gt 0) {
         try {
             $RepoRoot = Get-RepoRoot
-            $DiskCacheDir = [System.IO.Path]::Combine($RepoRoot, '.robot-cache', 'markdown')
+            $DiskCacheDir = [System.IO.Path]::Combine($RepoRoot, '.robot.local', '.cache', 'markdown')
             $DiskCacheDataDir = [System.IO.Path]::Combine($DiskCacheDir, 'data')
 
             # Read meta to check version compatibility
@@ -257,7 +257,7 @@ function Get-Markdown {
 
     # Only parse files that changed, are not in memory cache, and not in disk cache
     if ($StillUncached.Count -gt 0) {
-        # Robot.MarkdownScanner compiled centrally in robot.psm1 — AppDomain-wide,
+        # Robot.MarkdownScanner compiled centrally in Robot.PowerShell.psm1 — AppDomain-wide,
         # so all RunspacePool workers share the type without per-call compilation.
 
         # Parser text cached at script scope — used both for [scriptblock]::Create (sequential)

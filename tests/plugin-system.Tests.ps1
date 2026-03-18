@@ -598,9 +598,9 @@ Describe 'Get-PluginConfig' {
 
 Describe 'Plugin CLI metadata extraction' {
     BeforeAll {
-        # CLI metadata variables are module-internal ($script: scope in robot.psm1).
+        # CLI metadata variables are module-internal ($script: scope in Robot.PowerShell.psm1).
         # We test the extraction pipeline by simulating the Phase 2c loop logic
-        # from robot.psm1 on a manifest with MenuItems/MenuCategories/HelpContent.
+        # from Robot.PowerShell.psm1 on a manifest with MenuItems/MenuCategories/HelpContent.
 
         $script:PluginMenuItems      = [System.Collections.Generic.List[hashtable]]::new()
         $script:PluginMenuCategories = [System.Collections.Generic.List[string]]::new()

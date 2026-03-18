@@ -25,8 +25,8 @@ $Candidates = @(
     $ModulePath,
     [System.IO.Path]::Combine($PSScriptRoot, '..'),
     [System.IO.Path]::Combine($HOME, 'robot.new'),
-    [System.IO.Path]::Combine($PWD, '.robot.new')
-).Where({ $_ -and [System.IO.File]::Exists([System.IO.Path]::Combine($_, 'robot.psm1')) })
+    [System.IO.Path]::Combine($PWD, '.robot.powershell')
+).Where({ $_ -and [System.IO.File]::Exists([System.IO.Path]::Combine($_, 'Robot.PowerShell.psm1')) })
 
 if ($Candidates.Count -eq 0) {
     Write-Host 'Robot module not found. Run install.ps1 first or pass -ModulePath.' -ForegroundColor Red
@@ -38,7 +38,7 @@ $ModRoot = $Candidates[0]
 Write-Host "Using module at: $ModRoot" -ForegroundColor Cyan
 
 # ── Import module ─────────────────────────────────────────────────
-Import-Module "$ModRoot/robot.psm1" -Force -WarningAction SilentlyContinue
+Import-Module "$ModRoot/Robot.PowerShell.psm1" -Force -WarningAction SilentlyContinue
 
 # ── Start API if not running ─────────────────────────────────────
 $Status = Get-RobotApiStatus

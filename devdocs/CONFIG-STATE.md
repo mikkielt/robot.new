@@ -17,7 +17,7 @@ Functions:
 | `Get-AdminConfig` | Returns a hashtable with all resolved paths and config values |
 | `Resolve-ConfigValue` | Priority-chain resolver for a single config key |
 | `Get-AdminTemplate` | Loads and renders template files with placeholder substitution |
-| `Find-DataManifest` | Checks for `.robot/robot-data.psd1` at a fixed path within the repo root |
+| `Find-DataManifest` | Checks for `.robot.local/robot-data.psd1` at a fixed path within the repo root |
 | `Test-PathUnderRoot` | Validates that a resolved path is under a given root directory (prevents path traversal) |
 | `Set-DataDirectory` | Overrides or resets the lore repository root (in `public/set-datadirectory.ps1`) |
 
@@ -27,7 +27,7 @@ Resolution order for each config value (`Resolve-ConfigValue`):
 |---|---|---|
 | 1 | Explicit parameter | `-PRFWebhook "https://..."` |
 | 2 | Environment variable | `$env:NERTHUS_REPO_WEBHOOK` |
-| 3 | Local config file | `.robot.new/local.config.psd1` (git-ignored) |
+| 3 | Local config file | `.robot.powershell/local.config.psd1` (git-ignored) |
 | 4 | Fail with error | Throws if mandatory value missing |
 
 The local config file is loaded via `Import-PowerShellDataFile` with try-catch protection. It is git-ignored to keep environment-specific values (webhooks, paths) out of version control.
@@ -37,18 +37,24 @@ Resolved paths (`Get-AdminConfig`):
 | Key | Value | Description |
 |---|---|---|
 | `RepoRoot` | Repository root | From `Get-RepoRoot` |
-| `ModuleRoot` | `.robot.new/` | Module directory |
-| `EntitiesFile` | `entities.md` | Base entity registry |
-| `TemplatesDir` | `.robot.new/templates/` | Template directory |
-| `ResDir` | `.robot/res/` | State/resource directory |
-| `CharactersDir` | `Postaci/Gracze/` | Character files directory |
-| `PlayersFile` | `Gracze.md` | Legacy player database |
+| `ModuleRoot` | `.robot.powershell/` | Module directory |
+| `EntitiesFile` | `{RepoRoot}/entities.md` | Base entity registry |
+| `TemplatesDir` | `{ModuleRoot}/templates/` | Template directory |
+| `ResDir` | `{RepoRoot}/.robot.local/res/` | State/resource directory |
+| `CharactersDir` | `{RepoRoot}/Postaci/Gracze/` | Character files directory |
+| `PlayersFile` | `{RepoRoot}/Gracze.md` | Legacy player database |
+| `CacheDir` | `{RepoRoot}/.robot.local/.cache/` | Disk cache directory for parsed data |
+| `SeasonMapping` | `$null` | Custom season mapping from `local.config.psd1`, or `$null` for default meteorological |
 
-Paths are resolved from `.robot/robot-data.psd1` manifest when available (see Manifest-Based Data Discovery below), falling back to the hardcoded values above. This ensures backward compatibility when no manifest exists.
+`CacheDir` resolves to `{RepoRoot}/.robot.local/.cache` (not inside the module directory). It is used by `Clear-ParseCaches` (via `Robot.ParseCacheHelper`) for disk cache persistence and invalidation.
+
+`SeasonMapping` is read from the `SeasonMapping` key in `local.config.psd1`. When present, it overrides the default meteorological season boundaries used by `Resolve-SeasonForDate`. When absent (or when `local.config.psd1` does not exist), the value is `$null` and the default mapping applies.
+
+Paths are resolved from `.robot.local/robot-data.psd1` manifest when available (see Manifest-Based Data Discovery below), falling back to the hardcoded values above. This ensures backward compatibility when no manifest exists.
 
 Additional config values: `BotUsername` is the Discord bot display name (resolved but not used by PU assignment, which hardcodes `"Bothen"`). Webhook URLs are resolved via the priority chain.
 
-Template rendering (`Get-AdminTemplate`) loads template files from `.robot.new/templates/` and performs simple `{Placeholder}` substitution:
+Template rendering (`Get-AdminTemplate`) loads template files from `.robot.powershell/templates/` and performs simple `{Placeholder}` substitution:
 
 ```powershell
 $Template = Get-AdminTemplate -Name "player-character-file.md.template"
@@ -57,7 +63,7 @@ $Result = $Template.Replace("{CharacterSheetUrl}", $Url)
 
 No advanced template engine -- pure string `.Replace()` calls by the consumer. The function validates template file existence before reading and throws on missing file.
 
-`Find-DataManifest` enables flexible data file placement. The module is a git submodule inside a parent lore repository. Coordinators may place data files in non-default locations. `Find-DataManifest` checks for a `.robot/robot-data.psd1` manifest file at a fixed path inside the repo root.
+`Find-DataManifest` enables flexible data file placement. The module is a git submodule inside a parent lore repository. Coordinators may place data files in non-default locations. `Find-DataManifest` checks for a `.robot.local/robot-data.psd1` manifest file at a fixed path inside the repo root.
 
 Manifest format (PowerShell data file):
 
@@ -65,14 +71,14 @@ Manifest format (PowerShell data file):
 @{
     PlayersFile    = 'Gracze.md'
     CharactersDir  = 'Postaci/Gracze'
-    EntitiesDir    = '.robot.new'
-    StateDir       = '.robot/res'
+    EntitiesDir    = '.robot.powershell'
+    StateDir       = '.robot.local/res'
 }
 ```
 
 Paths in the manifest are relative to the manifest file's directory. The module resolves them to absolute paths at discovery time.
 
-Discovery algorithm: (1) Resolve `RepoRoot` via `Get-RepoRoot` (or accept override for testing). (2) Construct the fixed path: `{RepoRoot}/.robot/robot-data.psd1`. (3) If the file exists, parse it and cache the result. (4) If not found, fall back to hardcoded paths (backward compatible). (5) Cache the resolved manifest and its directory in `$script:CachedManifest` / `$script:CachedManifestDir`.
+Discovery algorithm: (1) Resolve `RepoRoot` via `Get-RepoRoot` (or accept override for testing). (2) Construct the fixed path: `{RepoRoot}/.robot.local/robot-data.psd1`. (3) If the file exists, parse it and cache the result. (4) If not found, fall back to hardcoded paths (backward compatible). (5) Cache the resolved manifest and its directory in `$script:CachedManifest` / `$script:CachedManifestDir`.
 
 Caching is per-session. Once discovered, the manifest is not re-scanned. This avoids repeated directory traversal.
 
@@ -104,7 +110,7 @@ Functions:
 | `Get-AdminHistoryEntries` | Reads processed session headers from a state file |
 | `Add-AdminHistoryEntry` | Appends new entries with timestamp |
 
-State files are JSON files in `.robot/res/`:
+State files are JSON files in `.robot.local/res/`:
 
 ```json
 {
@@ -142,7 +148,7 @@ State files are JSON files in `.robot/res/`:
 
 Timestamp format uses `DateTimeOffset.Now` for timezone-aware timestamps. Handles negative UTC offsets. Session headers are sorted chronologically using `[StringComparer]::Ordinal` (works because headers start with `YYYY-MM-DD`). The `### ` prefix is stripped before storage. If the state file doesn't exist, it is created with an empty `runs` array. Parent directory is created if missing.
 
-State file location: `$Config.ResDir` resolves to `<RepoRoot>/.robot/res/pu-sessions.json`. This is separate from the module directory (`.robot.new/`) and lives in `.robot/res/` for historical compatibility with the legacy system.
+State file location: `$Config.ResDir` resolves to `<RepoRoot>/.robot.local/res/pu-sessions.json`. This is separate from the module directory (`.robot.powershell/`) and lives in `.robot.local/res/` for historical compatibility with the legacy system.
 
 ---
 
@@ -152,7 +158,7 @@ Source: `private/operation-context.ps1`.
 
 Accumulator-based operation tracking for write commands. Provides a structured way to collect changes, warnings, and touched files during a write operation, then drain them into a single `Robot.OperationResult` object at completion.
 
-Dot-sourced by `private/entity-writehelpers.ps1` (non-fatal if missing) and checked by `private/charfile-helpers.ps1`. Not auto-loaded by `robot.psm1`.
+Dot-sourced by `private/entity-writehelpers.ps1` (non-fatal if missing) and checked by `private/charfile-helpers.ps1`. Not auto-loaded by `Robot.PowerShell.psm1`.
 
 Accumulators:
 
@@ -237,15 +243,15 @@ Path mode validates directory existence, stores `[System.IO.Path]::GetFullPath($
 
 ## Warning Suppression
 
-Source: `robot.psm1`.
+Source: `Robot.PowerShell.psm1`.
 
 Module-scoped warning suppression prevents `[System.Console]::Error.WriteLine` output from corrupting interactive CLI menus. All warning/info emission routes through centralized helpers that check a boolean flag before writing.
 
 | Component | Location | Purpose |
 |---|---|---|
-| `$script:SuppressWarnings` | `robot.psm1` | Module-scoped boolean flag, defaults to `$false` |
-| `Write-RobotWarning` | `robot.psm1` | Emits `[WARN ...]` to stderr if flag is `$false` |
-| `Write-RobotInfo` | `robot.psm1` | Emits `[INFO ...]` to stderr if flag is `$false` |
+| `$script:SuppressWarnings` | `Robot.PowerShell.psm1` | Module-scoped boolean flag, defaults to `$false` |
+| `Write-RobotWarning` | `Robot.PowerShell.psm1` | Emits `[WARN ...]` to stderr if flag is `$false` |
+| `Write-RobotInfo` | `Robot.PowerShell.psm1` | Emits `[INFO ...]` to stderr if flag is `$false` |
 
 Both helpers are module-internal (not exported). Available to all dot-sourced functions via module scope.
 
@@ -289,7 +295,7 @@ Scope of conversion:
 
 ## Local Config File
 
-Path: `.robot.new/local.config.psd1` (git-ignored)
+Path: `.robot.powershell/local.config.psd1` (git-ignored)
 
 PowerShell data file format:
 
@@ -310,10 +316,10 @@ Loaded via `Import-PowerShellDataFile` with error handling. Missing file is not 
 |---|---|
 | Missing `local.config.psd1` | Not an error; priority chain continues |
 | Missing template file | Throws error |
-| Missing `.robot/robot-data.psd1` manifest | Not an error; falls back to hardcoded paths |
-| Manifest found at fixed path | Paths resolved relative to `.robot/` directory, cached per session |
+| Missing `.robot.local/robot-data.psd1` manifest | Not an error; falls back to hardcoded paths |
+| Manifest found at fixed path | Paths resolved relative to `.robot.local/` directory, cached per session |
 | Negative UTC offset | Formatted correctly (e.g., `UTC-05:00`) |
-| Missing `.robot/res/` directory | Created automatically by `Add-AdminHistoryEntry` |
+| Missing `.robot.local/res/` directory | Created automatically by `Add-AdminHistoryEntry` |
 | Duplicate session headers in history | Deduplicated by `HashSet` on read |
 | Whitespace variations in headers | Normalized (collapsed to single space) before comparison |
 | `operation-context.ps1` not loaded | `$script:HasOpCtx` is `$false`; write helpers skip accumulator calls |

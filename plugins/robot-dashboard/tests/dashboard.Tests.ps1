@@ -14,7 +14,7 @@
 #>
 
 BeforeAll {
-    Import-Module "$PSScriptRoot/../../../robot.psm1" -Force -WarningAction SilentlyContinue
+    Import-Module "$PSScriptRoot/../../../Robot.PowerShell.psm1" -Force -WarningAction SilentlyContinue
     . "$PSScriptRoot/../../robot-api/private/api-handlers-dashboard.ps1"
 }
 

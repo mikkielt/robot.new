@@ -212,7 +212,7 @@ plugins/margoworld-datasource/
 
 | File | Written By | Read By |
 |------|-----------|---------|
-| `.robot/res/maps.json` | `Invoke-MargoWorldMapCheckup`, `ConvertTo-MapsJsonFromMarkdown`, `Set-MargoWorldMapTileData` | `Get-MargoWorldMapList`, `Get-MargoWorldLocationReport`, `Set-MargoWorldMapTileData` |
+| `.robot.local/res/maps.json` | `Invoke-MargoWorldMapCheckup`, `ConvertTo-MapsJsonFromMarkdown`, `Set-MargoWorldMapTileData` | `Get-MargoWorldMapList`, `Get-MargoWorldLocationReport`, `Set-MargoWorldMapTileData` |
 
 Entity data (`entities.md`, `*-*-ent.md`) is read via `Get-Entity` and written via `Set-Entity` / direct file manipulation by `Invoke-MargoWorldMapCoordinates`.
 

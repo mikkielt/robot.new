@@ -4,7 +4,7 @@
 
 ## Scope
 
-The entity subsystem consists of `Get-Entity` (registry parsing, multi-file merge, canonical names), `Get-EntityState` (session override merging), and the three-layer character state merge in `Get-PlayerCharacter -IncludeState`.
+The entity subsystem consists of `Get-Entity` (registry parsing, multi-file merge, canonical names), `Get-EntityState` (session override merging), `Get-LocationEntity` (location-specific query and enrichment in `public/location/get-locationentity.ps1`), and the three-layer character state merge in `Get-PlayerCharacter -IncludeState`.
 
 Entity write operations are documented in [ENTITY-WRITES.md](ENTITY-WRITES.md). Character file format is documented in [CHARFILE.md](CHARFILE.md).
 
@@ -24,6 +24,12 @@ Pass 2:  Get-EntityState ──> Enriched entity objects
               ├── Get-Entity (pass 1 output)
               ├── Get-Session (extracts Zmiany blocks)
               └── Chronological override application
+
+Pass 2b: Get-LocationEntity ──> Location-enriched objects
+              │
+              ├── Get-EntityState (pass 2 output)
+              ├── Reverse lookups (children, entity counts, door targets)
+              └── Status/name/parent/doors/exterior filtering
 
 Pass 3:  Get-PlayerCharacter -IncludeState ──> Three-layer character state
               │
@@ -266,6 +272,49 @@ Performance optimizations:
 
 ---
 
+## `Get-LocationEntity` — Location Query
+
+Source: `public/location/get-locationentity.ps1`.
+
+Queries Lokacja (and optionally Mapa) entities from `Get-EntityState` output with filtering and enrichment. Returns enriched `PSCustomObject` arrays with children, door targets, coordinates, and map-specific data.
+
+| Parameter | Type | Description |
+|---|---|---|
+| `Name` | string | Substring filter on entity name (case-insensitive) |
+| `Parent` | string | Exact-match filter on parent location name |
+| `HasDoors` | switch | Only return locations with door connections |
+| `IsExterior` | switch | Only return exterior locations (have coordinates) |
+| `Status` | string | Filter by status value |
+| `IncludeInactive` | switch | Include `Nieaktywny` entities (excluded by default) |
+| `IncludeDeleted` | switch | Include `Usunięty` entities (excluded by default) |
+| `IncludeMaps` | switch | Include `Mapa` entities alongside `Lokacja` |
+| `Entities` | object[] | Pre-fetched entity list from `Get-EntityState` |
+| `Quiet` | switch | Suppress warning output to stderr |
+
+Processing pipeline: (1) Fetch entities via `Get-EntityState` (or use pre-fetched `-Entities`). (2) Build reverse lookups: parent-to-children, location-to-entity count, name-to-entity. (3) Filter to Lokacja entities (or Lokacja+Mapa with `-IncludeMaps`) with status/name/parent/hasDoors/isExterior gates. (4) Enrich each entity with `Children`, `DoorTargets`, `IsExterior`, `HierarchicalPath`, `EntityCount`, `NerthusName`, `MapData`. (5) Return enriched array.
+
+Enriched output object:
+
+| Property | Type | Description |
+|---|---|---|
+| `Entity` | object | Original entity object from `Get-EntityState` |
+| `EntityName` | string | Entity display name |
+| `Type` | string | `Lokacja` or `Mapa` |
+| `Parent` | string | Parent location name (from `@lokacja`) |
+| `Children` | object[] | Child Lokacja/Mapa entities under this location |
+| `ChildCount` | int | Number of children |
+| `DoorTargets` | object[] | Resolved door target entities (or unresolved stubs with `Resolved = $false`) |
+| `DoorCount` | int | Number of door connections |
+| `IsExterior` | bool | Whether the entity has coordinates |
+| `Coordinates` | hashtable | `@{ X; Y }` or `$null` for interiors |
+| `HierarchicalPath` | string | Entity CN (hierarchical canonical name) |
+| `NerthusName` | string | RP display name (from `@nazwa_nerthus`) |
+| `EntityCount` | int | Count of non-location entities at this location |
+| `Status` | string | Entity status (defaults to `Aktywny`) |
+| `MapData` | object | For Mapa entities: `{ Slug, Url, UrlNerthus, Dimensions }` extracted from Overrides; `$null` for Lokacja |
+
+---
+
 ## Three-Layer Character State Merge
 
 Performed by `Get-PlayerCharacter -IncludeState`.
@@ -376,7 +425,7 @@ Characters with `Status = 'Usuniety'` are excluded unless `-IncludeDeleted`.
 
 ## Compiled C# Types
 
-Three compiled C# types in the `Robot` namespace replace PowerShell-native `[PSCustomObject]` construction on the entity hot path. All are loaded via a single batch `Add-Type` call in `robot.psm1` at module import time (guarded by `PSTypeName` check to avoid recompilation). PowerShell fallback paths exist for all three when compilation fails.
+Three compiled C# types in the `Robot` namespace replace PowerShell-native `[PSCustomObject]` construction on the entity hot path. All are loaded via a single batch `Add-Type` call in `Robot.PowerShell.psm1` at module import time (guarded by `PSTypeName` check to avoid recompilation). PowerShell fallback paths exist for all three when compilation fails.
 
 `Robot.Entity` (`lib/EntityModel.cs`) is the central 27-property entity domain model. Each `Get-Entity` invocation constructs one `Robot.Entity` instance per registered entity. Collection properties (`Names`, `Aliases`, `Groups`, `Doors`, `Coordinates`, all `*History` lists, `Overrides`, `GenericNames`, `Contains`, `UnresolvedTransfers`) are typed as `object` to preserve compatibility with PowerShell's `List[object]` creation pattern and the `Comparison[object]` sort delegates used by `Robot.TemporalSorter`. PowerShell accesses these via dynamic dispatch (`.Count`, `.Add()`, `.Sort()`, indexer).
 
@@ -466,6 +515,7 @@ Consumer: `get-entity.ps1` (sole consumer via `[Robot.EntityTagParser]::Parse`).
 | `tests/przedmiot-entity.Tests.ps1` | Przedmiot type mappings, entity creation, duplicate detection |
 | `tests/currency-entity.Tests.ps1` | Currency entity creation, @ilosc tag handling, quantity updates |
 | `tests/get-entity-mapa.Tests.ps1` | Mapa type parsing, @slug resolution, @url/@url_nerthus overrides, hierarchical CN, door-paths |
+| `tests/get-locationentity.Tests.ps1` | Location query, filtering, enrichment, door target resolution, map data extraction |
 
 Fixtures: `entities.md`, `entities-100-ent.md`, `entities-200-ent.md`, `sessions-zmiany.md`, `entities-mapa.md`, `entities-slug.md`.
 

@@ -1,6 +1,6 @@
 # Migration Guide
 
-The migration from the legacy `.robot/robot.ps1` system to the `.robot.new` module covers the data model transition, session format upgrade, and operational workflow migration.
+The migration from the legacy `.robot.local/robot.ps1` system to the `.robot.powershell` module covers the data model transition, session format upgrade, and operational workflow migration.
 
 ---
 
@@ -162,7 +162,7 @@ Upgrade conversions:
 
 Sessions with identical headers across files are grouped by exact `Header` text (Ordinal comparison). The metadata-richest instance is selected as primary. Array fields are unioned via `HashSet` (locations, logs) or deduped by composite key (PU: `Character|Value`, Intel: `RawTarget|Message`). Merged sessions carry `IsMerged = $true`, `DuplicateCount`, and `FilePaths[]`.
 
-Session headers contain a narrator name segment (after the last comma), but these raw names may be inconsistent (abbreviations, nicknames, varying forms). Narrator normalization maps raw names to canonical forms using a mappings file at `.robot/res/narrator-mappings.txt`. Format (one mapping per line): `raw -> Canonical1, Canonical2`. Each line maps a raw narrator string (left side) to one or more canonical narrator names (right side), matched case-insensitively.
+Session headers contain a narrator name segment (after the last comma), but these raw names may be inconsistent (abbreviations, nicknames, varying forms). Narrator normalization maps raw names to canonical forms using a mappings file at `.robot.local/res/narrator-mappings.txt`. Format (one mapping per line): `raw -> Canonical1, Canonical2`. Each line maps a raw narrator string (left side) to one or more canonical narrator names (right side), matched case-insensitively.
 
 Phase 2 workflow: The coordinator runs `Get-NarratorReport` to identify raw narrator names that do not resolve to known players. Unresolved names are added to `narrator-mappings.txt` with their canonical equivalents. The process is iterative: run report, add mappings, re-run until all names resolve.
 
@@ -192,7 +192,7 @@ Pipeline (`Invoke-PlayerCharacterPUAssignment`):
 
 1. Date range — `Year`/`Month` -> first/last day of month. Default: 2-month lookback.
 2. Git optimization — `Get-GitChangeLog -NoPatch` pre-filters to `.md` files changed in range, passed to `Get-Session -File`. Falls back to full scan on failure.
-3. Session filtering — select sessions with PU entries, exclude already-processed headers from `.robot/res/pu-sessions.json` via `Get-AdminHistoryEntries`.
+3. Session filtering — select sessions with PU entries, exclude already-processed headers from `.robot.local/res/pu-sessions.json` via `Get-AdminHistoryEntries`.
 4. Character resolution — `Get-PlayerCharacter` (merges Gracze.md + entities.md). Fail-early: throws `UnresolvedPUCharacters` error (with structured `TargetObject`) if any PU character name cannot be resolved.
 5. PU computation (per character):
    ```
@@ -239,12 +239,12 @@ Parsed properties: `CharacterSheet`, `RestrictedTopics`, `Condition`, `SpecialIt
 Config resolution (`private/admin-config.ps1`) priority chain:
 1. Explicit parameter
 2. Environment variable (`$env:NERTHUS_REPO_WEBHOOK`, `$env:NERTHUS_BOT_USERNAME`)
-3. Local config file (`.robot.new/local.config.psd1`, git-ignored)
+3. Local config file (`.robot.powershell/local.config.psd1`, git-ignored)
 4. Fail with error
 
-Resolved paths: `RepoRoot`, `ModuleRoot`, `EntitiesFile`, `TemplatesDir`, `ResDir` (`.robot/res`), `CharactersDir` (`Postaci/Gracze`), `PlayersFile` (`Gracze.md`).
+Resolved paths: `RepoRoot`, `ModuleRoot`, `EntitiesFile`, `TemplatesDir`, `ResDir` (`.robot.local/res`), `CharactersDir` (`Postaci/Gracze`), `PlayersFile` (`Gracze.md`).
 
-State files (`private/admin-state.ps1`) are append-only files in `.robot/res/`:
+State files (`private/admin-state.ps1`) are append-only files in `.robot.local/res/`:
 ```
 - YYYY-MM-dd HH:mm (UTC+HH:MM):
     - ### session header 1
@@ -253,7 +253,7 @@ State files (`private/admin-state.ps1`) are append-only files in `.robot/res/`:
 
 `Get-AdminHistoryEntries` returns `HashSet[string]` (OrdinalIgnoreCase, whitespace-normalized, `### ` prefix stripped). `Add-AdminHistoryEntry` appends with timestamp, sorts headers chronologically.
 
-Templates are located in `.robot.new/templates/`. Files: `player-character-file.md.template`, `player-entry.md.template`. Rendering via `Get-AdminTemplate` with `{Placeholder}` substitution.
+Templates are located in `.robot.powershell/templates/`. Files: `player-character-file.md.template`, `player-entry.md.template`. Rendering via `Get-AdminTemplate` with `{Placeholder}` substitution.
 
 ---
 
@@ -279,15 +279,17 @@ Resolution uses stages 1/2/2b of name resolution (exact -> declension -> stem al
 
 ## Migration Phase Pipeline
 
-The automated migration is orchestrated by `migration/migrate.ps1` (`Invoke-PhaseByNumber`). Nine phases run sequentially, with state checkpointing in `.robot/res/migration-state.json`. Each phase is idempotent.
+The automated migration is orchestrated by `migration/migrate.ps1` (`Invoke-PhaseByNumber`). Nine phases run sequentially, with state checkpointing in `.robot.local/res/migration-state.json`. Each phase is idempotent.
 
 State file resilience (`migration-state.ps1`): `Save-MigrationState` uses an atomic temp-file swap pattern — writes to `$Path.tmp` first, then creates a `.bak` backup of the current state, then moves the temp file to the target path. This prevents corruption from interrupted writes. `Get-MigrationState` implements backup recovery: if the primary state file is corrupt (JSON parse failure), it attempts to read from `$Path.bak`, restores the backup to the primary path, and returns the recovered state. If both are corrupt, falls back to `New-DefaultMigrationState`. All errors are logged to stderr with Polish-language messages.
+
+All migration phases resolve resource paths via `$script:MigrationResDir`, which is set once at migration entry from `(Get-AdminConfig).ResDir` (resolves to `.robot.local/res`). This pattern replaces hardcoded path construction throughout the phase pipeline. Individual phases use `[System.IO.Path]::Combine($script:MigrationResDir, 'filename')` to locate state files, maps.json, narrator mappings, overrides, and log cache directories.
 
 Phase overview:
 
 | Phase | Function | File | Purpose |
 |---|---|---|---|
-| 0 | `Invoke-MigrationPhase0` | `phase0-setup.ps1` | Przygotowanie i bootstrap — data manifest creation, prerequisite checks, bootstrap entity store from `Gracze.md` via `ConvertTo-EntitiesFromPlayers` |
+| 0 | `Invoke-MigrationPhase0` | `phase0-setup.ps1` | Przygotowanie i bootstrap — data manifest creation, prerequisite checks, bootstrap entity store from `Gracze.md` via `ConvertTo-EntitiesFromPlayers`, JSON state file conversion |
 | 1 | `Invoke-MigrationPhase1` | `phase1-session-hashes.ps1` | Baseline integralnosci sesji — generate baseline SHA256 hashes for all session headers (`Set-SessionHash -Full`) |
 | 2 | `Invoke-MigrationPhase2` | `phase2-validation.ps1` | Walidacja i naprawa danych — validate entity parity between legacy and new stores, run PU diagnostics and narrator normalization |
 | 3 | `Invoke-MigrationPhase3` | `phase3-location-import.ps1` | Import lokalizacji z mapy — bulk-import Mapa entities from maps.json to overflow file, derive Lokacja from hierarchy, apply overrides |
@@ -307,6 +309,7 @@ Migration files:
 | `migration-ui.ps1` | Polish-language UI helpers (22 functions) | `Initialize-MigrationLog`, `Write-MigrationLog`, `Flush-MigrationLog`, `Resolve-MigrationColor`, `Get-PhaseName`, `Write-PhaseHeader`, `Write-Step`, `Write-StepOK`, `Write-StepWarning`, `Write-StepError`, `Write-SectionHeader`, `Write-ChecklistReport`, `Write-ActionRequired`, `Write-CommandHint`, `Write-PhaseSummary`, `Write-TableRow`, `Request-UserChoice`, `Request-YesNo`, `Request-Confirmation`, `Request-StringInput`, `Request-NumericInput`, `Show-ProgressSummary` |
 | `migration-location-helpers.ps1` | Self-contained location name helpers; dot-sourced by Phase 3 | `Get-MapBaseNameIntermediates`, `Get-MapBaseNameDeterministic`, `Get-MapBaseNameCandidates` |
 | `narrator-normalization.ps1` | Narrator mapping I/O | `Get-NarratorMappingsPath`, `Import-NarratorMappings`, `Export-NarratorMappings` |
+| `phase0-helpers.ps1` | Phase 0 converters (JSON migration) | `Convert-PUHistoryToJson`, `Convert-DiscordDeliveryToJson` |
 | `phase0-setup.ps1` | Phase 0: Przygotowanie i bootstrap | `Invoke-MigrationPhase0` |
 | `phase1-session-hashes.ps1` | Phase 1: Baseline integralnosci sesji | `Invoke-MigrationPhase1` |
 | `phase2-validation.ps1` | Phase 2: Walidacja i naprawa danych | `Invoke-MigrationPhase2`, `Show-BRAKCharacters` |
@@ -319,6 +322,18 @@ Migration files:
 
 ---
 
+## Phase 0: JSON State File Conversion
+
+Phase 0 includes Steps 3b and 3c which convert legacy Markdown state files to structured JSON format. Converters live in `migration/phase0-helpers.ps1` (dot-sourced on demand by `phase0-setup.ps1`).
+
+`Convert-PUHistoryToJson` converts `pu-sessions.md` (append-only Markdown with `- YYYY-MM-dd HH:mm (UTC+HH:MM):` entries and nested `- ### header` children) to `pu-sessions.json` (structured JSON with `{ version, runs: [{ timestamp, timezone, headers }] }`). Parses each top-level bullet into a run entry. Idempotent: skips if the target file already exists (override with `-Force`).
+
+`Convert-DiscordDeliveryToJson` converts `discord-delivery.md` (Markdown entries with status, operation, recipient, HTTP code, context, and error sub-lines) to `discord-delivery.json` (structured JSON with `{ version, entries: [{ timestamp, timezone, status, operation, recipient, statusCode, context, errorMessage }] }`). Parses using precompiled regex patterns from `discord-state.ps1`. Returns `$true` when the source file does not exist (nothing to convert).
+
+Both converters are consumed only by Phase 0. After conversion, all runtime state file access uses the JSON format via `Save-JsonStateFile` / `Read-JsonStateFile` from `admin-state.ps1`.
+
+---
+
 ## Phase 1: Session Hash Baseline
 
 Runs `Set-SessionHash -Full` to compute SHA256 content hashes for all headers in repository Markdown files. This captures the pre-mutation baseline before any validation, repair, or format-upgrade phases modify session content. The hash store is created in `{ResDir}/session-hashes/` and enables `Test-SessionIntegrity` to detect content tampering later. See [SESSION-INTEGRITY.md](SESSION-INTEGRITY.md).
@@ -327,7 +342,7 @@ Runs `Set-SessionHash -Full` to compute SHA256 content hashes for all headers in
 
 ## Phase 3: Location Import
 
-Imports game-map data from `.robot/res/maps.json` as two entity types: Mapa entities (concrete game maps with metadata) written to the overflow file `maps-100-ent.md`, and Lokacja entities (conceptual locations) derived from the hierarchy and written to `entities.md`. Dot-sources `migration-location-helpers.ps1`.
+Imports game-map data from `.robot.local/res/maps.json` as two entity types: Mapa entities (concrete game maps with metadata) written to the overflow file `maps-100-ent.md`, and Lokacja entities (conceptual locations) derived from the hierarchy and written to `entities.md`. Dot-sources `migration-location-helpers.ps1`.
 
 `maps.json` format — the file is sourced from the Margonem game data. Expected structure:
 
@@ -389,7 +404,7 @@ Entities are sorted alphabetically within the `## Mapa` section. The overflow fi
 
 Lokacja derivation (Step 5): A second pass extracts unique location names from the hierarchy — all root maps (no parent) and all parent values (including virtual parents from tier 3) — and creates Lokacja entities in `entities.md`. Each Lokacja gets `@lokacja` pointing to its own parent if the location name itself appeared as a child in the hierarchy. Virtual parents that do not exist as Mapa entries are included in this set, ensuring every `@lokacja` reference resolves to a concrete entity. This produces far fewer entities than the full map count (~unique base names).
 
-Override file (Steps 6-7): Exports `.robot/res/location-overrides.txt` (TSV). Section 1 maps Margonem names to Nerthus names (`@nazwa_nerthus`) — applied to Mapa entities in the overflow file. Section 2 defines virtual locations — created as Lokacja entities in `entities.md`. Re-running the phase applies overrides via `Set-EntityTag` / `New-EntityBullet`.
+Override file (Steps 6-7): Exports `.robot.local/res/location-overrides.txt` (TSV). Section 1 maps Margonem names to Nerthus names (`@nazwa_nerthus`) — applied to Mapa entities in the overflow file. Section 2 defines virtual locations — created as Lokacja entities in `entities.md`. Re-running the phase applies overrides via `Set-EntityTag` / `New-EntityBullet`.
 
 Backward compatibility: The old `BulkImportDone` checklist key (from partial Phase 3 runs that created Lokacja entities directly) is recognized as equivalent to `MapaBulkImportDone`, allowing the Mapa import step to be skipped while the Lokacja derivation step still runs.
 
@@ -407,7 +422,7 @@ Downloads all session log files from remote URLs (discovered via `Get-Session` l
 
 ## Phase 5: Session Review File
 
-After format upgrade, narrator verification, and location review, Phase 5 generates a review artifact at `.robot/res/all-sessions-to-review.md` via `Export-SessionReviewFile`. The file contains all sessions sorted by header (chronological), with source file paths in `<!-- Zrodlo: relative/path -->` HTML comments.
+After format upgrade, narrator verification, and location review, Phase 5 generates a review artifact at `.robot.local/res/all-sessions-to-review.md` via `Export-SessionReviewFile`. The file contains all sessions sorted by header (chronological), with source file paths in `<!-- Zrodlo: relative/path -->` HTML comments.
 
 URL localization: During session format upgrade, `Resolve-LogUrlToLocalPath` replaces remote `https://` log URLs with their corresponding `res/logs/` local paths when the cached file exists. This makes sessions self-contained with local log references.
 
@@ -419,7 +434,7 @@ File operations are batched: all modifications and deletions are grouped by targ
 
 Operation types: Each op is a hashtable with `Type` (`'Modify'` or `'Delete'`), `Header`, and optionally `NewBody`. `Find-SessionInFile` locates the header's line range in the file. For modifications, the section content between header and section end is replaced with the new body. For deletions, the entire section (header through section end) is removed. Array splicing uses `$FileLines[0..$Match.HeaderLineIdx]` / `$FileLines[$Match.SectionEndIdx..($FileLines.Count - 1)]` to reconstruct the file.
 
-New sessions are written to `.robot/res/review-additions/YYYY-MM-DD-slug.md`. Requires `Request-YesNo` confirmation before applying.
+New sessions are written to `.robot.local/res/review-additions/YYYY-MM-DD-slug.md`. Requires `Request-YesNo` confirmation before applying.
 
 Step lifecycle: On first run (checklist `SessionReviewFileGenerated` not set), generates the file. On subsequent runs, presents a `Request-UserChoice` menu: P (skip), Z (apply edits), R (regenerate), H (refresh hashes via `Set-SessionHash -Full`). The review step is Step 9; hash refresh is Step 10; graph build is Step 11.
 
@@ -443,7 +458,7 @@ Runs final PU diagnostics (must pass to proceed), freezes `Gracze.md` with a rea
 
 ## Migration Logging System
 
-Implemented in `migration/migration-ui.ps1`. Three functions provide a structured text log written to `.robot/res/migration-log.txt`:
+Implemented in `migration/migration-ui.ps1`. Three functions provide a structured text log written to `.robot.local/res/migration-log.txt`:
 
 | Function | Purpose |
 |---|---|
@@ -475,9 +490,9 @@ These commands can be run independently outside the automated phase pipeline.
 Bootstrap entity store:
 
 ```powershell
-Import-Module ./.robot.new/robot.psd1
-. ./.robot.new/private/entity-migrationhelpers.ps1
-ConvertTo-EntitiesFromPlayers -OutputPath ./.robot.new/entities.md
+Import-Module ./.robot.powershell/Robot.PowerShell.psd1
+. ./.robot.powershell/private/entity-migrationhelpers.ps1
+ConvertTo-EntitiesFromPlayers -OutputPath ./.robot.powershell/entities.md
 ```
 
 All CRUD operations now use `Set-Player`, `Set-PlayerCharacter`, `New-Player`, `New-PlayerCharacter`, `Remove-PlayerCharacter`. These write to `entities.md` exclusively.
@@ -515,7 +530,7 @@ Unresolved names in `Get-EntityState` / narrator resolution should be cleaned up
 
 ## Module Structure
 
-Exported commands (Verb-Noun, auto-loaded by `robot.psm1`):
+Exported commands (Verb-Noun, auto-loaded by `Robot.PowerShell.psm1`):
 
 | File | Function | Purpose |
 |---|---|---|
@@ -561,13 +576,13 @@ Data files:
 | `entities.md` | Base entity registry (lowest override primacy) |
 | `entities-100-ent.md` | Override shard with primacy 100 |
 | `maps-100-ent.md` | Mapa entity overflow file (~2,704 game-map entities, created by Phase 3) |
-| `robot.psd1` | Module manifest |
-| `robot.psm1` | Module loader (auto-discovers Verb-Noun `.ps1` files) |
+| `Robot.PowerShell.psd1` | Module manifest |
+| `Robot.PowerShell.psm1` | Module loader (auto-discovers Verb-Noun `.ps1` files) |
 | `templates/*.md.template` | Character file and player entry templates |
 | `local.config.psd1` | Local config (git-ignored) |
-| `.robot/res/migration-log.txt` | Structured diagnostic log (overwritten each run) |
-| `.robot/res/all-sessions-to-review.md` | Session review artifact (Phase 5) |
-| `.robot/res/review-additions/*.md` | New sessions from review import (Phase 5) |
+| `.robot.local/res/migration-log.txt` | Structured diagnostic log (overwritten each run) |
+| `.robot.local/res/all-sessions-to-review.md` | Session review artifact (Phase 5) |
+| `.robot.local/res/review-additions/*.md` | New sessions from review import (Phase 5) |
 
 ---
 

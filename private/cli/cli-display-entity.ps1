@@ -16,14 +16,11 @@
       Robot.TemporalEntry objects. Waits for Escape before returning.
 
     Design:
-    - Show-EntityCard accepts either an Entity parameter or a Row parameter
-      (aliased for backward compatibility with detail-card call sites).
     - History lists (LocationHistory, GroupHistory) are capped at 5 entries
       to keep the card within a single terminal screen. Overflow is indicated
       with a "... i N więcej" line.
     - This file uses direct console rendering (Write-Host, Console.Clear)
-      rather than the TUI engine, so it can be used from legacy workflows
-      without engine lifecycle overhead.
+      rather than the TUI engine.
 
     Dependencies: cli-primitives.ps1 (Get-CLIColor, Write-CLILine)
 #>
@@ -44,13 +41,9 @@ function Format-ValidityRange {
 
 function Show-EntityCard {
     param(
-        [object]$Entity,
-        [object]$State,
-        [object]$Row
+        [Parameter(Mandatory)] [object]$Entity,
+        [object]$State
     )
-
-    # Support both direct entity and detail-card Row parameter
-    if (-not $Entity -and $Row) { $Entity = $Row }
 
     $AccentColor   = Get-CLIColor -Role 'Accent'
     $DisabledColor = Get-CLIColor -Role 'Disabled'

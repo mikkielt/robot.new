@@ -1,6 +1,6 @@
 <#
     .SYNOPSIS
-    Interaktywny skrypt migracji z systemu .robot na .robot.new.
+    Interaktywny skrypt migracji z systemu .robot na .robot.powershell.
 
     .DESCRIPTION
     Prowadzi koordynatora przez 7 faz migracji (Fazy 0-6) z polskojęzycznym
@@ -9,12 +9,12 @@
     Można uruchamiać wielokrotnie - każda faza sprawdza swój stan
     i pomija już ukończone kroki.
 
-    Stan migracji zapisywany w .robot/res/migration-state.json.
+    Stan migracji zapisywany w .robot.local/res/migration-state.json.
 
     Użycie:
-        .\.robot.new\migration\migrate.ps1              # Menu interaktywne
-        .\.robot.new\migration\migrate.ps1 -Phase 3     # Uruchom konkretną fazę
-        .\.robot.new\migration\migrate.ps1 -WhatIf      # Tryb suchy (bez zmian)
+        .\.robot.powershell\migration\migrate.ps1              # Menu interaktywne
+        .\.robot.powershell\migration\migrate.ps1 -Phase 3     # Uruchom konkretną fazę
+        .\.robot.powershell\migration\migrate.ps1 -WhatIf      # Tryb suchy (bez zmian)
 
     .PARAMETER Phase
     Uruchom konkretną fazę (0-6) bez wyświetlania menu.
@@ -37,7 +37,7 @@
 # Resolve paths
 $MigrationRoot = $PSScriptRoot
 $ModuleRoot = [System.IO.Path]::GetDirectoryName($MigrationRoot)
-$ModuleManifest = [System.IO.Path]::Combine($ModuleRoot, 'robot.psd1')
+$ModuleManifest = [System.IO.Path]::Combine($ModuleRoot, 'Robot.PowerShell.psd1')
 
 # Import the robot module
 if (-not $SkipModuleImport) {
@@ -50,14 +50,18 @@ if (-not $SkipModuleImport) {
         Write-Host "  Szczegóły: $($_.Exception.Message)" -ForegroundColor Red
         Write-Host ''
         Write-Host '  Upewnij się, że:' -ForegroundColor Yellow
-        Write-Host '    1. Submoduł .robot.new jest zainicjalizowany' -ForegroundColor Yellow
+        Write-Host '    1. Submoduł .robot.powershell jest zainicjalizowany' -ForegroundColor Yellow
         Write-Host '    2. PowerShell 5.1+ lub 7.0+ jest zainstalowany' -ForegroundColor Yellow
         Write-Host '    3. Uruchamiasz skrypt z katalogu repozytorium' -ForegroundColor Yellow
         exit 1
     }
 }
 
-# Exclude .robot.new/ from session and data scanning during migration
+# Resolve ResDir once for all migration phases
+$Config = Get-AdminConfig
+$script:MigrationResDir = $Config.ResDir
+
+# Exclude .robot.powershell/ from session and data scanning during migration
 $script:MigrationExcludeDirs = @($ModuleRoot)
 
 # Dot-source private module helpers needed by migration phases

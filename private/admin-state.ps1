@@ -4,7 +4,7 @@
 
     .DESCRIPTION
     Non-exported helper functions consumed by Invoke-PlayerCharacterPUAssignment
-    and other admin commands via dot-sourcing. Not auto-loaded by robot.psm1
+    and other admin commands via dot-sourcing. Not auto-loaded by Robot.PowerShell.psm1
     (non-Verb-Noun filename).
 
     Helpers:
@@ -12,14 +12,14 @@
     - Read-JsonStateFile:        reads JSON state file with backup recovery on corruption
     - Get-AdminHistoryEntries:   reads processed session headers from JSON state file
     - Add-AdminHistoryEntry:     appends new run with timestamp to JSON state file
-    - Convert-PUHistoryToJson:   converts legacy pu-sessions.md to pu-sessions.json
+    - Convert-PUHistoryToJson:   (moved to migration/phase0-helpers.ps1)
 
     Module-level data:
     - $script:HistoryEntryPattern:           precompiled regex for legacy Markdown parsing (migration only)
     - $script:MultiSpacePattern:             precompiled regex for collapsing multiple whitespace runs
     - $script:AdminHistoryTimestampPattern:  precompiled regex for legacy timestamp lines (migration only)
 
-    State file (`.robot/res/pu-sessions.json`) uses a structured JSON format:
+    State file (`.robot.local/res/pu-sessions.json`) uses a structured JSON format:
 
         {
           "version": 2,
@@ -51,19 +51,9 @@
     Save-JsonStateFile. ConvertFrom-Json returns PSCustomObjects, so the
     runs list is rebuilt as a mutable List[object] before appending.
 
-    Convert-PUHistoryToJson is a one-shot migration converter that parses
-    the legacy append-only Markdown format (timestamp + indented session
-    headers) into the versioned JSON structure. Called by phase0-setup.ps1
-    during repository migration.
 #>
 
-# Legacy regex patterns — preserved for Convert-PUHistoryToJson migration converter
-$script:HistoryEntryPattern = [regex]::new('^\s+-\s+###\s+(.+)$', [System.Text.RegularExpressions.RegexOptions]::Compiled)
 $script:MultiSpacePattern = [regex]::new('\s{2,}', [System.Text.RegularExpressions.RegexOptions]::Compiled)
-$script:AdminHistoryTimestampPattern = [regex]::new(
-    '^\s*-\s+(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2})\s+\(([^)]+)\)\s*:\s*$',
-    [System.Text.RegularExpressions.RegexOptions]::Compiled
-)
 
 # ── Shared JSON State Utilities ──────────────────────────────────────────────
 
@@ -231,77 +221,3 @@ function Add-AdminHistoryEntry {
     Save-JsonStateFile -Path $Path -Data $State
 }
 
-# ── Legacy MD → JSON Migration Converter ─────────────────────────────────────
-
-function Convert-PUHistoryToJson {
-    param(
-        [Parameter(Mandatory)] [string]$SourcePath,
-        [Parameter(Mandatory)] [string]$TargetPath,
-        [switch]$Force
-    )
-
-    if ([System.IO.File]::Exists($TargetPath) -and -not $Force) {
-        Write-RobotWarning "[WARN Convert-PUHistoryToJson] Target file already exists: '$TargetPath'. Use -Force to overwrite."
-        return $false
-    }
-
-    if (-not [System.IO.File]::Exists($SourcePath)) {
-        Write-RobotWarning "[WARN Convert-PUHistoryToJson] Source file not found: '$SourcePath'"
-        return $false
-    }
-
-    $UTF8NoBOM = [System.Text.UTF8Encoding]::new($false)
-    $Content = [System.IO.File]::ReadAllText($SourcePath, $UTF8NoBOM)
-    $Lines = $Content.Split([string[]]@("`r`n", "`n"), [System.StringSplitOptions]::None)
-
-    $Runs = [System.Collections.Generic.List[object]]::new()
-    $CurrentTimestamp = $null
-    $CurrentTimezone = $null
-    $CurrentHeaders = $null
-
-    foreach ($Line in $Lines) {
-        $TsMatch = $script:AdminHistoryTimestampPattern.Match($Line)
-        if ($TsMatch.Success) {
-            if ($null -ne $CurrentTimestamp -and $null -ne $CurrentHeaders -and $CurrentHeaders.Count -gt 0) {
-                [void]$Runs.Add([ordered]@{
-                    processedAt = $CurrentTimestamp
-                    timezone    = $CurrentTimezone
-                    sessions    = @($CurrentHeaders)
-                })
-            }
-            $DateStr = $TsMatch.Groups[1].Value
-            $Parsed = [datetime]::ParseExact($DateStr, 'yyyy-MM-dd HH:mm',
-                [System.Globalization.CultureInfo]::InvariantCulture)
-            $CurrentTimestamp = $Parsed.ToString('yyyy-MM-ddTHH:mm:ss')
-            $CurrentTimezone = $TsMatch.Groups[2].Value
-            $CurrentHeaders = [System.Collections.Generic.List[string]]::new()
-            continue
-        }
-
-        $HdrMatch = $script:HistoryEntryPattern.Match($Line)
-        if ($HdrMatch.Success -and $null -ne $CurrentHeaders) {
-            $Header = $HdrMatch.Groups[1].Value.Trim()
-            $Header = $script:MultiSpacePattern.Replace($Header, ' ')
-            if ($Header.Length -gt 0) {
-                [void]$CurrentHeaders.Add($Header)
-            }
-        }
-    }
-
-    # Flush last run
-    if ($null -ne $CurrentTimestamp -and $null -ne $CurrentHeaders -and $CurrentHeaders.Count -gt 0) {
-        [void]$Runs.Add([ordered]@{
-            processedAt = $CurrentTimestamp
-            timezone    = $CurrentTimezone
-            sessions    = @($CurrentHeaders)
-        })
-    }
-
-    $State = [ordered]@{
-        version = 2
-        runs    = @($Runs)
-    }
-
-    Save-JsonStateFile -Path $TargetPath -Data $State
-    return $true
-}

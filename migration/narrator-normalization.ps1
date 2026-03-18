@@ -18,7 +18,7 @@
 
 function Get-NarratorMappingsPath {
     $RepoRoot = Get-RepoRoot
-    return [System.IO.Path]::Combine($RepoRoot, '.robot', 'res', 'narrator-mappings.txt')
+    return [System.IO.Path]::Combine($script:MigrationResDir, 'narrator-mappings.txt')
 }
 
 function Import-NarratorMappings {

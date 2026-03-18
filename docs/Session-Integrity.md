@@ -14,7 +14,7 @@ The Narrator follows proper session formatting (see [Sessions.md](Sessions.md)) 
 
 Before the integrity system can detect changes, a baseline must be established. Build the hash store after completing a PU processing cycle (to lock in the known-good state), when setting up the integrity system for the first time (full scan required), or after deliberate, authorized edits to session files.
 
-The Coordinator provides the `-Full` flag for a complete scan of all repository files, and optionally `-File` to limit to specific files after targeted edits or `-ExcludeDirectory` to skip directories that should not be tracked.
+The Coordinator can request a complete scan of all repository files, limit the scan to specific files after targeted edits, or exclude directories that should not be tracked.
 
 Every Markdown file in the repository is parsed. Each session header and its content receive a unique fingerprint (SHA256 hash). Fingerprints are stored in a sidecar file structure alongside the repository. A timestamp is recorded so future incremental runs only process recently changed files.
 
@@ -24,7 +24,7 @@ The output is a summary showing how many files were processed, how many fingerpr
 
 Run validation before every PU processing cycle, whenever you suspect unauthorized edits, or as a periodic health check on the session archive.
 
-No flags are needed for an incremental check (only recently changed files). Use the `-Full` flag for a comprehensive check of all files, or `-File` to check specific files.
+An incremental check covers only recently changed files and requires no additional options. A comprehensive check covers all files, and a targeted check covers specific files.
 
 During the check, a progress indicator shows how many files have been processed so far (e.g., "35/120"), with a spinner and elapsed time. When the check completes, a diagnostic report appears with an overall pass/fail status and categorized findings.
 

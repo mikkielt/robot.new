@@ -15,7 +15,7 @@ namespace Robot {
     /// is used for meta/index files; ScanResult uses manual StringBuilder
     /// serialization for maximum control over key naming and null handling.
     ///
-    /// The disk cache lives at {RepoRoot}/.robot-cache/markdown/ and is populated
+    /// The disk cache lives at {RepoRoot}/.robot.local/.cache/markdown/ and is populated
     /// lazily on parse, checked on cache miss before re-parsing. ScanResult uses
     /// index-based parent references (int ParentIndex, int HeaderIndex) which
     /// serialize cleanly as JSON integers. The PowerShell layer
@@ -36,7 +36,7 @@ namespace Robot {
     /// module-wide convention.
     ///
     /// Consumers: get-markdown.ps1 (6 call sites for disk cache tier),
-    /// robot.psm1 (2 call sites for cache clear on module reload)
+    /// Robot.PowerShell.psm1 (2 call sites for cache clear on module reload)
     public sealed class ParseCacheHelper {
         private static readonly UTF8Encoding Utf8NoBom = new UTF8Encoding(false);
         private static readonly JsonSerializerOptions WriteOptions = new JsonSerializerOptions {
@@ -154,7 +154,7 @@ namespace Robot {
             }
         }
 
-        /// Delete the entire .robot-cache directory tree for full cache invalidation.
+        /// Delete the entire .cache directory tree for full cache invalidation.
         /// Silently succeeds if directory doesn't exist. Best-effort on Windows
         /// where locked files may prevent complete removal.
         public static void DeleteCacheDirectory(string cacheDir) {

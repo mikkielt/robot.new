@@ -39,7 +39,7 @@
 #>
 
 # C# types: Robot.ItemHelper, Robot.ItemLookupResult, Robot.ItemFilterResult (lib/ItemHelper.cs)
-# Compiled centrally in robot.psm1 at module import time.
+# Compiled centrally in Robot.PowerShell.psm1 at module import time.
 
 function Build-ItemLookup {
     param(

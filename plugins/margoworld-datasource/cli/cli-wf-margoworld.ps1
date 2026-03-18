@@ -30,8 +30,10 @@ function Invoke-MargoWorldCheckupWorkflow {
         [PSCustomObject]@{ ID = 'diff';   Label = 'Tylko nowe/zmienione'; Description = 'Porównaj z rejestrem'; RoleTag = $null; InfoText = $null; Disabled = $false }
         [PSCustomObject]@{ ID = 'full';   Label = 'Pełne skanowanie';     Description = 'Wszystkie mapy';       RoleTag = $null; InfoText = $null; Disabled = $false }
     )
-    $DiffChoice = Show-ArrowMenu -Items $DiffItems -Title 'Tryb skanowania' -ShowBack
-    if ($DiffChoice -eq '__back__') { return }
+    Write-CLILine -Text '  Tryb skanowania' -Color (Get-CLIColor -Role 'Accent')
+    $DiffComponent = New-MenuListComponent -Items $DiffItems -ShowBack
+    $DiffChoice = Invoke-EngineLifecycle -Component $DiffComponent -State $State
+    if ($DiffChoice -eq '__back__' -or $DiffChoice -eq '__quit__') { return }
 
     $DiffOnly = ($DiffChoice -eq 'diff')
 
@@ -40,8 +42,10 @@ function Invoke-MargoWorldCheckupWorkflow {
         [PSCustomObject]@{ ID = 'yes'; Label = 'Tak'; Description = 'Zaktualizuj maps.json'; RoleTag = $null; InfoText = $null; Disabled = $false }
         [PSCustomObject]@{ ID = 'no';  Label = 'Nie'; Description = 'Tylko podgląd';          RoleTag = $null; InfoText = $null; Disabled = $false }
     )
-    $UpdateChoice = Show-ArrowMenu -Items $UpdateItems -Title 'Zaktualizować rejestr?' -ShowBack
-    if ($UpdateChoice -eq '__back__') { return }
+    Write-CLILine -Text '  Zaktualizować rejestr?' -Color (Get-CLIColor -Role 'Accent')
+    $UpdateComponent = New-MenuListComponent -Items $UpdateItems -ShowBack
+    $UpdateChoice = Invoke-EngineLifecycle -Component $UpdateComponent -State $State
+    if ($UpdateChoice -eq '__back__' -or $UpdateChoice -eq '__quit__') { return }
 
     $UpdateRegistry = ($UpdateChoice -eq 'yes')
 
@@ -79,7 +83,7 @@ function Invoke-MargoWorldCheckupWorkflow {
 
     Write-Host ''
     Write-CLILine -Text '  Naciśnij dowolny klawisz...' -Color (Get-CLIColor -Role 'Disabled')
-    [void](Read-ArrowKey)
+    [void][System.Console]::ReadKey($true)
 }
 
 function Invoke-MargoWorldMapListWorkflow {
@@ -99,7 +103,7 @@ function Invoke-MargoWorldMapListWorkflow {
             Write-CLILine -Text '  Rejestr maps.json jest pusty lub nie istnieje.' -Color (Get-CLIColor -Role 'Warning')
             Write-Host ''
             Write-CLILine -Text '  Naciśnij dowolny klawisz...' -Color (Get-CLIColor -Role 'Disabled')
-            [void](Read-ArrowKey)
+            [void][System.Console]::ReadKey($true)
             return
         }
 
@@ -114,14 +118,15 @@ function Invoke-MargoWorldMapListWorkflow {
         }
 
         while ($true) {
-            $Selected = Show-ResultTable -Data $TableData -Columns @('Id', 'Nazwa', 'BaseName', 'Piętro') `
+            $TableComp = New-ResultTableComponent -Data $TableData -Columns @('Id', 'Nazwa', 'BaseName', 'Piętro') `
                 -Headers @('ID', 'Nazwa', 'Grupa', 'Piętro') -Title 'Rejestr map MargoWorld'
-            if (-not $Selected) { break }
+            $Selected = Invoke-EngineLifecycle -Component $TableComp -State $State
+            if (-not $Selected -or $Selected -eq '__quit__') { break }
 
             # Show detail for selected map
             $FullEntry = $Maps | Where-Object { $_.Id -eq $Selected.Id } | Select-Object -First 1
             if ($FullEntry) {
-                Show-DetailCard -Row $FullEntry -Title "Mapa: $($FullEntry.Name)"
+                Invoke-EngineDetailCard -Data $FullEntry -Title "Mapa: $($FullEntry.Name)" -State $State
             }
         }
     }
@@ -129,7 +134,7 @@ function Invoke-MargoWorldMapListWorkflow {
         Write-CLILine -Text "  Błąd: $_" -Color (Get-CLIColor -Role 'Error')
         Write-Host ''
         Write-CLILine -Text '  Naciśnij dowolny klawisz...' -Color (Get-CLIColor -Role 'Disabled')
-        [void](Read-ArrowKey)
+        [void][System.Console]::ReadKey($true)
     }
 }
 
@@ -183,7 +188,7 @@ function Invoke-MargoWorldLocationReportWorkflow {
 
     Write-Host ''
     Write-CLILine -Text '  Naciśnij dowolny klawisz...' -Color (Get-CLIColor -Role 'Disabled')
-    [void](Read-ArrowKey)
+    [void][System.Console]::ReadKey($true)
 }
 
 function Invoke-MargoWorldMigrateMapsWorkflow {
@@ -212,7 +217,7 @@ function Invoke-MargoWorldMigrateMapsWorkflow {
             Write-CLILine -Text "  Nie znaleziono pliku maps.md: $SourcePath" -Color (Get-CLIColor -Role 'Error')
             Write-Host ''
             Write-CLILine -Text '  Naciśnij dowolny klawisz...' -Color (Get-CLIColor -Role 'Disabled')
-            [void](Read-ArrowKey)
+            [void][System.Console]::ReadKey($true)
             return
         }
 
@@ -237,7 +242,7 @@ function Invoke-MargoWorldMigrateMapsWorkflow {
 
     Write-Host ''
     Write-CLILine -Text '  Naciśnij dowolny klawisz...' -Color (Get-CLIColor -Role 'Disabled')
-    [void](Read-ArrowKey)
+    [void][System.Console]::ReadKey($true)
 }
 
 function Invoke-MargoWorldCoordinatesWorkflow {
@@ -289,7 +294,9 @@ function Invoke-MargoWorldCoordinatesWorkflow {
                 [PSCustomObject]@{ ID = 'yes'; Label = 'Tak'; Description = "Zapisz $WriteCount zmian"; RoleTag = $null; InfoText = $null; Disabled = $false }
                 [PSCustomObject]@{ ID = 'no';  Label = 'Nie'; Description = 'Anuluj';                   RoleTag = $null; InfoText = $null; Disabled = $false }
             )
-            $Choice = Show-ArrowMenu -Items $ConfirmItems -Title 'Zapisać koordynaty?' -ShowBack
+            Write-CLILine -Text '  Zapisać koordynaty?' -Color $AccentColor
+            $ConfirmComponent = New-MenuListComponent -Items $ConfirmItems -ShowBack
+            $Choice = Invoke-EngineLifecycle -Component $ConfirmComponent -State $State
             if ($Choice -eq 'yes') {
                 Write-Host ''
                 Write-CLILine -Text '  Zapisywanie koordynatów...' -Color $AccentColor
@@ -308,7 +315,7 @@ function Invoke-MargoWorldCoordinatesWorkflow {
 
     Write-Host ''
     Write-CLILine -Text '  Naciśnij dowolny klawisz...' -Color (Get-CLIColor -Role 'Disabled')
-    [void](Read-ArrowKey)
+    [void][System.Console]::ReadKey($true)
 }
 
 function Invoke-MargoWorldTileDataWorkflow {
@@ -326,8 +333,10 @@ function Invoke-MargoWorldTileDataWorkflow {
         [PSCustomObject]@{ ID = 'diff'; Label = 'Tylko brakujące'; Description = 'Pomiń mapy z istniejącymi wymiarami'; RoleTag = $null; InfoText = $null; Disabled = $false }
         [PSCustomObject]@{ ID = 'full'; Label = 'Pełne przetwarzanie'; Description = 'Wszystkie mapy exterior'; RoleTag = $null; InfoText = $null; Disabled = $false }
     )
-    $ModeChoice = Show-ArrowMenu -Items $ModeItems -Title 'Tryb przetwarzania' -ShowBack
-    if ($ModeChoice -eq '__back__') { return }
+    Write-CLILine -Text '  Tryb przetwarzania' -Color (Get-CLIColor -Role 'Accent')
+    $ModeComponent = New-MenuListComponent -Items $ModeItems -ShowBack
+    $ModeChoice = Invoke-EngineLifecycle -Component $ModeComponent -State $State
+    if ($ModeChoice -eq '__back__' -or $ModeChoice -eq '__quit__') { return }
 
     $DiffOnly = ($ModeChoice -eq 'diff')
 
@@ -376,5 +385,5 @@ function Invoke-MargoWorldTileDataWorkflow {
 
     Write-Host ''
     Write-CLILine -Text '  Naciśnij dowolny klawisz...' -Color (Get-CLIColor -Role 'Disabled')
-    [void](Read-ArrowKey)
+    [void][System.Console]::ReadKey($true)
 }

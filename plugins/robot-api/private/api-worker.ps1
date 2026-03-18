@@ -177,7 +177,7 @@ function Start-ApiWorkerPool {
         # Import module into this runspace
         $PS = [System.Management.Automation.PowerShell]::Create()
         $PS.Runspace = $Runspace
-        [void]$PS.AddScript("Import-Module '$ModRoot/robot.psm1' -Force -WarningAction SilentlyContinue")
+        [void]$PS.AddScript("Import-Module '$ModRoot/Robot.PowerShell.psm1' -Force -WarningAction SilentlyContinue")
         [void]$PS.Invoke()
         $PS.Commands.Clear()
 

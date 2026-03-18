@@ -5,7 +5,7 @@
 
     .DESCRIPTION
     Non-exported helper functions consumed by write commands (Set-Entity,
-    New-Entity, etc.) via dot-sourcing. Not auto-loaded by robot.psm1
+    New-Entity, etc.) via dot-sourcing. Not auto-loaded by Robot.PowerShell.psm1
     (non-Verb-Noun filename).
 
     Helpers:

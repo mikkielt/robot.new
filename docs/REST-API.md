@@ -25,23 +25,33 @@ The API provides read access to the full campaign dataset.
 
 Entities — browse, search, and inspect all entities (NPCs, locations, items, groups, maps) with full change history and temporal diffs. Queries accept both Polish and English values for types and statuses.
 
+Locations — browse locations with enriched hierarchy, door connections, child locations, and entity counts. Query which entities are present at a given location. Create, update, and remove locations with the same parent and coordinate validation as the CLI.
+
+Maps — list all game-map entries and create new ones.
+
 Players and characters — player roster with character assignments.
 
-Sessions — session list and session participation graph, including per-entity session profiles, overlap analysis between entities, and leaderboards.
+Sessions — session list and session participation graph, including per-entity session profiles, overlap analysis between entities, and leaderboards. Create new sessions (single or batch) with the same metadata fields available in the CLI.
 
 Currency and economy — currency holdings, transaction ledger, economic snapshots (supply breakdown, wealth distribution), and monthly economic timelines.
 
-Reports — change audit, dormancy, session frequency, narrator statistics, location data, PU processing history, and notification logs.
+Reports — change audit, dormancy, session frequency, narrator statistics, location data, PU processing history, notification logs, and Discord webhook delivery history.
 
 Validation — PU assignments, currency reconciliation, session integrity, and graph integrity checks.
 
 Name resolution — resolve any name to its entity or player, with fuzzy matching when the exact name is not found.
 
+Log parsing — submit raw log text and receive structured data back, or provide log URLs to fetch and parse their content. Preview session markdown with name resolution before committing.
+
+File listing — retrieve a list of Markdown file paths from the repository, useful for autocomplete in client applications.
+
+Dashboard — the web dashboard is served directly by the API as a self-contained page, accessible in a browser at the server address.
+
 All data uses Polish canonical values for types, statuses, and domain terms. Clients can request English labels alongside Polish values for localization.
 
 ## Write Operations
 
-When write access is enabled, the API supports creating new entities (with a name and type), updating entity tags, soft-deleting entities (marking them as Usunięty — they are never physically removed), creating players and player characters, and creating or updating currency holdings.
+When write access is enabled, the API supports creating new entities (with a name and type), updating entity tags, soft-deleting entities (marking them as Usunięty — they are never physically removed), creating and updating locations and maps (with parent validation and coordinate checks), creating players and player characters, creating or updating currency holdings, creating sessions (single or batch), and triggering maintenance workflows such as rebuilding the session graph or updating session content hashes.
 
 Write operations automatically notify connected real-time clients when entities are created or modified.
 
@@ -90,3 +100,4 @@ The server enforces request rate limits per client. When a client exceeds the li
 - [Economy.md](Economy.md) — Economic analysis
 - [Session-Graph.md](Session-Graph.md) — Session participation graph
 - [Name-Resolution.md](Name-Resolution.md) — How name resolution works
+- [Location-Graph.md](Location-Graph.md) — Location connectivity and analysis

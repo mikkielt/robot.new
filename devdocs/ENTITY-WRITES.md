@@ -4,7 +4,7 @@
 
 ## Scope
 
-The entity write subsystem consists of `private/entity-writehelpers.ps1` (low-level line-array manipulation primitives, dot-sources `private/entity-findhelpers.ps1` for find helpers) and all mutating commands: player/character-specific (`Set-Player`, `Set-PlayerCharacter`, `New-Player`, `New-PlayerCharacter`, `Remove-PlayerCharacter`), generic entity CRUD (`New-Entity`, `Set-Entity`, `Remove-Entity`), and currency entity CRUD (`New-CurrencyEntity`, `Set-CurrencyEntity`, `Remove-CurrencyEntity`). Bootstrap migration helper `ConvertTo-EntitiesFromPlayers` lives in `private/entity-migrationhelpers.ps1`.
+The entity write subsystem consists of `private/entity-writehelpers.ps1` (low-level line-array manipulation primitives, dot-sources `private/entity-findhelpers.ps1` for find helpers) and all mutating commands: player/character-specific (`Set-Player`, `Set-PlayerCharacter`, `New-Player`, `New-PlayerCharacter`, `Remove-PlayerCharacter`), generic entity CRUD (`New-Entity`, `Set-Entity`, `Remove-Entity`), currency entity CRUD (`New-CurrencyEntity`, `Set-CurrencyEntity`, `Remove-CurrencyEntity`), and location entity CRUD (`New-LocationEntity`, `Set-LocationEntity`, `New-MapEntity` in `public/location/`). Bootstrap migration helper `ConvertTo-EntitiesFromPlayers` lives in `private/entity-migrationhelpers.ps1`.
 
 Entity reading/parsing is documented in [ENTITIES.md](ENTITIES.md). Character file writing is documented in [CHARFILE.md](CHARFILE.md). Currency query (`Get-CurrencyEntity`) and reporting are documented in [CURRENCY.md](CURRENCY.md).
 
@@ -30,6 +30,10 @@ Set-Player  Set-Player  New-Player  New-Player  Remove-Player  New-    Set-    R
 
 Currency CRUD (public/currency/) also uses entity-writehelpers.ps1 via the
 generic entity primitives + private/currency-helpers.ps1 for denomination logic.
+
+Location CRUD (public/location/) wraps New-Entity/Set-Entity with parent
+validation, coordinate checks, and multi-valued @drzwi management:
+  New-LocationEntity, Set-LocationEntity, New-MapEntity
 
 Bootstrap migration (ConvertTo-EntitiesFromPlayers) lives in private/entity-migrationhelpers.ps1.
 ```
@@ -132,7 +136,7 @@ High-level orchestrator that ensures the entity exists, creating intermediate st
 
 `Write-EntityFile` rejoins lines with detected newline style, writes via `[System.IO.File]::WriteAllText()` with `UTF8Encoding(false)` (no BOM).
 
-`Invoke-EnsureEntityFile` creates `entities.md` with skeleton loaded from `entities-skeleton.md.template` (via `Get-AdminTemplate`). The template defines all 7 entity type sections:
+`Invoke-EnsureEntityFile` creates `entities.md` with skeleton loaded from `entities-skeleton.md.template` (via `Get-AdminTemplate`). When no `-Path` is supplied, it resolves the default via `(Get-AdminConfig).EntitiesFile`. The template defines all 7 entity type sections:
 ```markdown
 ## Gracz
 
@@ -158,7 +162,7 @@ Entity mutations can invalidate the pre-computed Tier 2 session graph cache (see
 | Parameter | Type | Description |
 |---|---|---|
 | `Reason` | string | Mandatory. Human-readable reason for staleness (e.g., entity name or operation). |
-| `ResDir` | string | Mandatory. Path to the `.robot.new` resource directory containing `session-graph/`. |
+| `ResDir` | string | Mandatory. Path to the `.robot.local/res` resource directory containing `session-graph/`. |
 
 Implementation:
 1. Dot-sources `private/session-graphhelpers.ps1` if `Read-SessionGraphMeta` is not already available
@@ -275,7 +279,7 @@ See [CONFIG-STATE.md](CONFIG-STATE.md) for the full operation context specificat
 
 ## Generic Entity CRUD
 
-These commands in `public/entity/` handle NPC, Grupa, Lokacja, Mapa, and Przedmiot entities. `Gracz` and `Postac` have specialized commands (see Mutating Commands section) with domain-specific logic (PU, ownership, character files).
+These commands in `public/entity/` handle NPC, Grupa, Lokacja, Mapa, and Przedmiot entities. `Gracz` and `Postac` have specialized commands (see Mutating Commands section) with domain-specific logic (PU, ownership, character files). Lokacja and Mapa also have domain-specific wrappers in `public/location/` (see Location Entity CRUD section) that add parent validation, coordinate checking, and multi-valued `@drzwi` management on top of the generic commands.
 
 `New-Entity`:
 
@@ -379,6 +383,56 @@ Return object: `{ EntityName, Denomination, DenomShort, Tier, Owner, Location, B
 
 ---
 
+## Location Entity CRUD
+
+Domain-specific commands in `public/location/` for Lokacja and Mapa entities. These wrap the generic entity primitives (`New-Entity`, `Set-Entity`) with parent existence validation, coordinate format checking, door target verification, and multi-valued `@drzwi` tag management.
+
+`New-LocationEntity`:
+
+| Aspect | Detail |
+|---|---|
+| Source | `public/location/new-locationentity.ps1` |
+| Target | `entities.md` `## Lokacja` section |
+| Parameters | `-Name` (mandatory), `-Parent`, `-Doors`, `-Coordinates`, `-NerthusName`, `-MargonemIds`, `-Tags`, `-ValidFrom`, `-EntitiesFile` |
+| Coordinate validation | Rejects non-integer or wrong-count parts via `ThrowTerminatingError` |
+| Parent validation | Checks parent exists as Lokacja or Mapa bullet in entity file; throws if not found |
+| Door validation | Warns on unresolved door targets (non-fatal) |
+| Delegation | Builds merged tags hashtable and delegates to `New-Entity -Type Lokacja` |
+| Multi-valued tags | `@drzwi` and `@margonemid` entries appended via post-creation direct line insertion |
+| Dot-sources | `private/entity-writehelpers.ps1`, `private/admin-config.ps1` |
+| SupportsShouldProcess | Yes (`-WhatIf`, `-Confirm`) |
+
+`Set-LocationEntity`:
+
+| Aspect | Detail |
+|---|---|
+| Source | `public/location/set-locationentity.ps1` |
+| Target | `entities.md` under `## Lokacja` or `## Mapa` section |
+| Parameters | `-Name` (mandatory), `-Type` (`Lokacja`/`Mapa`, default `Lokacja`), `-Parent`, `-AddDoors`, `-RemoveDoors`, `-Coordinates`, `-NerthusName`, `-Tags`, `-ValidFrom`, `-EntitiesFile` |
+| Coordinate validation | Same as `New-LocationEntity` |
+| Parent validation | Same as `New-LocationEntity` |
+| Door management | `-AddDoors` appends new `@drzwi` lines; `-RemoveDoors` removes matching `@drzwi` lines (strips temporal suffix for comparison) |
+| Simple tags | Delegates parent, coordinates, NerthusName, and custom tags to `Set-Entity` |
+| Dot-sources | `private/entity-writehelpers.ps1`, `private/admin-config.ps1` |
+| SupportsShouldProcess | Yes |
+
+`New-MapEntity`:
+
+| Aspect | Detail |
+|---|---|
+| Source | `public/location/new-mapentity.ps1` |
+| Target | `entities.md` `## Mapa` section |
+| Parameters | `-Name` (mandatory), `-Slug` (mandatory), `-Parent`, `-Url`, `-UrlNerthus`, `-Dimensions`, `-Doors`, `-Info`, `-Tags`, `-ValidFrom`, `-EntitiesFile` |
+| Slug validation | Checks uniqueness by scanning all `@slug:` lines in `## Mapa` section; throws on duplicate |
+| Dimensions validation | Rejects non-integer, non-positive, or wrong-count parts |
+| Parent validation | Checks parent exists as Lokacja or Mapa bullet; throws if not found |
+| Delegation | Builds merged tags hashtable (slug, url, url_nerthus, wymiary, info, lokacja) and delegates to `New-Entity -Type Mapa` |
+| Multi-valued tags | `@drzwi` entries appended via post-creation direct line insertion |
+| Dot-sources | `private/entity-writehelpers.ps1`, `private/admin-config.ps1` |
+| SupportsShouldProcess | Yes |
+
+---
+
 ## Bootstrap Migration
 
 `ConvertTo-EntitiesFromPlayers` (`private/entity-migrationhelpers.ps1`) is a one-time function that generates a complete `entities.md` from `Get-Player` output:
@@ -449,6 +503,10 @@ NewPlayerCharacter Result (`New-PlayerCharacter`):
 | `tests/set-currencyentity.Tests.ps1` | Absolute/delta quantity, owner/location, mutual exclusion |
 | `tests/get-currencyentity.Tests.ps1` | Filtering, denomination resolution, balance, inactive exclusion |
 | `tests/remove-currencyentity.Tests.ps1` | Soft-delete, non-zero balance warning |
+| `tests/new-locationentity.Tests.ps1` | Location creation, parent validation, coordinate validation, door warnings |
+| `tests/set-locationentity.Tests.ps1` | Location update, door add/remove, multi-type support |
+| `tests/new-mapentity.Tests.ps1` | Mapa creation, slug uniqueness, dimensions validation |
+| `tests/get-locationentity.Tests.ps1` | Location query, filtering, enrichment |
 | `tests/operation-context.Tests.ps1` | Accumulator lifecycle, change/warning/file tracking, `New-OperationResult` drain |
 
 ---

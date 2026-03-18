@@ -149,8 +149,23 @@ The system delivers automated notifications to players via Discord and routes ta
 |---|---|---|
 | Group Targeting | Targetowanie grupy | Sending Intel to all entities that belong to a specific group at the session date. |
 | Location Targeting | Targetowanie lokacji | Sending Intel to everyone present in a location and its sub-locations at the session date. |
+| Delivery Tracking | Sledzenie dostarczenia | The record of whether each Discord notification was sent successfully or failed, with timestamps and HTTP outcomes. |
 | Notification | Powiadomienie | An automated or reconstructed message about PU, Intel, or other system events. |
 | Webhook | Webhook | The delivery address used for automated notifications. |
+
+---
+
+## System & Tooling
+
+Infrastructure, automation, and integration concepts.
+
+| English term | Polish counterpart | Meaning in plain language |
+|---|---|---|
+| Campaign Data API | API danych kampanii | The HTTP server that gives external tools access to campaign data for reading and writing. |
+| Dashboard | Dashboard | A web-based interface served by the API that displays campaign data in a browser. |
+| Location Entity | Encja lokacji | An entity of type Lokacja representing a conceptual place in the game world, distinct from a Map entity. |
+| Map Entity | Encja mapy | An entity of type Mapa representing a concrete game map (floor, interior, or instance) from the Margonem map registry. |
+| Static API Export | Eksport statycznego API | A set of JSON files generated from campaign data, suitable for hosting on a CDN or static server without running the live API. |
 
 ---
 

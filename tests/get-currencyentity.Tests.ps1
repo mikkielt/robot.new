@@ -16,7 +16,7 @@ BeforeAll {
 
     function Get-RepoRoot { return $script:TempRoot }
 
-    Import-Module $script:ModuleRoot/robot.psd1 -Force
+    Import-Module $script:ModuleRoot/Robot.PowerShell.psd1 -Force
 
     # Build mock entity objects matching the shape of Get-Entity output
     function script:NewMockGenericNames {

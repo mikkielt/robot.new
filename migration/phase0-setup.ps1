@@ -4,7 +4,7 @@
 
     .DESCRIPTION
     Verifies clean git state, creates safety tag, checks PU state file,
-    submodule registration, module import, and .robot/robot-data.psd1 manifest.
+    submodule registration, module import, and .robot.local/robot-data.psd1 manifest.
     Then bootstraps entities.md from legacy Gracze.md, verifies entry counts
     and required sections, and commits the result.
 
@@ -56,7 +56,7 @@ function Invoke-MigrationPhase0 {
         if ($WhatIf) {
             Write-StepWarning "[SUCHY PRZEBIEG] Utworzyłbym tag 'pre-migration'"
         } else {
-            & git -C $RepoRoot tag 'pre-migration' -m 'Stan repozytorium przed migracją na .robot.new' 2>&1
+            & git -C $RepoRoot tag 'pre-migration' -m 'Stan repozytorium przed migracją na .robot.powershell' 2>&1
             if ($LASTEXITCODE -eq 0) {
                 Write-StepOK "Utworzono tag 'pre-migration'"
             } else {
@@ -69,8 +69,8 @@ function Invoke-MigrationPhase0 {
 
     # Step 3: Verify PU state file exists
     Write-Step -Number 3 -Text 'Sprawdzanie pliku stanu PU...'
-    $PUStatePath = [System.IO.Path]::Combine($RepoRoot, '.robot', 'res', 'pu-sessions.md')
-    $PUJsonPath = [System.IO.Path]::Combine($RepoRoot, '.robot', 'res', 'pu-sessions.json')
+    $PUStatePath = [System.IO.Path]::Combine($script:MigrationResDir, 'pu-sessions.md')
+    $PUJsonPath = [System.IO.Path]::Combine($script:MigrationResDir, 'pu-sessions.json')
     if ([System.IO.File]::Exists($PUJsonPath)) {
         Write-StepOK "Plik pu-sessions.json już istnieje"
         Update-PhaseChecklist -State $State -Phase 0 -Item 'PUStateFileExists' -Value $true
@@ -82,7 +82,7 @@ function Invoke-MigrationPhase0 {
 
         # Step 3b: Convert PU state file from Markdown to JSON
         Write-Step -Number '3b' -Text 'Konwersja pu-sessions.md → pu-sessions.json...'
-        . ([System.IO.Path]::Combine($PSScriptRoot, '..', 'private', 'admin-state.ps1'))
+        . "$PSScriptRoot/phase0-helpers.ps1"
         $ConvertOK = Convert-PUHistoryToJson -SourcePath $PUStatePath -TargetPath $PUJsonPath
         if ($ConvertOK) {
             Write-StepOK "Skonwertowano pu-sessions.md do JSON"
@@ -97,11 +97,13 @@ function Invoke-MigrationPhase0 {
     }
 
     # Step 3c: Convert Discord delivery state file
-    $DiscordMdPath = [System.IO.Path]::Combine($RepoRoot, '.robot', 'res', 'discord-delivery.md')
-    $DiscordJsonPath = [System.IO.Path]::Combine($RepoRoot, '.robot', 'res', 'discord-delivery.json')
+    $DiscordMdPath = [System.IO.Path]::Combine($script:MigrationResDir, 'discord-delivery.md')
+    $DiscordJsonPath = [System.IO.Path]::Combine($script:MigrationResDir, 'discord-delivery.json')
     if ([System.IO.File]::Exists($DiscordMdPath) -and -not [System.IO.File]::Exists($DiscordJsonPath)) {
         Write-Step -Number '3c' -Text 'Konwersja discord-delivery.md → discord-delivery.json...'
-        . ([System.IO.Path]::Combine($PSScriptRoot, '..', 'private', 'discord-state.ps1'))
+        if (-not (Get-Command 'Convert-DiscordDeliveryToJson' -ErrorAction SilentlyContinue)) {
+            . "$PSScriptRoot/phase0-helpers.ps1"
+        }
         $ConvertOK = Convert-DiscordDeliveryToJson -SourcePath $DiscordMdPath -TargetPath $DiscordJsonPath
         if ($ConvertOK) {
             Write-StepOK "Skonwertowano discord-delivery.md do JSON"
@@ -116,21 +118,21 @@ function Invoke-MigrationPhase0 {
     }
 
     # Step 4: Verify submodule registration
-    Write-Step -Number 4 -Text 'Sprawdzanie submodułu .robot.new...'
+    Write-Step -Number 4 -Text 'Sprawdzanie submodułu .robot.powershell...'
     $GitmodulesPath = [System.IO.Path]::Combine($RepoRoot, '.gitmodules')
     if ([System.IO.File]::Exists($GitmodulesPath)) {
         $GitmodulesContent = [System.IO.File]::ReadAllText($GitmodulesPath)
-        if ($GitmodulesContent.Contains('.robot.new')) {
-            Write-StepOK 'Submoduł .robot.new zarejestrowany w .gitmodules'
+        if ($GitmodulesContent.Contains('.robot.powershell')) {
+            Write-StepOK 'Submoduł .robot.powershell zarejestrowany w .gitmodules'
             Update-PhaseChecklist -State $State -Phase 0 -Item 'SubmoduleOK' -Value $true
         } else {
-            Write-StepWarning 'Plik .gitmodules istnieje, ale nie zawiera wpisu .robot.new'
+            Write-StepWarning 'Plik .gitmodules istnieje, ale nie zawiera wpisu .robot.powershell'
             Update-PhaseChecklist -State $State -Phase 0 -Item 'SubmoduleOK' -Value $false
             $AllOK = $false
         }
     } else {
         Write-StepWarning 'Plik .gitmodules nie istnieje - submoduł nie jest zarejestrowany'
-        Write-CommandHint 'git submodule add git@github.com:mikkielt/robot.new.git .robot.new'
+        Write-CommandHint 'git submodule add git@github.com:mikkielt/robot.new.git .robot.powershell'
         Update-PhaseChecklist -State $State -Phase 0 -Item 'SubmoduleOK' -Value $false
         $AllOK = $false
     }
@@ -149,9 +151,9 @@ function Invoke-MigrationPhase0 {
         $AllOK = $false
     }
 
-    # Step 6: Ensure .robot/robot-data.psd1 manifest exists
-    Write-Step -Number 6 -Text 'Sprawdzanie manifestu .robot/robot-data.psd1...'
-    $ManifestPath = [System.IO.Path]::Combine($RepoRoot, '.robot', 'robot-data.psd1')
+    # Step 6: Ensure .robot.local/robot-data.psd1 manifest exists
+    Write-Step -Number 6 -Text 'Sprawdzanie manifestu .robot.local/robot-data.psd1...'
+    $ManifestPath = [System.IO.Path]::Combine($RepoRoot, '.robot.local', 'robot-data.psd1')
     if ([System.IO.File]::Exists($ManifestPath)) {
         try {
             $ManifestData = Import-PowerShellDataFile -Path $ManifestPath
@@ -168,7 +170,7 @@ function Invoke-MigrationPhase0 {
         }
     } else {
         if ($WhatIf) {
-            Write-StepWarning '[SUCHY PRZEBIEG] Utworzyłbym manifest .robot/robot-data.psd1'
+            Write-StepWarning '[SUCHY PRZEBIEG] Utworzyłbym manifest .robot.local/robot-data.psd1'
         } else {
             $ManifestDir = [System.IO.Path]::GetDirectoryName($ManifestPath)
             if (-not [System.IO.Directory]::Exists($ManifestDir)) {
@@ -176,7 +178,7 @@ function Invoke-MigrationPhase0 {
             }
             $ManifestContent = "@{`n    EntitiesFile = '../entities.md'`n}`n"
             [System.IO.File]::WriteAllText($ManifestPath, $ManifestContent, [System.Text.UTF8Encoding]::new($false))
-            Write-StepOK 'Utworzono manifest .robot/robot-data.psd1 (EntitiesFile → ../entities.md)'
+            Write-StepOK 'Utworzono manifest .robot.local/robot-data.psd1 (EntitiesFile → ../entities.md)'
         }
     }
     Update-PhaseChecklist -State $State -Phase 0 -Item 'ManifestCreated' -Value $true
@@ -194,7 +196,7 @@ function Invoke-MigrationPhase0 {
     # ── Bootstrap entities.md ─────────────────────────────────────────────────
 
     $EntitiesPath = [System.IO.Path]::Combine($RepoRoot, 'entities.md')
-    $ModuleRoot = [System.IO.Path]::Combine($RepoRoot, '.robot.new')
+    $ModuleRoot = [System.IO.Path]::Combine($RepoRoot, '.robot.powershell')
     $SkipGeneration = $false
 
     # Step 7: Check if entities.md already exists and is committed

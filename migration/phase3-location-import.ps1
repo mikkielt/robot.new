@@ -54,10 +54,10 @@ function Invoke-MigrationPhase3 {
     # ── Step 1: Load maps.json ──────────────────────────────────────────────
     Write-Step -Number 1 -Text 'Wczytywanie maps.json...'
 
-    $MapsJsonPath = [System.IO.Path]::Combine($RepoRoot, '.robot', 'res', 'maps.json')
+    $MapsJsonPath = [System.IO.Path]::Combine($script:MigrationResDir, 'maps.json')
     if (-not [System.IO.File]::Exists($MapsJsonPath)) {
         Write-StepError "Nie znaleziono pliku: $MapsJsonPath"
-        Write-ActionRequired 'Umieść plik maps.json w .robot/res/ i uruchom fazę ponownie.'
+        Write-ActionRequired 'Umieść plik maps.json w .robot.local/res/ i uruchom fazę ponownie.'
         if (-not $WhatIf) { Save-MigrationState -State $State }
         return
     }
@@ -460,7 +460,7 @@ function Invoke-MigrationPhase3 {
     }
 
     # ── Step 6: Export override file ────────────────────────────────────────
-    $OverridePath = [System.IO.Path]::Combine($RepoRoot, '.robot', 'res', 'location-overrides.txt')
+    $OverridePath = [System.IO.Path]::Combine($script:MigrationResDir, 'location-overrides.txt')
     $OverridesExported = $Checklist.ContainsKey('OverridesExported') -and $Checklist['OverridesExported']
 
     if (-not $OverridesExported -and -not $WhatIf) {
@@ -713,7 +713,7 @@ function Invoke-MigrationPhase3 {
             if (Request-YesNo -Prompt 'Czy zacommitować import lokalizacji?' -Default $true -HelpText @(
                 'Zapisanie zmian do repozytorium git.',
                 '',
-                'Wykona: git add entities.md maps-*-ent.md .robot/res/location-overrides.txt',
+                'Wykona: git add entities.md maps-*-ent.md .robot.local/res/location-overrides.txt',
                 '        git commit "Import lokalizacji z mapy (Mapa + Lokacja)"',
                 '',
                 'Tak = git add + git commit',
@@ -724,7 +724,7 @@ function Invoke-MigrationPhase3 {
                     & git -C $RepoRoot add 'maps-100-ent.md' 2>&1
                 }
                 if ($OverrideExists) {
-                    & git -C $RepoRoot add '.robot/res/location-overrides.txt' 2>&1
+                    & git -C $RepoRoot add '.robot.local/res/location-overrides.txt' 2>&1
                 }
                 & git -C $RepoRoot commit -m 'Import lokalizacji z mapy — Mapa + Lokacja (Faza 3 migracji)' 2>&1
                 if ($LASTEXITCODE -eq 0) {

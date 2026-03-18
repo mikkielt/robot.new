@@ -59,6 +59,9 @@ function Start-RobotApi {
 
         .PARAMETER Quiet
         Suppress informational output.
+
+        .PARAMETER Force
+        Stop any existing process listening on the target port before starting.
     #>
     [CmdletBinding(SupportsShouldProcess, ConfirmImpact = 'Medium')]
     param(
@@ -66,7 +69,8 @@ function Start-RobotApi {
         [string]$Address,
         [int]$Workers,
         [switch]$ReadOnly,
-        [switch]$Quiet
+        [switch]$Quiet,
+        [switch]$Force
     )
 
     # Fail early if C# types weren't compiled — avoids cryptic errors downstream
@@ -99,7 +103,66 @@ function Start-RobotApi {
 
     $Prefix = "http://$($Config.ListenAddress):$($Config.ListenPort)/api/"
 
+    # Detect port conflict before attempting to bind
+    $PortBusy = $false
+    try {
+        $TcpProbe = [System.Net.Sockets.TcpClient]::new()
+        $TcpProbe.Connect('localhost', $Config.ListenPort)
+        [void]$TcpProbe.Dispose()
+        $PortBusy = $true
+    } catch { }
+
+    if ($PortBusy -and -not $Force) {
+        $ListenerPid = $null
+        if ($IsMacOS -or $IsLinux) {
+            $ListenerPid = & lsof -i ":$($Config.ListenPort)" -t -sTCP:LISTEN 2>$null |
+                Select-Object -First 1
+        }
+        $PidHint = if ($ListenerPid) { " (PID $ListenerPid)" } else { '' }
+        $PSCmdlet.ThrowTerminatingError(
+            [System.Management.Automation.ErrorRecord]::new(
+                [System.InvalidOperationException]::new(
+                    "Port $($Config.ListenPort) is already in use${PidHint}. " +
+                    'Use -Force to stop the existing listener and start a new instance.'),
+                'ApiPortInUse',
+                [System.Management.Automation.ErrorCategory]::ResourceExists,
+                $Prefix))
+        return
+    }
+
     if (-not $PSCmdlet.ShouldProcess($Prefix, 'Start REST API server')) { return }
+
+    # -Force: stop existing listener before startup
+    if ($PortBusy) {
+        # If the current process owns the listener, shut down gracefully first
+        if ($script:ApiServerInstance -and $script:ApiServerInstance.IsRunning) {
+            if (-not $Quiet) {
+                Write-RobotInfo "[Start-RobotApi] Stopping in-process API server on port $($Config.ListenPort)"
+            }
+            Stop-RobotApi
+        } else {
+            # External process — find and kill by PID
+            $ListenerPids = @()
+            if ($IsMacOS -or $IsLinux) {
+                $ListenerPids = @(& lsof -i ":$($Config.ListenPort)" -t -sTCP:LISTEN 2>$null |
+                    Select-Object -Unique)
+            } elseif (Get-Command 'Get-NetTCPConnection' -ErrorAction SilentlyContinue) {
+                $ListenerPids = @(
+                    Get-NetTCPConnection -LocalPort $Config.ListenPort -State Listen `
+                        -ErrorAction SilentlyContinue |
+                    Select-Object -ExpandProperty OwningProcess -Unique)
+            }
+            $MyPid = $PID  # current process — must not kill ourselves
+            foreach ($Lpid in $ListenerPids) {
+                if ([int]$Lpid -eq $MyPid) { continue }
+                if (-not $Quiet) {
+                    Write-RobotInfo "[Start-RobotApi] Stopping process $Lpid on port $($Config.ListenPort)"
+                }
+                Stop-Process -Id ([int]$Lpid) -Force -ErrorAction SilentlyContinue
+            }
+        }
+        Start-Sleep -Milliseconds 500
+    }
 
     # Build C# engine components
     $Server     = [Robot.ApiServer]::new()

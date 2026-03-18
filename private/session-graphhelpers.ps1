@@ -5,7 +5,7 @@
 
     .DESCRIPTION
     Non-exported helper functions consumed by Set-SessionGraph and
-    Get-SessionGraph via dot-sourcing. Not auto-loaded by robot.psm1
+    Get-SessionGraph via dot-sourcing. Not auto-loaded by Robot.PowerShell.psm1
     (non-Verb-Noun filename).
 
     Helpers:
@@ -55,7 +55,7 @@ if (-not (Test-Path variable:script:UTF8NoBOM)) {
     $script:UTF8NoBOM = [System.Text.UTF8Encoding]::new($false)
 }
 
-# C# type: Robot.JsonHelper (lib/JsonHelper.cs) — compiled centrally in robot.psm1.
+# C# type: Robot.JsonHelper (lib/JsonHelper.cs) — compiled centrally in Robot.PowerShell.psm1.
 
 # Classify a repo-relative file path into an entity involvement record.
 # Returns $null for Unknown category paths.

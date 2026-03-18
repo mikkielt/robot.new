@@ -5,7 +5,7 @@
 
     .DESCRIPTION
     Non-exported helper functions consumed by Set-Player, Set-PlayerCharacter,
-    and New-PlayerCharacter via dot-sourcing. Not auto-loaded by robot.psm1
+    and New-PlayerCharacter via dot-sourcing. Not auto-loaded by Robot.PowerShell.psm1
     (non-Verb-Noun filename).
 
     Helpers:
@@ -182,7 +182,7 @@ function Invoke-EnsureEntityFile {
     )
 
     if (-not $Path) {
-        $Path = [System.IO.Path]::Combine((Get-RepoRoot), '.robot.new', 'entities.md')
+        $Path = (Get-AdminConfig).EntitiesFile
     }
 
     if (-not [System.IO.File]::Exists($Path)) {

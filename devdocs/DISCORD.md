@@ -139,16 +139,38 @@ The actual sending is left to the consumer -- `Get-Session` only resolves target
 
 ## Delivery Tracking
 
-Delivery state is persisted to `.robot/res/discord-delivery.json` as a JSON log. `Get-NotificationLog` reconstructs notification intent from `@Intel` directives; delivery tracking records actual send outcomes.
+Delivery state is persisted to `.robot.local/res/discord-delivery.json` as a JSON log. `Get-NotificationLog` reconstructs notification intent from `@Intel` directives; delivery tracking records actual send outcomes.
 
 State file helpers in `private/discord-state.ps1`:
 
 | Function | Purpose |
 |---|---|
-| `Add-DiscordDeliveryEntry` | Appends timestamped delivery record (OK or FAIL) |
-| `Get-DiscordDeliveryEntries` | Parses state file into structured PSCustomObject array |
+| `Add-DiscordDeliveryEntry` | Appends timestamped delivery record (OK or FAIL) to JSON state file |
+| `Get-DiscordDeliveryEntries` | Parses JSON state file into structured PSCustomObject array |
 
-Entry format: `- YYYY-MM-dd HH:mm:ss (timezone) [OK|FAIL] Operation -> Recipient (HTTP NNN)` with optional context and error sub-lines.
+The state file uses a structured JSON format (version 1):
+
+```json
+{
+  "version": 1,
+  "entries": [
+    {
+      "timestamp": "2026-03-01T09:15:22",
+      "timezone": "UTC+01:00",
+      "status": "OK",
+      "operation": "PU",
+      "recipient": "Jan",
+      "statusCode": 204,
+      "context": "2026-02 PU: Solmyr +3.00",
+      "errorMessage": null
+    }
+  ]
+}
+```
+
+`Add-DiscordDeliveryEntry` reads or initializes the JSON state, rebuilds the entries list as mutable `List[object]` (since `ConvertFrom-Json` yields immutable PSCustomObjects), appends a new entry, and writes back via `Save-JsonStateFile`. Depends on `Save-JsonStateFile` / `Read-JsonStateFile` from `admin-state.ps1`.
+
+The legacy Markdown entry format (`- YYYY-MM-dd HH:mm:ss (timezone) [OK|FAIL] Operation -> Recipient (HTTP NNN)`) is no longer written. Migration Phase 0 converts the legacy `discord-delivery.md` to `discord-delivery.json` via `Convert-DiscordDeliveryToJson` in `migration/phase0-helpers.ps1`.
 
 Callers that persist delivery results:
 

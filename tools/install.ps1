@@ -54,14 +54,14 @@ if ([System.IO.Directory]::Exists($InstallPath)) {
     & git clone $RepoUrl $InstallPath 2>&1 | ForEach-Object { Write-Host "  $_" }
 }
 
-if (-not [System.IO.File]::Exists([System.IO.Path]::Combine($InstallPath, 'robot.psm1'))) {
-    throw "robot.psm1 not found at $InstallPath — installation failed"
+if (-not [System.IO.File]::Exists([System.IO.Path]::Combine($InstallPath, 'Robot.PowerShell.psm1'))) {
+    throw "Robot.PowerShell.psm1 not found at $InstallPath — installation failed"
 }
 
 # ── Minimal .robot structure ──────────────────────────────────────
 Write-Host '[3/5] Creating minimal config...' -ForegroundColor Cyan
 
-$RobotDir = [System.IO.Path]::Combine($InstallPath, '.robot')
+$RobotDir = [System.IO.Path]::Combine($InstallPath, '.robot.local')
 if (-not [System.IO.Directory]::Exists($RobotDir)) {
     [void][System.IO.Directory]::CreateDirectory($RobotDir)
     Write-Host "  Created $RobotDir"
@@ -75,7 +75,7 @@ if (-not [System.IO.Directory]::Exists($ResDir)) {
 # ── Import & Verify ──────────────────────────────────────────────
 Write-Host '[4/5] Importing module...' -ForegroundColor Cyan
 
-Import-Module "$InstallPath/robot.psm1" -Force -WarningAction SilentlyContinue
+Import-Module "$InstallPath/Robot.PowerShell.psm1" -Force -WarningAction SilentlyContinue
 
 if (-not $SkipVerify) {
     try {
@@ -109,6 +109,6 @@ if ($StartApi) {
 Write-Host ''
 Write-Host 'Installation complete!' -ForegroundColor Green
 Write-Host "  Module path:  $InstallPath" -ForegroundColor DarkGray
-Write-Host '  Import:       Import-Module ./robot.psm1' -ForegroundColor DarkGray
+Write-Host '  Import:       Import-Module ./Robot.PowerShell.psm1' -ForegroundColor DarkGray
 Write-Host '  Start API:    Start-RobotApi' -ForegroundColor DarkGray
 Write-Host '  Dashboard:    Invoke-RobotDashboard' -ForegroundColor DarkGray

@@ -801,7 +801,7 @@ $script:MenuRegistry = @(
         HelpFull = @(
             'Dziennik wszystkich wykonanych przydziałów PU.'
             'Kolumny: data przetworzenia, liczba sesji, strefa czasowa.'
-            'Dane z pliku .robot/res/pu-sessions.json.'
+            'Dane z pliku .robot.local/res/pu-sessions.json.'
         )
         InfoText = @('Lista dotychczasowych przydziałów z datami i liczbą sesji.')
     }
@@ -1280,7 +1280,7 @@ $script:MenuRegistry = @(
             '  3. Raport: pobrano / z cache / błędy'
             ''
             'Wymaga połączenia z internetem.'
-            'Logi zapisywane w .robot/res/logs/.'
+            'Logi zapisywane w .robot.local/res/logs/.'
         )
         PreChecks = @('Wymaga połączenia z internetem', 'Pobieranie odbywa się z przerwą między zapytaniami')
         InfoText = @('Pobiera zapisy rozmów z adresów URL podanych w sesjach. Wymaga internetu.')

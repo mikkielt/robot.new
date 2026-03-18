@@ -5,7 +5,7 @@
 
     .DESCRIPTION
     Non-exported helper functions consumed by Set-SessionHash and
-    Test-SessionIntegrity via dot-sourcing. Not auto-loaded by robot.psm1
+    Test-SessionIntegrity via dot-sourcing. Not auto-loaded by Robot.PowerShell.psm1
     (non-Verb-Noun filename).
 
     Helpers:
@@ -45,7 +45,7 @@
 #>
 
 # C# types: Robot.ContentHasher (lib/ContentHasher.cs), Robot.JsonHelper (lib/JsonHelper.cs)
-# Compiled centrally in robot.psm1 at module import time.
+# Compiled centrally in Robot.PowerShell.psm1 at module import time.
 
 # Precompiled whitespace stripping pattern
 $script:WSPattern = [regex]::new('\s+', [System.Text.RegularExpressions.RegexOptions]::Compiled)

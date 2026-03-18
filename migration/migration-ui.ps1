@@ -43,7 +43,7 @@
 $script:CLIEngineAvailable = [bool](Get-Command 'Get-CLIColor' -ErrorAction SilentlyContinue)
 
 # ── Migration Log ─────────────────────────────────────────────────────────
-# Structured text log written to .robot/res/migration-log.txt.
+# Structured text log written to .robot.local/res/migration-log.txt.
 # Overwritten on each run (always fresh). Polish language, verbose output.
 
 $script:MigrationLogPath = $null
@@ -56,7 +56,7 @@ function Initialize-MigrationLog {
     } catch {
         return
     }
-    $ResDir = [System.IO.Path]::Combine($RepoRoot, '.robot', 'res')
+    $ResDir = $script:MigrationResDir
     if (-not [System.IO.Directory]::Exists($ResDir)) {
         [void][System.IO.Directory]::CreateDirectory($ResDir)
     }
@@ -352,7 +352,7 @@ function Write-TableRow {
 }
 
 # ── Interactive prompts ─────────────────────────────────────────────────────
-# When CLI engine is available: arrow-key menus via Show-ArrowMenu / Read-ArrowKey
+# When CLI engine is available: engine menus via New-MenuListComponent + Invoke-EngineLifecycle
 # When standalone: Read-Host fallback
 
 # Menu selection with validation
@@ -365,7 +365,7 @@ function Request-UserChoice {
     )
 
     if ($script:CLIEngineAvailable) {
-        # Build arrow-menu items from valid choices
+        # Build engine menu items from valid choices
         $Items = [System.Collections.Generic.List[PSCustomObject]]::new()
         foreach ($Choice in $ValidChoices) {
             $Label = if ($Labels -and $Labels.ContainsKey($Choice)) { $Labels[$Choice] } else { $Choice }
@@ -379,8 +379,11 @@ function Request-UserChoice {
             })
         }
 
-        $Selected = Show-ArrowMenu -Items $Items -Title $Prompt -ShowBack -HelpContent $HelpText
-        if ($Selected -eq '__back__') {
+        Write-CLILine -Text "  $Prompt" -Color (Get-CLIColor -Role 'Accent')
+        $MinState = [PSCustomObject]@{ BreadcrumbStack = [System.Collections.Generic.Stack[string]]::new() }
+        $MenuComp = New-MenuListComponent -Items $Items -ShowBack -HelpContent $HelpText
+        $Selected = Invoke-EngineLifecycle -Component $MenuComp -State $MinState
+        if ($Selected -eq '__back__' -or $Selected -eq '__quit__') {
             return 'Q'
         }
         return $Selected
@@ -423,8 +426,10 @@ function Request-YesNo {
         )
         Write-Host ''
         Write-Host "  $Prompt" -ForegroundColor (Resolve-MigrationColor -Role 'Accent')
-        $Selected = Show-ArrowMenu -Items $Items -Title '' -ShowBack -HelpContent $HelpText
-        if ($Selected -eq '__back__') {
+        $MinState = [PSCustomObject]@{ BreadcrumbStack = [System.Collections.Generic.Stack[string]]::new() }
+        $MenuComp = New-MenuListComponent -Items $Items -ShowBack -HelpContent $HelpText
+        $Selected = Invoke-EngineLifecycle -Component $MenuComp -State $MinState
+        if ($Selected -eq '__back__' -or $Selected -eq '__quit__') {
             return $null
         }
         return ($Selected -eq 'tak')
@@ -455,7 +460,7 @@ function Request-Confirmation {
     Write-Host "  $Text" -ForegroundColor (Resolve-MigrationColor -Role 'Disabled')
 
     if ($script:CLIEngineAvailable) {
-        [void](Read-ArrowKey)
+        [void][System.Console]::ReadKey($true)
     } else {
         [void](Read-Host)
     }
@@ -519,7 +524,7 @@ function Show-ProgressSummary {
         # (Dispatch handled by migrate.ps1 using the returned selection)
         Write-Host ''
         Write-Host ('=' * 60) -ForegroundColor $AccentColor
-        Write-Host '  MIGRACJA .robot  →  .robot.new' -ForegroundColor $AccentColor
+        Write-Host '  MIGRACJA .robot  →  .robot.powershell' -ForegroundColor $AccentColor
         Write-Host "  Stan na: $DateStr" -ForegroundColor (Resolve-MigrationColor -Role 'Disabled')
         Write-Host ('=' * 60) -ForegroundColor $AccentColor
         Write-Host ''
@@ -570,14 +575,15 @@ function Show-ProgressSummary {
             'Pełny raport — szczegółowe zestawienie postępu'
         )
 
-        $Selected = Show-ArrowMenu -Items $Items -Title 'Migracja' -ShowBack -HelpContent $MigrationHelp -HelpTitle 'Migracja - Pomoc'
+        $MenuComp = New-MenuListComponent -Items $Items -ShowBack -HelpContent $MigrationHelp -HelpTitle 'Migracja - Pomoc'
+        $Selected = Invoke-EngineLifecycle -Component $MenuComp -State $State
         return $Selected
     }
 
     # Fallback: classic numbered list
     Write-Host ''
     Write-Host ('=' * 60) -ForegroundColor $AccentColor
-    Write-Host '  MIGRACJA .robot  →  .robot.new' -ForegroundColor $AccentColor
+    Write-Host '  MIGRACJA .robot  →  .robot.powershell' -ForegroundColor $AccentColor
     Write-Host "  Stan na: $DateStr" -ForegroundColor (Resolve-MigrationColor -Role 'Disabled')
     Write-Host ('=' * 60) -ForegroundColor $AccentColor
     Write-Host ''

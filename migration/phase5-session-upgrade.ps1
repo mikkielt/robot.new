@@ -455,7 +455,7 @@ function Invoke-MigrationPhase5 {
         $LocationReport = $LocationReportResult.Locations
 
         # Load exclusions (non-locations marked by coordinator on previous runs)
-        $ExclusionsPath = [System.IO.Path]::Combine($RepoRoot, '.robot', 'res', 'location-exclusions.txt')
+        $ExclusionsPath = [System.IO.Path]::Combine($script:MigrationResDir, 'location-exclusions.txt')
         $Exclusions = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
         if ([System.IO.File]::Exists($ExclusionsPath)) {
             foreach ($ExLine in [System.IO.File]::ReadAllLines($ExclusionsPath)) {
@@ -525,7 +525,7 @@ function Invoke-MigrationPhase5 {
 
             # Save new exclusions
             if ($NewExclusions.Count -gt 0) {
-                $ResDir = [System.IO.Path]::Combine($RepoRoot, '.robot', 'res')
+                $ResDir = $script:MigrationResDir
                 if (-not [System.IO.Directory]::Exists($ResDir)) {
                     [void][System.IO.Directory]::CreateDirectory($ResDir)
                 }
@@ -559,7 +559,7 @@ function Invoke-MigrationPhase5 {
         # Offer full report export
         if ($LocationReport.Count -gt 0 -and (Request-YesNo -Prompt 'Czy wyeksportować pełny raport lokalizacji?' -Default $false -HelpText @(
             'Eksport pełnego raportu lokalizacji do pliku tekstowego',
-            'w .robot/res/location-report.txt.',
+            'w .robot.local/res/location-report.txt.',
             '',
             'Raport zawiera wszystkie nazwy lokalizacji z sesji,',
             'ich status dopasowania do encji oraz ewentualne konflikty.',
@@ -567,7 +567,7 @@ function Invoke-MigrationPhase5 {
             'Tak = zapisz raport do pliku',
             'Nie = pomiń eksport'
         ))) {
-            $ReportPath = [System.IO.Path]::Combine($RepoRoot, '.robot', 'res', 'location-report.txt')
+            $ReportPath = [System.IO.Path]::Combine($script:MigrationResDir, 'location-report.txt')
             $ReportLines = [System.Collections.Generic.List[string]]::new()
             $ReportLines.Add("# Raport lokalizacji - $([datetime]::Now.ToString('yyyy-MM-dd HH:mm'))")
             $ReportLines.Add("# Sesje od: $($Cutoff.ToString('yyyy-MM-dd'))")
@@ -622,7 +622,7 @@ function Invoke-MigrationPhase5 {
 
     # Step 9: Session review file (generate / apply / refresh)
     $ReviewDone = $State.Phases.ContainsKey('4') -and $State.Phases['5'].ContainsKey('Checklist') -and $State.Phases['5'].Checklist.ContainsKey('SessionReviewFileGenerated') -and $State.Phases['5'].Checklist['SessionReviewFileGenerated']
-    $ReviewPath = [System.IO.Path]::Combine($RepoRoot, '.robot', 'res', 'all-sessions-to-review.md')
+    $ReviewPath = [System.IO.Path]::Combine($script:MigrationResDir, 'all-sessions-to-review.md')
 
     if (-not $ReviewDone) {
         # FIRST RUN: Generate review file
@@ -733,7 +733,7 @@ function Export-SessionReviewFile {
     [void]$Lines.Add('     - Edytuj treść sesji bezpośrednio w tym pliku')
     [void]$Lines.Add('     - Aby USUNĄĆ sesję: usuń cały blok (od --- do następnego ---)')
     [void]$Lines.Add('     - Aby DODAĆ sesję: wstaw nowy blok z nagłówkiem ### i komentarzem Źródło')
-    [void]$Lines.Add('       (nowe sesje trafią do .robot/res/review-additions/)')
+    [void]$Lines.Add('       (nowe sesje trafią do .robot.local/res/review-additions/)')
     [void]$Lines.Add('     - Duplikaty: edytuj treść — zmiany trafią do wylistowanych plików źródłowych')
     [void]$Lines.Add('       (usuwanie duplikatów z innych plików — ręcznie po zastosowaniu)')
     [void]$Lines.Add('     - Po edycji uruchom Fazę 4 → wybierz Z (Zastosuj zmiany)')
@@ -775,7 +775,7 @@ function Export-SessionReviewFile {
     }
 
     if (-not $WhatIf) {
-        $ResDir = [System.IO.Path]::Combine($RepoRoot, '.robot', 'res')
+        $ResDir = $script:MigrationResDir
         if (-not [System.IO.Directory]::Exists($ResDir)) {
             [void][System.IO.Directory]::CreateDirectory($ResDir)
         }
@@ -798,7 +798,7 @@ function Import-SessionReviewFile {
         [object[]]$Players
     )
 
-    $ReviewPath = [System.IO.Path]::Combine($RepoRoot, '.robot', 'res', 'all-sessions-to-review.md')
+    $ReviewPath = [System.IO.Path]::Combine($script:MigrationResDir, 'all-sessions-to-review.md')
     if (-not [System.IO.File]::Exists($ReviewPath)) {
         Write-StepError 'Plik przeglądu sesji nie istnieje'
         return $null
@@ -1040,7 +1040,7 @@ function Import-SessionReviewFile {
 
     # Create new session files
     if ($New.Count -gt 0) {
-        $AdditionsDir = [System.IO.Path]::Combine($RepoRoot, '.robot', 'res', 'review-additions')
+        $AdditionsDir = [System.IO.Path]::Combine($script:MigrationResDir, 'review-additions')
         if (-not $WhatIf -and -not [System.IO.Directory]::Exists($AdditionsDir)) {
             [void][System.IO.Directory]::CreateDirectory($AdditionsDir)
         }

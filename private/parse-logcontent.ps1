@@ -43,7 +43,7 @@
     - $script:FormatDetectPattern: compiled regex for format detection
 #>
 
-# C# type: Robot.LogParser (lib/LogParser.cs) — compiled centrally in robot.psm1.
+# C# type: Robot.LogParser (lib/LogParser.cs) — compiled centrally in Robot.PowerShell.psm1.
 # Precompiled regex, LogLine structs, LocationSegment classes.
 
 # ── Precompiled Regex ─────────────────────────────────────────────────────────

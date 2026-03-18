@@ -13,7 +13,7 @@
 $script:ModuleRoot   = Split-Path $PSScriptRoot -Parent
 $script:FixturesRoot = Join-Path $PSScriptRoot 'fixtures'
 
-# Warning suppression support - mirrors robot.psm1 definitions so that
+# Warning suppression support - mirrors Robot.PowerShell.psm1 definitions so that
 # dot-sourced files (pattern B/C/D) can call Write-RobotWarning/Write-RobotInfo
 # in the test scope.
 $script:SuppressWarnings = $false
@@ -92,7 +92,7 @@ function Import-RobotModule {
         .SYNOPSIS
         Imports the robot module with -Force.
     #>
-    Import-Module (Join-Path $script:ModuleRoot 'robot.psd1') -Force
+    Import-Module (Join-Path $script:ModuleRoot 'Robot.PowerShell.psd1') -Force
 }
 
 function Import-RobotHelpers {

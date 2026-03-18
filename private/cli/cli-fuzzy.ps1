@@ -20,7 +20,7 @@
       stages 1-2, to avoid false positives on short queries).
 
     Module-level data:
-    - Robot.FuzzyMatcher C# type (compiled centrally in robot.psm1): pre-lowercased
+    - Robot.FuzzyMatcher C# type (compiled centrally in Robot.PowerShell.psm1): pre-lowercased
       two-stage prefix+contains filter that eliminates per-keystroke
       ToLowerInvariant overhead on 3,757+ candidates
 
@@ -38,7 +38,7 @@
                   resolve-name.ps1 (Resolve-Name), lib/FuzzyMatcher.cs
 #>
 
-# C# type: Robot.FuzzyMatcher (lib/FuzzyMatcher.cs) — compiled centrally in robot.psm1.
+# C# type: Robot.FuzzyMatcher (lib/FuzzyMatcher.cs) — compiled centrally in Robot.PowerShell.psm1.
 # Pre-lowercases candidate names at build time, eliminating per-keystroke
 # ToLowerInvariant overhead on 3,757+ candidates.
 

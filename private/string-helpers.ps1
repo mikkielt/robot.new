@@ -4,7 +4,7 @@
 
     .DESCRIPTION
     Non-exported helper functions consumed by Resolve-Name, Get-NameIndex, and
-    Get-NamedLocationReport via dot-sourcing. Not auto-loaded by robot.psm1
+    Get-NamedLocationReport via dot-sourcing. Not auto-loaded by Robot.PowerShell.psm1
     (non-Verb-Noun filename).
 
     Helpers:

@@ -49,7 +49,7 @@
 
 . "$script:ModuleRoot/private/string-helpers.ps1"
 
-# C# type: Robot.DeclensionEngine (lib/DeclensionEngine.cs) — compiled centrally in robot.psm1.
+# C# type: Robot.DeclensionEngine (lib/DeclensionEngine.cs) — compiled centrally in Robot.PowerShell.psm1.
 # Eliminates PowerShell loop overhead on the hottest resolution path
 
 # Polish noun suffixes ordered longest-first to prevent partial stripping

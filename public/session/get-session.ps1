@@ -71,7 +71,7 @@
 
 # C# types: Robot.NarratorResult, Robot.Narrator (lib/NarratorResult.cs),
 # Robot.SessionExtractor (lib/SessionExtractor.cs)
-# Compiled centrally in robot.psm1 at module import time.
+# Compiled centrally in Robot.PowerShell.psm1 at module import time.
 
 # Extracts yyyy-MM-dd date (with optional /DD range suffix) from a session
 # header. Accepts pre-matched regex and pre-parsed date to avoid redundant work

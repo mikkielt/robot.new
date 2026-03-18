@@ -4,7 +4,7 @@
     session functions using fuzzy name resolution.
 
     .DESCRIPTION
-    Dot-sourced during module import (robot.psm1). Registers
+    Dot-sourced during module import (Robot.PowerShell.psm1). Registers
     Register-ArgumentCompleter for frequently used functions so that
     pressing Tab on -Name auto-suggests matching entities, players,
     or narrators via Resolve-Name with fuzzy matching.

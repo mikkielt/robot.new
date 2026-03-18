@@ -931,7 +931,8 @@ function Invoke-ApiFetchLogContent {
 
     # Build log directory from exported Get-RepoRoot (no module-private deps)
     $RepoRoot = Get-RepoRoot
-    $LogDir = [System.IO.Path]::Combine($RepoRoot, '.robot', 'res', 'logs')
+    $Config = Get-AdminConfig
+    $LogDir = [System.IO.Path]::Combine($Config.ResDir, 'logs')
 
     # Inline URL normalization (mirrors log-fetchhelpers.ps1 logic)
     $PbPattern = [regex]'^https?://(?:www\.)?pastebin\.com/(?!raw/)([A-Za-z0-9]+)/?$'
@@ -972,7 +973,7 @@ function Invoke-ApiFetchLogContent {
             }
             # Also check local (non-HTTP) paths under .robot/
             elseif (-not $Norm.StartsWith('http', [System.StringComparison]::OrdinalIgnoreCase)) {
-                $LocalPath = [System.IO.Path]::Combine($RepoRoot, '.robot', $UrlStr)
+                $LocalPath = [System.IO.Path]::Combine($RepoRoot, '.robot.local', $UrlStr)
                 if ([System.IO.File]::Exists($LocalPath)) {
                     $Content = [System.IO.File]::ReadAllText($LocalPath)
                 }
@@ -1151,7 +1152,7 @@ function Invoke-ApiGetFiles {
     $RootLen = $Root.Length + 1  # +1 for trailing separator
 
     foreach ($F in $Files) {
-        # Skip hidden directories (.robot.new, .git, etc.)
+        # Skip hidden directories (.robot.powershell, .git, etc.)
         $Rel = $F.Substring($RootLen).Replace('\', '/')
         if ($Rel.StartsWith('.')) { continue }
         [void]$RelPaths.Add($Rel)

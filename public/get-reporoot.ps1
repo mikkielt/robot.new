@@ -20,7 +20,7 @@
     looking for a .git subdirectory or file. Returns the first ancestor that contains one.
     Throws if no repository is found before reaching the filesystem root.
 
-    Starts from the module's own location (via $script:ModuleRoot set by robot.psm1)
+    Starts from the module's own location (via $script:ModuleRoot set by Robot.PowerShell.psm1)
     rather than the process working directory. This guarantees the result is always the
     enclosing lore repository — even when the module lives inside a Git submodule whose
     .git entry is a file (gitlink), not a directory.

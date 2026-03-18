@@ -15,15 +15,16 @@ Data structure shapes are documented in [STRUCTURES.md](STRUCTURES.md). Individu
 ```
 Lore Repository (git root)
 │
-├── .robot.new/               MODULE (git submodule)
-│   ├── entities.md           Entity registry (default location)
-│   ├── *-NNN-ent.md          Entity overflow files
+├── entities.md                     Entity registry (default location)
+├── *-NNN-ent.md                    Entity overflow files
+│
+├── .robot.powershell/               MODULE (git submodule)
 │   ├── local.config.psd1     Local config overrides (git-ignored)
 │   ├── lib/*.cs              Compiled C# types (17 files)
 │   ├── templates/            Markdown templates
 │   └── plugins/              Plugin directories
 │
-├── .robot/                   RUNTIME STATE
+├── .robot.local/                   RUNTIME STATE
 │   ├── robot-data.psd1       Data manifest (path overrides)
 │   └── res/
 │       ├── pu-sessions.json   PU processing history
@@ -32,7 +33,7 @@ Lore Repository (git root)
 │       ├── logs/             Cached session log text
 │       └── narrator-mappings.txt
 │
-├── .robot-cache/             PARSE CACHE (auto-created)
+├── .robot.local/.cache/                PARSE CACHE (auto-created, gitignored)
 │   └── markdown/             Disk-persisted Markdown scan results
 │
 ├── Gracze.md                 Player database (legacy, read-only)
@@ -57,9 +58,9 @@ Find charfiles ─────────>   Read-CharacterFile ─────
 
 ## Repository Discovery
 
-`Get-RepoRoot` (`public/get-reporoot.ps1`) walks parent directories from `$script:ModuleRoot` (the `.robot.new/` directory) looking for a `.git` subdirectory or file. Returns the first ancestor containing `.git`. The result is cached in `$script:CachedRepoRoot`. `Set-DataDirectory` overrides this via `$script:DataDirectoryOverride` for testing or alternate layouts.
+`Get-RepoRoot` (`public/get-reporoot.ps1`) walks parent directories from `$script:ModuleRoot` (the `.robot.powershell/` directory) looking for a `.git` subdirectory or file. Returns the first ancestor containing `.git`. The result is cached in `$script:CachedRepoRoot`. `Set-DataDirectory` overrides this via `$script:DataDirectoryOverride` for testing or alternate layouts.
 
-The module expects to be a child of the lore repository, typically installed as a git submodule at `.robot.new/`.
+The module expects to be a child of the lore repository, typically installed as a git submodule at `.robot.powershell/`.
 
 ---
 
@@ -71,20 +72,22 @@ The module expects to be a child of the lore repository, typically installed as 
 |---|---|---|
 | 1 | Explicit parameter | Caller passes `-EntitiesFile` directly |
 | 2 | Environment variable | `$env:NERTHUS_REPO_WEBHOOK` |
-| 3 | Local config file | `.robot.new/local.config.psd1` (git-ignored) |
-| 4 | Hard-coded default | `{RepoRoot}/.robot.new/entities.md` |
+| 3 | Local config file | `.robot.powershell/local.config.psd1` (git-ignored) |
+| 4 | Hard-coded default | `{RepoRoot}/entities.md` |
 
 Default paths resolved at tier 4:
 
 | Key | Default Value |
 |---|---|
-| `EntitiesFile` | `{RepoRoot}/.robot.new/entities.md` |
+| `EntitiesFile` | `{RepoRoot}/entities.md` |
 | `PlayersFile` | `{RepoRoot}/Gracze.md` |
 | `CharactersDir` | `{RepoRoot}/Postaci/Gracze` |
-| `ResDir` | `{RepoRoot}/.robot/res` |
+| `ResDir` | `{RepoRoot}/.robot.local/res` |
 | `TemplatesDir` | `{ModuleRoot}/templates` |
+| `CacheDir` | `{RepoRoot}/.robot.local/.cache` |
+| `SeasonMapping` | From `local.config.psd1` or `$null` (default meteorological) |
 
-The data manifest at `{RepoRoot}/.robot/robot-data.psd1` provides optional path overrides. All manifest-resolved paths are validated against the repo root via `Test-PathUnderRoot` to prevent path traversal.
+The data manifest at `{RepoRoot}/.robot.local/robot-data.psd1` provides optional path overrides. All manifest-resolved paths are validated against the repo root via `Test-PathUnderRoot` to prevent path traversal.
 
 ---
 
@@ -173,7 +176,7 @@ Current scalar values (`Location`, `Owner`, `Status`, etc.) are derived from his
 
 `Get-Session` scans the entire repository tree for `*.md` files. Auto-excluded directories:
 
-- The module directory (`.robot.new/`)
+- The module directory (`.robot.powershell/`)
 - `docs/` and `devdocs/`
 - User-specified directories via `-ExcludeDirectory`
 
@@ -312,9 +315,9 @@ Four memory caches and one disk cache accelerate repeated operations:
 | WP-2 | `$script:MarkdownCache` | Module | FilePath to {ModTime, Result} | File mod time mismatch |
 | WP-3 | `$script:CachedEntities` | Module | Concatenated entity file mod ticks | Entity file change |
 | WP-4 | `$script:SessionFileCache` | Module | FilePath to {ModTime, Sessions, Failed} | File mod time mismatch |
-| Disk | `.robot-cache/markdown/` | Cross-process | JSON sidecar per parsed file | File mod time or version mismatch |
+| Disk | `.robot.local/.cache/markdown/` | Cross-process | JSON sidecar per parsed file | File mod time or version mismatch |
 
-`Clear-ParseCaches` nulls all memory caches and deletes the `.robot-cache/` directory. Called before all write operations. Disk cache failure is non-fatal.
+`Clear-ParseCaches` nulls all memory caches and deletes the `.robot.local/.cache/` directory. Called before all write operations. Disk cache failure is non-fatal.
 
 ---
 

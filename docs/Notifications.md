@@ -76,6 +76,10 @@ The Coordinator can add the webhook address later and re-send manually if needed
 
 If a Discord message fails to send (network error, invalid webhook, etc.), the failure is logged, other messages continue sending (one failure does not block the rest), and the Coordinator can retry manually.
 
+## Delivery Tracking
+
+Every Discord message sent by the system — PU notifications, Intel, announcements, and re-sends — is recorded in a delivery log with a timestamp, outcome (success or failure), the operation type, the recipient, and the HTTP status code. The Coordinator can review delivery history filtered by recipient, operation, date range, or failure status. Failed PU notifications can be re-sent from the CLI: the system identifies the failed delivery, reconstructs the original notification, and sends it again. Re-sends are recorded as separate entries in the delivery log. The delivery history is also available through the Campaign Data API.
+
 If an Intel target name cannot be resolved to a known entity, a warning is generated, the message is skipped for that target, and other Intel entries in the same session are processed normally. Intel uses stricter name matching than PU processing. Small typos that PU matching would tolerate via fuzzy correction will cause Intel to skip the target entirely. Narrators should ensure that Intel target names match a registered name or alias exactly, or at least closely enough for declension matching to work.
 
 ## Expected Outcomes
@@ -90,4 +94,5 @@ If an Intel target name cannot be resolved to a known entity, a warning is gener
 - [PU.md](PU.md) — Monthly PU assignment process
 - [Sessions.md](Sessions.md) — How to record sessions with Intel entries
 - [Players.md](Players.md) — How to configure webhook addresses
+- [Campaign Data API](REST-API.md) — Delivery history available through the API
 - [Glossary](Glossary.md) — Term definitions

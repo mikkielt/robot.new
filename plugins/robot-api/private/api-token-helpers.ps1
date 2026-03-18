@@ -51,7 +51,8 @@ function Resolve-TokenFilePath {
 
     # Fallback: conventional location when manifest has no ApiTokensFile
     $RepoRoot = Get-RepoRoot
-    return [System.IO.Path]::Combine($RepoRoot, '.robot', 'res', 'api-tokens.psd1')
+    $Config = Get-AdminConfig
+    return [System.IO.Path]::Combine($Config.ResDir, 'api-tokens.psd1')
 }
 
 function Import-ApiTokenStore {

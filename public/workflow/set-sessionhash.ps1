@@ -21,7 +21,7 @@
       changelog fails or no previous timestamp exists.
 
     Exclusions (applied automatically by Get-HashableFiles):
-    - Dot directories (.git/, .robot/, .robot.new/)
+    - Dot directories (.git/, .robot.powershell/, .robot.local/)
     - Nerthus/ subdirectory
     - User-specified directories via -ExcludeDirectory
 

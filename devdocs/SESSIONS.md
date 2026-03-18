@@ -2,7 +2,7 @@
 
 ## Scope
 
-The session subsystem comprises `Get-Session` (extraction, format detection, deduplication, Intel resolution), `Set-Session` (modification, format upgrade), `New-Session` (Gen4 generation), and their private helpers across four files: `session-parsehelpers.ps1`, `session-decomposehelpers.ps1`, `session-intelhelpers.ps1`, and `format-sessionblock.ps1`.
+The session subsystem comprises `Get-Session` (extraction, format detection, deduplication, Intel resolution), `Set-Session` (modification, format upgrade), `New-Session` (Gen4 generation), `Add-Session` (chronological insertion of new sessions into files), and their private helpers across four files: `session-parsehelpers.ps1`, `session-decomposehelpers.ps1`, `session-intelhelpers.ps1`, and `format-sessionblock.ps1`.
 
 PU computation from session data is documented in [PU.md](PU.md). Entity state merging from session Zmiany is documented in [ENTITIES.md](ENTITIES.md).
 
@@ -45,6 +45,13 @@ New-Session (creation path)
     └── format-sessionblock.ps1
           ├── ConvertTo-Gen4MetadataBlock (single block)
           └── ConvertTo-SessionMetadata (all blocks, canonical order)
+
+Add-Session (insertion path)
+    ├── New-Session (generates markdown per spec)
+    ├── Find-SessionInFile (duplicate detection)
+    ├── Find-SessionInsertionPoint (chronological placement)
+    ├── Invoke-PluginHook (BeforeWrite/AfterWrite/AfterCreate)
+    └── Session graph eager refresh
 ```
 
 ---
@@ -414,6 +421,38 @@ Returns a string — does not write to disk.
 
 ---
 
+## Add-Session — Chronological Insertion
+
+| Parameter | Type | ParameterSet | Description |
+|---|---|---|---|
+| `Path` | string[] | Both | Target file path(s) to write the session(s) to |
+| `Date` | datetime | Single | Session date |
+| `Title` | string | Single | Session title |
+| `Narrator` | string | Single | Narrator name for session header |
+| `DateEnd` | datetime | Single | End date for multi-day sessions |
+| `MetadataNarrators` | string[] | Single | Canonical narrator names for `@Narrator` metadata |
+| `Locations` | string[] | Single | Location names |
+| `PU` | object[] | Single | PU award entries (Character + Value) |
+| `Logs` | string[] | Single | Session log URLs |
+| `Changes` | object[] | Single | Entity state changes (Zmiany entries) |
+| `Intel` | object[] | Single | Intel targeting entries (RawTarget + Message) |
+| `Content` | string | Single | Free-form body text content |
+| `Sessions` | hashtable[] | Batch | Array of session hashtables, each with Date/Title/Narrator keys |
+
+`Add-Session` bridges `New-Session` (generates markdown but does not write) and `Set-Session` (modifies existing sessions but cannot create new ones). It generates Gen4 session markdown via `New-Session`, validates uniqueness via `Find-SessionInFile`, and inserts each session at the correct chronological position within target files.
+
+Two parameter sets: **Single** mode accepts individual session parameters; **Batch** mode accepts `-Sessions` hashtable array for multiple sessions in one call. Batch mode is O(1) file I/O per target file regardless of session count: one read, one write, one cache clear, one graph refresh.
+
+`Find-SessionInsertionPoint` scans `### ` headers, parses dates via `$script:SessionDatePattern`, and returns the line index where a new session should be inserted to maintain chronological order. Same-date sessions: new session goes after existing ones. Returns `$Lines.Count` when appending at end.
+
+For existing files, sessions are sorted by date and inserted bottom-to-top (descending `InsertIdx`, then descending `SeqIdx` for same index) to preserve line index validity. For new files, sessions are written in date order separated by double newlines. Path validation rejects writes outside the repository root. Duplicate headers throw `DuplicateSessionHeader` terminating error.
+
+After writing: fires `Invoke-PluginHook` (BeforeWrite, AfterWrite, AfterCreate), calls `Clear-ParseCaches`, registers with `Add-OperationFile`, and performs eager session graph refresh. `SupportsShouldProcess` with `ConfirmImpact = 'Medium'`.
+
+Returns `string[]` — array of all inserted session header texts.
+
+---
+
 ## File Map
 
 | File | Functions |
@@ -421,6 +460,7 @@ Returns a string — does not write to disk.
 | `public/session/get-session.ps1` | `Get-Session`, `Get-SessionFormat`, `ConvertFrom-SessionHeader`, `Merge-SessionGroup` |
 | `public/session/set-session.ps1` | `Set-Session` |
 | `public/session/new-session.ps1` | `New-Session` |
+| `public/session/add-session.ps1` | `Add-Session`, `Find-SessionInsertionPoint` |
 | `private/session-parsehelpers.ps1` | `Get-SessionTitle`, `Get-SessionLocations`, `Get-SessionListMetadata`, `Get-SessionPlainTextLogs` |
 | `private/session-decomposehelpers.ps1` | `Find-SessionInFile`, `Split-SessionSection`, `ConvertTo-Gen4FromRawBlock`, `ConvertFrom-ItalicLocation`, `ConvertFrom-PlainTextLog`, `Resolve-LogUrlToLocalPath`, `Get-FormatFromSplit` |
 | `private/session-intelhelpers.ps1` | `Resolve-EntityWebhook`, `Test-LocationMatch`, `Resolve-IntelTargets`, `Get-SessionMentions` |
@@ -677,6 +717,7 @@ Consumers: `resolve-narrator.ps1`, `get-session.ps1` (narrator override), PU ass
 | `tests/get-session.Tests.ps1` | All format generations, date parsing, deduplication, metadata extraction, Intel, mentions |
 | `tests/set-session.Tests.ps1` | Section decomposition, format upgrade, metadata replacement, preserved blocks |
 | `tests/new-session.Tests.ps1` | Gen4 generation, header construction, round-trip compatibility |
+| `tests/add-session.Tests.ps1` | Chronological insertion, duplicate detection, batch mode, path validation |
 | `tests/format-sessionblock.Tests.ps1` | Block rendering, canonical ordering, null handling |
 
 Fixtures: `sessions-gen1.md`, `sessions-gen2.md`, `sessions-gen3.md`, `sessions-gen4.md`, `sessions-duplicate.md`, `sessions-zmiany.md`, `sessions-failed.md`.

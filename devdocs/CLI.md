@@ -4,7 +4,7 @@
 
 ## Scope
 
-This document covers the interactive CLI subsystem: `public/cli/invoke-robotcli.ps1` (entry point), the 19 private modules in `private/cli/` (UI primitives, progress reporting, fuzzy search, context-sensitive help, wizard auto-generation, wizard step factories, menu registry, routing, display, workflows, economy workflows, migration integration), the 9 engine files in `private/cli/engine/` (screen management, virtual buffer, input loop, chrome rendering, 6 component types), and the 10 test files in `tests/cli-*.Tests.ps1`.
+This document covers the interactive CLI subsystem: `public/cli/invoke-robotcli.ps1` (entry point), the 18 private modules in `private/cli/` (UI primitives, progress reporting, fuzzy search, context-sensitive help, wizard auto-generation, wizard step factories, menu registry, routing, workflows, economy workflows, migration integration), the 9 engine files in `private/cli/engine/` (screen management, virtual buffer, input loop, chrome rendering, 6 component types), and the 10 test files in `tests/cli-*.Tests.ps1`.
 
 Individual public functions that wizards wrap (e.g., `New-Player`, `Set-Entity`) are documented separately. Migration phase implementations are in the migration subsystem docs. The plugin system is in [PLUGINS.md](PLUGINS.md).
 
@@ -16,14 +16,10 @@ Individual public functions that wizards wrap (e.g., `New-Player`, `Set-Entity`)
 Invoke-RobotCLI (public/cli/invoke-robotcli.ps1)
     |
     +-- Layer 1: cli-primitives.ps1       (leaf - no CLI deps)
-    |   |   Colors, Write-CLILine, Read-ArrowKey [DEPRECATED]
+    |   |   Colors, Write-CLILine
     |   |   Progress subsystem: New-ProgressState, Start-ProgressStep,
     |   |       Update-ProgressStep, Complete-ProgressStep, Complete-ProgressGroup
     |   |   Workflow setup: Initialize-WorkflowScreen
-    |   |   Legacy [DEPRECATED]: Clear-MenuArea, Show-Banner, Show-Breadcrumb, Show-InfoBox
-    |   +-- cli-menus.ps1                 (chain-loaded by cli-primitives.ps1)
-    |   |       Show-ArrowMenu [DEPRECATED], Show-ResultTable [DEPRECATED],
-    |   |       Show-HelpOverlay [DEPRECATED]
     |   +-- engine/*.ps1                  (chain-loaded by cli-primitives.ps1, 9 files)
     |       +-- cli-engine.ps1            Screen/region management, tier styles,
     |       |                             ANSI helpers (Get-ANSIBold, Get-ANSIDim, Get-ANSIReset)
@@ -39,10 +35,7 @@ Invoke-RobotCLI (public/cli/invoke-robotcli.ps1)
     |       +-- cli-wizard-step.ps1       WizardStepComponent (text/selection/yesno input)
     |
     +-- Layer 2: cli-fuzzy.ps1            (depends on L1)
-    |       Get-FuzzySearchCandidates, Filter-FuzzyCandidates, Show-FuzzySearch [DEPRECATED]
-    |
-    +-- Layer 2: cli-display.ps1          (depends on L1)
-    |       Show-DetailCard [DEPRECATED], Format-DetailValidityRange [DEPRECATED]
+    |       Get-FuzzySearchCandidates, Filter-FuzzyCandidates
     |
     +-- Layer 2: cli-help.ps1             (depends on L1)
     |       $script:HelpContent, Show-HelpScreen [DEPRECATED]
@@ -86,6 +79,10 @@ Invoke-RobotCLI (public/cli/invoke-robotcli.ps1)
     |
     +-- Layer 6.5: Plugin CLI workflows   (dot-source plugin cli/*.ps1)
     |       Per loaded plugin: dot-source all .ps1 files from plugins/<name>/cli/
+    |       robot-api:              cli-wf-robot-api.ps1
+    |       robot-dashboard:        cli-wf-robot-dashboard.ps1
+    |       margoworld-datasource:  cli-wf-margoworld.ps1
+    |       nerthusaddon-integration: cli-wf-nerthusaddon.ps1
     |
     +-- Layer 7: cli-wizard-migration.ps1 (overrides stubs from L5)
             Get-MigrationMenuItems, Invoke-MigrationPhaseAction
@@ -111,15 +108,13 @@ Engine files in `private/cli/engine/` (9 files, TUI engine):
 | `cli-overlays.ps1` | `New-HelpOverlayComponent`, `New-HealthDashboardComponent`, `Render-HealthSection`, `Search-HelpTopics`, `Get-AutoStepHelp` |
 | `cli-wizard-step.ps1` | `New-WizardStepComponent` |
 
-Private CLI files in `private/cli/` (19 files, routing, workflows, legacy):
+Private CLI files in `private/cli/` (18 files, routing, workflows):
 
 | File | Lines | Layer | Contents |
 |---|---|---|---|
-| `cli-primitives.ps1` | ~500 | 1 | Color scheme, theme detection, `Write-CLILine`, progress subsystem (`New-ProgressState`, `Start-ProgressStep`, `Update-ProgressStep`, `Complete-ProgressStep`, `Complete-ProgressGroup`), `Initialize-WorkflowScreen`, banner, breadcrumb; chain-loads `cli-menus.ps1` and all 9 `engine/*.ps1` files |
-| `cli-menus.ps1` | -- | 1 | `Show-ArrowMenu`, `Show-ResultTable`, `Show-HelpOverlay` [DEPRECATED] (chain-loaded by `cli-primitives.ps1`) |
-| `cli-fuzzy.ps1` | ~340 | 2 | Fuzzy search candidate generation, filtering; `Show-FuzzySearch` [DEPRECATED] |
-| `cli-display.ps1` | ~210 | 2 | `Show-DetailCard` [DEPRECATED], `Format-DetailValidityRange` [DEPRECATED] |
-| `cli-help.ps1` | ~120 | 2 | Help content dictionary (`$script:HelpContent`), `Show-HelpScreen` [DEPRECATED] |
+| `cli-primitives.ps1` | ~500 | 1 | Color scheme, theme detection, `Write-CLILine`, progress subsystem (`New-ProgressState`, `Start-ProgressStep`, `Update-ProgressStep`, `Complete-ProgressStep`, `Complete-ProgressGroup`), `Initialize-WorkflowScreen`; chain-loads all 9 `engine/*.ps1` files |
+| `cli-fuzzy.ps1` | ~340 | 2 | Fuzzy search candidate generation, filtering |
+| `cli-help.ps1` | ~120 | 2 | Help content dictionary (`$script:HelpContent`) |
 | `cli-wizard.ps1` | ~650 | 3 | `$script:CommonParams`, step type resolution, `Invoke-Wizard`; dot-sources `cli-wizard-steps.ps1` and `cli-wizard-preview.ps1` |
 | `cli-wizard-steps.ps1` | ~435 | 3 | `Invoke-EngineLifecycle`, `Invoke-WizardStep`, wizard step factories (`New-WizardTextStep`, `New-WizardNumberStep`, `New-WizardDateStep`, `New-WizardChoiceStep`, `New-WizardFuzzyStep`) (dot-sourced by `cli-wizard.ps1`) |
 | `cli-wizard-preview.ps1` | -- | 3 | `Show-Preview` (dot-sourced by `cli-wizard.ps1`) |
@@ -136,7 +131,7 @@ Private CLI files in `private/cli/` (19 files, routing, workflows, legacy):
 | `cli-wf-reporting.ps1` | ~750 | 6 | `Invoke-IntelPreviewWorkflow`, `Invoke-NameSearchWorkflow`, `Invoke-FetchLogsWorkflow`, `Invoke-LogLocationReportWorkflow`, `Invoke-LocationGraphWorkflow`, `Invoke-CompareParticipationWorkflow`, `Invoke-SessionLeaderboardWorkflow`, `Invoke-SessionGraphWorkflow`, `Invoke-MigrationQuickCheck`, `Invoke-MigrationFullReport` |
 | `cli-wizard-migration.ps1` | ~165 | 7 | `Get-MigrationMenuItems`, `Invoke-MigrationPhaseAction` |
 
-Entry point: `public/cli/invoke-robotcli.ps1` exports `Invoke-RobotCLI`. It dot-sources CLI files in layer order: `cli-primitives.ps1` (Layer 1, which chain-loads `cli-menus.ps1` and all 9 engine files), then `cli-fuzzy.ps1`, `cli-display.ps1`, `cli-help.ps1` (Layer 2), `cli-wizard.ps1` (Layer 3, which chain-loads `cli-wizard-steps.ps1` and `cli-wizard-preview.ps1`), `cli-registry.ps1` (Layer 4), `cli-routing.ps1` (Layer 5). It then calls `Merge-PluginMenuItems` (Layer 5.5), dot-sources the 8 workflow files (Layer 6) and plugin `cli/*.ps1` files (Layer 6.5), and finally `cli-wizard-migration.ps1` (Layer 7). After loading, it validates terminal compatibility (`[Console]::KeyAvailable`), detects theme, pre-loads entity/player/name index data, runs health checks into `HealthCache`, and enters the main menu loop via `Show-MainMenu`.
+Entry point: `public/cli/invoke-robotcli.ps1` exports `Invoke-RobotCLI`. It dot-sources CLI files in layer order: `cli-primitives.ps1` (Layer 1, which chain-loads all 9 engine files), then `cli-fuzzy.ps1`, `cli-help.ps1` (Layer 2), `cli-wizard.ps1` (Layer 3, which chain-loads `cli-wizard-steps.ps1` and `cli-wizard-preview.ps1`), `cli-registry.ps1` (Layer 4), `cli-routing.ps1` (Layer 5). It then calls `Merge-PluginMenuItems` (Layer 5.5), dot-sources the 8 workflow files (Layer 6) and plugin `cli/*.ps1` files (Layer 6.5), and finally `cli-wizard-migration.ps1` (Layer 7). After loading, it validates terminal compatibility (`[Console]::KeyAvailable`), detects theme, pre-loads entity/player/name index data, runs health checks into `HealthCache`, and enters the main menu loop via `Show-MainMenu`.
 
 Tests:
 
@@ -323,27 +318,14 @@ These functions in `cli-routing.ps1` wrap the engine lifecycle for common view p
 
 `Get-CLIColor -Role <string>` returns the appropriate ConsoleColor for the current theme. Falls back to `White` for unknown roles.
 
-Active primitives (`cli-primitives.ps1` and `cli-menus.ps1`):
+Active primitives (`cli-primitives.ps1`):
 
 | Function | Parameters | Description |
 |---|---|---|
 | `Write-CLILine` | `-Text [string]`, `-Color [string]`, `-NoNewline [switch]` | Consistent indented `Write-Host` wrapper (prepends 2-space indent). Used between engine lifecycle calls for status messages. |
 | `Initialize-WorkflowScreen` | `-Title [string] (Mandatory)`, `-NoSeparator [switch]` | Clears terminal, renders title in Accent color, optional horizontal separator, blank line. Returns a hashtable of all standard CLI colors (`Accent`, `Disabled`, `Info`, `Warning`, `Success`, `Error`) for caller use. Used by workflow functions to set up a clean screen before non-engine rendering. |
 
-Deprecated legacy primitives are retained for plugin compatibility (`margoworld`, `nerthusaddon`) and `migration-ui.ps1`. They will be removed in a future version once all external callers are ported. Core CLI paths use engine components.
-
-| Function | File | Description |
-|---|---|---|
-| `Show-ArrowMenu` | `cli-menus.ps1` | Arrow-key navigable menu. Superseded by `New-MenuListComponent` + engine lifecycle. |
-| `Show-ResultTable` | `cli-menus.ps1` | Paginated data table. Superseded by `New-ResultTableComponent` + engine lifecycle. |
-| `Show-HelpOverlay` | `cli-menus.ps1` | Box-drawn help overlay with scroll. Superseded by engine `New-HelpOverlayComponent`. |
-| `Show-DetailCard` | `cli-display.ps1` | Generic key-value card for any PSCustomObject. Superseded by `Invoke-EngineDetailCard`. |
-| `Format-DetailValidityRange` | `cli-display.ps1` | Formats temporal range as `YYYY-MM-DD -- YYYY-MM-DD`. Used only by `Show-DetailCard`. |
-| `Read-ArrowKey` | `cli-primitives.ps1` | Wraps `[Console]::ReadKey($true)`. Superseded by `Start-InputLoop`. |
-| `Clear-MenuArea` | `cli-primitives.ps1` | Overwrites N lines with spaces at a given row. Superseded by engine buffer. |
-| `Show-Banner` | `cli-primitives.ps1` | Renders ASCII banner art with version. Superseded by engine TopBar chrome. |
-| `Show-Breadcrumb` | `cli-primitives.ps1` | Renders breadcrumb path with health badges. Superseded by engine TopBar chrome. |
-| `Show-InfoBox` | `cli-primitives.ps1` | Renders pre-check info box. Superseded by engine overlay components. |
+Legacy primitives (`cli-menus.ps1`, `cli-display.ps1`) were removed. All CLI paths use engine components.
 
 ---
 
@@ -683,7 +665,7 @@ Three registry access helpers:
 | `Get-MenuItems` | `-Category [string] (M)` | `PSCustomObject[]` | Returns menu items for a category from `$script:MenuRegistryByCategory` index. Each item has `ID`, `Label`, `Description`, `RoleTag`, `InfoText`, `Disabled` properties. |
 | `Get-RegistryEntry` | `-ID [string] (M)` | `hashtable` or `$null` | Finds a registry entry by ID from `$script:MenuRegistryByID` index |
 
-`Merge-PluginMenuItems` is called once during CLI startup (Layer 5.5), after routing is loaded. It reads the module-scoped plugin data (`$script:PluginMenuItems`, `$script:PluginMenuCategories`, `$script:PluginHelpContent`) that was populated during `robot.psm1` Phase 2 plugin loading, and merges them into the CLI's live state:
+`Merge-PluginMenuItems` is called once during CLI startup (Layer 5.5), after routing is loaded. It reads the module-scoped plugin data (`$script:PluginMenuItems`, `$script:PluginMenuCategories`, `$script:PluginHelpContent`) that was populated during `Robot.PowerShell.psm1` Phase 2 plugin loading, and merges them into the CLI's live state:
 
 1. Categories -- appends plugin-declared categories to `$script:MenuOrder` (duplicates skipped)
 2. Menu items -- appends validated items to `$script:MenuRegistry` with collision detection: required fields are `ID`, `Label`, `Menu`; ID must not collide with existing registry entries; `Menu` must reference a category already in `$script:MenuOrder`; mode-specific validation requires `Function` for Wizard, `WorkflowFunction` for Workflow, and matching `Columns`/`Headers` counts for Query; invalid items are skipped with a warning to stderr

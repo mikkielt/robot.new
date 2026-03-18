@@ -6,7 +6,7 @@
 Describe 'nerthusaddon-integration' {
 
     BeforeAll {
-        # Stub Write-RobotWarning (defined in robot.psm1, unavailable standalone)
+        # Stub Write-RobotWarning (defined in Robot.PowerShell.psm1, unavailable standalone)
         function Write-RobotWarning { param([string]$Message) }
 
         # Dot-source helpers directly for unit testing

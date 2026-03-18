@@ -26,7 +26,7 @@
     portable across locales.
 
     Output is written as UTF-8 no BOM to the target path (defaults to
-    {RepoRoot}/.robot.new/entities.md). The function returns the output
+    {RepoRoot}/entities.md). The function returns the output
     file path for caller chaining.
 #>
 
@@ -42,7 +42,7 @@ function ConvertTo-EntitiesFromPlayers {
     )
 
     if (-not $OutputPath) {
-        $OutputPath = [System.IO.Path]::Combine((Get-RepoRoot), '.robot.new', 'entities.md')
+        $OutputPath = (Get-AdminConfig).EntitiesFile
     }
 
     if (-not $Players) {

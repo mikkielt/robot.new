@@ -15,7 +15,7 @@
     - Update-PhaseChecklist:   sets a checklist item for a phase
     - Add-DiagnosticSnapshot:  appends diagnostic run result to phase 2 history
 
-    State file location: .robot/res/migration-state.json (committed to repo).
+    State file location: .robot.local/res/migration-state.json (committed to repo).
     Format: JSON with Phases dictionary keyed by phase number (as string).
 #>
 
@@ -24,7 +24,7 @@ $script:UTF8NoBOM = [System.Text.UTF8Encoding]::new($false)
 # Resolves the state file path relative to the parent repo root.
 function Resolve-MigrationStatePath {
     $RepoRoot = Get-RepoRoot
-    return [System.IO.Path]::Combine($RepoRoot, '.robot', 'res', 'migration-state.json')
+    return [System.IO.Path]::Combine($script:MigrationResDir, 'migration-state.json')
 }
 
 # Creates a default state hashtable with all phases set to NotStarted.

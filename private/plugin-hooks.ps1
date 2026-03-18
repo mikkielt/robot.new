@@ -5,7 +5,7 @@
     .DESCRIPTION
     Non-exported helper functions consumed by core write operations
     (entity-writehelpers.ps1, set-session.ps1) and plugin functions.
-    Not auto-loaded by robot.psm1 (non-Verb-Noun filename).
+    Not auto-loaded by Robot.PowerShell.psm1 (non-Verb-Noun filename).
 
     Helpers:
     - Invoke-PluginHook:  dispatches to registered hook handlers in priority order

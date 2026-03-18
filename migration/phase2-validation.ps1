@@ -227,7 +227,7 @@ function Invoke-MigrationPhase2 {
             foreach ($UN in $UnresolvedNarrators) {
                 $NarrLogDetails.Add("'$($UN.RawText)' ($($UN.OccurrenceCount)x)")
                 $NarrLogDetails.Add("    Naprawa: Uruchom Faze 2, wybierz A (alias) lub M (mapowanie)")
-                $NarrLogDetails.Add("    Alternatywa: Dodaj wpis w .robot/res/narrator-mappings.txt:")
+                $NarrLogDetails.Add("    Alternatywa: Dodaj wpis w .robot.local/res/narrator-mappings.txt:")
                 $NarrLogDetails.Add("                 $($UN.RawText)<TAB>KanonicznaGracza")
             }
             Write-StepWarning "$UnresolvedNarratorCount nierozwiązanych narratorów" -LogDetails $NarrLogDetails.ToArray()
