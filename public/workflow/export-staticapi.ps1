@@ -9,7 +9,7 @@
     as a static API (e.g. on nerthus.pl). Uses Robot.JsonHelper.WriteSortedJson
     for deterministic output with clean git diffs.
 
-    Default exports: schema, entities, sessions, players, manifest.
+    Default exports: schema, entities, sessions, players, locations, manifest.
     Optional: economy snapshot, location graph, session leaderboard.
 
     Helpers:
@@ -98,6 +98,13 @@ function Export-StaticApi {
     Write-ExportJson -RelPath 'players.json' -Data @{
         count = $Players.Count
         items = $Players
+    }
+
+    # locations.json (enriched with children, doors, maps)
+    $Locations = @(Get-LocationEntity -IncludeMaps -Quiet)
+    Write-ExportJson -RelPath 'locations.json' -Data @{
+        count = $Locations.Count
+        items = $Locations
     }
 
     # Optional: economy

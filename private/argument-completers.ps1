@@ -61,6 +61,35 @@ foreach ($FuncName in $EntityFunctions) {
         -ScriptBlock $EntityNameCompleter
 }
 
+# ── Location name completer ───────────────────────────────────────
+$LocationNameCompleter = {
+    param($CommandName, $ParameterName, $WordToComplete, $CommandAst, $FakeBoundParameters)
+
+    if (-not $WordToComplete) { return }
+
+    try {
+        $Entities = @(Get-Entity -Quiet)
+        $Matches = @($Entities.Where({
+            ($_.Type -eq 'Lokacja' -or $_.Type -eq 'Mapa') -and
+            ($_.Name -like "$WordToComplete*" -or $_.CN -like "$WordToComplete*")
+        }))
+        if ($Matches.Count -gt 20) { $Matches = $Matches[0..19] }
+
+        foreach ($M in $Matches) {
+            [System.Management.Automation.CompletionResult]::new(
+                $M.Name, $M.Name,
+                [System.Management.Automation.CompletionResultType]::ParameterValue,
+                "$($M.Type) - $($M.Status)")
+        }
+    } catch { }
+}
+
+$LocationFunctions = @('Get-LocationEntity', 'New-LocationEntity', 'Set-LocationEntity', 'New-MapEntity')
+foreach ($FuncName in $LocationFunctions) {
+    Register-ArgumentCompleter -CommandName $FuncName -ParameterName 'Name' `
+        -ScriptBlock $LocationNameCompleter
+}
+
 # ── Player name completer ─────────────────────────────────────────
 $PlayerNameCompleter = {
     param($CommandName, $ParameterName, $WordToComplete, $CommandAst, $FakeBoundParameters)

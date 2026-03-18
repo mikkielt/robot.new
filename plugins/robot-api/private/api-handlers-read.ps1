@@ -283,9 +283,26 @@ function Invoke-ApiGetSessions {
 
     $Sessions = @(Get-Session @Params)
 
-    # Inject format labels if requested
-    if ($QP['labels'] -eq 'true') {
-        foreach ($S in $Sessions) {
+    foreach ($S in $Sessions) {
+        # Flatten NarratorResult (C# object) into a serializable hashtable.
+        # ApiSerializer cannot reflect on arbitrary C# classes and falls back
+        # to .ToString() which yields "Robot.NarratorResult".
+        $NR = $S.Narrator
+        if ($null -ne $NR -and $NR -is [Robot.NarratorResult]) {
+            $NarratorNames = @()
+            if ($NR.Narrators) {
+                $NarratorNames = @($NR.Narrators | ForEach-Object { $_.Name })
+            }
+            $S | Add-Member -NotePropertyName 'Narrator' -NotePropertyValue @{
+                narrators  = $NarratorNames
+                rawText    = $NR.RawText
+                confidence = $NR.Confidence
+                isCouncil  = $NR.IsCouncil
+            } -Force
+        }
+
+        # Inject format labels if requested
+        if ($QP['labels'] -eq 'true') {
             $FormatLabel = [Robot.ApiNameDictionary]::GetLabel('format', $S.Format)
             if ($FormatLabel) {
                 $S | Add-Member -NotePropertyName 'formatLabel' `
@@ -806,8 +823,200 @@ function Invoke-ApiGetDeliveryLog {
 }
 
 # ═══════════════════════════════════════════════════════════════════════
+# LOCATIONS (enriched)
+# ═══════════════════════════════════════════════════════════════════════
+
+function Invoke-ApiGetLocationList {
+    <#
+        .SYNOPSIS
+        Returns enriched location list via Get-LocationEntity.
+    #>
+
+    param([hashtable]$ApiContext)
+
+    $QP = $ApiContext.QueryParams
+    $Params = @{ Quiet = $true }
+    if ($QP['includeMaps'] -eq 'true') { $Params.IncludeMaps = $true }
+    if ($QP['parent'])     { $Params.Parent = $QP['parent'] }
+    if ($QP['name'])       { $Params.Name = $QP['name'] }
+    if ($QP['hasDoors'] -eq 'true') { $Params.HasDoors = $true }
+    if ($QP['isExterior'] -eq 'true') { $Params.IsExterior = $true }
+    if ($QP['includeInactive'] -eq 'true') { $Params.IncludeInactive = $true }
+    if ($QP['includeDeleted'] -eq 'true') { $Params.IncludeDeleted = $true }
+
+    try {
+        $Locations = @(Get-LocationEntity @Params)
+        return @{ StatusCode = 200; Body = @{ count = $Locations.Count; items = $Locations } }
+    } catch {
+        return @{ StatusCode = 422; Body = @{ error = $_.Exception.Message } }
+    }
+}
+
+function Invoke-ApiGetLocation {
+    <#
+        .SYNOPSIS
+        Returns a single location with full enrichment.
+    #>
+
+    param([hashtable]$ApiContext)
+
+    $Name = $ApiContext.PathParams['name']
+    try {
+        $Locations = @(Get-LocationEntity -Name $Name -IncludeMaps -Quiet)
+        $Match = @($Locations.Where({ [string]::Equals($_.EntityName, $Name, 'OrdinalIgnoreCase') }))
+        if ($Match.Count -eq 0) {
+            return @{ StatusCode = 404; Body = @{ error = "Location '$Name' not found" } }
+        }
+        $Result = $Match[0]
+        return @{ StatusCode = 200; Body = $Result }
+    } catch {
+        return @{ StatusCode = 422; Body = @{ error = $_.Exception.Message } }
+    }
+}
+
+function Invoke-ApiGetLocationContents {
+    <#
+        .SYNOPSIS
+        Returns entities located at a given location.
+    #>
+
+    param([hashtable]$ApiContext)
+
+    $Name = $ApiContext.PathParams['name']
+    try {
+        $Contents = @(Resolve-Entity -Location $Name -Quiet)
+        return @{ StatusCode = 200; Body = @{ count = $Contents.Count; items = $Contents } }
+    } catch {
+        return @{ StatusCode = 422; Body = @{ error = $_.Exception.Message } }
+    }
+}
+
+function Invoke-ApiGetMaps {
+    <#
+        .SYNOPSIS
+        Returns all Mapa entities via the standard query pipeline.
+    #>
+
+    param([hashtable]$ApiContext)
+
+    $Entities = @(@(Get-Entity -Quiet).Where({ $_.Type -eq 'Mapa' }))
+    return (Invoke-ApiEntityListQuery -ApiContext $ApiContext -Entities $Entities)
+}
+
+# ═══════════════════════════════════════════════════════════════════════
 # PARSING
 # ═══════════════════════════════════════════════════════════════════════
+
+function Invoke-ApiFetchLogContent {
+    <#
+        .SYNOPSIS
+        Fetches raw log content for the given URLs. Checks disk cache (res/logs/)
+        first, falls back to HTTP fetch if sidecar is not found.
+        Self-contained: uses only .NET methods and Get-RepoRoot (exported).
+    #>
+
+    [CmdletBinding()] param(
+        [Parameter(Mandatory)] [hashtable]$ApiContext
+    )
+
+    $B = $ApiContext.Body
+    if (-not $B -or -not $B.urls) {
+        return @{ StatusCode = 400; Body = @{ error = 'urls array required' } }
+    }
+
+    $Urls = @($B.urls)
+    if ($Urls.Count -eq 0) {
+        return @{ StatusCode = 200; Body = @{ items = @() } }
+    }
+
+    # Build log directory from exported Get-RepoRoot (no module-private deps)
+    $RepoRoot = Get-RepoRoot
+    $LogDir = [System.IO.Path]::Combine($RepoRoot, '.robot', 'res', 'logs')
+
+    # Inline URL normalization (mirrors log-fetchhelpers.ps1 logic)
+    $PbPattern = [regex]'^https?://(?:www\.)?pastebin\.com/(?!raw/)([A-Za-z0-9]+)/?$'
+    $PbRawPattern = [regex]'^https?://(?:www\.)?pastebin\.com/raw/([A-Za-z0-9]+)/?$'
+    $UnsafeChars = [regex]'[^A-Za-z0-9]'
+
+    $Items = [System.Collections.Generic.List[PSCustomObject]]::new()
+
+    foreach ($Url in $Urls) {
+        $UrlStr = [string]$Url
+        try {
+            # Normalize URL
+            $Norm = $UrlStr.Trim().TrimEnd('/')
+            $M = $PbRawPattern.Match($Norm)
+            if ($M.Success) {
+                $Norm = "https://pastebin.com/raw/$($M.Groups[1].Value)"
+            } else {
+                $M = $PbPattern.Match($Norm)
+                if ($M.Success) {
+                    $Norm = "https://pastebin.com/raw/$($M.Groups[1].Value)"
+                } elseif ($Norm.StartsWith('http://', [System.StringComparison]::OrdinalIgnoreCase)) {
+                    $Norm = 'https://' + $Norm.Substring(7)
+                }
+            }
+
+            # Build cache filename (strip protocol, remove non-alnum)
+            $FName = $Norm
+            if ($FName.StartsWith('https://')) { $FName = $FName.Substring(8) }
+            elseif ($FName.StartsWith('http://')) { $FName = $FName.Substring(7) }
+            $FName = $UnsafeChars.Replace($FName, '')
+            $FilePath = [System.IO.Path]::Combine($LogDir, $FName)
+
+            $Content = $null
+
+            # Try disk cache first
+            if ([System.IO.File]::Exists($FilePath)) {
+                $Content = [System.IO.File]::ReadAllText($FilePath)
+            }
+            # Also check local (non-HTTP) paths under .robot/
+            elseif (-not $Norm.StartsWith('http', [System.StringComparison]::OrdinalIgnoreCase)) {
+                $LocalPath = [System.IO.Path]::Combine($RepoRoot, '.robot', $UrlStr)
+                if ([System.IO.File]::Exists($LocalPath)) {
+                    $Content = [System.IO.File]::ReadAllText($LocalPath)
+                }
+            }
+
+            # Fall back to HTTP fetch if no cache hit
+            if ($null -eq $Content -and $Norm.StartsWith('http', [System.StringComparison]::OrdinalIgnoreCase)) {
+                $FailedPath = "$FilePath.failed"
+                if (-not [System.IO.File]::Exists($FailedPath)) {
+                    $Client = [System.Net.Http.HttpClient]::new()
+                    $Client.Timeout = [System.TimeSpan]::FromSeconds(15)
+                    [void]$Client.DefaultRequestHeaders.Add('User-Agent', 'Robot-PowerShell/1.0')
+                    try {
+                        $Resp = $Client.GetAsync($Norm).GetAwaiter().GetResult()
+                        if ($Resp.IsSuccessStatusCode) {
+                            $Content = $Resp.Content.ReadAsStringAsync().GetAwaiter().GetResult()
+                            # Cache to disk
+                            if (-not [System.IO.Directory]::Exists($LogDir)) {
+                                [void][System.IO.Directory]::CreateDirectory($LogDir)
+                            }
+                            [System.IO.File]::WriteAllText($FilePath, $Content)
+                        }
+                    } finally {
+                        $Client.Dispose()
+                    }
+                }
+            }
+
+            $Items.Add([PSCustomObject]@{
+                url     = $UrlStr
+                content = $Content
+                error   = $null
+            })
+        } catch {
+            $Items.Add([PSCustomObject]@{
+                url     = $UrlStr
+                content = $null
+                error   = $_.Exception.Message
+            })
+        }
+    }
+
+    return @{ StatusCode = 200; Body = @{ items = [PSCustomObject[]]$Items.ToArray() } }
+}
 
 function Invoke-ApiParseLog {
     <#

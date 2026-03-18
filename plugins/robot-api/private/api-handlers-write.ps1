@@ -18,6 +18,10 @@
     - Invoke-ApiCreateSession:  POST /sessions — creates session via Add-Session
     - Invoke-ApiRebuildGraph:   POST /workflow/session-graph — rebuilds index
     - Invoke-ApiRebuildHashes:  POST /workflow/session-hash — updates hashes
+    - Invoke-ApiCreateLocation: POST /locations — creates via New-LocationEntity
+    - Invoke-ApiUpdateLocation: PUT /locations/:name — updates via Set-LocationEntity
+    - Invoke-ApiDeleteLocation: DELETE /locations/:name — soft-deletes location
+    - Invoke-ApiCreateMap:      POST /maps — creates via New-MapEntity
 
     All handlers pass -Confirm:$false to skip interactive prompts. After each
     successful write, Clear-ParseCaches is called to invalidate memory caches
@@ -510,6 +514,133 @@ function Invoke-ApiRebuildHashes {
     try {
         $Result = Set-SessionHash @Params
         return @{ StatusCode = 200; Body = $Result }
+    } catch {
+        return @{ StatusCode = 422; Body = @{ error = $_.Exception.Message } }
+    }
+}
+
+# ═══════════════════════════════════════════════════════════════════════
+# LOCATIONS
+# ═══════════════════════════════════════════════════════════════════════
+
+function Invoke-ApiCreateLocation {
+    <#
+        .SYNOPSIS
+        Creates a location entity via New-LocationEntity with domain validation.
+    #>
+
+    param([hashtable]$ApiContext)
+
+    $B = $ApiContext.Body
+    if (-not $B -or -not $B.name) {
+        return @{ StatusCode = 400; Body = @{ error = 'name is required' } }
+    }
+    $Params = @{ Name = [string]$B.name; Confirm = $false }
+    if ($B.parent)      { $Params.Parent      = [string]$B.parent }
+    if ($B.doors)       { $Params.Doors        = @($B.doors).ForEach({ [string]$_ }) }
+    if ($B.coordinates) { $Params.Coordinates  = [string]$B.coordinates }
+    if ($B.nerthusName) { $Params.NerthusName   = [string]$B.nerthusName }
+    if ($B.margonemIds) { $Params.MargonemIds   = @($B.margonemIds).ForEach({ [int]$_ }) }
+    if ($B.validFrom)   { $Params.ValidFrom    = [string]$B.validFrom }
+    if ($B.tags -and $B.tags -is [System.Management.Automation.PSCustomObject]) {
+        $Tags = @{}
+        foreach ($P in $B.tags.PSObject.Properties) { $Tags[$P.Name] = $P.Value }
+        $Params.Tags = $Tags
+    }
+    try {
+        $Result = New-LocationEntity @Params
+        Clear-ParseCaches
+        return @{ StatusCode = 201; Body = $Result }
+    } catch {
+        return @{ StatusCode = 422; Body = @{ error = $_.Exception.Message } }
+    }
+}
+
+function Invoke-ApiUpdateLocation {
+    <#
+        .SYNOPSIS
+        Updates a location entity via Set-LocationEntity with domain validation.
+    #>
+
+    param([hashtable]$ApiContext)
+
+    $Name = $ApiContext.PathParams['name']
+    $B = $ApiContext.Body
+    if (-not $B) {
+        return @{ StatusCode = 400; Body = @{ error = 'Request body required' } }
+    }
+    $Params = @{ Name = $Name; Confirm = $false }
+    if ($B.type)        { $Params.Type         = [string]$B.type }
+    if ($B.parent)      { $Params.Parent       = [string]$B.parent }
+    if ($B.addDoors)    { $Params.AddDoors     = @($B.addDoors).ForEach({ [string]$_ }) }
+    if ($B.removeDoors) { $Params.RemoveDoors  = @($B.removeDoors).ForEach({ [string]$_ }) }
+    if ($B.coordinates) { $Params.Coordinates  = [string]$B.coordinates }
+    if ($B.nerthusName) { $Params.NerthusName   = [string]$B.nerthusName }
+    if ($B.validFrom)   { $Params.ValidFrom    = [string]$B.validFrom }
+    if ($B.tags -and $B.tags -is [System.Management.Automation.PSCustomObject]) {
+        $Tags = @{}
+        foreach ($P in $B.tags.PSObject.Properties) { $Tags[$P.Name] = $P.Value }
+        $Params.Tags = $Tags
+    }
+    try {
+        $Result = Set-LocationEntity @Params
+        Clear-ParseCaches
+        return @{ StatusCode = 200; Body = $Result }
+    } catch {
+        return @{ StatusCode = 422; Body = @{ error = $_.Exception.Message } }
+    }
+}
+
+function Invoke-ApiDeleteLocation {
+    <#
+        .SYNOPSIS
+        Soft-deletes a location entity via Remove-Entity.
+    #>
+
+    param([hashtable]$ApiContext)
+
+    $Name = $ApiContext.PathParams['name']
+    $B = $ApiContext.Body
+    $Params = @{ Name = $Name; Type = 'Lokacja'; Confirm = $false }
+    if ($B -and $B.validFrom) { $Params.ValidFrom = [string]$B.validFrom }
+    try {
+        $Result = Remove-Entity @Params
+        Clear-ParseCaches
+        return @{ StatusCode = 200; Body = $Result }
+    } catch {
+        return @{ StatusCode = 422; Body = @{ error = $_.Exception.Message } }
+    }
+}
+
+function Invoke-ApiCreateMap {
+    <#
+        .SYNOPSIS
+        Creates a map entity via New-MapEntity with domain validation.
+    #>
+
+    param([hashtable]$ApiContext)
+
+    $B = $ApiContext.Body
+    if (-not $B -or -not $B.name -or -not $B.slug) {
+        return @{ StatusCode = 400; Body = @{ error = 'name and slug are required' } }
+    }
+    $Params = @{ Name = [string]$B.name; Slug = [string]$B.slug; Confirm = $false }
+    if ($B.parent)      { $Params.Parent     = [string]$B.parent }
+    if ($B.url)         { $Params.Url        = [string]$B.url }
+    if ($B.urlNerthus)  { $Params.UrlNerthus = [string]$B.urlNerthus }
+    if ($B.dimensions)  { $Params.Dimensions = [string]$B.dimensions }
+    if ($B.doors)       { $Params.Doors      = @($B.doors).ForEach({ [string]$_ }) }
+    if ($B.info)        { $Params.Info       = [string]$B.info }
+    if ($B.validFrom)   { $Params.ValidFrom  = [string]$B.validFrom }
+    if ($B.tags -and $B.tags -is [System.Management.Automation.PSCustomObject]) {
+        $Tags = @{}
+        foreach ($P in $B.tags.PSObject.Properties) { $Tags[$P.Name] = $P.Value }
+        $Params.Tags = $Tags
+    }
+    try {
+        $Result = New-MapEntity @Params
+        Clear-ParseCaches
+        return @{ StatusCode = 201; Body = $Result }
     } catch {
         return @{ StatusCode = 422; Body = @{ error = $_.Exception.Message } }
     }

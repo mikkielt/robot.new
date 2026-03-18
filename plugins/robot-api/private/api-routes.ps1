@@ -101,6 +101,23 @@ function Register-AllApiRoutes {
         'Enriched entity state with session overrides', 200, 'entity:read')
     $HandlerMap['Invoke-ApiGetEntityState'] = $true
 
+    # --- Locations ---
+    $Router.AddRoute('GET', '/locations', 'Invoke-ApiGetLocationList',
+        'List locations with enrichment', 200, 'entity:read')
+    $HandlerMap['Invoke-ApiGetLocationList'] = $true
+
+    $Router.AddRoute('GET', '/locations/:name', 'Invoke-ApiGetLocation',
+        'Get single location with children and doors', 200, 'entity:read')
+    $HandlerMap['Invoke-ApiGetLocation'] = $true
+
+    $Router.AddRoute('GET', '/locations/:name/contents', 'Invoke-ApiGetLocationContents',
+        'Entities at this location', 200, 'entity:read')
+    $HandlerMap['Invoke-ApiGetLocationContents'] = $true
+
+    # --- Maps ---
+    $Router.AddRoute('GET', '/maps', 'Invoke-ApiGetMaps', 'List all maps', 200, 'entity:read')
+    $HandlerMap['Invoke-ApiGetMaps'] = $true
+
     # --- Players ---
     $Router.AddRoute('GET', '/players', 'Invoke-ApiGetPlayers', 'List all players', 200, 'player:read')
     $HandlerMap['Invoke-ApiGetPlayers'] = $true
@@ -235,6 +252,21 @@ function Register-AllApiRoutes {
         'Create a new session in target file(s)', 201, 'session:write')
     $HandlerMap['Invoke-ApiCreateSession'] = $true
 
+    # --- Locations (write) ---
+    $Router.AddRoute('POST', '/locations', 'Invoke-ApiCreateLocation', 'Create location', 201, 'entity:write')
+    $HandlerMap['Invoke-ApiCreateLocation'] = $true
+
+    $Router.AddRoute('PUT', '/locations/:name', 'Invoke-ApiUpdateLocation', 'Update location', 200, 'entity:write')
+    $HandlerMap['Invoke-ApiUpdateLocation'] = $true
+
+    $Router.AddRoute('DELETE', '/locations/:name', 'Invoke-ApiDeleteLocation',
+        'Soft-delete location', 200, 'entity:write')
+    $HandlerMap['Invoke-ApiDeleteLocation'] = $true
+
+    # --- Maps (write) ---
+    $Router.AddRoute('POST', '/maps', 'Invoke-ApiCreateMap', 'Create map', 201, 'entity:write')
+    $HandlerMap['Invoke-ApiCreateMap'] = $true
+
     # --- Files ---
     $Router.AddRoute('GET', '/files', 'Invoke-ApiGetFiles', 'List .md file paths for autocomplete', 200, 'session:read')
     $HandlerMap['Invoke-ApiGetFiles'] = $true
@@ -248,6 +280,10 @@ function Register-AllApiRoutes {
     $Router.AddRoute('POST', '/parse/log', 'Invoke-ApiParseLog',
         'Parse raw log text into structured data', 200, 'session:read')
     $HandlerMap['Invoke-ApiParseLog'] = $true
+
+    $Router.AddRoute('POST', '/logs/fetch', 'Invoke-ApiFetchLogContent',
+        'Fetch raw log content by URLs (disk cache then HTTP)', 200, 'session:read')
+    $HandlerMap['Invoke-ApiFetchLogContent'] = $true
 
     $Router.AddRoute('POST', '/parse/session-preview', 'Invoke-ApiSessionPreview',
         'Preview session markdown with name resolution', 200, 'session:read')

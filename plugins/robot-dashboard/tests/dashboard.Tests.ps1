@@ -4,9 +4,13 @@
 
     .DESCRIPTION
     Tests for Invoke-ApiGetDashboard (dashboard HTML handler) covering
-    HTML serving, content-type, caching, and 404 when plugin is missing.
+    HTML serving, content-type, caching, and 404 when sources are missing.
     Tests for Invoke-RobotDashboard public function (parameter validation).
     Tests for dashboard route registration in api-routes.ps1.
+
+    The handler resolves sources from Robot.Dashboard/src/ (standalone
+    project, priority 1) or plugins/robot-dashboard/private/ (legacy
+    fallback). Tests validate both paths.
 #>
 
 BeforeAll {
@@ -24,7 +28,7 @@ Describe 'Invoke-ApiGetDashboard' {
         $script:DashboardHtmlBytes = $null
     }
 
-    Context 'When dashboard.html exists' {
+    Context 'When dashboard sources exist (standalone Robot.Dashboard)' {
         It 'returns 200 with text/html content type' {
             $Ctx = @{
                 PathParams  = @{}
@@ -98,27 +102,29 @@ Describe 'Invoke-ApiGetDashboard' {
         }
     }
 
-    Context 'When dashboard.html is missing' {
+    Context 'When dashboard sources are missing' {
         BeforeAll {
             # Force cache reset
             $script:DashboardHtmlBytes = $null
 
-            # Save original ModuleRoot and set to a temp dir with no dashboard plugin
+            # Save original ModuleRoot and set to a temp dir tree where neither
+            # Robot.Dashboard/src/ nor plugins/robot-dashboard/private/ exist
             $script:OrigModuleRoot = $script:ModuleRoot
-            $TempDir = Join-Path ([System.IO.Path]::GetTempPath()) ("robot-dash-test-" + [System.Guid]::NewGuid().ToString('N'))
-            [void][System.IO.Directory]::CreateDirectory($TempDir)
-            $script:ModuleRoot = $TempDir
+            $TempRoot = Join-Path ([System.IO.Path]::GetTempPath()) ("robot-dash-test-" + [System.Guid]::NewGuid().ToString('N'))
+            $TempModRoot = Join-Path $TempRoot 'Robot.PowerShell'
+            [void][System.IO.Directory]::CreateDirectory($TempModRoot)
+            $script:ModuleRoot = $TempModRoot
         }
 
         AfterAll {
             $script:ModuleRoot = $script:OrigModuleRoot
             $script:DashboardHtmlBytes = $null
-            if ([System.IO.Directory]::Exists($TempDir)) {
-                [System.IO.Directory]::Delete($TempDir, $true)
+            if ([System.IO.Directory]::Exists($TempRoot)) {
+                [System.IO.Directory]::Delete($TempRoot, $true)
             }
         }
 
-        It 'returns 404 when dashboard plugin is not installed' {
+        It 'returns 404 when dashboard is not installed' {
             $Ctx = @{
                 PathParams  = @{}
                 QueryParams = @{}
@@ -183,5 +189,45 @@ Describe 'Dashboard plugin manifest' {
 
     It 'does not register duplicate MenuCategories' {
         $script:Manifest.ContainsKey('MenuCategories') | Should -BeFalse
+    }
+}
+
+# ═══════════════════════════════════════════════════════════════════════
+# Standalone project structure
+# ═══════════════════════════════════════════════════════════════════════
+
+Describe 'Robot.Dashboard project structure' {
+    BeforeAll {
+        $script:DashboardRoot = [System.IO.Path]::GetFullPath(
+            [System.IO.Path]::Combine($PSScriptRoot, '..', '..', '..', '..', 'Robot.Dashboard'))
+    }
+
+    It 'has src/index.html' {
+        $Path = [System.IO.Path]::Combine($script:DashboardRoot, 'src', 'index.html')
+        [System.IO.File]::Exists($Path) | Should -BeTrue
+    }
+
+    It 'has src/css/dashboard.css' {
+        $Path = [System.IO.Path]::Combine($script:DashboardRoot, 'src', 'css', 'dashboard.css')
+        [System.IO.File]::Exists($Path) | Should -BeTrue
+    }
+
+    It 'has all required JS modules' {
+        $JsDir = [System.IO.Path]::Combine($script:DashboardRoot, 'src', 'js')
+        $Expected = @(
+            'dashboard-core.js', 'dashboard-nav.js', 'dashboard-sessions.js',
+            'dashboard-session-create.js', 'dashboard-entities.js',
+            'dashboard-locations.js', 'dashboard-players.js',
+            'dashboard-reports.js', 'dashboard-tokens.js', 'dashboard-init.js'
+        )
+        foreach ($JsFile in $Expected) {
+            $Path = [System.IO.Path]::Combine($JsDir, $JsFile)
+            [System.IO.File]::Exists($Path) | Should -BeTrue -Because "$JsFile should exist"
+        }
+    }
+
+    It 'has build.sh' {
+        $Path = [System.IO.Path]::Combine($script:DashboardRoot, 'build.sh')
+        [System.IO.File]::Exists($Path) | Should -BeTrue
     }
 }

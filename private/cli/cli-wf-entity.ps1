@@ -21,6 +21,11 @@
     accumulated tags are passed to New-Entity / Set-Entity via Show-Preview
     which runs the operation with -WhatIf for review before confirming.
 
+    When type is Lokacja, the new-entity workflow adds guided prompts for
+    parent location (fuzzy), coordinates (X, Y with validation), Nerthus
+    name, and door connections (multi-entry fuzzy). These are passed to
+    New-LocationEntity instead of generic New-Entity.
+
     The screen is fully redrawn before each fuzzy search step because the
     engine's cursor positioning can overflow when a fuzzy search viewport
     follows an arrow-based selection menu on the same screen.
@@ -61,9 +66,124 @@ function Invoke-NewEntityWorkflow {
     $Name = Invoke-WizardStep -Step $NameStep -State $State
     if ($Name -eq '__back__' -or -not $Name) { return }
 
+    # Step 2.5: Location-specific guided prompts (Lokacja type only)
+    $LocParent      = $null
+    $LocCoords      = $null
+    $LocNerthusName = $null
+    $LocDoors       = @()
+
+    if ($Type -eq 'Lokacja') {
+        # Parent location (optional fuzzy pick)
+        $AskParent = New-WizardStepComponent -Label 'Dodać lokację nadrzędną?' `
+            -StepNumber 0 -TotalSteps 0 -StepType 'yesno'
+        $WantsParent = Invoke-EngineLifecycle -Component $AskParent -State $State
+        if ($WantsParent -eq '__quit__') { return '__quit__' }
+        if ($WantsParent -eq $true) {
+            [System.Console]::Clear()
+            Write-CLILine -Text 'Kreator nowej encji' -Color $AccentColor
+            Write-Host "  $Sep" -ForegroundColor $DisabledColor
+            Write-Host "  $('Typ'.PadRight(22))" -NoNewline -ForegroundColor $InfoColor
+            Write-Host $Type
+            Write-Host "  $('Nazwa'.PadRight(22))" -NoNewline -ForegroundColor $InfoColor
+            Write-Host $Name
+            Write-Host ''
+            $ParentResult = Invoke-EngineFuzzySearch -Prompt 'Lokacja nadrzędna' -Source 'locations' -State $State
+            if ($ParentResult) { $LocParent = $ParentResult.Name }
+        }
+
+        # Coordinates (optional text input with X, Y validation)
+        [System.Console]::Clear()
+        Write-CLILine -Text 'Kreator nowej encji' -Color $AccentColor
+        Write-Host "  $Sep" -ForegroundColor $DisabledColor
+        Write-Host "  $('Typ'.PadRight(22))" -NoNewline -ForegroundColor $InfoColor
+        Write-Host $Type
+        Write-Host "  $('Nazwa'.PadRight(22))" -NoNewline -ForegroundColor $InfoColor
+        Write-Host $Name
+        if ($LocParent) {
+            Write-Host "  $('Lokacja'.PadRight(22))" -NoNewline -ForegroundColor $InfoColor
+            Write-Host $LocParent
+        }
+        Write-Host ''
+        $CoordsStep = New-WizardTextStep -Name 'Coords' -Label 'Koordynaty X, Y (puste = pomiń)'
+        $CoordsInput = Invoke-WizardStep -Step $CoordsStep -State $State
+        if ($CoordsInput -and $CoordsInput -ne '__back__') {
+            if ($CoordsInput -match '^\s*(\d+)\s*,\s*(\d+)\s*$') {
+                $LocCoords = $CoordsInput.Trim()
+            } else {
+                Write-CLILine -Text 'Nieprawidłowy format — pominięto (oczekiwano X, Y).' -Color (Get-CLIColor -Role 'Error')
+                [System.Threading.Thread]::Sleep(1000)
+            }
+        }
+
+        # NerthusName (optional text input)
+        [System.Console]::Clear()
+        Write-CLILine -Text 'Kreator nowej encji' -Color $AccentColor
+        Write-Host "  $Sep" -ForegroundColor $DisabledColor
+        Write-Host "  $('Typ'.PadRight(22))" -NoNewline -ForegroundColor $InfoColor
+        Write-Host $Type
+        Write-Host "  $('Nazwa'.PadRight(22))" -NoNewline -ForegroundColor $InfoColor
+        Write-Host $Name
+        if ($LocParent) {
+            Write-Host "  $('Lokacja'.PadRight(22))" -NoNewline -ForegroundColor $InfoColor
+            Write-Host $LocParent
+        }
+        if ($LocCoords) {
+            Write-Host "  $('Koordynaty'.PadRight(22))" -NoNewline -ForegroundColor $InfoColor
+            Write-Host $LocCoords
+        }
+        Write-Host ''
+        $NerthusStep = New-WizardTextStep -Name 'NerthusName' -Label 'Nazwa Nerthus (puste = pomiń)'
+        $NerthusInput = Invoke-WizardStep -Step $NerthusStep -State $State
+        if ($NerthusInput -and $NerthusInput -ne '__back__') {
+            $LocNerthusName = $NerthusInput
+        }
+
+        # Doors (multi-entry fuzzy from locations, optional)
+        $AskDoors = New-WizardStepComponent -Label 'Dodać drzwi?' `
+            -StepNumber 0 -TotalSteps 0 -StepType 'yesno'
+        $WantsDoors = Invoke-EngineLifecycle -Component $AskDoors -State $State
+        if ($WantsDoors -eq '__quit__') { return '__quit__' }
+        if ($WantsDoors -eq $true) {
+            $DoorList = [System.Collections.Generic.List[string]]::new()
+            $DoorNum = 1
+            while ($true) {
+                [System.Console]::Clear()
+                Write-CLILine -Text 'Kreator nowej encji' -Color $AccentColor
+                Write-Host "  $Sep" -ForegroundColor $DisabledColor
+                Write-Host "  $('Typ'.PadRight(22))" -NoNewline -ForegroundColor $InfoColor
+                Write-Host $Type
+                Write-Host "  $('Nazwa'.PadRight(22))" -NoNewline -ForegroundColor $InfoColor
+                Write-Host $Name
+                if ($LocParent) {
+                    Write-Host "  $('Lokacja'.PadRight(22))" -NoNewline -ForegroundColor $InfoColor
+                    Write-Host $LocParent
+                }
+                if ($DoorList.Count -gt 0) {
+                    Write-Host "  $('Drzwi'.PadRight(22))" -NoNewline -ForegroundColor $InfoColor
+                    Write-Host ($DoorList -join ', ')
+                }
+                Write-Host ''
+                $DoorResult = Invoke-EngineFuzzySearch -Prompt "Drzwi ($DoorNum)" -Source 'locations' -State $State
+                if (-not $DoorResult) { break }
+                [void]$DoorList.Add($DoorResult.Name)
+                $DoorNum++
+                $AddMoreDoors = New-WizardStepComponent -Label 'Dodać kolejne drzwi?' `
+                    -StepNumber 0 -TotalSteps 0 -StepType 'yesno'
+                $MoreDoors = Invoke-EngineLifecycle -Component $AddMoreDoors -State $State
+                if ($MoreDoors -ne $true) { break }
+            }
+            $LocDoors = $DoorList.ToArray()
+        }
+    }
+
     # Step 3: Guided tag entry loop (user adds tags until choosing 'Zakończ')
     $Tags = @{}
-    $CommonTags = @('lokacja', 'grupa', 'status', 'alias', 'typ', 'info')
+    # Skip @lokacja from common tags for Lokacja type — already handled by Parent prompt
+    $CommonTags = if ($Type -eq 'Lokacja') {
+        @('grupa', 'status', 'alias', 'typ', 'info')
+    } else {
+        @('lokacja', 'grupa', 'status', 'alias', 'typ', 'info')
+    }
 
     while ($true) {
         # Redraw screen with current context
@@ -74,6 +194,22 @@ function Invoke-NewEntityWorkflow {
         Write-Host $Type
         Write-Host "  $('Nazwa'.PadRight(22))" -NoNewline -ForegroundColor $InfoColor
         Write-Host $Name
+        if ($LocParent) {
+            Write-Host "  $('Lokacja'.PadRight(22))" -NoNewline -ForegroundColor $InfoColor
+            Write-Host $LocParent
+        }
+        if ($LocCoords) {
+            Write-Host "  $('Koordynaty'.PadRight(22))" -NoNewline -ForegroundColor $InfoColor
+            Write-Host $LocCoords
+        }
+        if ($LocNerthusName) {
+            Write-Host "  $('Nazwa Nerthus'.PadRight(22))" -NoNewline -ForegroundColor $InfoColor
+            Write-Host $LocNerthusName
+        }
+        if ($LocDoors.Count -gt 0) {
+            Write-Host "  $('Drzwi'.PadRight(22))" -NoNewline -ForegroundColor $InfoColor
+            Write-Host ($LocDoors -join ', ')
+        }
         if ($Tags.Count -gt 0) {
             Write-Host ''
             Write-CLILine -Text 'Dodane tagi:' -Color $InfoColor
@@ -115,6 +251,10 @@ function Invoke-NewEntityWorkflow {
         Write-Host $Type
         Write-Host "  $('Nazwa'.PadRight(22))" -NoNewline -ForegroundColor $InfoColor
         Write-Host $Name
+        if ($LocParent) {
+            Write-Host "  $('Lokacja'.PadRight(22))" -NoNewline -ForegroundColor $InfoColor
+            Write-Host $LocParent
+        }
         Write-Host "  $('Tag'.PadRight(22))" -NoNewline -ForegroundColor $InfoColor
         Write-Host "@$TagName"
         if ($Tags.Count -gt 0) {
@@ -133,14 +273,23 @@ function Invoke-NewEntityWorkflow {
         $Tags[$TagName] = $TagValue
     }
 
-    # Show-Preview runs New-Entity with -WhatIf for review before confirming
-    $Params = [ordered]@{
-        'Type' = $Type
-        'Name' = $Name
+    # Show-Preview runs the creation command with -WhatIf for review before confirming
+    if ($Type -eq 'Lokacja') {
+        $Params = [ordered]@{ 'Name' = $Name }
+        if ($LocParent)      { $Params['Parent']      = $LocParent }
+        if ($LocCoords)      { $Params['Coordinates'] = $LocCoords }
+        if ($LocNerthusName) { $Params['NerthusName']  = $LocNerthusName }
+        if ($LocDoors.Count -gt 0) { $Params['Doors'] = $LocDoors }
+        if ($Tags.Count -gt 0) { $Params['Tags'] = $Tags }
+        [void](Show-Preview -FunctionName 'New-LocationEntity' -Parameters $Params -State $State)
+    } else {
+        $Params = [ordered]@{
+            'Type' = $Type
+            'Name' = $Name
+        }
+        if ($Tags.Count -gt 0) { $Params['Tags'] = $Tags }
+        [void](Show-Preview -FunctionName 'New-Entity' -Parameters $Params -State $State)
     }
-    if ($Tags.Count -gt 0) { $Params['Tags'] = $Tags }
-
-    [void](Show-Preview -FunctionName 'New-Entity' -Parameters $Params -State $State)
 }
 
 # ── Edit Entity Workflow (Diff Review with Context) ──────────────────────────

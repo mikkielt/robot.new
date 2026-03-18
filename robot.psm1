@@ -172,7 +172,7 @@ function Write-RobotInfo {
 $FunctionFiles = [System.IO.Directory]::GetFiles($ModuleRoot, '*.ps1', [System.IO.SearchOption]::AllDirectories)
 
 # Only Verb-Noun files are auto-loaded; helpers are dot-sourced on demand
-$VerbNounPattern = [regex]::new('^(Get|Set|New|Remove|Resolve|Test|Invoke|Send|Export|Import|Add|Start|Stop|ConvertTo)-\w+$', [System.Text.RegularExpressions.RegexOptions]::IgnoreCase)
+$VerbNounPattern = [regex]::new('^(Get|Set|New|Remove|Resolve|Test|Invoke|Send|Export|Import|Add|Start|Stop|ConvertTo|ConvertFrom)-\w+$', [System.Text.RegularExpressions.RegexOptions]::IgnoreCase)
 
 $ExportedFunctions = [System.Collections.Generic.HashSet[string]]::new(
     [System.StringComparer]::OrdinalIgnoreCase)
