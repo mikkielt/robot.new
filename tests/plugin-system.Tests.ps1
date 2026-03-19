@@ -574,7 +574,7 @@ Describe 'Test-PluginScope' {
 
 Describe 'Get-LoadedPlugins' {
     It 'returns empty list when no plugins loaded' {
-        $Mod = Get-Module robot
+        $Mod = Get-Module Robot.PowerShell
         $Saved = & $Mod { $script:LoadedPlugins }
         try {
             & $Mod { $script:LoadedPlugins = @{} }
@@ -678,7 +678,7 @@ Describe 'Plugin CLI metadata extraction' {
     }
 
     It 'Get-LoadedPlugins returns empty list when no plugins loaded' {
-        $Mod = Get-Module robot
+        $Mod = Get-Module Robot.PowerShell
         $Saved = & $Mod { $script:LoadedPlugins }
         try {
             & $Mod { $script:LoadedPlugins = @{} }

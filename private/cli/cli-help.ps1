@@ -220,6 +220,21 @@ $script:HelpContent = @{
         )
     }
 
+    'Przedmioty' = @{
+        Title = 'Przedmioty - Pomoc'
+        Body  = @(
+            'Zarządzanie przedmiotami w świecie gry.'
+            ''
+            'Przeglądaj przedmioty      Lista przedmiotów (encje'
+            '                           typu Przedmiot) z filtrami.'
+            '                           Domyślnie wyklucza walutę.'
+            ''
+            'Filtrowanie:'
+            '  właściciel:nazwa — filtruj po właścicielu'
+            '  lokacja:nazwa    — filtruj po lokacji'
+        )
+    }
+
     'Migracja' = @{
         Title = 'Migracja - Pomoc'
         Body  = @(

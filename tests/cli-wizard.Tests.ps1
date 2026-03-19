@@ -15,7 +15,7 @@ BeforeAll {
     # Dot-source CLI layers in dependency order
     . (Join-Path $script:ModuleRoot 'private' 'cli' 'cli-primitives.ps1')
     . (Join-Path $script:ModuleRoot 'private' 'cli' 'cli-fuzzy.ps1')
-    . (Join-Path $script:ModuleRoot 'private' 'cli' 'cli-display.ps1')
+    . (Join-Path $script:ModuleRoot 'private' 'cli' 'cli-display-entity.ps1')
     . (Join-Path $script:ModuleRoot 'private' 'cli' 'cli-wizard.ps1')
 
     # Create a minimal NavState for color resolution

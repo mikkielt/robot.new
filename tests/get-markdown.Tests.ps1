@@ -125,12 +125,12 @@ Describe 'Get-Markdown' {
 
         It 'uses Get-RepoRoot by default when -Directory is omitted' {
             $RepoRoot = $script:DirScanRoot
-            Mock -CommandName Get-RepoRoot -ModuleName robot -MockWith { return $RepoRoot }
+            Mock -CommandName Get-RepoRoot -ModuleName Robot.PowerShell -MockWith { return $RepoRoot }
 
             $Result = Get-Markdown
             $Basenames = @($Result | ForEach-Object { [System.IO.Path]::GetFileName($_.FilePath) })
 
-            Should -Invoke -CommandName Get-RepoRoot -ModuleName robot -Times 1 -Exactly
+            Should -Invoke -CommandName Get-RepoRoot -ModuleName Robot.PowerShell -Times 1 -Exactly
             $Result.Count | Should -Be 3
             $Basenames | Should -Contain 'top.md'
             $Basenames | Should -Contain 'child.markdown'

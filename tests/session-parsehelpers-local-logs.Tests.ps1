@@ -244,7 +244,7 @@ Describe 'Get-Session .Logs with local paths (integration)' {
         # Mock Get-RepoRoot in both script and module scope so that
         # module-internal calls (Get-Player default -File param) also resolve
         Mock Get-RepoRoot { return $script:TempDir }
-        Mock Get-RepoRoot { return $script:TempDir } -ModuleName Robot
+        Mock Get-RepoRoot { return $script:TempDir } -ModuleName Robot.PowerShell
 
         # Write a minimal Gen3 session file with mixed log entries
         $SessionContent = @(

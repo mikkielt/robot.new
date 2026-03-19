@@ -55,7 +55,7 @@ Describe 'Invoke-SessionLogFetch' {
 
     It 'reports correct counts for cached and skipped URLs' {
         # Mock the HTTP client to avoid actual requests
-        Mock Get-LogHttpClient { return $null } -ModuleName Robot
+        Mock Get-LogHttpClient { return $null } -ModuleName Robot.PowerShell
 
         $Result = $script:MockSessions | Invoke-SessionLogFetch `
             -LogDirectory $script:TempLogDir -WhatIf

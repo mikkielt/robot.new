@@ -12,7 +12,7 @@ BeforeAll {
     Import-RobotModule
     $FixRoot = $script:FixturesRoot
     Mock Get-RepoRoot { return $FixRoot }
-    Mock Get-RepoRoot { return $FixRoot } -ModuleName Robot
+    Mock Get-RepoRoot { return $FixRoot } -ModuleName Robot.PowerShell
     . (Join-Path $script:ModuleRoot 'private' 'argument-completers.ps1')
 }
 

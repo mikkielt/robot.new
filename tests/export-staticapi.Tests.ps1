@@ -12,7 +12,7 @@ BeforeAll {
     . "$PSScriptRoot/TestHelpers.ps1"
     Import-RobotModule
     Mock Get-RepoRoot { return $script:FixturesRoot }
-    Mock Get-RepoRoot { return $script:FixturesRoot } -ModuleName Robot
+    Mock Get-RepoRoot { return $script:FixturesRoot } -ModuleName Robot.PowerShell
 }
 
 Describe 'Export-StaticApi' {

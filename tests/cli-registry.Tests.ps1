@@ -14,7 +14,7 @@ BeforeAll {
     # Dot-source CLI layers in dependency order
     . (Join-Path $script:ModuleRoot 'private' 'cli' 'cli-primitives.ps1')
     . (Join-Path $script:ModuleRoot 'private' 'cli' 'cli-fuzzy.ps1')
-    . (Join-Path $script:ModuleRoot 'private' 'cli' 'cli-display.ps1')
+    . (Join-Path $script:ModuleRoot 'private' 'cli' 'cli-display-entity.ps1')
     . (Join-Path $script:ModuleRoot 'private' 'cli' 'cli-help.ps1')
     . (Join-Path $script:ModuleRoot 'private' 'cli' 'cli-wizard.ps1')
     . (Join-Path $script:ModuleRoot 'private' 'cli' 'cli-registry.ps1')
@@ -107,9 +107,9 @@ Describe 'Menu Registry' {
 # ── Menu Helper Functions ───────────────────────────────────────────────────
 
 Describe 'Get-MenuCategories' {
-    It 'returns all 7 categories in order' {
+    It 'returns all 8 categories in order' {
         $Cats = Get-MenuCategories
-        $Cats.Count | Should -Be 7
+        $Cats.Count | Should -Be 8
         $Cats[0] | Should -Be 'Sesje'
         $Cats[-1] | Should -Be 'Migracja'
     }
