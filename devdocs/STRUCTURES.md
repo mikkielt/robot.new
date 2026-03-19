@@ -17,7 +17,7 @@ General entity behavior: [ENTITIES.md](ENTITIES.md). Session parsing: [SESSIONS.
 ```
                     C# Compiled Types (lib/*.cs)
                     ============================
-Robot.Entity ─────────────────────── Central 27-property domain model
+Robot.Entity ─────────────────────── Central 28-property domain model
 Robot.TemporalEntry ──────────────── History list entries (string value)
 Robot.CoordinateTemporalEntry ────── History list entries (X/Y coordinates)
 Robot.NarratorResult ─────────────── Narrator resolution with confidence
@@ -35,6 +35,11 @@ Robot.MarkdownScanner.HeaderEntry ── Markdown header (struct)
 Robot.MarkdownScanner.SectionEntry ─ Section between headers
 Robot.MarkdownScanner.ListEntry ──── Bullet/numbered list item
 Robot.MarkdownScanner.LinkEntry ──── Markdown link or plain URL (struct)
+Robot.MapEntry ───────────────────── Mapa entity input for traversal graph
+Robot.MapEdge ────────────────────── Mapa→Mapa transition edge (struct)
+Robot.LocationEdge ───────────────── Lokacja→Lokacja projected edge (struct)
+Robot.ResolvedSegment ────────────── Per-segment resolution detail (struct)
+Robot.TraversalResult ────────────── Map traversal graph output container
 
                     PowerShell PSCustomObjects
                     ==========================
@@ -87,6 +92,7 @@ Compiled C# type `Robot.Entity` in `lib/EntityModel.cs`. Returned by `Get-Entity
 | `FilePath` | string | Associated file path (character files, overflow entities) |
 | `NerthusName` | string | RP override name (Nerthus server name for a Margonem location) |
 | `Coordinates` | hashtable | `@{ X = [int]; Y = [int] }` map coordinates |
+| `IsExterior` | bool? | Computed exterior classification: `$true` (exterior), `$false` (interior with evidence), `$null` (no data). Lokacja only. |
 | `TypeHistory` | List[TemporalEntry] | Full type change timeline |
 | `OwnerHistory` | List[TemporalEntry] | Full owner change timeline |
 | `GroupHistory` | List[TemporalEntry] | Full group membership timeline |
@@ -128,6 +134,97 @@ Compiled C# types in `lib/TemporalEntry.cs`. Used in all entity history lists.
 | `ValidFrom` | DateTime? | Start of validity period |
 | `ValidTo` | DateTime? | End of validity period |
 | `Season` | string | Season restriction |
+
+---
+
+## Map Traversal Types
+
+Compiled C# types in `lib/MapTraversalGraph.cs`. Used by `Get-MapTraversalGraph` and consumed by `Get-LocationGraph`.
+
+`Robot.MapEntry` — input entry for map traversal graph building (one per Mapa entity):
+
+| Property | Type | Description |
+|---|---|---|
+| `Name` | string | Mapa entity name |
+| `Aliases` | string[] | All names from entity `Names[]` array (includes primary Name) |
+| `MargonemId` | string | `@margonemid` value |
+| `ParentLocation` | string | `@lokacja` value (parent Lokacja name) |
+| `MapType` | string | Entity Type: `zewnętrzna` or `wewnętrzna` |
+
+`Robot.MapEdge` (struct) — Mapa-to-Mapa transition edge:
+
+| Property | Type | Description |
+|---|---|---|
+| `Source` | string | Source map name (resolved) |
+| `Target` | string | Target map name (resolved) |
+| `Weight` | int | Number of times this transition was observed |
+| `FirstSeenDate` | string | Earliest session date (`yyyy-MM-dd`) |
+| `LastSeenDate` | string | Latest session date (`yyyy-MM-dd`) |
+
+`Robot.LocationEdge` (struct) — projected Lokacja-to-Lokacja edge:
+
+| Property | Type | Description |
+|---|---|---|
+| `Source` | string | Source Lokacja name (from `MapEntry.ParentLocation`) |
+| `Target` | string | Target Lokacja name |
+| `Weight` | int | Aggregated weight from contributing MapEdges |
+| `FirstSeenDate` | string | Earliest date (`yyyy-MM-dd`) |
+| `LastSeenDate` | string | Latest date (`yyyy-MM-dd`) |
+
+`Robot.ResolvedSegment` (struct) — per-segment resolution detail:
+
+| Property | Type | Description |
+|---|---|---|
+| `Raw` | string | Original raw map name from log |
+| `Resolved` | string | Resolved Mapa entity name (`null` if unresolved) |
+| `Stage` | string | Resolution stage: `Exact`, `SuffixStrip`, `WordDrop`, or `Unresolved` |
+| `StrippedName` | string | Intermediate candidate that matched (for SuffixStrip/WordDrop) |
+| `ParentLocation` | string | Parent Lokacja of resolved map (`null` if unresolved) |
+| `SessionIndex` | int | Index into the sessionSegments array |
+
+`Robot.TraversalResult` — map traversal graph output container:
+
+| Property | Type | Description |
+|---|---|---|
+| `MapEdges` | MapEdge[] | Mapa-to-Mapa transition edges |
+| `LocationEdges` | LocationEdge[] | Projected Lokacja-to-Lokacja edges |
+| `Segments` | ResolvedSegment[] | Per-segment resolution detail |
+| `UnresolvedNames` | string[] | Distinct names that failed all resolution stages |
+| `TotalSegments` | int | Total segments processed |
+| `ResolvedCount` | int | Number of resolved segments |
+| `UnresolvedCount` | int | Number of unresolved segments |
+
+`TraversalUpdateResult` — return type of `Set-TraversalEntities`:
+
+| Property | Type | Description |
+|---|---|---|
+| `DoorCandidates` | PSCustomObject[] | All `@drzwi` candidate pairs above weight threshold |
+| `DoorsApplied` | PSCustomObject[] | Pairs where at least one direction was written |
+| `DoorsSkipped` | PSCustomObject[] | Pairs skipped due to existing `@drzwi` |
+| `MapSuggestions` | PSCustomObject[] | Unresolved map names meeting count threshold |
+| `TraversalSummary` | PSCustomObject | Stats from `Get-MapTraversalGraph` |
+| `GraphSummary` | PSCustomObject | Stats from `Get-LocationGraph` |
+
+`DoorCandidate` — entry in `DoorCandidates`/`DoorsApplied`/`DoorsSkipped`:
+
+| Property | Type | Description |
+|---|---|---|
+| `Source` | string | Lokacja A (alphabetically first in canonical key) |
+| `Target` | string | Lokacja B |
+| `Weight` | int | Aggregated traversal weight |
+| `FirstSeen` | datetime | Earliest date this transition was observed |
+| `LastSeen` | datetime | Latest date |
+| `PossiblyStale` | bool | Coordinates changed after edge creation |
+
+`MapSuggestion` — entry in `MapSuggestions`:
+
+| Property | Type | Description |
+|---|---|---|
+| `RawName` | string | Most frequent raw form of the unresolved name |
+| `BaseName` | string | After suffix stripping |
+| `InferredParent` | string | Most frequent adjacent Lokacja parent |
+| `Count` | int | Total occurrences across all sessions |
+| `Variants` | string[] | All distinct raw forms seen |
 
 ---
 
@@ -548,7 +645,7 @@ Node object:
 | `CN` | string | Hierarchical canonical name |
 | `NerthusName` | string | RP override name |
 | `Coordinates` | hashtable | `@{ X = int; Y = int }` (or `$null`) |
-| `IsExterior` | bool | Whether the location is an exterior/outdoor map |
+| `IsExterior` | bool | Whether the location is exterior (computed classification or coordinates fallback) |
 | `InDegree` | int | Number of incoming edges |
 | `OutDegree` | int | Number of outgoing edges |
 
@@ -962,13 +1059,15 @@ Returned by `Get-LocationEntity` in `public/location/get-locationentity.ps1`. En
 | `ChildCount` | int | Number of children |
 | `DoorTargets` | object[] | Resolved door connection entities (or `@{ Name; Resolved = $false }` stubs) |
 | `DoorCount` | int | Number of door connections |
-| `IsExterior` | bool | Whether the entity has coordinates (exterior/outdoor map) |
+| `IsExterior` | bool | Whether the entity is exterior (computed from entity `IsExterior` or coordinates fallback) |
 | `Coordinates` | hashtable | `@{ X = int; Y = int }` (or `$null`) |
 | `HierarchicalPath` | string | Canonical name (CN) from entity state — `Lokacja/Parent/.../Name` |
 | `NerthusName` | string | RP override name (Nerthus server name for a Margonem location) |
 | `EntityCount` | int | Count of non-location entities at this location |
 | `Status` | string | Entity status (Aktywny default) |
 | `MapData` | object | Mapa-specific metadata (only for `Type = 'Mapa'`, else `$null`) |
+| `ExteriorParent` | string | Name of the nearest exterior ancestor (or `$null` for exteriors/no ancestor) |
+| `QualifiedPath` | string | `"ExteriorAncestor/Name"` path (or `$null`) |
 
 MapData subobject (for Mapa entities, extracted from `Entity.Overrides`):
 

@@ -117,6 +117,7 @@ Name resolution, validation, report, and workflow endpoints:
 | Method | Path | Handler | Description |
 |---|---|---|---|
 | GET | `/resolve/:name` | `Invoke-ApiResolveName` | Resolve name to entity or player |
+| POST | `/resolve/batch` | `Invoke-ApiResolveBatch` | Batch resolve names with scope-gated enrichment |
 | GET | `/validate/pu` | `Invoke-ApiValidatePU` | PU assignment validation |
 | GET | `/validate/currency` | `Invoke-ApiValidateCurrency` | Currency reconciliation |
 | GET | `/validate/sessions` | `Invoke-ApiValidateSessions` | Session integrity |
@@ -180,7 +181,7 @@ Scope matching rules (implemented in `ApiMiddleware.HasScope`):
 | Scope | Routes |
 |---|---|
 | _(none)_ | Static: /health, /routes, /metrics, /schema; SSE: /events; GET /dashboard, /auth/whoami |
-| `entity:read` | GET /entities, /entities/:name, /entity-state, /entities/:name/history, /entities/:name/delta, /resolve/:name, /currency, /economy/snapshot, /economy/timeline, /transactions, /locations, /locations/:name, /locations/:name/contents, /maps |
+| `entity:read` | GET /entities, /entities/:name, /entity-state, /entities/:name/history, /entities/:name/delta, /resolve/:name, /currency, /economy/snapshot, /economy/timeline, /transactions, /locations, /locations/:name, /locations/:name/contents, /maps; POST /resolve/batch |
 | `entity:write` | POST /entities, PUT /entities/:name, DELETE /entities/:name, POST /currency, PUT /currency/:name, POST /locations, PUT /locations/:name, DELETE /locations/:name, POST /maps |
 | `player:read` | GET /players, /players/:name |
 | `player:write` | POST /players, POST /players/:name/characters |
@@ -280,6 +281,12 @@ curl http://localhost:8642/api/health
 
 # Name dictionary discovery
 curl http://localhost:8642/api/schema
+
+# Batch resolve names with temporal context
+curl -X POST http://localhost:8642/api/resolve/batch \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer <token>" \
+  -d '{"names": ["Solmyr", "Ithan", "Zoltan"], "activeOn": "2025-06-15"}'
 ```
 
 SSE client example:
@@ -301,6 +308,72 @@ events.addEventListener('character:create', (e) => {
     const data = JSON.parse(e.data);
     console.log('New character:', data.name);
 });
+```
+
+## Batch Name Resolution (POST /resolve/batch)
+
+`Invoke-ApiResolveBatch` resolves up to 100 names in a single request. It uses a shared `Resolve-Name` cache across all lookups in the batch, avoiding repeated name index rebuilds.
+
+Request body:
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `names` | string[] | Yes | 1-100 name queries to resolve |
+| `activeOn` | string (ISO date) | No | Temporal filter — restricts alias matching to aliases valid on this date |
+
+When `activeOn` is provided, the handler builds a date-filtered name index via `Get-Entity -ActiveOn` so that expired aliases do not match.
+
+Resolution uses a two-pass strategy per name. The first pass calls `Resolve-Name -NoFuzzy` (exact and declension matching only, stages 1-2). On miss, the second pass calls `Resolve-Name` with full fuzzy matching (stage 3). The `matchStage` field in the response indicates which pass produced the result: 2 for exact/declension, 3 for fuzzy, 0 for unresolved.
+
+Response fields are scope-gated. The base response (requiring `entity:read`) always includes:
+
+| Field | Type | Description |
+|---|---|---|
+| `name` | string | Canonical entity name |
+| `type` | string | Entity type (Polish canonical) |
+| `status` | string | Entity status (defaults to `Aktywny` if absent) |
+| `aliases` | string[] | Known aliases excluding the canonical name |
+| `matchStage` | int | Resolution stage: 0 = unresolved, 2 = exact/declension, 3 = fuzzy |
+
+With `session:read` scope, the response adds session graph enrichment:
+
+| Field | Type | Description |
+|---|---|---|
+| `sessions` | int | Total session participation count |
+| `lastActive` | datetime | Most recent session date |
+| `tiers` | object | Participation counts by tier (`0`, `1`, `2`) |
+
+With `admin:read` scope, the response adds PU and co-participation data:
+
+| Field | Type | Description |
+|---|---|---|
+| `puWeight` | decimal | Cumulative PU weight (rounded to 2 decimal places) |
+| `coParticipants` | string[] | Top 3 most frequent co-participants by session overlap |
+
+Unresolved names return `null` in the results dictionary. Error responses:
+
+| HTTP Status | Condition |
+|---|---|
+| 400 | Missing `names` array, empty array, or more than 100 entries |
+
+Response envelope:
+
+```json
+{
+    "results": {
+        "Solmyr": {
+            "name": "Solmyr",
+            "type": "NPC",
+            "status": "Aktywny",
+            "aliases": ["Sol"],
+            "matchStage": 2,
+            "sessions": 15,
+            "lastActive": "2025-06-10T00:00:00",
+            "tiers": { "0": 3, "1": 7, "2": 5 }
+        },
+        "Nieznany": null
+    }
+}
 ```
 
 ## C# Class Responsibilities
@@ -466,7 +539,7 @@ plugins/robot-api/
 +-- private/
 |   +-- api-routes.ps1               # Route registration (static + dynamic)
 |   +-- api-worker.ps1               # RunspacePool worker threads
-|   +-- api-handlers-read.ps1        # 37 read handlers + 1 helper
+|   +-- api-handlers-read.ps1        # 38 read handlers + 1 helper
 |   +-- api-handlers-write.ps1       # 14 write handlers
 |   +-- api-handlers-auth.ps1        # Auth token API handlers (4 handlers)
 |   +-- api-handlers-dashboard.ps1   # Dashboard SPA endpoint handler

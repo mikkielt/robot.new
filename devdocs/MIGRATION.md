@@ -289,7 +289,7 @@ Phase overview:
 
 | Phase | Function | File | Purpose |
 |---|---|---|---|
-| 0 | `Invoke-MigrationPhase0` | `phase0-setup.ps1` | Przygotowanie i bootstrap — data manifest creation, prerequisite checks, bootstrap entity store from `Gracze.md` via `ConvertTo-EntitiesFromPlayers`, JSON state file conversion |
+| 0 | `Invoke-MigrationPhase0` | `phase0-setup.ps1` | Przygotowanie i bootstrap — data manifest creation, prerequisite checks, bootstrap entity store from `Gracze.md` via `ConvertTo-EntitiesFromPlayers`, legacy res copy (`.robot/res/` → `.robot.local/res/`), JSON state file conversion |
 | 1 | `Invoke-MigrationPhase1` | `phase1-session-hashes.ps1` | Baseline integralnosci sesji — generate baseline SHA256 hashes for all session headers (`Set-SessionHash -Full`) |
 | 2 | `Invoke-MigrationPhase2` | `phase2-validation.ps1` | Walidacja i naprawa danych — validate entity parity between legacy and new stores, run PU diagnostics and narrator normalization |
 | 3 | `Invoke-MigrationPhase3` | `phase3-location-import.ps1` | Import lokalizacji z mapy — bulk-import Mapa entities from maps.json to overflow file, derive Lokacja from hierarchy, apply overrides |

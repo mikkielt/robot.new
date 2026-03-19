@@ -17,7 +17,9 @@ Pass 1:  Get-Entity ──> Entity objects (file data only)
               │
               ├── Multi-file merge (numeric primacy)
               ├── @tag parsing + temporal scoping
-              └── Canonical Name (CN) resolution
+              ├── Canonical Name (CN) resolution
+              ├── IsExterior classification (Lokacja only)
+              └── Exterior-qualified path generation
 
 Pass 2:  Get-EntityState ──> Enriched entity objects
               │
@@ -227,6 +229,30 @@ Cycle detection uses a `HashSet[string]` of visited entity names. Warns to stder
 
 ---
 
+## IsExterior Classification
+
+After CN resolution, `Get-Entity` runs two post-parse phases on all entities.
+
+**Phase A — IsExterior classification** (Lokacja entities only):
+
+Three-state classification (`$true`/`$false`/`$null`):
+
+1. **Coordinates** — Entity has active `@koordynaty` → `IsExterior = $true`
+2. **Mapa children** — Mapa entities identified by `Overrides.ContainsKey('margonemid')` and grouped by `Location`:
+   - Any child has `@typ: zewnętrzna` → `IsExterior = $true`
+   - All children have `@typ: wewnętrzna` → `IsExterior = $false`
+3. **No evidence** — `IsExterior` stays `$null` (unknown)
+
+Non-Lokacja entities retain `IsExterior = $null`.
+
+**Phase B — Exterior-qualified paths** (interior Lokacja with `Location` set):
+
+For each interior Lokacja (`IsExterior -ne $true`) with a parent, walk the `@lokacja` chain upward (using `Get-LastActiveValue` on `LocationHistory` for temporal correctness) to find the nearest exterior ancestor (`IsExterior -eq $true`). When found, add `"ExteriorAncestor/EntityName"` to the entity's `Names` HashSet. This 2-segment qualified path is automatically indexed by `Get-NameIndex` (priority 1), enabling `Resolve-Name` to resolve bare interior names everywhere.
+
+Cycle detection via HashSet prevents infinite loops. Entities with no exterior ancestor receive no qualified path.
+
+---
+
 ## `Get-EntityState` — Session Override Merge
 
 The function uses a two-pass architecture:
@@ -291,7 +317,7 @@ Queries Lokacja (and optionally Mapa) entities from `Get-EntityState` output wit
 | `Entities` | object[] | Pre-fetched entity list from `Get-EntityState` |
 | `Quiet` | switch | Suppress warning output to stderr |
 
-Processing pipeline: (1) Fetch entities via `Get-EntityState` (or use pre-fetched `-Entities`). (2) Build reverse lookups: parent-to-children, location-to-entity count, name-to-entity. (3) Filter to Lokacja entities (or Lokacja+Mapa with `-IncludeMaps`) with status/name/parent/hasDoors/isExterior gates. (4) Enrich each entity with `Children`, `DoorTargets`, `IsExterior`, `HierarchicalPath`, `EntityCount`, `NerthusName`, `MapData`. (5) Return enriched array.
+Processing pipeline: (1) Fetch entities via `Get-EntityState` (or use pre-fetched `-Entities`). (2) Build reverse lookups: parent-to-children, location-to-entity count, name-to-entity. (3) Filter to Lokacja entities (or Lokacja+Mapa with `-IncludeMaps`) with status/name/parent/hasDoors/isExterior gates. (4) Enrich each entity with `Children`, `DoorTargets`, `IsExterior`, `HierarchicalPath`, `EntityCount`, `NerthusName`, `MapData`, `ExteriorParent`, `QualifiedPath`. (5) Return enriched array.
 
 Enriched output object:
 
@@ -305,13 +331,15 @@ Enriched output object:
 | `ChildCount` | int | Number of children |
 | `DoorTargets` | object[] | Resolved door target entities (or unresolved stubs with `Resolved = $false`) |
 | `DoorCount` | int | Number of door connections |
-| `IsExterior` | bool | Whether the entity has coordinates |
+| `IsExterior` | bool | Whether the entity is exterior (uses computed `Entity.IsExterior`, falls back to coordinates check) |
 | `Coordinates` | hashtable | `@{ X; Y }` or `$null` for interiors |
 | `HierarchicalPath` | string | Entity CN (hierarchical canonical name) |
 | `NerthusName` | string | RP display name (from `@nazwa_nerthus`) |
 | `EntityCount` | int | Count of non-location entities at this location |
 | `Status` | string | Entity status (defaults to `Aktywny`) |
 | `MapData` | object | For Mapa entities: `{ Slug, Url, UrlNerthus, Dimensions }` extracted from Overrides; `$null` for Lokacja |
+| `ExteriorParent` | string | Name of the nearest exterior ancestor (or `$null` for exteriors/no ancestor) |
+| `QualifiedPath` | string | `"ExteriorAncestor/Name"` path (or `$null`) |
 
 ---
 
@@ -360,6 +388,7 @@ Characters with `Status = 'Usuniety'` are excluded unless `-IncludeDeleted`.
 | `NerthusName` | string | Active RP override name (from `@nazwa_nerthus`; `$null` when absent) |
 | `NerthusNameHistory` | `List[object]` | NerthusName changes with validity ranges |
 | `Coordinates` | hashtable | Active map coordinates `@{ X = [int]; Y = [int] }` (from `@koordynaty`; `$null` for interiors) |
+| `IsExterior` | `bool?` | Computed: `$true` (exterior), `$false` (interior with evidence), `$null` (no data). Lokacja only. |
 | `CoordinateHistory` | `List[object]` | Coordinate changes with validity ranges (`X`, `Y`, `ValidFrom`, `ValidTo`, `Season`) |
 | `Contains` | `List[string]` | Child entity names |
 | `Overrides` | hashtable | Generic `@tag` -> value list dictionary |
@@ -515,9 +544,10 @@ Consumer: `get-entity.ps1` (sole consumer via `[Robot.EntityTagParser]::Parse`).
 | `tests/przedmiot-entity.Tests.ps1` | Przedmiot type mappings, entity creation, duplicate detection |
 | `tests/currency-entity.Tests.ps1` | Currency entity creation, @ilosc tag handling, quantity updates |
 | `tests/get-entity-mapa.Tests.ps1` | Mapa type parsing, @slug resolution, @url/@url_nerthus overrides, hierarchical CN, door-paths |
-| `tests/get-locationentity.Tests.ps1` | Location query, filtering, enrichment, door target resolution, map data extraction |
+| `tests/get-entity-isexterior.Tests.ps1` | IsExterior classification, exterior-qualified paths, temporal qualified paths, Resolve-Name integration |
+| `tests/get-locationentity.Tests.ps1` | Location query, filtering, enrichment, door target resolution, map data extraction, ExteriorParent/QualifiedPath |
 
-Fixtures: `entities.md`, `entities-100-ent.md`, `entities-200-ent.md`, `sessions-zmiany.md`, `entities-mapa.md`, `entities-slug.md`.
+Fixtures: `entities.md`, `entities-100-ent.md`, `entities-200-ent.md`, `sessions-zmiany.md`, `entities-mapa.md`, `entities-slug.md`, `entities-exterior.md`.
 
 ---
 

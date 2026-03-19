@@ -11,8 +11,11 @@
     2. Builds reverse lookups: parent→children, location→entity count, name→entity
     3. Filters to Lokacja entities (or Lokacja+Mapa with -IncludeMaps) with
        status/name/parent/hasDoors/isExterior gates
-    4. Enriches each entity with Children, DoorTargets, IsExterior,
-       HierarchicalPath, EntityCount, NerthusName, MapData (Overrides extraction)
+    4. Enriches each entity with Children, DoorTargets, IsExterior (from computed
+       Entity.IsExterior when available, falling back to coordinates check),
+       HierarchicalPath, EntityCount, NerthusName, MapData (Overrides extraction),
+       ExteriorParent (nearest exterior ancestor via @lokacja chain walk), and
+       QualifiedPath ("ExteriorParent/Name" for interior locations)
     5. Returns enriched PSCustomObject array
 
     Uses Get-EntityState (not Get-Entity) because CN (hierarchical path) is only
@@ -114,8 +117,13 @@ function Get-LocationEntity {
         # HasDoors filter
         $HasDoorsProp = ($E.PSObject.Properties['Doors'] -and $E.Doors -and $E.Doors.Count -gt 0)
         if ($HasDoors -and -not $HasDoorsProp) { continue }
-        # IsExterior filter
-        $IsExt = ($E.PSObject.Properties['Coordinates'] -and $null -ne $E.Coordinates)
+        # IsExterior filter — use computed IsExterior from Get-Entity post-parse;
+        # fall back to coordinates check for entities without the property
+        $IsExt = if ($E.PSObject.Properties['IsExterior'] -and $null -ne $E.IsExterior) {
+            $E.IsExterior -eq $true
+        } else {
+            ($E.PSObject.Properties['Coordinates'] -and $null -ne $E.Coordinates)
+        }
         if ($IsExterior -and -not $IsExt) { continue }
 
         # Enrich: children
@@ -142,6 +150,36 @@ function Get-LocationEntity {
             }
         }
 
+        # Enrich: ExteriorParent and QualifiedPath for interior locations
+        $ExtParent = $null
+        $QPath = $null
+        if (-not $IsExt -and $E.Location) {
+            $WalkVisited = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+            [void]$WalkVisited.Add($E.Name)
+            $WalkCurrent = $E
+            while ($true) {
+                $WalkParentName = $WalkCurrent.Location
+                if (-not $WalkParentName) { break }
+                if (-not $WalkVisited.Add($WalkParentName)) { break }
+                if ($EntityByName.ContainsKey($WalkParentName)) {
+                    $WalkParentEnt = $EntityByName[$WalkParentName]
+                    $WalkParentIsExt = if ($WalkParentEnt.PSObject.Properties['IsExterior'] -and $null -ne $WalkParentEnt.IsExterior) {
+                        $WalkParentEnt.IsExterior -eq $true
+                    } else {
+                        ($WalkParentEnt.PSObject.Properties['Coordinates'] -and $null -ne $WalkParentEnt.Coordinates)
+                    }
+                    if ($WalkParentIsExt) {
+                        $ExtParent = $WalkParentEnt.Name
+                        $QPath = "$($WalkParentEnt.Name)/$($E.Name)"
+                        break
+                    }
+                    $WalkCurrent = $WalkParentEnt
+                } else {
+                    break
+                }
+            }
+        }
+
         $Results.Add([PSCustomObject]@{
             Entity           = $E
             EntityName       = $E.Name
@@ -158,6 +196,8 @@ function Get-LocationEntity {
             EntityCount      = $EntCount
             Status           = $EStatus
             MapData          = $MapData
+            ExteriorParent   = $ExtParent
+            QualifiedPath    = $QPath
         })
     }
 

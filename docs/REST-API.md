@@ -39,7 +39,7 @@ Reports — change audit, dormancy, session frequency, narrator statistics, loca
 
 Validation — PU assignments, currency reconciliation, session integrity, and graph integrity checks.
 
-Name resolution — resolve any name to its entity or player, with fuzzy matching when the exact name is not found.
+Name resolution — resolve any name to its entity or player, with fuzzy matching when the exact name is not found. Batch resolution accepts multiple names at once and returns enriched results including session participation data when available.
 
 Log parsing — submit raw log text and receive structured data back, or provide log URLs to fetch and parse their content. Preview session markdown with name resolution before committing.
 

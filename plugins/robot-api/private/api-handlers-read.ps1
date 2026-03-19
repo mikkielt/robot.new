@@ -22,15 +22,19 @@
                 Invoke-ApiGetLeaderboard
     Currency:   Invoke-ApiGetCurrency, Invoke-ApiGetEconomicSnapshot,
                 Invoke-ApiGetEconomicTimeline, Invoke-ApiGetTransactions
-    Resolution: Invoke-ApiResolveName
+    Resolution: Invoke-ApiResolveName, Invoke-ApiResolveBatch
     Validation: Invoke-ApiValidatePU, Invoke-ApiValidateCurrency,
                 Invoke-ApiValidateSessions, Invoke-ApiValidateGraph
+    Locations:  Invoke-ApiGetLocationList, Invoke-ApiGetLocation,
+                Invoke-ApiGetLocationContents, Invoke-ApiGetMaps
     Reports:    Invoke-ApiGetChangelog, Invoke-ApiGetDormancy,
                 Invoke-ApiGetFrequency, Invoke-ApiGetNarrators,
                 Invoke-ApiGetLocations, Invoke-ApiGetLocationGraph,
                 Invoke-ApiGetPULog, Invoke-ApiGetNotifications,
                 Invoke-ApiGetDeliveryLog
-    Parsing:    Invoke-ApiParseLog, Invoke-ApiSessionPreview
+    Parsing:    Invoke-ApiFetchLogContent, Invoke-ApiParseLog,
+                Invoke-ApiSessionPreview
+    Files:      Invoke-ApiGetFiles
 
     Handlers follow a common pattern: extract query parameters, build a
     splatted parameter hashtable for the backing module function (with -Quiet
@@ -77,7 +81,7 @@ function Invoke-ApiEntityListQuery {
     # Sparse fieldsets
     $FieldSet = [Robot.ApiQueryParser]::ParseFields($QP['fields'])
     $Items = if ($null -ne $FieldSet) {
-        @($Page.Items | ForEach-Object {
+        @($Page.Items).ForEach({
             $Obj = @{}
             foreach ($F in $FieldSet) {
                 $Val = [Robot.ApiQueryParser]::GetEntityField($_, $F)
@@ -137,15 +141,15 @@ function Invoke-ApiGetEntity {
     $Name     = $ApiContext.PathParams['name']
     $Entities = Get-Entity -Quiet
 
-    $Match = @($Entities | Where-Object {
+    $Match = @($Entities.Where({
         [string]::Equals($_.Name, $Name, 'OrdinalIgnoreCase') -or
         [string]::Equals($_.CN, $Name, 'OrdinalIgnoreCase')
-    })
+    }))
 
     if ($Match.Count -eq 0) {
-        $Resolved = Resolve-Name -Query $Name -Quiet
+        $Resolved = Resolve-Name -Query $Name
         if ($Resolved) {
-            $Match = @($Entities | Where-Object { $_.Name -eq $Resolved.Name })
+            $Match = @($Entities.Where({ $_.Name -eq $Resolved.Name }))
         }
     }
 
@@ -291,7 +295,7 @@ function Invoke-ApiGetSessions {
         if ($null -ne $NR -and $NR -is [Robot.NarratorResult]) {
             $NarratorNames = @()
             if ($NR.Narrators) {
-                $NarratorNames = @($NR.Narrators | ForEach-Object { $_.Name })
+                $NarratorNames = @($NR.Narrators.ForEach('Name'))
             }
             $S | Add-Member -NotePropertyName 'Narrator' -NotePropertyValue @{
                 narrators  = $NarratorNames
@@ -520,12 +524,192 @@ function Invoke-ApiResolveName {
 
     $Name = $ApiContext.PathParams['name']
 
-    $Result = Resolve-Name -Query $Name -Quiet
+    $Result = Resolve-Name -Query $Name
     if (-not $Result) {
         return @{ StatusCode = 404; Body = @{ error = "Could not resolve: $Name" } }
     }
 
     return @{ StatusCode = 200; Body = $Result }
+}
+
+function Invoke-ApiResolveBatch {
+    <#
+        .SYNOPSIS
+        Resolves multiple name queries with scope-gated enrichment.
+    #>
+
+    param([hashtable]$ApiContext)
+
+    $B = $ApiContext.Body
+    if (-not $B -or -not $B.names) {
+        return @{ StatusCode = 400; Body = @{ error = 'names array required' } }
+    }
+    $Names = @($B.names)
+    if ($Names.Count -eq 0 -or $Names.Count -gt 100) {
+        return @{ StatusCode = 400; Body = @{ error = 'names must contain 1-100 entries' } }
+    }
+
+    $Scopes = @($ApiContext.TokenScopes)
+    $HasSessionRead = 'session:read' -in $Scopes
+    $HasAdminRead   = 'admin:read'   -in $Scopes
+
+    # Parse optional temporal context (session date for alias filtering)
+    $ActiveOn = $null
+    if ($B.activeOn) {
+        try { $ActiveOn = [datetime]::Parse($B.activeOn) } catch {}
+    }
+
+    # Stage 1: Resolve all names (shared cache avoids repeated index rebuild)
+    $ResolveCache = @{}
+    $ResolveParams = @{ Cache = $ResolveCache }
+
+    # When activeOn is provided, build a date-filtered name index so only
+    # temporally-valid aliases are resolvable (e.g. expired aliases won't match)
+    if ($ActiveOn) {
+        $FilteredEntities = Get-Entity -ActiveOn $ActiveOn -Quiet
+        $FilteredPlayers  = Get-Player -Quiet
+        $Idx = Get-NameIndex -Entities $FilteredEntities -Players $FilteredPlayers
+        $ResolveParams.Index     = $Idx.Index
+        $ResolveParams.StemIndex = $Idx.StemIndex
+        $ResolveParams.BKTree    = $Idx.BKTree
+    }
+
+    $Resolved = [System.Collections.Generic.Dictionary[string, object]]::new(
+        [System.StringComparer]::OrdinalIgnoreCase)
+
+    # Track match stage: try NoFuzzy first (stages 1/2/2b = declension),
+    # then full resolve (stage 3 = fuzzy). Exposed as matchStage in response.
+    $MatchStages = [System.Collections.Generic.Dictionary[string, int]]::new(
+        [System.StringComparer]::OrdinalIgnoreCase)
+
+    # Separate cache for NoFuzzy to avoid negative caching blocking full resolve
+    $NoFuzzyCache = @{}
+
+    foreach ($Name in $Names) {
+        $Key = [string]$Name
+        $NoFuzzyResult = Resolve-Name -Query $Key @ResolveParams -NoFuzzy -Cache $NoFuzzyCache
+        if ($NoFuzzyResult) {
+            $Resolved[$Key] = $NoFuzzyResult
+            # Stage 1 = exact, Stage 2 = declension — both are "confirmed" matches
+            $MatchStages[$Key] = 2
+        } else {
+            $Result = Resolve-Name -Query $Key @ResolveParams
+            $Resolved[$Key] = $Result
+            $MatchStages[$Key] = if ($Result) { 3 } else { 0 }
+        }
+    }
+
+    # Stage 2: Load session graph index once for activity enrichment (scope-gated)
+    $GraphStats = $null
+    if ($HasSessionRead) {
+        $GraphStats = [System.Collections.Generic.Dictionary[string, hashtable]]::new(
+            [System.StringComparer]::OrdinalIgnoreCase)
+
+        try {
+            $Config = Get-AdminConfig
+            $IndexPath = [System.IO.Path]::Combine($Config.ResDir, 'session-graph', '_index.json')
+
+            if ([System.IO.File]::Exists($IndexPath)) {
+                $Index = Read-SessionGraphIndex -IndexPath $IndexPath
+
+                # Single-pass scan: accumulate stats for all resolved names
+                $ResolvedNames = [System.Collections.Generic.HashSet[string]]::new(
+                    [System.StringComparer]::OrdinalIgnoreCase)
+                foreach ($R in $Resolved.Values) {
+                    if ($R) { [void]$ResolvedNames.Add($R.Name) }
+                }
+
+                foreach ($Header in $Index.Keys) {
+                    $Entry = $Index[$Header]
+                    if (-not $Entry.ContainsKey('Participants') -or -not $Entry['Participants']) { continue }
+                    $EntryDate = if ($Entry.ContainsKey('Date')) { $Entry['Date'] } else { $null }
+
+                    foreach ($P in $Entry['Participants']) {
+                        $PName = if ($P.ContainsKey('Name')) { $P['Name'] } else { $null }
+                        if (-not $PName -or -not $ResolvedNames.Contains($PName)) { continue }
+
+                        $PTier = if ($P.ContainsKey('Tier')) { [int]$P['Tier'] } else { 2 }
+                        $PWeight = if ($P.ContainsKey('Weight')) { $P['Weight'] } else { $null }
+
+                        if (-not $GraphStats.ContainsKey($PName)) {
+                            $GraphStats[$PName] = @{
+                                Sessions   = 0
+                                LastActive = $null
+                                Tier0      = 0; Tier1 = 0; Tier2 = 0
+                                PUWeight   = 0.0
+                                CoParts    = [System.Collections.Generic.Dictionary[string, int]]::new(
+                                    [System.StringComparer]::OrdinalIgnoreCase)
+                            }
+                        }
+                        $S = $GraphStats[$PName]
+                        $S.Sessions++
+                        $TierKey = "Tier$PTier"
+                        if ($S.ContainsKey($TierKey)) { $S[$TierKey]++ }
+                        if ($null -ne $PWeight) { $S.PUWeight += $PWeight }
+                        if ($EntryDate -and (-not $S.LastActive -or $EntryDate -gt $S.LastActive)) {
+                            $S.LastActive = $EntryDate
+                        }
+
+                        # Co-participants from same session (for admin enrichment)
+                        if ($HasAdminRead) {
+                            foreach ($CP in $Entry['Participants']) {
+                                $CPName = if ($CP.ContainsKey('Name')) { $CP['Name'] } else { $null }
+                                if (-not $CPName -or [string]::Equals($CPName, $PName, 'OrdinalIgnoreCase')) { continue }
+                                if ($S.CoParts.ContainsKey($CPName)) { $S.CoParts[$CPName]++ }
+                                else { $S.CoParts[$CPName] = 1 }
+                            }
+                        }
+                    }
+                }
+            }
+        } catch {
+            # Non-fatal: return results without graph enrichment
+            $GraphStats = $null
+        }
+    }
+
+    # Stage 3: Build response objects with scope-gated fields
+    $Results = @{}
+    foreach ($KV in $Resolved.GetEnumerator()) {
+        $Key = $KV.Key
+        $R  = $KV.Value
+
+        if (-not $R) { $Results[$Key] = $null; continue }
+
+        # Base: always included (entity:read)
+        $Stage = if ($MatchStages.ContainsKey($Key)) { $MatchStages[$Key] } else { 0 }
+        $Entry = @{
+            name       = $R.Name
+            type       = if ($R.PSObject.Properties['Type']) { $R.Type } else { $null }
+            status     = if ($R.PSObject.Properties['Status']) { $R.Status } else { 'Aktywny' }
+            aliases    = @(if ($R.PSObject.Properties['Names']) { @($R.Names.Where({ -not [string]::Equals($_, $R.Name, 'OrdinalIgnoreCase') }).ForEach({ [string]$_ })) } else { @() })
+            matchStage = $Stage
+        }
+
+        # Enrichment: session:read scope
+        if ($HasSessionRead -and $GraphStats -and $GraphStats.ContainsKey($R.Name)) {
+            $GS = $GraphStats[$R.Name]
+            $Entry.sessions   = $GS.Sessions
+            $Entry.lastActive = $GS.LastActive
+            $Entry.tiers      = @{ '0' = $GS.Tier0; '1' = $GS.Tier1; '2' = $GS.Tier2 }
+        }
+
+        # Enrichment: admin:read scope (PU weight + top 3 co-participants)
+        if ($HasAdminRead -and $GraphStats -and $GraphStats.ContainsKey($R.Name)) {
+            $GS = $GraphStats[$R.Name]
+            $Entry.puWeight = [math]::Round($GS.PUWeight, 2)
+            $CoPartArr = @($GS.CoParts.GetEnumerator())
+            $Sorted = [System.Linq.Enumerable]::OrderByDescending(
+                [object[]]$CoPartArr, [Func[object,int]]{ param($X) $X.Value })
+            $Top3 = [System.Linq.Enumerable]::Take($Sorted, 3)
+            $TopCoParts = @([System.Linq.Enumerable]::ToArray($Top3)).ForEach({ $_.Key })
+            $Entry.coParticipants = $TopCoParts
+        }
+
+        $Results[$Key] = $Entry
+    }
+
+    return @{ StatusCode = 200; Body = @{ results = $Results } }
 }
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -723,7 +907,7 @@ function Invoke-ApiGetLocations {
     param([hashtable]$ApiContext)
 
     # Return entities of type Lokacja as a location reference dataset
-    $Entities = @(Get-Entity -Quiet | Where-Object { $_.Type -eq 'Lokacja' })
+    $Entities = @(@(Get-Entity -Quiet).Where({ $_.Type -eq 'Lokacja' }))
 
     return (Invoke-ApiEntityListQuery -ApiContext $ApiContext -Entities $Entities)
 }

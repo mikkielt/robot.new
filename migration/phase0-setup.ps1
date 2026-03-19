@@ -3,8 +3,9 @@
     Phase 0: Setup & bootstrap.
 
     .DESCRIPTION
-    Verifies clean git state, creates safety tag, checks PU state file,
-    submodule registration, module import, and .robot.local/robot-data.psd1 manifest.
+    Verifies clean git state, creates safety tag, copies legacy .robot/res/
+    files to .robot.local/res/, checks PU state file, submodule registration,
+    module import, and .robot.local/robot-data.psd1 manifest.
     Then bootstraps entities.md from legacy Gracze.md, verifies entry counts
     and required sections, and commits the result.
 
@@ -27,6 +28,12 @@ function Invoke-MigrationPhase0 {
     $RepoRoot = Get-RepoRoot
     $AllOK = $true
 
+    # Ensure MigrationResDir is set (may be empty if manifest not yet created
+    # or Import-Module -Force cleared the DataDirectory override)
+    if ([string]::IsNullOrWhiteSpace($script:MigrationResDir)) {
+        $script:MigrationResDir = [System.IO.Path]::Combine($RepoRoot, '.robot.local', 'res')
+    }
+
     # ── Preparation ───────────────────────────────────────────────────────────
 
     # Step 1: Verify clean git status
@@ -37,7 +44,7 @@ function Invoke-MigrationPhase0 {
         $AllOK = $false
     } elseif ($GitStatus) {
         Write-StepWarning "Repozytorium ma niezacommitowane zmiany:"
-        foreach ($Line in ($GitStatus | Select-Object -First 10)) {
+        foreach ($Line in @($GitStatus)[0..9]) {
             Write-Host "    $Line" -ForegroundColor DarkGray
         }
         Write-ActionRequired 'Zacommituj lub schowaj (git stash) zmiany przed kontynuowaniem.'
@@ -66,6 +73,40 @@ function Invoke-MigrationPhase0 {
         }
     }
     Update-PhaseChecklist -State $State -Phase 0 -Item 'PreMigrationTag' -Value $true
+
+    # Step 2b: Copy legacy .robot/res/ files to .robot.local/res/
+    $LegacyResDir = [System.IO.Path]::Combine($RepoRoot, '.robot', 'res')
+    if ([System.IO.Directory]::Exists($LegacyResDir)) {
+        Write-Step -Number '2b' -Text 'Kopiowanie plików z .robot/res/ do .robot.local/res/...'
+        if (-not [System.IO.Directory]::Exists($script:MigrationResDir)) {
+            [void][System.IO.Directory]::CreateDirectory($script:MigrationResDir)
+        }
+        $LegacyFiles = [System.IO.Directory]::GetFiles($LegacyResDir)
+        $CopiedCount = 0
+        $SkippedCount = 0
+        foreach ($LegacyFile in $LegacyFiles) {
+            $FileName = [System.IO.Path]::GetFileName($LegacyFile)
+            $TargetFile = [System.IO.Path]::Combine($script:MigrationResDir, $FileName)
+            if ([System.IO.File]::Exists($TargetFile)) {
+                $SkippedCount++
+            } elseif ($WhatIf) {
+                Write-Host "    [SUCHY PRZEBIEG] Skopiowałbym: $FileName" -ForegroundColor DarkGray
+                $CopiedCount++
+            } else {
+                [System.IO.File]::Copy($LegacyFile, $TargetFile)
+                $CopiedCount++
+            }
+        }
+        if ($CopiedCount -gt 0 -or $SkippedCount -gt 0) {
+            $Parts = [System.Collections.Generic.List[string]]::new()
+            if ($CopiedCount -gt 0) { [void]$Parts.Add("skopiowano $CopiedCount") }
+            if ($SkippedCount -gt 0) { [void]$Parts.Add("pominięto $SkippedCount (już istnieją)") }
+            Write-StepOK ($Parts -join ', ')
+        } else {
+            Write-StepOK 'Brak plików do skopiowania'
+        }
+        Update-PhaseChecklist -State $State -Phase 0 -Item 'LegacyResCopied' -Value $true
+    }
 
     # Step 3: Verify PU state file exists
     Write-Step -Number 3 -Text 'Sprawdzanie pliku stanu PU...'
@@ -139,8 +180,8 @@ function Invoke-MigrationPhase0 {
 
     # Step 5: Verify module import and command count
     Write-Step -Number 5 -Text 'Weryfikacja modułu robot...'
-    $Commands = Get-Command -Module robot -ErrorAction SilentlyContinue
-    $CmdCount = ($Commands | Measure-Object).Count
+    $Commands = Get-Command -Module Robot.PowerShell -ErrorAction SilentlyContinue
+    $CmdCount = @($Commands).Count
     if ($CmdCount -ge 30) {
         Write-StepOK "Moduł załadowany: $CmdCount komend dostępnych"
         Update-PhaseChecklist -State $State -Phase 0 -Item 'ModuleImported' -Value $true

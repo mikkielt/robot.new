@@ -108,6 +108,50 @@ Describe 'Get-LocationGraph' {
         }
     }
 
+    Context 'MapTraversalGraph parameter' {
+        BeforeAll {
+            $script:Entities = Get-Entity -Path (Join-Path $script:FixturesRoot 'entities-deep-locations.md')
+            # Simulate a MapTraversalGraph with projected LocationEdges
+            $script:MockTraversal = [PSCustomObject]@{
+                LocationEdges = @(
+                    [PSCustomObject]@{
+                        Source        = 'Królestwo Erathii'
+                        Target        = 'Miasto Steadwick'
+                        Weight        = 3
+                        FirstSeenDate = '2024-01-01'
+                        LastSeenDate  = '2024-06-01'
+                    }
+                )
+                MapEdges        = @()
+                Segments        = @()
+                UnresolvedNames = @()
+                TotalSegments   = 0
+                ResolvedCount   = 0
+                UnresolvedCount = 0
+            }
+            $script:Graph = Get-LocationGraph -Entities $script:Entities -Sessions @() `
+                -IncludeMovementEdges -MapTraversalGraph $script:MockTraversal -Quiet
+        }
+
+        It 'creates movement or teleport edges from MapTraversalGraph LocationEdges' {
+            $MovTeleEdges = $script:Graph.Edges | Where-Object {
+                $_.Type -eq 'Movement' -or $_.Type -eq 'Teleport'
+            }
+            $MovTeleEdges | Should -Not -BeNullOrEmpty
+        }
+
+        It 'uses MapTraversal as data source' {
+            $MovTeleEdges = $script:Graph.Edges | Where-Object {
+                $_.Type -eq 'Movement' -or $_.Type -eq 'Teleport'
+            }
+            $MovTeleEdges[0].Sources | Should -Contain 'MapTraversal'
+        }
+
+        It 'counts movement or teleport edges in summary' {
+            ($script:Graph.Summary.MovementEdges + $script:Graph.Summary.TeleportEdges) | Should -BeGreaterThan 0
+        }
+    }
+
     Context 'Summary structure' {
         BeforeAll {
             $script:Entities = Get-Entity -Path (Join-Path $script:FixturesRoot 'entities-koordynaty.md')

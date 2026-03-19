@@ -13,7 +13,8 @@
     - Invoke-NameSearchWorkflow:             standalone name search via fuzzy picker + entity card
     - Invoke-FetchLogsWorkflow:              mass log fetch with 500ms CDN-safe throttling
     - Invoke-LogLocationReportWorkflow:      log location resolution analysis with near-match details
-    - Invoke-LocationGraphWorkflow:          location connection graph (containment, door, route, movement edges)
+    - Invoke-LocationGraphWorkflow:          location connection graph with optional map traversal
+                                              and @drzwi entity update via Set-TraversalEntities
     - Invoke-SessionGraphWorkflow:           session participation graph with 4 query modes
     - Invoke-CompareParticipationWorkflow:   cross-entity session overlap matrix (min 2 entities)
     - Invoke-SessionLeaderboardWorkflow:     session participation ranking with tier breakdown
@@ -403,16 +404,62 @@ function Invoke-LocationGraphWorkflow {
     if ($MoveChoice -eq '__back__') { return }
     if ($MoveChoice -eq 'Tak') { $IncludeMovement = $true }
 
-    $GrProg = New-ProgressState -Title 'Graf lokacji' -TotalSteps 1
-    Start-ProgressStep -State $GrProg -Label 'Budowanie'
+    $UpdateEntities = 'Nie'
+    if ($IncludeMovement) {
+        $UpdateStep = New-WizardChoiceStep -Name 'UpdateEntities' `
+            -Label 'Aktualizować encje (@drzwi) na podstawie analizy?' `
+            -Options @('Nie', 'Tylko raport', 'Zastosuj') -Default 'Nie'
+        $UpdateChoice = Invoke-WizardStep -Step $UpdateStep -State $State
+        if ($UpdateChoice -eq '__back__') { return }
+        $UpdateEntities = $UpdateChoice
+    }
+
+    $TotalSteps = if ($IncludeMovement -and $UpdateEntities -ne 'Nie') { 3 } elseif ($IncludeMovement) { 2 } else { 1 }
+    $GrProg = New-ProgressState -Title 'Graf lokacji' -TotalSteps $TotalSteps
 
     try {
         $GraphParams = @{ Quiet = $true }
         if ($MinDate) { $GraphParams['MinDate'] = $MinDate }
         if ($IncludeMovement) { $GraphParams['IncludeMovementEdges'] = $true }
 
+        # Build map traversal graph before location graph when movement edges requested
+        $MapTraversal = $null
+        if ($IncludeMovement) {
+            Start-ProgressStep -State $GrProg -Label 'Graf map'
+            try {
+                $Entities = Get-Entity
+                $Sessions = Get-Session
+                $LogData = Get-SessionLog -Session $Sessions -SkipFetch
+                $MapTraversal = Get-MapTraversalGraph -SessionLog $LogData -Entities $Entities -Quiet
+                $GraphParams['Entities'] = $Entities
+                $GraphParams['Sessions'] = $Sessions
+                $GraphParams['MapTraversalGraph'] = $MapTraversal
+                $MapDetail = "map: $($MapTraversal.ResolvedCount)/$($MapTraversal.TotalSegments)"
+                Complete-ProgressStep -State $GrProg -Detail $MapDetail
+            }
+            catch {
+                Complete-ProgressStep -State $GrProg -Detail 'pominięto' -Failed
+                Write-RobotWarning "[WARN Invoke-LocationGraphWorkflow] Map traversal: $_"
+            }
+        }
+
+        Start-ProgressStep -State $GrProg -Label 'Budowanie'
         $Graph = Get-LocationGraph @GraphParams
         Complete-ProgressStep -State $GrProg -Detail "$($Graph.Summary.NodeCount) węzłów"
+
+        $UpdateResult = $null
+        if ($UpdateEntities -ne 'Nie' -and $MapTraversal) {
+            Start-ProgressStep -State $GrProg -Label 'Aktualizacja encji'
+            $UpdateParams = @{
+                Entities = $Entities
+                Sessions = $Sessions
+                Quiet    = $true
+            }
+            if ($UpdateEntities -eq 'Tylko raport') { $UpdateParams['ReportOnly'] = $true }
+            $UpdateResult = Set-TraversalEntities @UpdateParams
+            Complete-ProgressStep -State $GrProg -Detail "$($UpdateResult.DoorsApplied.Count) @drzwi"
+        }
+
         Complete-ProgressGroup -State $GrProg
 
         if (-not $Graph -or $Graph.Summary.NodeCount -eq 0) {
@@ -421,6 +468,12 @@ function Invoke-LocationGraphWorkflow {
             Write-CLILine -Text 'Naciśnij dowolny klawisz...' -Color $DisabledColor
             [void][System.Console]::ReadKey($true)
             return
+        }
+
+        # Map traversal summary (when available)
+        if ($MapTraversal) {
+            Write-Host ''
+            Write-CLILine -Text "  Mapy: rozwiązane $($MapTraversal.ResolvedCount)/$($MapTraversal.TotalSegments), krawędzie map: $($MapTraversal.MapEdges.Count), nierozwiązane: $($MapTraversal.UnresolvedCount)" -Color $AccentColor
         }
 
         # Node/edge stats with resolution and type breakdowns
@@ -432,18 +485,27 @@ function Invoke-LocationGraphWorkflow {
         if ($S.PossiblyStaleEdges -gt 0) {
             Write-CLILine -Text "  Potencjalnie nieaktualne krawędzie: $($S.PossiblyStaleEdges)" -Color $WarningColor
         }
+
+        if ($UpdateResult) {
+            Write-Host ''
+            Write-CLILine -Text "  @drzwi: kandydaci $($UpdateResult.DoorCandidates.Count), zastosowano $($UpdateResult.DoorsApplied.Count), pominięto $($UpdateResult.DoorsSkipped.Count)" -Color $AccentColor
+            if ($UpdateResult.MapSuggestions.Count -gt 0) {
+                Write-CLILine -Text "  Sugestie map: $($UpdateResult.MapSuggestions.Count) nierozwiązanych nazw" -Color $WarningColor
+            }
+        }
         Write-Host ''
 
         # Nodes sorted by total degree (most-connected first)
-        $NodeData = $Graph.Nodes | Sort-Object -Property { $_.InDegree + $_.OutDegree } -Descending
-        $TableData = $NodeData | ForEach-Object {
+        $NodeData = [System.Linq.Enumerable]::OrderByDescending(
+            [object[]]@($Graph.Nodes), [Func[object,int]]{ param($X) $X.InDegree + $X.OutDegree })
+        $TableData = @([System.Linq.Enumerable]::ToArray($NodeData)).ForEach({
             [PSCustomObject]@{
                 Name       = $_.Name
                 Degree     = "$($_.InDegree)/$($_.OutDegree)"
                 Coords     = if ($_.Coordinates) { "$($_.Coordinates.X), $($_.Coordinates.Y)" } else { '-' }
                 Entity     = if ($_.EntityMatch) { $_.EntityMatch.Name } else { '-' }
             }
-        }
+        })
 
         $TableComponent = New-ResultTableComponent -Data @($TableData) `
             -Columns @('Name', 'Degree', 'Coords', 'Entity') `
@@ -579,7 +641,7 @@ function Invoke-SessionLeaderboardWorkflow {
         if (-not $Result -or $Result.Count -eq 0) {
             Write-CLILine -Text 'Brak danych.' -Color $WarningColor
         } else {
-            $TableData = $Result | ForEach-Object {
+            $TableData = @($Result).ForEach({
                 [PSCustomObject]@{
                     Poz    = $_.Rank
                     Nazwa  = $_.Name
@@ -589,7 +651,7 @@ function Invoke-SessionLeaderboardWorkflow {
                     T1     = $_.Tier1
                     T2     = $_.Tier2
                 }
-            }
+            })
             $TableComponent = New-ResultTableComponent -Data @($TableData) `
                 -Columns @('Poz', 'Nazwa', 'Typ', 'Sesji', 'T0', 'T1', 'T2') `
                 -Headers @('#', 'Nazwa', 'Typ', 'Sesji', 'T0', 'T1', 'T2') `
@@ -705,7 +767,7 @@ function Invoke-SessionGraphWorkflow {
             Write-Host ''
         }
         elseif ($Mode -eq 'Sessions') {
-            $TableData = $Result | ForEach-Object {
+            $TableData = @($Result).ForEach({
                 [PSCustomObject]@{
                     Sesja  = $_.Header
                     Data   = $_.Date
@@ -713,7 +775,7 @@ function Invoke-SessionGraphWorkflow {
                     Tier   = $_.EntityTier
                     Waga   = if ($null -ne $_.EntityWeight) { $_.EntityWeight } else { '-' }
                 }
-            }
+            })
             $TableComponent = New-ResultTableComponent -Data @($TableData) `
                 -Columns @('Data', 'Sesja', 'Format', 'Tier', 'Waga') `
                 -Headers @('Data', 'Sesja', 'Format', 'Tier', 'Waga') `
@@ -725,13 +787,13 @@ function Invoke-SessionGraphWorkflow {
             }
         }
         elseif ($Mode -eq 'CoParticipants') {
-            $TableData = $Result | ForEach-Object {
+            $TableData = @($Result).ForEach({
                 [PSCustomObject]@{
                     Nazwa          = $_.Name
                     Typ            = if ($_.Type) { $_.Type } else { '-' }
                     WspólneSesje   = $_.SharedSessions
                 }
-            }
+            })
             $TableComponent = New-ResultTableComponent -Data @($TableData) `
                 -Columns @('Nazwa', 'Typ', 'WspólneSesje') `
                 -Headers @('Nazwa', 'Typ', 'Wspólne sesje') `
@@ -743,7 +805,7 @@ function Invoke-SessionGraphWorkflow {
             }
         }
         elseif ($Mode -eq 'EntityTimeline') {
-            $TableData = $Result | ForEach-Object {
+            $TableData = @($Result).ForEach({
                 [PSCustomObject]@{
                     Nazwa  = $_.Name
                     Typ    = if ($_.Type) { $_.Type } else { '-' }
@@ -751,7 +813,7 @@ function Invoke-SessionGraphWorkflow {
                     Źródło = if ($_.Source) { $_.Source } else { '-' }
                     Waga   = if ($null -ne $_.Weight) { $_.Weight } else { '-' }
                 }
-            }
+            })
             $TableComponent = New-ResultTableComponent -Data @($TableData) `
                 -Columns @('Nazwa', 'Typ', 'Tier', 'Źródło', 'Waga') `
                 -Headers @('Nazwa', 'Typ', 'Tier', 'Źródło', 'Waga') `

@@ -32,13 +32,16 @@ Source files:
 | File | Function | Role |
 |---|---|---|
 | `public/reporting/get-locationgraph.ps1` | `Get-LocationGraph` | Core graph assembly |
+| `public/reporting/get-maptraversalgraph.ps1` | `Get-MapTraversalGraph` | Map traversal graph (Mapa-level edges, Lokacja projection) |
 | `public/reporting/get-namedlocationreport.ps1` | `Get-NamedLocationReport` | Route edge extraction (and location analysis) |
 | `public/reporting/get-namedloglocationreport.ps1` | `Get-NamedLogLocationReport` | Transition edge extraction (and log location analysis) |
 | `public/get-entity.ps1` | `Get-Entity` | `@koordynaty` tag parsing |
 | `public/get-entitystate.ps1` | `Get-EntityState` | `@koordynaty` Zmiany override |
+| `lib/MapTraversalGraph.cs` | `Robot.MapTraversalBuilder` | C# map resolution and graph building |
 | `private/cli/cli-registry.ps1` | -- | CLI menu entry `location-graph` |
 | `private/cli/cli-wf-reporting.ps1` | `Invoke-LocationGraphWorkflow` | CLI workflow |
 | `private/location-helpers.ps1` | `Get-MapBaseName` | Map name suffix stripping |
+| `public/location/set-traversalentities.ps1` | `Set-TraversalEntities` | Traversal-based @drzwi update and Mapa suggestions |
 
 ---
 
@@ -141,6 +144,122 @@ Source: `private/location-helpers.ps1` -- dot-sourced by `Get-NamedLogLocationRe
 
 ---
 
+## Map Traversal Graph
+
+The map traversal graph is an intermediate Mapa-level graph built from session log LocationSegments. It resolves raw game-map names to Mapa entities, builds Mapa-to-Mapa transition edges, and projects those edges to Lokacja-to-Lokacja edges via `@lokacja` parent links.
+
+```
+Session Logs (LocationSegments)
+    │
+    ▼
+Get-MapTraversalGraph (PowerShell orchestrator)
+    │   - Builds Mapa lookup from entities (Name + Aliases → Entity)
+    │   - Extracts raw segments from Get-SessionLog output
+    │   - Dispatches to C# MapTraversalBuilder.Build() or PS fallback
+    │
+    ▼
+MapTraversalBuilder.Build() (C# — lib/MapTraversalGraph.cs)
+    │   Input: MapEntry[], string[][] (segments per session), string[] (dates)
+    │   Processing:
+    │     1. Case-insensitive map dictionary (Name + all Aliases → MapEntry)
+    │     2. Resolution: Exact → SuffixStrip → WordDrop → Unresolved
+    │     3. Build Mapa→Mapa edges (skip same-map self-transitions)
+    │     4. Project to Lokacja→Lokacja edges (skip same-Lokacja)
+    │   Output: TraversalResult
+    │
+    ▼
+Get-LocationGraph (updated — new $MapTraversalGraph parameter)
+    │   Consumes LocationEdges from TraversalResult
+    │   Classifies as Movement/Teleport using structural adjacency
+```
+
+### Resolution Pipeline
+
+The map traversal resolution is a simplified, Mapa-scoped alternative to the full `Resolve-Name` pipeline used by `Get-NamedLogLocationReport`. Game map names are proper nouns from the Margonem engine, not Polish-inflected prose, so declension stripping, stem alternation, and fuzzy matching are deliberately omitted to avoid false positives.
+
+| Stage | Algorithm | Description |
+|---|---|---|
+| Exact | Dictionary lookup (OrdinalIgnoreCase) | Raw name matches Mapa Name or Alias |
+| SuffixStrip | 9-pattern iterative `do..while` stable | Strips floor/room/direction/difficulty/subarea suffixes, retries exact |
+| WordDrop | Progressive trailing-word removal | Falls back to `Get-MapBaseName` candidates (longest→shortest), retries each |
+| Unresolved | -- | Name could not be matched; breaks the consecutive edge chain |
+
+The SuffixStrip stage uses the margoworld plugin's `do..while` iterative approach (all 9 patterns applied until stable), not the core `Get-MapBaseName` single-pass word-drop.
+
+### Get-MapTraversalGraph
+
+| Parameter | Type | Mandatory | Description |
+|---|---|---|---|
+| `SessionLog` | object[] | Yes | Session log output from `Get-SessionLog` |
+| `Entities` | object[] | Yes | Entity list from `Get-Entity` |
+| `Quiet` | switch | No | Suppress warnings |
+
+Mapa entities are identified by: `$Entity.Overrides.ContainsKey('margonemid')` and `$Entity.Location` is non-null.
+
+The lookup dictionary indexes all Mapa aliases (from `$Entity.Names[]`), not just the primary `Name`.
+
+Output: `TraversalResult` (C# class or PSCustomObject fallback) with:
+
+| Property | Type | Description |
+|---|---|---|
+| `MapEdges` | MapEdge[] | Mapa-to-Mapa transition edges with weight and date range |
+| `LocationEdges` | LocationEdge[] | Projected Lokacja-to-Lokacja edges |
+| `Segments` | ResolvedSegment[] | Per-segment resolution detail |
+| `UnresolvedNames` | string[] | Names that failed all resolution stages |
+| `TotalSegments` | int | Total segments processed |
+| `ResolvedCount` | int | Number of segments resolved |
+| `UnresolvedCount` | int | Number of unresolved segments |
+
+### C# Types
+
+See [STRUCTURES.md](STRUCTURES.md) for full property tables for `MapEntry`, `MapEdge` (struct), `LocationEdge` (struct), `ResolvedSegment` (struct), and `TraversalResult`.
+
+---
+
+## Set-TraversalEntities
+
+Analyzes the Map Traversal Graph to discover missing `@drzwi` connections between Lokacja entities and suggest new Mapa entities from unresolved map names. Heritage: mirrors `phase6-door-inference.ps1` batch write pattern.
+
+| Parameter | Type | Mandatory | Description |
+|---|---|---|---|
+| `Entities` | object[] | No | Pre-fetched entities from `Get-Entity` |
+| `Sessions` | object[] | No | Pre-fetched sessions from `Get-Session` |
+| `MinDate` | datetime | No | Delta mode — only sessions on or after this date |
+| `MinDoorWeight` | int | No | Minimum Teleport edge weight for @drzwi candidates (default: 3) |
+| `MinMapWeight` | int | No | Minimum unresolved name occurrences for Mapa suggestions (default: 5) |
+| `SkipDoors` | switch | No | Skip @drzwi discovery |
+| `SkipMaps` | switch | No | Skip Mapa entity suggestions |
+| `ReportOnly` | switch | No | Return analysis without writing |
+| `Quiet` | switch | No | Suppress warnings |
+
+### Algorithm (7 stages)
+
+1. **Data Loading** — auto-fetch entities/sessions if not provided; apply `-MinDate` to `Get-Session`; fetch session logs via `Get-SessionLog -SkipFetch`; build entity lookup (`Dictionary[string,object]`, OrdinalIgnoreCase)
+2. **Traversal Graph** — `Get-MapTraversalGraph -SessionLog -Entities -Quiet`
+3. **Location Graph** — `Get-LocationGraph -MapTraversalGraph -IncludeMovementEdges -Quiet`; collect Teleport, Door, and Containment edges
+4. **@drzwi Candidate Discovery** — aggregate Teleport edges with canonical key (alphabetical `"A|B"`) deduplication; filter out existing doors, containment pairs, self-transitions, and sub-threshold weights
+5. **Mapa Suggestion Discovery** — group unresolved segments by suffix-stripped base name; infer parent Lokacja from nearest resolved neighbors in same session; filter by `$MinMapWeight`
+6. **Apply @drzwi** — group insertions by file path; bidirectional tags (A→B and B→A); `Read-EntityFile` → `Find-EntitySection` → `Find-EntityBullet` → bottom-to-top insertion → `Write-EntityFile`; `ShouldProcess` per file; `Set-SessionGraphStale` after writes
+7. **Return** — `TraversalUpdateResult` (see [STRUCTURES.md](STRUCTURES.md))
+
+### Why Teleport edges
+
+Phase 6 uses Movement edges because it runs before `@drzwi` data exists. This function runs on a mature registry where `@drzwi` connections exist. **Teleport** edges (transitions between structurally disconnected locations at distance > 2) indicate **missing** `@drzwi`. Movement edges already have structural paths.
+
+### Edge Cases
+
+| Scenario | Behaviour |
+|---|---|
+| Empty sessions/entities | Returns valid empty result |
+| Existing `@drzwi` (entity or file level) | Pair goes to `DoorsSkipped` |
+| Containment pair | Excluded from candidates |
+| Weight below threshold | Excluded from candidates |
+| `-ReportOnly` | `DoorsApplied` empty, no file writes |
+| `-WhatIf` | No file writes, `DoorCandidates` still populated |
+| Mapa suggestions | Report only — does NOT auto-create entities (missing `@margonemid`) |
+
+---
+
 ## Get-LocationGraph
 
 | Parameter | Type | Mandatory | Description |
@@ -148,12 +267,13 @@ Source: `private/location-helpers.ps1` -- dot-sourced by `Get-NamedLogLocationRe
 | `Sessions` | object[] | No | Pre-fetched sessions from `Get-Session` |
 | `Entities` | object[] | No | Pre-fetched entities from `Get-Entity` |
 | `SessionLog` | object[] | No | Pre-fetched log report from `Get-NamedLogLocationReport` |
+| `MapTraversalGraph` | object | No | Pre-built map traversal graph from `Get-MapTraversalGraph` |
 | `MinDate` | datetime | No | Include only sessions on or after this date |
 | `MaxDate` | datetime | No | Include only sessions on or before this date |
 | `IncludeMovementEdges` | switch | No | Include transition edges from session logs |
 | `Quiet` | switch | No | Suppress warnings |
 
-Algorithm: (1) Load data -- auto-fetch `Get-Entity` and `Get-Session` if not provided (passes `MinDate`/`MaxDate`). (2) Build entity lookup -- case-insensitive dictionary keyed by `Name` and all entries in `Names` (aliases). (3) Edge accumulation -- uses a `$AddEdge` scriptblock closure over an `$EdgeKey` dictionary (key = `"Source|Target|Type"`, case-insensitive); duplicate edges increment `Weight` and extend `Sources` list. (4) Containment edges (Type=`Containment`) from `@lokacja` chain: `parent -> child` for every `Lokacja` entity with a non-null `Location`. (5) Door edges (Type=`Door`) from `@drzwi`: `entity -> door_target` for every Lokacja with non-empty `Doors` list. (6) Route edges (Type=`Route`) from `Get-NamedLocationReport` `.RouteEdges` -- consecutive `->` segments from session metadata. (7) Inferred hierarchy edges (Type=`InferredHierarchy`) from `Get-NamedLocationReport` `.Locations[].InferredParents` -- slash-path parent-child relationships. (8) Movement edges (Type=`Movement`, optional) from `Get-NamedLogLocationReport` `.Transitions` -- consecutive log location segments; only included when `-IncludeMovementEdges` is set. (9) Node construction -- all unique endpoint names from edges form the node set; each node resolves against the entity lookup for `CN`, `NerthusName`, `Coordinates`, and `IsExterior` classification. (10) Degree computation -- in-degree and out-degree per node. (11) Staleness detection -- for each edge, checks if source or target entity has `CoordinateHistory` with entries whose `ValidFrom` is after the edge's `FirstSeen`; marks `PossiblyStale = $true` with reason string.
+Algorithm: (1) Load data -- auto-fetch `Get-Entity` and `Get-Session` if not provided (passes `MinDate`/`MaxDate`). (2) Build entity lookup -- case-insensitive dictionary keyed by `Name` and all entries in `Names` (aliases). (3) Edge accumulation -- uses a `$AddEdge` scriptblock closure over an `$EdgeKey` dictionary (key = `"Source|Target|Type"`, case-insensitive); duplicate edges increment `Weight` and extend `Sources` list. (4) Containment edges (Type=`Containment`) from `@lokacja` chain: `parent -> child` for every `Lokacja` entity with a non-null `Location`. (5) Door edges (Type=`Door`) from `@drzwi`: `entity -> door_target` for every Lokacja with non-empty `Doors` list. (6) Route edges (Type=`Route`) from `Get-NamedLocationReport` `.RouteEdges` -- consecutive `->` segments from session metadata. (7) Inferred hierarchy edges (Type=`InferredHierarchy`) from `Get-NamedLocationReport` `.Locations[].InferredParents` -- slash-path parent-child relationships. (8) Movement edges (Type=`Movement`, optional) -- two sources, checked in priority order: (a) `$MapTraversalGraph.LocationEdges` -- projected Lokacja edges from `Get-MapTraversalGraph` (data source `MapTraversal`), (b) `$SessionLog` or auto-built `Get-NamedLogLocationReport` transitions (data source `SessionLog`). When `$MapTraversalGraph` is provided, the `$SessionLog` path is skipped. Only included when `-IncludeMovementEdges` is set. (9) Node construction -- all unique endpoint names from edges form the node set; each node resolves against the entity lookup for `CN`, `NerthusName`, `Coordinates`, and `IsExterior` classification. (10) Degree computation -- in-degree and out-degree per node. (11) Staleness detection -- for each edge, checks if source or target entity has `CoordinateHistory` with entries whose `ValidFrom` is after the edge's `FirstSeen`; marks `PossiblyStale = $true` with reason string.
 
 Edge object schema:
 
@@ -178,7 +298,7 @@ Node object schema:
 | `CN` | string | Canonical Name from entity, or `$null` |
 | `NerthusName` | string | RP override name, or `$null` |
 | `Coordinates` | hashtable | `@{ X; Y }` from `@koordynaty`, or `$null` |
-| `IsExterior` | bool | `$true` if entity has coordinates (world-map tile) |
+| `IsExterior` | bool | `$true` if entity has computed `IsExterior` classification or coordinates (falls back to coordinates check for unresolved entities) |
 | `InDegree` | int | Number of inbound edges |
 | `OutDegree` | int | Number of outbound edges |
 
@@ -235,7 +355,7 @@ The `location-report` entry has a `DataTransform` scriptblock to extract `.Locat
 |---|---|
 | `@koordynaty` with non-integer values | Skipped with warning; `Coordinates` remains `$null` |
 | `@koordynaty` with wrong number of parts (not 2) | Skipped silently |
-| Interior location (no `@koordynaty`) | `Coordinates = $null`, `IsExterior = $false` |
+| Interior location (no `@koordynaty`) | `Coordinates = $null`, `IsExterior = $false` (or `$true` if exterior Mapa children exist) |
 | Self-transition in logs (same location twice) | Skipped -- not added to `Transitions` |
 | Route edge `A -> A` (same location) | Preserved -- route edges do not filter self-loops |
 | Entity alias resolution in node construction | Lookup checks both `Name` and `Names` (aliases) |
@@ -254,7 +374,8 @@ The `location-report` entry has a `DataTransform` scriptblock to extract `.Locat
 | `tests/koordynaty-parsing.Tests.ps1` | `@koordynaty` parsing: simple, temporal, empty, invalid, multi-entity merge |
 | `tests/get-namedlocationreport.Tests.ps1` | Route edges: extraction, consecutive pairs, multi-session, wrapper return type |
 | `tests/get-namedloglocationreport.Tests.ps1` | Transition edges: consecutive pairs, self-transition skip, resolved names, empty logs (+ existing resolution tests) |
-| `tests/get-locationgraph.Tests.ps1` | Containment, door, coordinate, route, inferred hierarchy edges; node resolution; summary counts; empty inputs |
+| `tests/get-locationgraph.Tests.ps1` | Containment, door, coordinate, route, inferred hierarchy edges; MapTraversalGraph parameter; node resolution; summary counts; empty inputs |
+| `tests/get-maptraversalgraph.Tests.ps1` | Resolution stages (exact, alias, suffix strip, word drop, unresolved); self-transition skip; Lokacja projection; edge weight; date handling; empty input |
 
 Fixture files:
 
@@ -263,6 +384,7 @@ Fixture files:
 | `tests/fixtures/entities-koordynaty.md` | koordynaty-parsing, get-locationgraph |
 | `tests/fixtures/sessions-route-edges.md` | get-namedlocationreport, get-locationgraph |
 | `tests/fixtures/entities.md` | get-locationgraph (containment/door edges) |
+| `tests/fixtures/map-traversal-logs.md` | get-maptraversalgraph (Lokacja + Mapa entities with aliases) |
 
 ---
 

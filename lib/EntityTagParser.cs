@@ -89,12 +89,16 @@ namespace Robot {
             public DateTime? ValidFrom;
             public DateTime? ValidTo;
             public string Season;
+            public string Annotation;
         }
 
         // ── Season keywords ─────────────────────────────────────────
 
         private static readonly HashSet<string> SeasonKeywords = new HashSet<string>(
             StringComparer.OrdinalIgnoreCase) { "wiosna", "lato", "jesień", "zima" };
+
+        private static readonly HashSet<string> AnnotationKeywords = new HashSet<string>(
+            StringComparer.OrdinalIgnoreCase) { "teleport" };
 
         // ── Public API ──────────────────────────────────────────────
 
@@ -181,7 +185,7 @@ namespace Robot {
                     else if (tag == "@drzwi") {
                         var parsed = ParseValidity(value, validityRx, dateRangeRx);
                         entry.DoorHistory.Add(new TemporalEntry(
-                            parsed.Text, parsed.ValidFrom, parsed.ValidTo, parsed.Season));
+                            parsed.Text, parsed.ValidFrom, parsed.ValidTo, parsed.Season, parsed.Annotation));
                     }
                     else if (tag == "@typ") {
                         var parsed = ParseValidity(value, validityRx, dateRangeRx);
@@ -312,17 +316,20 @@ namespace Robot {
 
             string parenContent = parenGroup.Value.Trim();
 
-            // Comma-separated: combined form allows season + date range in any order
-            // e.g. "Targowisko (2024-01:, lato)" or "Port (zima, 2023-06:2024-01)"
+            // Comma-separated: combined form allows season/annotation + date range in any order
+            // e.g. "Targowisko (2024-01:, lato)" or "Port (teleport, 2023-06:2024-01)"
             if (parenContent.IndexOf(',') >= 0) {
                 string[] parts = parenContent.Split(',');
                 string season = null;
+                string annotation = null;
                 string datePart = null;
 
                 foreach (string part in parts) {
                     string p = part.Trim();
                     if (SeasonKeywords.Contains(p)) {
                         season = p.ToLowerInvariant();
+                    } else if (AnnotationKeywords.Contains(p)) {
+                        annotation = p.ToLowerInvariant();
                     } else {
                         datePart = p;
                     }
@@ -338,14 +345,22 @@ namespace Robot {
                     }
                 }
 
-                return new ValidityResult { Text = name, ValidFrom = validFrom, ValidTo = validTo, Season = season };
+                return new ValidityResult { Text = name, ValidFrom = validFrom, ValidTo = validTo, Season = season, Annotation = annotation };
             }
 
             // Season-only
             if (SeasonKeywords.Contains(parenContent)) {
                 return new ValidityResult {
                     Text = name, ValidFrom = null, ValidTo = null,
-                    Season = parenContent.ToLowerInvariant()
+                    Season = parenContent.ToLowerInvariant(), Annotation = null
+                };
+            }
+
+            // Annotation-only (e.g. "teleport")
+            if (AnnotationKeywords.Contains(parenContent)) {
+                return new ValidityResult {
+                    Text = name, ValidFrom = null, ValidTo = null,
+                    Season = null, Annotation = parenContent.ToLowerInvariant()
                 };
             }
 
@@ -354,13 +369,13 @@ namespace Robot {
             if (dateRangeMatch.Success) {
                 DateTime? vf = ResolvePartialDate(dateRangeMatch.Groups[1].Value.Trim(), false);
                 DateTime? vt = ResolvePartialDate(dateRangeMatch.Groups[2].Value.Trim(), true);
-                return new ValidityResult { Text = name, ValidFrom = vf, ValidTo = vt, Season = null };
+                return new ValidityResult { Text = name, ValidFrom = vf, ValidTo = vt, Season = null, Annotation = null };
             }
 
             // Non-temporal parenthetical: literal name part (e.g. "Rada (Ithan)")
             return new ValidityResult {
                 Text = name + " (" + parenContent + ")",
-                ValidFrom = null, ValidTo = null, Season = null
+                ValidFrom = null, ValidTo = null, Season = null, Annotation = null
             };
         }
 

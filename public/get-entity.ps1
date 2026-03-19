@@ -26,8 +26,8 @@
     (@ilość), coordinates (@koordynaty), and generic key-value overrides (@<anything>).
 
     History entries use Robot.TemporalEntry (lib/TemporalEntry.cs) typed containers with
-    Value, ValidFrom, ValidTo, and Season fields. Entity objects use Robot.Entity
-    (lib/EntityModel.cs) with 27 typed properties.
+    Value, ValidFrom, ValidTo, Season, and Annotation fields. Entity objects use Robot.Entity
+    (lib/EntityModel.cs) with 28 typed properties (including computed IsExterior).
 
     Processing pipeline:
     1. Input collection: resolves -Path to individual entity files (entities.md + *-NNN-ent.md)
@@ -47,7 +47,12 @@
           parent-child lookups via ParentIndex/LocalIndex integer keying.
     7. Entity merge: same-name entities across files have their histories concatenated
     8. CN resolution: post-parse pass builds hierarchical canonical names via Resolve-EntityCN
-    9. Cache store (WP-3): stores results + fingerprint in $script: vars for reuse
+    9. IsExterior classification (Phase A): determines exterior/interior status per Lokacja
+       entity from coordinates, child Mapa @typ overrides (zewnętrzna/wewnętrzna), or
+       leaves null when evidence is ambiguous
+    10. Exterior-qualified paths (Phase B): interior Lokacja entities with an exterior
+        ancestor get "ExteriorParent/Name" added to their Names list for resolution
+    11. Cache store (WP-3): stores results + fingerprint in $script: vars for reuse
 
     Multi-file support: files are processed in descending numeric order so the lowest number
     has highest override primacy. Same-name entities across files are merged, not replaced.
@@ -521,7 +526,7 @@ function Get-Entity {
                         }
                         '@drzwi' {
                             $Parsed = ConvertFrom-ValidityString -InputText $Value
-                            $DoorHistory.Add([Robot.TemporalEntry]::new($Parsed.Text, $Parsed.ValidFrom, $Parsed.ValidTo, $Parsed.Season))
+                            $DoorHistory.Add([Robot.TemporalEntry]::new($Parsed.Text, $Parsed.ValidFrom, $Parsed.ValidTo, $Parsed.Season, $Parsed.Annotation))
                         }
                         '@typ' {
                             $Parsed = ConvertFrom-ValidityString -InputText $Value
@@ -757,6 +762,94 @@ function Get-Entity {
     foreach ($Entity in $Entities) {
         $Visited = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
         $Entity.CN = Resolve-EntityCN -Entity $Entity -Visited $Visited -EntityByName $EntityByName -ActiveOn $ActiveOn -CNCache $CNCache
+    }
+
+    # ── Post-parse Phase A: IsExterior classification ──
+    # Build map-children-by-parent lookup (map entities identified by @margonemid override)
+    $MapChildrenByParent = [System.Collections.Generic.Dictionary[string, System.Collections.Generic.List[object]]]::new(
+        [System.StringComparer]::OrdinalIgnoreCase)
+    foreach ($Entity in $Entities) {
+        if ($Entity.Overrides -and $Entity.Overrides.ContainsKey('margonemid') -and $Entity.Location) {
+            if (-not $MapChildrenByParent.ContainsKey($Entity.Location)) {
+                $MapChildrenByParent[$Entity.Location] = [System.Collections.Generic.List[object]]::new()
+            }
+            $MapChildrenByParent[$Entity.Location].Add($Entity)
+        }
+    }
+
+    foreach ($Entity in $Entities) {
+        if ($Entity.Type -ne 'Lokacja') { continue }
+
+        # a. Has coordinates → exterior
+        if ($null -ne $Entity.Coordinates) {
+            $Entity.IsExterior = $true
+            continue
+        }
+
+        # b. Check map children
+        if ($MapChildrenByParent.ContainsKey($Entity.Name)) {
+            $ChildMaps = $MapChildrenByParent[$Entity.Name]
+            $HasExterior = $false
+            $AllInterior = $true
+            foreach ($MC in $ChildMaps) {
+                $MCType = Get-LastActiveValue -History $MC.TypeHistory -PropertyName 'Value' -ActiveOn $ActiveOn
+                if (-not $MCType) { $MCType = $MC.Type }
+                if ([string]::Equals($MCType, 'zewnętrzna', 'OrdinalIgnoreCase')) {
+                    $HasExterior = $true
+                    $AllInterior = $false
+                }
+                elseif (-not [string]::Equals($MCType, 'wewnętrzna', 'OrdinalIgnoreCase')) {
+                    $AllInterior = $false
+                }
+            }
+            if ($HasExterior) {
+                $Entity.IsExterior = $true
+            }
+            elseif ($AllInterior) {
+                $Entity.IsExterior = $false
+            }
+            # else: mixed/unknown → stays $null
+        }
+        # c. No evidence → IsExterior stays $null
+    }
+
+    # ── Post-parse Phase B: Exterior-qualified paths for interior Lokacja ──
+    # Build Lokacja-only lookup — $EntityByName can be shadowed by same-name
+    # Mapa entities (e.g. Lokacja "Steadwick" + Mapa "Steadwick")
+    $LocationByName = @{}
+    foreach ($Entity in $Entities) {
+        if ($Entity.Type -eq 'Lokacja') { $LocationByName[$Entity.Name] = $Entity }
+    }
+
+    foreach ($Entity in $Entities) {
+        if ($Entity.Type -ne 'Lokacja') { continue }
+        if ($Entity.IsExterior -eq $true) { continue }
+        if (-not $Entity.Location) { continue }
+
+        # Walk @lokacja chain upward to find nearest exterior ancestor
+        $WalkVisited = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+        [void]$WalkVisited.Add($Entity.Name)
+        $Current = $Entity
+        $ExteriorAncestorName = $null
+
+        while ($true) {
+            $ParentLocName = Get-LastActiveValue -History $Current.LocationHistory -PropertyName 'Value' -ActiveOn $ActiveOn
+            if (-not $ParentLocName) { break }
+            if (-not $WalkVisited.Add($ParentLocName)) { break }  # cycle detection
+
+            $ParentEnt = $LocationByName[$ParentLocName]
+            if (-not $ParentEnt) { break }
+
+            if ($ParentEnt.IsExterior -eq $true) {
+                $ExteriorAncestorName = $ParentEnt.Name
+                break
+            }
+            $Current = $ParentEnt
+        }
+
+        if ($ExteriorAncestorName) {
+            [void]$Entity.Names.Add("$ExteriorAncestorName/$($Entity.Name)")
+        }
     }
 
     # Store in module-scoped cache for subsequent calls (WP-3)

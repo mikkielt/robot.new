@@ -3,13 +3,15 @@
     Builds a unified location graph from entity registry, session metadata, and session logs.
 
     .DESCRIPTION
-    Get-LocationGraph merges six edge sources into a single node+edge graph:
+    Get-LocationGraph merges seven edge sources into a single node+edge graph:
     - Containment edges from @lokacja parent-child chains (entity registry)
     - Door edges from @drzwi bidirectional connections (entity registry)
     - Route edges from session metadata separators (-> and - patterns)
     - InferredHierarchy edges from slash-path parent detection
     - Movement edges from consecutive log LocationSegments (structurally walkable)
     - Teleport edges from consecutive log LocationSegments (no structural path)
+    - MapTraversal edges from Get-MapTraversalGraph projected LocationEdges
+      (preferred over raw SessionLog when -MapTraversalGraph is provided)
 
     Processing pipeline:
     1. Load entities and sessions, build case-insensitive entity lookup
@@ -23,10 +25,16 @@
        via Get-NamedLogLocationReport, classifying each transition as Movement
        (structurally walkable within distance 2) or Teleport (no structural path)
     7. Build node objects from all edge endpoints, enriched with entity metadata
-       (CN, NerthusName, Coordinates, in/out degree)
+       (CN, NerthusName, Coordinates, IsExterior via computed property, in/out degree)
     8. Detect stale edges where source/target CoordinateHistory changed after
        the edge's FirstSeen date (indicates map geometry may have invalidated
        the connection)
+
+    When -MapTraversalGraph is provided, Movement/Teleport classification uses
+    the pre-built LocationEdges from compiled C# MapTraversalBuilder rather than
+    re-processing raw session log transitions. The walkability check (distance <= 2
+    in the structural adjacency graph) still applies to classify each projected
+    edge as Movement or Teleport.
 
     Inline scriptblocks:
     - $AddEdge: merges duplicate edges by incrementing weight and expanding
@@ -58,6 +66,9 @@ function Get-LocationGraph {
 
         [Parameter(HelpMessage = "Pre-fetched log location report from Get-NamedLogLocationReport")]
         [object[]]$SessionLog,
+
+        [Parameter(HelpMessage = "Pre-built map traversal graph from Get-MapTraversalGraph")]
+        [object]$MapTraversalGraph,
 
         [Parameter(HelpMessage = "Include only sessions on or after this date")]
         [datetime]$MinDate,
@@ -140,7 +151,7 @@ function Get-LocationGraph {
     $Now = [datetime]::UtcNow
 
     # 3. Containment edges from @lokacja chains
-    $LocationEntities = $Entities | Where-Object { $_.Type -eq 'Lokacja' }
+    $LocationEntities = @($Entities).Where({ $_.Type -eq 'Lokacja' })
     foreach ($Loc in $LocationEntities) {
         if ($Loc.PSObject.Properties['Location'] -and $Loc.Location) {
             $ParentName = $Loc.Location
@@ -220,7 +231,19 @@ function Get-LocationGraph {
     $MovementEdgeCount = 0
     $TeleportEdgeCount = 0
     if ($IncludeMovementEdges) {
-        if ($SessionLog) {
+        if ($MapTraversalGraph) {
+            # Use projected LocationEdges from the map traversal graph
+            foreach ($LocEdge in $MapTraversalGraph.LocationEdges) {
+                $EdgeDate = try {
+                    [datetime]::ParseExact($LocEdge.FirstSeenDate, 'yyyy-MM-dd', $null)
+                } catch { $Now }
+                $Walkable = & $IsWalkable $LocEdge.Source $LocEdge.Target
+                $Type = if ($Walkable) { 'Movement' } else { 'Teleport' }
+                & $AddEdge $LocEdge.Source $LocEdge.Target $Type 'MapTraversal' $EdgeDate
+                if ($Walkable) { $MovementEdgeCount++ } else { $TeleportEdgeCount++ }
+            }
+        }
+        elseif ($SessionLog) {
             $LogReport = $SessionLog
         }
         else {
@@ -235,7 +258,7 @@ function Get-LocationGraph {
             }
         }
 
-        if ($LogReport) {
+        if (-not $MapTraversalGraph -and $LogReport) {
             foreach ($LogSession in $LogReport) {
                 if (-not $LogSession.Transitions -or $LogSession.Transitions.Count -eq 0) { continue }
                 foreach ($Trans in $LogSession.Transitions) {
@@ -298,6 +321,11 @@ function Get-LocationGraph {
             }
             if ($MatchedEntity.PSObject.Properties['Coordinates'] -and $MatchedEntity.Coordinates) {
                 $Coords = $MatchedEntity.Coordinates
+            }
+            # Use computed IsExterior when available; fall back to coordinates check
+            if ($MatchedEntity.PSObject.Properties['IsExterior'] -and $null -ne $MatchedEntity.IsExterior) {
+                $IsExterior = ($MatchedEntity.IsExterior -eq $true)
+            } elseif ($Coords) {
                 $IsExterior = $true
             }
         }

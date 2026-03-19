@@ -28,6 +28,7 @@ BeforeAll {
             Location    = $null
             Status      = $null
             Coordinates = '25, 18'
+            IsExterior  = $true
             Doors       = [System.Collections.Generic.List[string]]@('Ratusz Steadwicku', 'Koszary')
             NerthusName = 'Zamek Steadwick'
             CN          = 'Steadwick'
@@ -40,6 +41,7 @@ BeforeAll {
             Location    = 'Steadwick'
             Status      = $null
             Coordinates = $null
+            IsExterior  = $false
             Doors       = [System.Collections.Generic.List[string]]@('Komnata Rady')
             NerthusName = $null
             CN          = 'Steadwick > Ratusz Steadwicku'
@@ -52,6 +54,7 @@ BeforeAll {
             Location    = 'Steadwick'
             Status      = $null
             Coordinates = $null
+            IsExterior  = $false
             Doors       = [System.Collections.Generic.List[string]]::new()
             NerthusName = $null
             CN          = 'Steadwick > Koszary'
@@ -64,6 +67,7 @@ BeforeAll {
             Location    = 'Steadwick'
             Status      = 'Nieaktywny'
             Coordinates = $null
+            IsExterior  = $null
             Doors       = [System.Collections.Generic.List[string]]::new()
             NerthusName = $null
             CN          = 'Steadwick > Opuszczona Strażnica'
@@ -76,6 +80,7 @@ BeforeAll {
             Location    = 'Steadwick'
             Status      = 'Usunięty'
             Coordinates = $null
+            IsExterior  = $null
             Doors       = [System.Collections.Generic.List[string]]::new()
             NerthusName = $null
             CN          = 'Steadwick > Ruiny Zamku'
@@ -88,6 +93,7 @@ BeforeAll {
             Location    = 'Ratusz Steadwicku'
             Status      = $null
             Coordinates = $null
+            IsExterior  = $null
             Doors       = [System.Collections.Generic.List[string]]@('Steadwick')
             NerthusName = $null
             CN          = 'Steadwick > Ratusz Steadwicku > Komnata Rady'
@@ -100,6 +106,7 @@ BeforeAll {
             Location    = 'Steadwick'
             Status      = 'Aktywny'
             Coordinates = $null
+            IsExterior  = $null
             Doors       = $null
             NerthusName = $null
             CN          = $null
@@ -112,6 +119,7 @@ BeforeAll {
             Location    = 'Ratusz Steadwicku'
             Status      = 'Aktywny'
             Coordinates = $null
+            IsExterior  = $null
             Doors       = $null
             NerthusName = $null
             CN          = $null
@@ -124,6 +132,7 @@ BeforeAll {
             Location    = 'Steadwick'
             Status      = 'Aktywny'
             Coordinates = $null
+            IsExterior  = $null
             Doors       = $null
             NerthusName = $null
             CN          = $null
@@ -293,5 +302,48 @@ Describe 'Get-LocationEntity' {
     It 'defaults Status to Aktywny when entity has no Status' {
         $Result = Get-LocationEntity -Entities $script:MockEntities -Status 'Aktywny' -Quiet
         $Result.Count | Should -Be 3
+    }
+
+    It 'enriches ExteriorParent for interior locations' {
+        $Result = Get-LocationEntity -Entities $script:MockEntities -Quiet
+        $Ratusz = $Result | Where-Object { $_.EntityName -eq 'Ratusz Steadwicku' }
+        $Ratusz.ExteriorParent | Should -Be 'Steadwick'
+    }
+
+    It 'enriches QualifiedPath for interior locations' {
+        $Result = Get-LocationEntity -Entities $script:MockEntities -Quiet
+        $Ratusz = $Result | Where-Object { $_.EntityName -eq 'Ratusz Steadwicku' }
+        $Ratusz.QualifiedPath | Should -Be 'Steadwick/Ratusz Steadwicku'
+    }
+
+    It 'ExteriorParent is null for exterior locations' {
+        $Result = Get-LocationEntity -Entities $script:MockEntities -Quiet
+        $Steadwick = $Result | Where-Object { $_.EntityName -eq 'Steadwick' }
+        $Steadwick.ExteriorParent | Should -BeNullOrEmpty
+    }
+
+    It 'QualifiedPath is null for exterior locations' {
+        $Result = Get-LocationEntity -Entities $script:MockEntities -Quiet
+        $Steadwick = $Result | Where-Object { $_.EntityName -eq 'Steadwick' }
+        $Steadwick.QualifiedPath | Should -BeNullOrEmpty
+    }
+
+    It '-IsExterior filter works with Mapa-child-based exterior classification' {
+        # Add a Mapa-classified exterior entity (IsExterior = $true via Mapa child, no coordinates)
+        $MapaExteriorEntities = @(
+            [PSCustomObject]@{
+                Name = 'Bracada'; Type = 'Lokacja'; Location = $null; Status = $null
+                Coordinates = $null; IsExterior = $true; Doors = [System.Collections.Generic.List[string]]::new()
+                NerthusName = $null; CN = 'Bracada'; Overrides = @{}
+            }
+            [PSCustomObject]@{
+                Name = 'Podziemie'; Type = 'Lokacja'; Location = 'Bracada'; Status = $null
+                Coordinates = $null; IsExterior = $false; Doors = [System.Collections.Generic.List[string]]::new()
+                NerthusName = $null; CN = 'Bracada > Podziemie'; Overrides = @{}
+            }
+        )
+        $Result = Get-LocationEntity -Entities $MapaExteriorEntities -IsExterior -Quiet
+        $Result.Count | Should -Be 1
+        $Result[0].EntityName | Should -Be 'Bracada'
     }
 }

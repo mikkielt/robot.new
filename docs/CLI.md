@@ -64,6 +64,7 @@ Commands execute immediately — there is no need to press Enter after the lette
 | Gracze i Postacie | Register players and characters, view player/character cards |
 | Encje | Create, edit, search, and browse entities (NPCs, locations, groups, items) |
 | Waluta | Transfer currency between entities, run reconciliation checks, analyze the economy |
+| Przedmioty | Browse items with filters by owner and location |
 | PU | Monthly PU assignment, PU diagnostics |
 | Raporty i Narzędzia | Reporting, auditing, session graph, location graph, participation comparison, leaderboard, and utilities |
 | Migracja | Migration tools (when migration files are available) |

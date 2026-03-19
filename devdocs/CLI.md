@@ -114,7 +114,7 @@ Private CLI files in `private/cli/` (18 files, routing, workflows):
 |---|---|---|---|
 | `cli-primitives.ps1` | ~500 | 1 | Color scheme, theme detection, `Write-CLILine`, progress subsystem (`New-ProgressState`, `Start-ProgressStep`, `Update-ProgressStep`, `Complete-ProgressStep`, `Complete-ProgressGroup`), `Initialize-WorkflowScreen`; chain-loads all 9 `engine/*.ps1` files |
 | `cli-fuzzy.ps1` | ~340 | 2 | Fuzzy search candidate generation, filtering |
-| `cli-help.ps1` | ~120 | 2 | Help content dictionary (`$script:HelpContent`) |
+| `cli-help.ps1` | ~300 | 2 | Help content dictionary (`$script:HelpContent`) |
 | `cli-wizard.ps1` | ~650 | 3 | `$script:CommonParams`, step type resolution, `Invoke-Wizard`; dot-sources `cli-wizard-steps.ps1` and `cli-wizard-preview.ps1` |
 | `cli-wizard-steps.ps1` | ~435 | 3 | `Invoke-EngineLifecycle`, `Invoke-WizardStep`, wizard step factories (`New-WizardTextStep`, `New-WizardNumberStep`, `New-WizardDateStep`, `New-WizardChoiceStep`, `New-WizardFuzzyStep`) (dot-sourced by `cli-wizard.ps1`) |
 | `cli-wizard-preview.ps1` | -- | 3 | `Show-Preview` (dot-sourced by `cli-wizard.ps1`) |
@@ -574,7 +574,7 @@ All step types except `multitext` use `Invoke-EngineLifecycle` to run through th
 
 ## Menu Registry
 
-`$script:MenuOrder` defines the 7 top-level categories: `Sesje`, `Gracze i Postacie`, `Encje`, `Waluta`, `PU`, `Raporty i Narzedzia`, `Migracja`.
+`$script:MenuOrder` defines the 8 top-level categories: `Sesje`, `Gracze i Postacie`, `Encje`, `Waluta`, `Przedmioty`, `PU`, `Raporty i Narzędzia`, `Migracja`.
 
 `$script:MenuRegistry` is a flat array of hashtables. Each entry:
 

@@ -1,5 +1,5 @@
 namespace Robot {
-    /// Central 27-property entity domain model. Each entity carries temporal
+    /// Central 28-property entity domain model. Each entity carries temporal
     /// history lists (containing TemporalEntry/CoordinateTemporalEntry from
     /// lib/TemporalEntry.cs), current scalar values, and identity metadata.
     ///
@@ -43,6 +43,9 @@ namespace Robot {
         public object FilePathHistory { get; set; }
         public object NerthusNameHistory { get; set; }
         public object CoordinateHistory { get; set; }
+
+        // Computed classification (post-parse, not from tag parsing)
+        public bool? IsExterior { get; set; }
 
         // Metadata
         public object Overrides { get; set; }

@@ -20,19 +20,24 @@
     - ConvertFrom-CoordinateString: parses "X, Y" coordinate pair into @{ X; Y } or $null
 
     Module-level data:
-    - $script:ValidityPattern:    precompiled regex for parsing validity range syntax "text (range)"
-    - $script:SeasonKeywords:     HashSet of valid Polish season keywords (wiosna, lato, jesien, zima)
-    - $script:DateRangePattern:   precompiled regex for detecting "start:end" date range components
-    - $script:SessionDatePattern: precompiled regex for YYYY-MM-DD with optional /DD range suffix
+    - $script:ValidityPattern:      precompiled regex for parsing validity range syntax "text (range)"
+    - $script:SeasonKeywords:       HashSet of valid Polish season keywords (wiosna, lato, jesień, zima)
+    - $script:DateRangePattern:     precompiled regex for detecting "start:end" date range components
+    - $script:SessionDatePattern:   precompiled regex for YYYY-MM-DD with optional /DD range suffix
+    - $script:AnnotationKeywords:   HashSet of non-temporal parenthetical keywords (teleport)
+                                     parsed into the Annotation field instead of Season
 
     ConvertFrom-ValidityString is the central parser for entity @tag values.
-    It handles four syntactic forms:
+    It returns a hashtable with Text, ValidFrom, ValidTo, Season, and Annotation fields.
+    It handles five syntactic forms:
     1. Plain value: "Erathia" -> no temporal bounds
     2. Date range: "Erathia (2021-01:2024-06)" -> ValidFrom/ValidTo set
     3. Season only: "ithan-zima.png (zima)" -> Season set, no dates
-    4. Combined: "Targowisko (2024-01:, lato)" -> both date range and season
-    Non-temporal parentheticals (no colon, not a season keyword) are treated
-    as literal name parts for backward compatibility (e.g. "Rada (Ithan)").
+    4. Annotation only: "Port (teleport)" -> Annotation set, no dates or season
+    5. Combined: "Targowisko (2024-01:, lato)" -> both date range and season;
+       "Port (teleport, 2023-06:)" -> annotation and date range
+    Non-temporal parentheticals (no colon, not a season/annotation keyword)
+    are treated as literal name parts for backward compatibility (e.g. "Rada (Ithan)").
 
     Test-TemporalActivity is the hot-path filter: it checks date bounds and
     season constraints. Season resolution is cached per date in script-scope
@@ -55,6 +60,9 @@ $script:SessionDatePattern = [regex]::new('\b(\d{4}-\d{2}-\d{2})(?:/(\d{2}))?\b'
 $script:SeasonKeywords = [System.Collections.Generic.HashSet[string]]::new(
     [string[]]@('wiosna', 'lato', 'jesień', 'zima'),
     [System.StringComparer]::OrdinalIgnoreCase)
+$script:AnnotationKeywords = [System.Collections.Generic.HashSet[string]]::new(
+    [string[]]@('teleport'),
+    [System.StringComparer]::OrdinalIgnoreCase)
 
 function ConvertFrom-ValidityString {
     param([string]$InputText)
@@ -62,28 +70,31 @@ function ConvertFrom-ValidityString {
     $Match = $script:ValidityPattern.Match($InputText.Trim())
 
     if (-not $Match.Success) {
-        return @{ Text = $InputText.Trim(); ValidFrom = $null; ValidTo = $null; Season = $null }
+        return @{ Text = $InputText.Trim(); ValidFrom = $null; ValidTo = $null; Season = $null; Annotation = $null }
     }
 
     $Name       = $Match.Groups[1].Value.Trim()
     $ParenGroup = $Match.Groups[2]
 
     if (-not $ParenGroup.Success) {
-            return @{ Text = $Name; ValidFrom = $null; ValidTo = $null; Season = $null }
+            return @{ Text = $Name; ValidFrom = $null; ValidTo = $null; Season = $null; Annotation = $null }
     }
 
     $ParenContent = $ParenGroup.Value.Trim()
 
-    # Comma-separated: season + date range in any order (e.g. "2024-01:, lato")
+    # Comma-separated: season/annotation + date range in any order (e.g. "2024-01:, lato" or "teleport, 2024-03:")
     if ($ParenContent.Contains(',')) {
         $Parts = $ParenContent.Split(',')
-        $Season    = $null
-        $DatePart  = $null
+        $Season     = $null
+        $Annotation = $null
+        $DatePart   = $null
 
         foreach ($Part in $Parts) {
             $Trimmed = $Part.Trim()
             if ($script:SeasonKeywords.Contains($Trimmed)) {
                 $Season = $Trimmed.ToLowerInvariant()
+            } elseif ($script:AnnotationKeywords.Contains($Trimmed)) {
+                $Annotation = $Trimmed.ToLowerInvariant()
             } else {
                 $DatePart = $Trimmed
             }
@@ -100,19 +111,31 @@ function ConvertFrom-ValidityString {
         }
 
         return @{
-            Text      = $Name
-            ValidFrom = $ValidFrom
-            ValidTo   = $ValidTo
-            Season    = $Season
+            Text       = $Name
+            ValidFrom  = $ValidFrom
+            ValidTo    = $ValidTo
+            Season     = $Season
+            Annotation = $Annotation
         }
     }
 
     if ($script:SeasonKeywords.Contains($ParenContent)) {
         return @{
-            Text      = $Name
-            ValidFrom = $null
-            ValidTo   = $null
-            Season    = $ParenContent.ToLowerInvariant()
+            Text       = $Name
+            ValidFrom  = $null
+            ValidTo    = $null
+            Season     = $ParenContent.ToLowerInvariant()
+            Annotation = $null
+        }
+    }
+
+    if ($script:AnnotationKeywords.Contains($ParenContent)) {
+        return @{
+            Text       = $Name
+            ValidFrom  = $null
+            ValidTo    = $null
+            Season     = $null
+            Annotation = $ParenContent.ToLowerInvariant()
         }
     }
 
@@ -121,19 +144,21 @@ function ConvertFrom-ValidityString {
         $ValidFrom = Resolve-PartialDate -DateStr $DateMatch.Groups[1].Value.Trim() -IsEnd $false
         $ValidTo   = Resolve-PartialDate -DateStr $DateMatch.Groups[2].Value.Trim() -IsEnd $true
         return @{
-            Text      = $Name
-            ValidFrom = $ValidFrom
-            ValidTo   = $ValidTo
-            Season    = $null
+            Text       = $Name
+            ValidFrom  = $ValidFrom
+            ValidTo    = $ValidTo
+            Season     = $null
+            Annotation = $null
         }
     }
 
     # Non-temporal parenthetical: literal name part (e.g. "Rada (Ithan)")
     return @{
-        Text      = "$Name ($ParenContent)"
-        ValidFrom = $null
-        ValidTo   = $null
-        Season    = $null
+        Text       = "$Name ($ParenContent)"
+        ValidFrom  = $null
+        ValidTo    = $null
+        Season     = $null
+        Annotation = $null
     }
 }
 

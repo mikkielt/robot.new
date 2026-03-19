@@ -16,6 +16,9 @@ namespace Robot {
         public DateTime? ValidFrom { get; set; }
         public DateTime? ValidTo { get; set; }
         public string Season { get; set; }
+        /// Optional tag-specific annotation (e.g. "teleport" on @drzwi entries).
+        /// Parsed from parenthetical keywords that are neither dates nor seasons.
+        public string Annotation { get; set; }
 
         public TemporalEntry() {}
 
@@ -24,6 +27,14 @@ namespace Robot {
             ValidFrom = validFrom;
             ValidTo = validTo;
             Season = season;
+        }
+
+        public TemporalEntry(string value, DateTime? validFrom, DateTime? validTo, string season, string annotation) {
+            Value = value;
+            ValidFrom = validFrom;
+            ValidTo = validTo;
+            Season = season;
+            Annotation = annotation;
         }
     }
 

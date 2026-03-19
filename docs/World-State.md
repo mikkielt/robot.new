@@ -57,6 +57,8 @@ Mapa entities represent individual game maps — each floor, interior, or instan
 
 Both Mapa and Lokacja entities participate in the location hierarchy via `@lokacja` — they can have a parent location, door connections, and Nerthus names. When two maps share the same name (e.g., multiple "Apartament" in different buildings), each can be given a unique slug to distinguish them.
 
+Lokacja entities are automatically classified as **exterior** (has coordinates or outdoor maps), **interior** (all maps are indoor), or **unknown** (no evidence). Interior locations gain a qualified path linking them to their nearest exterior ancestor — for example, "Erathia/Komnata Rady" — making them findable by name resolution even when multiple locations share the same name.
+
 Slugs provide unique identifiers when multiple entities share the same name (common with maps and generic locations). For example, two maps both named "Komnata Rady" can be distinguished by their slugs "komnata-rady-ratusz" and "komnata-rady-zamek". Slugs are searchable — you can use a slug anywhere an entity name is expected, and the system will find the right entity.
 
 Entities can have alternative names (aliases) that the system recognizes. For example, "Sandro" might also be known as "Mroczny Mag" or "Lich z Deyji". Aliases can be time-scoped — valid only during a specific period. For example, a character might use a different name while undercover.

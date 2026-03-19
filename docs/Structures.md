@@ -48,6 +48,8 @@ When querying locations, the system returns enriched records that combine the en
 | Children | Child locations and maps contained within this location |
 | Door connections | Physical links to other locations, with resolution status |
 | Coordinates | Map tile position (X, Y) for exterior locations |
+| Exterior classification | Whether the location is exterior (has coordinates or outdoor maps), interior (all maps are indoor), or unknown |
+| Exterior parent | For interior locations, the name of the nearest exterior ancestor in the hierarchy |
 | Hierarchical path | Full path through the location tree (e.g., Antagarich/Erathia/Zamek Steadwick) |
 | Nerthus name | The RP override name for Margonem locations |
 | Entity count | How many non-location entities are present at this location |

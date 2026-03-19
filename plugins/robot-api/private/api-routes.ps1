@@ -163,6 +163,10 @@ function Register-AllApiRoutes {
         'Resolve a name to entity/player', 200, 'entity:read')
     $HandlerMap['Invoke-ApiResolveName'] = $true
 
+    $Router.AddRoute('POST', '/resolve/batch', 'Invoke-ApiResolveBatch',
+        'Resolve multiple names in batch', 200, 'entity:read')
+    $HandlerMap['Invoke-ApiResolveBatch'] = $true
+
     # --- Validation ---
     $Router.AddRoute('GET', '/validate/pu', 'Invoke-ApiValidatePU', 'PU assignment validation', 200, 'admin:read')
     $HandlerMap['Invoke-ApiValidatePU'] = $true
