@@ -170,6 +170,86 @@ Describe 'Get-NameIndex - duplicate names across types' {
         $Entry = $script:DupIdx.Index['Złoty Smok']
         $Entry.Ambiguous | Should -BeTrue
     }
+
+    It 'ambiguous Owners array entries have .Owner and .Type properties' {
+        $Entry = $script:DupIdx.Index['Złoty Smok']
+        $Entry.Owners | Should -Not -BeNullOrEmpty
+        $Entry.Owners[0].PSObject.Properties.Name | Should -Contain 'Owner'
+        $Entry.Owners[0].PSObject.Properties.Name | Should -Contain 'Type'
+    }
+}
+
+Describe 'Get-NameIndex - location subtype dedup' {
+    BeforeAll {
+        $script:LocSubEntities = Get-Entity -Path (Join-Path $script:FixturesRoot 'entities-location-subtypes.md')
+        $script:LocSubIdx = Get-NameIndex -Players @() -Entities $script:LocSubEntities
+    }
+
+    It 'Lokacja wins over wewnętrzna for shared name' {
+        $Entry = $script:LocSubIdx.Index['Alabastrowy Hotel']
+        $Entry | Should -Not -BeNullOrEmpty
+        $Entry.Ambiguous | Should -BeFalse
+        $Entry.OwnerType | Should -Be 'Lokacja'
+    }
+
+    It 'Lokacja wins over zewnętrzna for shared name' {
+        $Entry = $script:LocSubIdx.Index['Złote Wzgórza']
+        $Entry | Should -Not -BeNullOrEmpty
+        $Entry.Ambiguous | Should -BeFalse
+        $Entry.OwnerType | Should -Be 'Lokacja'
+    }
+
+    It 'second Lokacja/wewnętrzna pair also deduplicates' {
+        $Entry = $script:LocSubIdx.Index['Mroczna Pieczara']
+        $Entry | Should -Not -BeNullOrEmpty
+        $Entry.Ambiguous | Should -BeFalse
+        $Entry.OwnerType | Should -Be 'Lokacja'
+    }
+}
+
+Describe 'Get-NameIndex - Postać vs Gracz dedup' {
+    BeforeAll {
+        # Synthetic index with Postać and Gracz entities sharing the same name
+        $script:PgIndex = [System.Collections.Generic.Dictionary[string, object]]::new(
+            [System.StringComparer]::OrdinalIgnoreCase)
+        $script:PgStemIndex = [System.Collections.Generic.Dictionary[string, System.Collections.Generic.List[string]]]::new(
+            [System.StringComparer]::OrdinalIgnoreCase)
+
+        $GraczObj = [PSCustomObject]@{ Name = 'Testowy Bohater'; Names = @('Testowy Bohater'); Type = 'Gracz' }
+        $PostacObj = [PSCustomObject]@{ Name = 'Testowy Bohater'; Names = @('Testowy Bohater'); Type = 'Postać' }
+
+        Add-IndexToken -Token 'Testowy Bohater' -Owner $GraczObj -OwnerType 'Gracz' -Source 'Testowy Bohater' -Priority 1 -Index $script:PgIndex -StemIndex $script:PgStemIndex
+        Add-IndexToken -Token 'Testowy Bohater' -Owner $PostacObj -OwnerType 'Postać' -Source 'Testowy Bohater' -Priority 1 -Index $script:PgIndex -StemIndex $script:PgStemIndex
+    }
+
+    It 'Postać wins over Gracz at same priority' {
+        $Entry = $script:PgIndex['Testowy Bohater']
+        $Entry | Should -Not -BeNullOrEmpty
+        $Entry.Ambiguous | Should -BeFalse
+        $Entry.OwnerType | Should -Be 'Postać'
+    }
+}
+
+Describe 'Get-NameIndex - Gracz defers to Postać (reverse insertion order)' {
+    BeforeAll {
+        $script:GpIndex = [System.Collections.Generic.Dictionary[string, object]]::new(
+            [System.StringComparer]::OrdinalIgnoreCase)
+        $script:GpStemIndex = [System.Collections.Generic.Dictionary[string, System.Collections.Generic.List[string]]]::new(
+            [System.StringComparer]::OrdinalIgnoreCase)
+
+        $PostacObj = [PSCustomObject]@{ Name = 'Odwrócony Test'; Names = @('Odwrócony Test'); Type = 'Postać' }
+        $GraczObj = [PSCustomObject]@{ Name = 'Odwrócony Test'; Names = @('Odwrócony Test'); Type = 'Gracz' }
+
+        Add-IndexToken -Token 'Odwrócony Test' -Owner $PostacObj -OwnerType 'Postać' -Source 'Odwrócony Test' -Priority 1 -Index $script:GpIndex -StemIndex $script:GpStemIndex
+        Add-IndexToken -Token 'Odwrócony Test' -Owner $GraczObj -OwnerType 'Gracz' -Source 'Odwrócony Test' -Priority 1 -Index $script:GpIndex -StemIndex $script:GpStemIndex
+    }
+
+    It 'Gracz defers to existing Postać' {
+        $Entry = $script:GpIndex['Odwrócony Test']
+        $Entry | Should -Not -BeNullOrEmpty
+        $Entry.Ambiguous | Should -BeFalse
+        $Entry.OwnerType | Should -Be 'Postać'
+    }
 }
 
 Describe 'Get-NameIndex - unicode names indexing' {

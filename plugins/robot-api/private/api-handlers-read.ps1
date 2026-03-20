@@ -593,9 +593,25 @@ function Invoke-ApiResolveBatch {
             # Stage 1 = exact, Stage 2 = declension — both are "confirmed" matches
             $MatchStages[$Key] = 2
         } else {
-            $Result = Resolve-Name -Query $Key @ResolveParams
-            $Resolved[$Key] = $Result
-            $MatchStages[$Key] = if ($Result) { 3 } else { 0 }
+            # Resolve-Name stems the entire query as a unit, so multi-word inflected forms
+            # (e.g. "Alabastrowego Hotelu") miss — stem each word independently to produce
+            # a recombined form ("Alabastrow Hotel") that can match via the stem index
+            $Words = $Key.Split(' ', [System.StringSplitOptions]::RemoveEmptyEntries)
+            $PerWordResult = $null
+            if ($Words.Count -gt 1) {
+                $Stemmed = ($Words.ForEach({ Get-DeclensionStem -Text $_ })) -join ' '
+                if ($Stemmed -ne $Key) {
+                    $PerWordResult = Resolve-Name -Query $Stemmed @ResolveParams
+                }
+            }
+            if ($PerWordResult) {
+                $Resolved[$Key] = $PerWordResult
+                $MatchStages[$Key] = 2
+            } else {
+                $Result = Resolve-Name -Query $Key @ResolveParams
+                $Resolved[$Key] = $Result
+                $MatchStages[$Key] = if ($Result) { 3 } else { 0 }
+            }
         }
     }
 

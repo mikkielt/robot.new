@@ -10,7 +10,7 @@ Shared dependency: `private/string-helpers.ps1` provides `Get-LevenshteinDistanc
 
 Compiled C# dependency: `lib/BKTree.cs` provides the `Robot.BKTree` class — a compiled C# BK-tree with integrated case-insensitive Levenshtein distance. Loaded via `Add-Type` in `public/get-nameindex.ps1`. Called on every unresolved token during name resolution across all session processing. Falls back to the legacy PowerShell BK-tree helpers when `Add-Type` fails.
 
-Compiled C# dependency: `lib/DeclensionEngine.cs` provides the `Robot.DeclensionEngine` class — Polish noun declension engine for suffix stripping and consonant alternation reversal. Constructed once at module load by `public/resolve/resolve-name.ps1`. Called on every unresolved name during `Resolve-Name` stages 2 and 2b. Falls back to the PowerShell functions `Get-DeclensionStem` and `Get-StemAlternationCandidates` when `Add-Type` fails.
+Compiled C# dependency: `lib/DeclensionEngine.cs` provides the `Robot.DeclensionEngine` class — Polish declension engine (nouns and adjectives) for suffix stripping and consonant alternation reversal. Constructed once at module load by `public/resolve/resolve-name.ps1`. Called on every unresolved name during `Resolve-Name` stages 2 and 2b. Falls back to the PowerShell functions `Get-DeclensionStem` and `Get-StemAlternationCandidates` when `Add-Type` fails.
 
 How name resolution is consumed by `Get-Session`, `Get-EntityState`, or `Resolve-Narrator` is documented in [SESSIONS.md](SESSIONS.md) and [ENTITIES.md](ENTITIES.md). Log location analysis is documented in [LOGS.md](LOGS.md).
 
@@ -59,14 +59,16 @@ IF token already in index:
     Same owner -> keep higher priority (lower number wins)
     Different owner, incoming has higher priority -> replace, no ambiguity
     Different owner, same priority:
-        Gracz/Postac vs Player -> Player wins (same logical entity, deduplicate)
-        Otherwise -> mark Ambiguous, store all owners in Owners array
+        Gracz/Postać vs Player -> Player wins (same logical entity, deduplicate)
+        Postać vs Gracz -> Postać wins (character entity more specific than roster entry)
+        wewnętrzna/zewnętrzna vs Lokacja -> Lokacja wins (canonical location entity)
+        Otherwise -> mark Ambiguous, store all owners in typed Owners array
 ELSE:
     Insert new entry
     Build stem index entry inline (declension stem -> list of token keys)
 ```
 
-Ambiguous entries are skipped by `Resolve-Name` stages 1-2b and penalized in stage 3.
+Ambiguous entries store typed owner wrappers (`@{ Owner; Type }`) in the `Owners` array. When `-OwnerType` is specified, `Resolve-AmbiguousEntry` scans the typed `Owners` array for exactly one matching owner, enabling type-based disambiguation of otherwise ambiguous entries.
 
 The stem index is built inline during token insertion. For each token key, the declension stem (suffix-stripped form) is computed and mapped to a list of original token keys sharing that stem. Consumed by `Resolve-Name` stage 2.
 
@@ -174,7 +176,7 @@ The type check ensures the class is loaded only once per session, even if `get-n
 
 Source: `lib/DeclensionEngine.cs` — compiled centrally in `Robot.PowerShell.psm1`.
 
-`Robot.DeclensionEngine` is a Polish noun declension engine for name resolution. It iterates suffix and alternation arrays using `.EndsWith()` + `.Substring()` with `OrdinalIgnoreCase` comparison. Constructed once at module load by `public/resolve/resolve-name.ps1` with Polish declension tables (locative, genitive, instrumental, dative suffixes and consonant alternation pairs).
+`Robot.DeclensionEngine` is a Polish declension engine (nouns and adjectives) for name resolution. It iterates suffix and alternation arrays using `.EndsWith()` + `.Substring()` with `OrdinalIgnoreCase` comparison. Constructed once at module load by `public/resolve/resolve-name.ps1` with Polish declension tables (locative, genitive, instrumental, dative suffixes and consonant alternation pairs).
 
 `GetStem(string text)` strips the first matching inflection suffix from text. Suffixes are tried in constructor input order — longest-first ordering is critical to prevent partial stripping (e.g., `"ami"` must be tried before `"i"`). Minimum stem length of 3: `text.Length` must exceed `suffix.Length + 2`. Returns the original text if no suffix matches. Example: `"Erathii"` -> `"Erathi"`, `"Sandrem"` -> `"Sandr"`.
 
@@ -184,7 +186,7 @@ Construction — the engine is instantiated with three parallel arrays:
 
 | Parameter | Type | Description |
 |---|---|---|
-| `suffixes` | `string[]` | Declension suffixes ordered longest-first (`-owi`, `-ami`, `-ach`, `-iem`, `-em`, `-a`, `-u`, `-y`, etc.) |
+| `suffixes` | `string[]` | Declension suffixes ordered longest-first — nouns: `-owi`, `-ami`, `-ach`, `-iem`, `-em`, `-om`, `-ą`, `-ę`, `-ie`, `-a`, `-u`, `-y`; adjectives: `-ego`, `-emu`, `-ymi`, `-ych`, `-ej`, `-ym` |
 | `altInflected` | `string[]` | Inflected endings to match (`-dzie`, `-ce`, `-rze`, `-dze`, `-scie`, `-ni`, `-si`, `-zi`, `-ci`) |
 | `altBase` | `string[]` | Corresponding base form replacements (`-da`, `-ka`, `-ra`, `-ga`, `-sta`, `-n`, `-s`, `-z`, `-c`) |
 
@@ -232,12 +234,13 @@ IF Query in Index (case-insensitive)
 
 Complexity: O(1) dictionary lookup.
 
-Stage 2 — Declension-Stripped Match. Strips Polish noun declension suffixes from the query and looks up the resulting stem in the pre-built stem index.
+Stage 2 — Declension-Stripped Match. Strips Polish noun and adjective declension suffixes from the query and looks up the resulting stem in the pre-built stem index.
 
 Suffix list (ordered longest-first to prevent partial stripping):
 
 ```
--owi, -ami, -ach, -iem, -em, -a, -e, -ie, -om, -a, -u, -y
+Nouns:      -owi, -ami, -ach, -iem, -em, -om, -ą, -ę, -ie, -a, -u, -y
+Adjectives: -ego, -emu, -ymi, -ych, -ej, -ym
 ```
 
 ```
@@ -333,7 +336,8 @@ This distinguishes between "never looked up" (`ContainsKey` = false) and "looked
 | `$null` BK-tree | `Search-BKTree` (legacy) returns empty results; `Resolve-Name` falls back to linear scan |
 | `Robot.BKTree` type unavailable | `Add-Type` failure is silent; `Get-NameIndex` falls back to PowerShell hashtable BK-tree |
 | `-NoFuzzy` switch set | Stage 3 skipped entirely; returns `$null` and caches the miss |
-| Player/Entity dedup | `Gracz`/`Postac` entity entries defer to `Player` entries in collisions |
+| Player/Entity dedup | `Gracz`/`Postać` entity entries defer to `Player` entries; `Postać` wins over `Gracz`; `Lokacja` wins over `wewnętrzna`/`zewnętrzna` |
+| Ambiguous + OwnerType | `Resolve-AmbiguousEntry` scans typed `Owners` array for exactly one matching type; resolves if unique |
 
 ---
 

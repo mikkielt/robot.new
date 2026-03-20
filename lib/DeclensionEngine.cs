@@ -2,7 +2,7 @@ using System;
 using System.Collections.Generic;
 
 namespace Robot {
-    /// Polish noun declension engine for name resolution.
+    /// Polish declension engine (nouns and adjectives) for name resolution.
     ///
     /// Iterates suffix and alternation arrays using .EndsWith() + .Substring() with
     /// OrdinalIgnoreCase comparison. Called on every unresolved name during resolution,
@@ -16,8 +16,9 @@ namespace Robot {
     /// critical to prevent partial stripping (e.g. "ami" must be tried before "i").
     /// Minimum stem length of 3 prevents over-stripping short names.
     ///
-    /// Constructed once at module load by resolve-name.ps1 with Polish declension
-    /// tables (locative, genitive, instrumental, dative suffixes and consonant
+    /// Constructed once at module load by resolve-name.ps1 with Polish noun and
+    /// adjective declension tables (noun: locative, genitive, instrumental, dative;
+    /// adjective: genitive, dative, instrumental, locative, feminine; plus consonant
     /// alternation pairs).
     ///
     /// Consumers: Resolve-Name Stage 2 (suffix strip) and Stage 2b (alternation reversal)

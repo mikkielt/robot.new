@@ -32,6 +32,34 @@ Describe 'Get-DeclensionStem' {
     It 'returns original when no suffix matches' {
         Get-DeclensionStem -Text 'Xeron' | Should -Be 'Xeron'
     }
+
+    It 'strips -ego suffix (adjective genitive): Alabastrowego -> Alabastrow' {
+        Get-DeclensionStem -Text 'Alabastrowego' | Should -Be 'Alabastrow'
+    }
+
+    It 'strips -ej suffix (adjective feminine): Mrocznej -> Mroczn' {
+        Get-DeclensionStem -Text 'Mrocznej' | Should -Be 'Mroczn'
+    }
+
+    It 'strips -emu suffix (adjective dative): Alabastrowemu -> Alabastrow' {
+        Get-DeclensionStem -Text 'Alabastrowemu' | Should -Be 'Alabastrow'
+    }
+
+    It 'strips -ym suffix (adjective instrumental): Alabastrowym -> Alabastrow' {
+        Get-DeclensionStem -Text 'Alabastrowym' | Should -Be 'Alabastrow'
+    }
+
+    It 'strips -ych suffix (adjective plural genitive): Złotych -> Złot' {
+        Get-DeclensionStem -Text 'Złotych' | Should -Be 'Złot'
+    }
+
+    It 'strips -ymi suffix (adjective plural instrumental): Złotymi -> Złot' {
+        Get-DeclensionStem -Text 'Złotymi' | Should -Be 'Złot'
+    }
+
+    It 'minimum stem guard rejects -ego on short names: Diego unchanged' {
+        Get-DeclensionStem -Text 'Diego' | Should -Be 'Diego'
+    }
 }
 
 Describe 'Get-StemAlternationCandidates' {
@@ -202,6 +230,32 @@ Describe 'Resolve-Name' {
 
     It 'does not resolve completely unrelated string' {
         $Result = Resolve-Name -Query 'ZupełnieInneImię12345' -Index $script:NameIdx.Index -StemIndex $script:NameIdx.StemIndex -BKTree $script:NameIdx.BKTree -Cache @{}
+        $Result | Should -BeNullOrEmpty
+    }
+}
+
+Describe 'Resolve-Name - ambiguity-aware OwnerType filtering' {
+    BeforeAll {
+        $script:DupEntities = Get-Entity -Path (Join-Path $script:FixturesRoot 'entities-duplicate-names.md')
+        $script:DupIdx = Get-NameIndex -Players @() -Entities $script:DupEntities
+    }
+
+    It 'resolves ambiguous entry with OwnerType Lokacja' {
+        $Result = Resolve-Name -Query 'Złoty Smok' -Index $script:DupIdx.Index -StemIndex $script:DupIdx.StemIndex -BKTree $script:DupIdx.BKTree -OwnerType 'Lokacja'
+        $Result | Should -Not -BeNullOrEmpty
+        $Result.Name | Should -Be 'Złoty Smok'
+        $Result.Type | Should -Be 'Lokacja'
+    }
+
+    It 'resolves ambiguous entry with OwnerType NPC' {
+        $Result = Resolve-Name -Query 'Złoty Smok' -Index $script:DupIdx.Index -StemIndex $script:DupIdx.StemIndex -BKTree $script:DupIdx.BKTree -OwnerType 'NPC'
+        $Result | Should -Not -BeNullOrEmpty
+        $Result.Name | Should -Be 'Złoty Smok'
+        $Result.Type | Should -Be 'NPC'
+    }
+
+    It 'returns null for ambiguous entry without OwnerType filter' {
+        $Result = Resolve-Name -Query 'Złoty Smok' -Index $script:DupIdx.Index -StemIndex $script:DupIdx.StemIndex -BKTree $script:DupIdx.BKTree
         $Result | Should -BeNullOrEmpty
     }
 }

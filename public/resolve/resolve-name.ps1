@@ -10,14 +10,16 @@
     Dot-sources string-helpers.ps1 for Get-LevenshteinDistance.
 
     Helpers:
-    - Get-DeclensionStem:            strips Polish noun declension suffixes from a query
+    - Get-DeclensionStem:            strips Polish noun/adjective declension suffixes from a query
     - Get-StemAlternationCandidates:  reverses Polish consonant mutations to produce base-form candidates
     - Get-EntityFilesFingerprint:     builds a LastWriteTimeUtc-based fingerprint across all
       entity source files (entities.md, overflow *-NNN-ent.md, Gracze.md) for cache
       invalidation in the WP-1 name index cache
+    - Resolve-AmbiguousEntry:        disambiguates index entries by OwnerType filter; handles
+      both non-ambiguous (single owner) and ambiguous (typed Owners array) entries
 
     Module-level data:
-    - $DeclensionSuffixes:    ordered list of Polish noun suffixes (longest-first to prevent partial stripping)
+    - $DeclensionSuffixes:    ordered list of Polish noun/adjective suffixes (longest-first to prevent partial stripping)
     - $StemAlternations:      consonant mutation mappings (inflected ending -> nominative base)
     - $CachedNameIndex:       WP-1 module-scoped cache holding the last Get-NameIndex result
       (Index + StemIndex + BKTree) to avoid rebuilding the name index on every Resolve-Name
@@ -36,15 +38,19 @@
                  distance threshold. Uses BK-tree when available (O(log N)), falls back to
                  linear scan.
 
+    All stages delegate to Resolve-AmbiguousEntry for OwnerType-based filtering: non-ambiguous
+    entries are returned directly if the type matches, ambiguous entries are narrowed to a
+    single owner when exactly one matches the requested type (with Lokacja also accepting Mapa).
+
     When no caller-provided Index is passed, Resolve-Name checks the WP-1 module-scoped
     cache before rebuilding. The cache key is a file-modification fingerprint: if entity
     files haven't changed since the last call, the cached name index is reused directly.
     This avoids the ~4s Get-Entity + Get-NameIndex rebuild that would otherwise run on
     every standalone Resolve-Name invocation (e.g. from session-parsehelpers Intel resolution).
 
-    The declension suffix list targets Polish noun inflection patterns observed in the repository's
-    session notes. The suffix ordering is critical: longest suffixes must be tried first to
-    prevent partial stripping (e.g. "-owi" before "-i", "-ami" before "-i").
+    The declension suffix list targets Polish noun and adjective inflection patterns observed in
+    the repository's session notes. The suffix ordering is critical: longest suffixes must be
+    tried first to prevent partial stripping (e.g. "-owi" before "-i", "-ami" before "-i").
 #>
 
 . "$script:ModuleRoot/private/string-helpers.ps1"
@@ -52,21 +58,28 @@
 # C# type: Robot.DeclensionEngine (lib/DeclensionEngine.cs) — compiled centrally in Robot.PowerShell.psm1.
 # Eliminates PowerShell loop overhead on the hottest resolution path
 
-# Polish noun suffixes ordered longest-first to prevent partial stripping
+# Polish noun + adjective suffixes ordered longest-first to prevent partial stripping
 # (e.g. "-owi" must be tried before "-i", "-ami" before "-i")
 $script:DeclensionSuffixes = @(
-    "owi",   # dative singular
-    "ami",   # instrumental plural
-    "ach",   # locative plural
-    "iem",   # instrumental singular
-    "em",    # instrumental singular
-    "om",    # dative plural
-    "ą",     # accusative/instr. fem.
-    "ę",     # accusative feminine
-    "ie",    # locative singular
-    "a",     # genitive/acc. masc.
-    "u",     # genitive/vocative
-    "y"      # genitive feminine
+    "owi",   # dative singular (noun)
+    "ami",   # instrumental plural (noun)
+    "ach",   # locative plural (noun)
+    "ego",   # genitive masc./neuter (adjective)
+    "emu",   # dative masc./neuter (adjective)
+    "ymi",   # instrumental plural (adjective)
+    "ych",   # genitive/locative plural (adjective)
+    "iem",   # instrumental singular (noun)
+    "em",    # instrumental singular (noun)
+    "om",    # dative plural (noun)
+    "ej",    # gen./dat./loc. feminine (adjective)
+    "ym",    # instr./loc. masc./neuter (adjective)
+    "ą",     # accusative/instr. fem. (noun)
+    "ę",     # accusative feminine (noun)
+    "ie",    # locative singular (noun)
+    "a",     # genitive/acc. masc. (noun)
+    "u",     # genitive/vocative (noun)
+    "y",     # genitive feminine (noun)
+    "i"      # gen./dat./loc. feminine -ia/-ja (noun)
 )
 
 # Polish consonant mutations that occur before certain case endings.
@@ -162,6 +175,28 @@ function Get-EntityFilesFingerprint {
     return $FP.ToString()
 }
 
+function Resolve-AmbiguousEntry {
+    param(
+        [object]$Entry,
+        [string]$OwnerType
+    )
+    # Non-ambiguous: check type filter directly
+    if (-not $Entry.Ambiguous) {
+        if (-not $OwnerType -or $Entry.OwnerType -eq $OwnerType) {
+            return $Entry.Owner
+        }
+        return $null
+    }
+    # Ambiguous: try type-based disambiguation when OwnerType filter is given
+    if (-not $OwnerType -or -not $Entry.Owners) { return $null }
+    $FilteredOwners = @($Entry.Owners.Where({
+        $_.Type -eq $OwnerType -or
+        ($OwnerType -eq 'Lokacja' -and $_.Type -in @('Lokacja', 'Mapa'))
+    }))
+    if ($FilteredOwners.Count -eq 1) { return $FilteredOwners[0].Owner }
+    return $null
+}
+
 function Resolve-Name {
     <#
         .SYNOPSIS
@@ -236,9 +271,10 @@ function Resolve-Name {
     # Stage 1: Exact index lookup (case-insensitive via index comparer)
     if ($Index.ContainsKey($Query)) {
         $Entry = $Index[$Query]
-        if (-not $Entry.Ambiguous -and (-not $OwnerType -or $Entry.OwnerType -eq $OwnerType)) {
-            if ($Cache) { $Cache[$CacheKey] = $Entry.Owner }
-            return $Entry.Owner
+        $Resolved = Resolve-AmbiguousEntry -Entry $Entry -OwnerType $OwnerType
+        if ($Resolved) {
+            if ($Cache) { $Cache[$CacheKey] = $Resolved }
+            return $Resolved
         }
         # Ambiguous or wrong type — later stages may disambiguate
     }
@@ -250,9 +286,10 @@ function Resolve-Name {
         foreach ($TokenKey in $StemIndex[$QueryStem]) {
             if ($Index.ContainsKey($TokenKey)) {
                 $Entry = $Index[$TokenKey]
-                if (-not $Entry.Ambiguous -and (-not $OwnerType -or $Entry.OwnerType -eq $OwnerType)) {
-                    if ($Cache) { $Cache[$CacheKey] = $Entry.Owner }
-                    return $Entry.Owner
+                $Resolved = Resolve-AmbiguousEntry -Entry $Entry -OwnerType $OwnerType
+                if ($Resolved) {
+                    if ($Cache) { $Cache[$CacheKey] = $Resolved }
+                    return $Resolved
                 }
             }
         }
@@ -264,9 +301,10 @@ function Resolve-Name {
     foreach ($Candidate in $QueryCandidates) {
         if ($Index.ContainsKey($Candidate)) {
             $Entry = $Index[$Candidate]
-            if (-not $Entry.Ambiguous -and (-not $OwnerType -or $Entry.OwnerType -eq $OwnerType)) {
-                if ($Cache) { $Cache[$CacheKey] = $Entry.Owner }
-                return $Entry.Owner
+            $Resolved = Resolve-AmbiguousEntry -Entry $Entry -OwnerType $OwnerType
+            if ($Resolved) {
+                if ($Cache) { $Cache[$CacheKey] = $Resolved }
+                return $Resolved
             }
         }
     }
@@ -295,9 +333,10 @@ function Resolve-Name {
             if ($BKResult.Value -lt $BestDistance) {
                 if ($Index.ContainsKey($BKResult.Key)) {
                     $Entry = $Index[$BKResult.Key]
-                    if (-not $Entry.Ambiguous -and (-not $OwnerType -or $Entry.OwnerType -eq $OwnerType)) {
+                    $Resolved = Resolve-AmbiguousEntry -Entry $Entry -OwnerType $OwnerType
+                    if ($Resolved) {
                         $BestDistance = $BKResult.Value
-                        $BestOwner   = $Entry.Owner
+                        $BestOwner   = $Resolved
                     }
                 }
             }
@@ -310,9 +349,10 @@ function Resolve-Name {
             if ($BKResult.Distance -lt $BestDistance) {
                 if ($Index.ContainsKey($BKResult.Key)) {
                     $Entry = $Index[$BKResult.Key]
-                    if (-not $Entry.Ambiguous -and (-not $OwnerType -or $Entry.OwnerType -eq $OwnerType)) {
+                    $Resolved = Resolve-AmbiguousEntry -Entry $Entry -OwnerType $OwnerType
+                    if ($Resolved) {
                         $BestDistance = $BKResult.Distance
-                        $BestOwner   = $Entry.Owner
+                        $BestOwner   = $Resolved
                     }
                 }
             }
@@ -331,9 +371,10 @@ function Resolve-Name {
 
             if ($Distance -lt $BestDistance) {
                 $Entry = $Index[$TokenKey]
-                if (-not $Entry.Ambiguous -and (-not $OwnerType -or $Entry.OwnerType -eq $OwnerType)) {
+                $Resolved = Resolve-AmbiguousEntry -Entry $Entry -OwnerType $OwnerType
+                if ($Resolved) {
                     $BestDistance = $Distance
-                    $BestOwner   = $Entry.Owner
+                    $BestOwner   = $Resolved
                 }
             }
 

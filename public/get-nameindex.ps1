@@ -22,6 +22,11 @@
     - Priority 2: individual word tokens from multi-word names (partial matches)
     - Same-priority collisions from different owners are flagged as Ambiguous
     - Gracz/Postac (Gracz) entities defer to Player entries (same logical entity)
+    - Postać wins over Gracz (character entity is more specific than roster entry)
+    - wewnętrzna/zewnętrzna location subtypes defer to Lokacja (canonical form)
+
+    Ambiguous entries store a typed Owners array (each element has .Owner and .Type
+    properties) to enable downstream type-based disambiguation in Resolve-Name.
 
     Returns a hashtable with three keys:
     - Index:     the token dictionary (consumed by Resolve-Name stages 1, 2, 2b)
@@ -163,9 +168,43 @@ function Add-IndexToken {
             return
         }
 
+        # Postać wins over Gracz (character entity is more specific than roster entry)
+        if ($OwnerType -eq 'Postać' -and $Existing.OwnerType -eq 'Gracz') {
+            $Index[$Token] = [PSCustomObject]@{
+                Owner     = $Owner
+                OwnerType = $OwnerType
+                Source    = $Source
+                Priority  = $Priority
+                Ambiguous = $false
+            }
+            return
+        }
+        if ($OwnerType -eq 'Gracz' -and $Existing.OwnerType -eq 'Postać') {
+            return
+        }
+
+        # wewnętrzna/zewnętrzna defer to Lokacja (same physical location, Lokacja is canonical)
+        if ($OwnerType -in @('wewnętrzna', 'zewnętrzna') -and $Existing.OwnerType -eq 'Lokacja') {
+            return
+        }
+        if ($OwnerType -eq 'Lokacja' -and $Existing.OwnerType -in @('wewnętrzna', 'zewnętrzna')) {
+            $Index[$Token] = [PSCustomObject]@{
+                Owner     = $Owner
+                OwnerType = $OwnerType
+                Source    = $Source
+                Priority  = $Priority
+                Ambiguous = $false
+            }
+            return
+        }
+
         # No type-based dedup applies — genuine ambiguity
-        $AllOwners = if ($Existing.Ambiguous) { $Existing.Owners } else { @($Existing.Owner) }
-        $AllOwners = @($AllOwners) + @($Owner)
+        $AllOwners = if ($Existing.Ambiguous) {
+            $Existing.Owners
+        } else {
+            @([PSCustomObject]@{ Owner = $Existing.Owner; Type = $Existing.OwnerType })
+        }
+        $AllOwners = @($AllOwners) + @([PSCustomObject]@{ Owner = $Owner; Type = $OwnerType })
 
         $Index[$Token] = [PSCustomObject]@{
             Owner     = $null
