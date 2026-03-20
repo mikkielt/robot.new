@@ -9,14 +9,14 @@
     starts the API server with a dashboard.
 
     Usage:
-      iwr https://raw.githubusercontent.com/<repo>/main/tools/install.ps1 | iex
+      iwr https://raw.githubusercontent.com/mikkielt/robot.new/main/tools/install.ps1 | iex
 
-    Works on Windows (PowerShell 7+), macOS, and Linux (PowerShell Core).
+    Works on Windows (PowerShell 5+), macOS, and Linux (PowerShell Core).
 #>
 
 param(
     [string]$InstallPath = ([System.IO.Path]::Combine($HOME, 'robot.new')),
-    [string]$RepoUrl = 'https://github.com/anward/robot.new.git',
+    [string]$RepoUrl = 'https://github.com/mikkielt/robot.new.git',
     [switch]$StartApi,
     [switch]$SkipVerify
 )
@@ -26,8 +26,8 @@ $ErrorActionPreference = 'Stop'
 # ── Prerequisites ─────────────────────────────────────────────────
 Write-Host '[1/5] Checking prerequisites...' -ForegroundColor Cyan
 
-if ($PSVersionTable.PSVersion.Major -lt 7) {
-    throw "PowerShell 7.0+ required. Current: $($PSVersionTable.PSVersion). Install from https://aka.ms/powershell"
+if ($PSVersionTable.PSVersion.Major -lt 5) {
+    throw "PowerShell 5.0+ required. Current: $($PSVersionTable.PSVersion). Install from https://aka.ms/powershell"
 }
 
 $GitPath = Get-Command 'git' -ErrorAction SilentlyContinue

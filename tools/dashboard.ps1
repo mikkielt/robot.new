@@ -10,7 +10,7 @@
     Usage:
       iwr https://raw.githubusercontent.com/mikkielt/robot.new/main/tools/dashboard.ps1 | iex
 
-    Works on Windows (PowerShell 7+), macOS, and Linux (PowerShell Core).
+    Works on Windows (PowerShell 5+), macOS, and Linux (PowerShell Core).
 #>
 
 param(
