@@ -380,6 +380,11 @@ function Invoke-ApiCreateSession {
                     [PSCustomObject]@{ RawTarget = [string]$_.rawTarget; Message = [string]$_.message }
                 })
             }
+            if ($S.transfers) {
+                $Spec.Transfers = @($S.transfers).ForEach({
+                    [PSCustomObject]@{ Amount = [int]($_.amount ?? 1); Denomination = [string]$_.denomination; Source = [string]$_.source; Destination = [string]$_.destination }
+                })
+            }
             [void]$BatchSpecs.Add($Spec)
         }
 
@@ -449,6 +454,12 @@ function Invoke-ApiCreateSession {
     if ($B.intel) {
         $Params.Intel = @($B.intel).ForEach({
             [PSCustomObject]@{ RawTarget = [string]$_.rawTarget; Message = [string]$_.message }
+        })
+    }
+
+    if ($B.transfers) {
+        $Params.Transfers = @($B.transfers).ForEach({
+            [PSCustomObject]@{ Amount = [int]($_.amount ?? 1); Denomination = [string]$_.denomination; Source = [string]$_.source; Destination = [string]$_.destination }
         })
     }
 
@@ -641,6 +652,43 @@ function Invoke-ApiCreateMap {
         $Result = New-MapEntity @Params
         Clear-ParseCaches
         return @{ StatusCode = 201; Body = $Result }
+    } catch {
+        return @{ StatusCode = 422; Body = @{ error = $_.Exception.Message } }
+    }
+}
+
+function Invoke-ApiUpdateMap {
+    <#
+        .SYNOPSIS
+        Updates a map entity via Set-MapEntity with domain validation.
+    #>
+
+    param([hashtable]$ApiContext)
+
+    $Name = $ApiContext.PathParams['name']
+    $B = $ApiContext.Body
+    if (-not $B) {
+        return @{ StatusCode = 400; Body = @{ error = 'Request body required' } }
+    }
+    $Params = @{ Name = $Name; Confirm = $false }
+    if ($B.slug)        { $Params.Slug        = [string]$B.slug }
+    if ($B.parent)      { $Params.Parent      = [string]$B.parent }
+    if ($B.url)         { $Params.Url         = [string]$B.url }
+    if ($B.urlNerthus)  { $Params.UrlNerthus  = [string]$B.urlNerthus }
+    if ($B.dimensions)  { $Params.Dimensions  = [string]$B.dimensions }
+    if ($B.info)        { $Params.Info        = [string]$B.info }
+    if ($B.addDoors)    { $Params.AddDoors    = @($B.addDoors).ForEach({ [string]$_ }) }
+    if ($B.removeDoors) { $Params.RemoveDoors = @($B.removeDoors).ForEach({ [string]$_ }) }
+    if ($B.validFrom)   { $Params.ValidFrom   = [string]$B.validFrom }
+    if ($B.tags -and $B.tags -is [System.Management.Automation.PSCustomObject]) {
+        $Tags = @{}
+        foreach ($P in $B.tags.PSObject.Properties) { $Tags[$P.Name] = $P.Value }
+        $Params.Tags = $Tags
+    }
+    try {
+        $Result = Set-MapEntity @Params
+        Clear-ParseCaches
+        return @{ StatusCode = 200; Body = $Result }
     } catch {
         return @{ StatusCode = 422; Body = @{ error = $_.Exception.Message } }
     }

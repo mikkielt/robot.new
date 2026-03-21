@@ -4,7 +4,7 @@
 
 ## Scope
 
-The entity write subsystem consists of `private/entity-writehelpers.ps1` (low-level line-array manipulation primitives, dot-sources `private/entity-findhelpers.ps1` for find helpers) and all mutating commands: player/character-specific (`Set-Player`, `Set-PlayerCharacter`, `New-Player`, `New-PlayerCharacter`, `Remove-PlayerCharacter`), generic entity CRUD (`New-Entity`, `Set-Entity`, `Remove-Entity`), currency entity CRUD (`New-CurrencyEntity`, `Set-CurrencyEntity`, `Remove-CurrencyEntity`), and location entity CRUD (`New-LocationEntity`, `Set-LocationEntity`, `New-MapEntity` in `public/location/`). Bootstrap migration helper `ConvertTo-EntitiesFromPlayers` lives in `private/entity-migrationhelpers.ps1`.
+The entity write subsystem consists of `private/entity-writehelpers.ps1` (low-level line-array manipulation primitives, dot-sources `private/entity-findhelpers.ps1` for find helpers) and all mutating commands: player/character-specific (`Set-Player`, `Set-PlayerCharacter`, `New-Player`, `New-PlayerCharacter`, `Remove-PlayerCharacter`), generic entity CRUD (`New-Entity`, `Set-Entity`, `Remove-Entity`), currency entity CRUD (`New-CurrencyEntity`, `Set-CurrencyEntity`, `Remove-CurrencyEntity`), and location entity CRUD (`New-LocationEntity`, `Set-LocationEntity`, `New-MapEntity`, `Set-MapEntity` in `public/location/`). Bootstrap migration helper `ConvertTo-EntitiesFromPlayers` lives in `private/entity-migrationhelpers.ps1`.
 
 Entity reading/parsing is documented in [ENTITIES.md](ENTITIES.md). Character file writing is documented in [CHARFILE.md](CHARFILE.md). Currency query (`Get-CurrencyEntity`) and reporting are documented in [CURRENCY.md](CURRENCY.md).
 
@@ -33,7 +33,7 @@ generic entity primitives + private/currency-helpers.ps1 for denomination logic.
 
 Location CRUD (public/location/) wraps New-Entity/Set-Entity with parent
 validation, coordinate checks, and multi-valued @drzwi management:
-  New-LocationEntity, Set-LocationEntity, New-MapEntity
+  New-LocationEntity, Set-LocationEntity, New-MapEntity, Set-MapEntity
 
 Bootstrap migration (ConvertTo-EntitiesFromPlayers) lives in private/entity-migrationhelpers.ps1.
 ```

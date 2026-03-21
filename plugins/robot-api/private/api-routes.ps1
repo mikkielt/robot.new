@@ -270,6 +270,8 @@ function Register-AllApiRoutes {
     # --- Maps (write) ---
     $Router.AddRoute('POST', '/maps', 'Invoke-ApiCreateMap', 'Create map', 201, 'entity:write')
     $HandlerMap['Invoke-ApiCreateMap'] = $true
+    $Router.AddRoute('PUT', '/maps/:name', 'Invoke-ApiUpdateMap', 'Update map', 200, 'entity:write')
+    $HandlerMap['Invoke-ApiUpdateMap'] = $true
 
     # --- Files ---
     $Router.AddRoute('GET', '/files', 'Invoke-ApiGetFiles', 'List .md file paths for autocomplete', 200, 'session:read')

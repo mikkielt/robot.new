@@ -84,7 +84,7 @@ $LocationNameCompleter = {
     } catch { }
 }
 
-$LocationFunctions = @('Get-LocationEntity', 'New-LocationEntity', 'Set-LocationEntity', 'New-MapEntity')
+$LocationFunctions = @('Get-LocationEntity', 'New-LocationEntity', 'Set-LocationEntity', 'New-MapEntity', 'Set-MapEntity')
 foreach ($FuncName in $LocationFunctions) {
     Register-ArgumentCompleter -CommandName $FuncName -ParameterName 'Name' `
         -ScriptBlock $LocationNameCompleter
