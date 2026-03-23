@@ -121,6 +121,9 @@ function Add-Session {
         [Parameter(ParameterSetName = 'Single', HelpMessage = "Intel targeting entries (RawTarget + Message)")]
         [object[]]$Intel,
 
+        [Parameter(ParameterSetName = 'Single', HelpMessage = "Transfer entries (Amount + Denomination + Source + Destination)")]
+        [object[]]$Transfers,
+
         [Parameter(ParameterSetName = 'Single', HelpMessage = "Free-form body text content")]
         [string]$Content,
 
@@ -139,7 +142,7 @@ function Add-Session {
             Narrator = $Narrator
         })
         foreach ($Key in @('DateEnd', 'MetadataNarrators', 'Locations', 'PU',
-                           'Logs', 'Changes', 'Intel', 'Content')) {
+                           'Logs', 'Changes', 'Intel', 'Transfers', 'Content')) {
             if ($PSBoundParameters.ContainsKey($Key)) {
                 $Specs[0][$Key] = $PSBoundParameters[$Key]
             }
@@ -152,7 +155,7 @@ function Add-Session {
     # ── 2. Generate markdown for each spec (fail-early) ────────────────
     $Generated = [System.Collections.Generic.List[hashtable]]::new($Specs.Count)
     $OptionalKeys = @('DateEnd', 'MetadataNarrators', 'Locations', 'PU',
-                      'Logs', 'Changes', 'Intel', 'Content')
+                      'Logs', 'Changes', 'Intel', 'Transfers', 'Content')
 
     foreach ($Spec in $Specs) {
         $NewParams = @{

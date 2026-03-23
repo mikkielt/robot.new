@@ -67,6 +67,9 @@ function New-Session {
         [Parameter(HelpMessage = "Intel targeting entries (RawTarget + Message)")]
         [object[]]$Intel,
 
+        [Parameter(HelpMessage = "Transfer entries (Amount + Denomination + Source + Destination)")]
+        [object[]]$Transfers,
+
         [Parameter(HelpMessage = "Free-form body text content")]
         [string]$Content
     )
@@ -87,13 +90,14 @@ function New-Session {
     $Header = "### ${DateStr}, ${Title}, ${Narrator}"
 
     $Meta = ConvertTo-SessionMetadata `
-        -Narrator  $MetadataNarrators `
-        -Locations $Locations `
-        -Logs      $Logs `
-        -PU        $PU `
-        -Changes   $Changes `
-        -Intel     $Intel `
-        -NL        $NL
+        -Narrator   $MetadataNarrators `
+        -Locations  $Locations `
+        -Logs       $Logs `
+        -PU         $PU `
+        -Changes    $Changes `
+        -Intel      $Intel `
+        -Transfers  $Transfers `
+        -NL         $NL
 
     # Assemble with double-newline separators for Markdown paragraph breaks
     $SB = [System.Text.StringBuilder]::new(512)  # typical session section fits in 512 chars

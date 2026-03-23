@@ -139,6 +139,17 @@ Describe 'Get-Player' {
         $Solmyr.Names | Should -Contain 'Kyrre'
     }
 
+    It 'Player object has CN = Gracz/{Name}' {
+        $Solmyr = $script:Players | Where-Object { $_.Name -eq 'Solmyr' }
+        $Solmyr.CN | Should -Be 'Gracz/Solmyr'
+    }
+
+    It 'Character object has CN = Postać/{CharName}' {
+        $Solmyr = $script:Players | Where-Object { $_.Name -eq 'Solmyr' }
+        $Xeron = $Solmyr.Characters | Where-Object { $_.Name -eq 'Xeron Demonlord' }
+        $Xeron.CN | Should -Be 'Postać/Xeron Demonlord'
+    }
+
     It 'filters by -Name parameter' {
         $Result = Get-Player -Name 'Solmyr'
         $Result.Count | Should -Be 1
@@ -155,6 +166,11 @@ Describe 'Get-Player' {
         $Xeron = $Solmyr.Characters | Where-Object { $_.Name -eq 'Xeron Demonlord' }
         # entities-100-ent.md overrides pu_suma to 26
         $Xeron.PUSum | Should -Be 26
+    }
+
+    It 'entity-override player retains CN after overlay' {
+        $CragHack = $script:Players | Where-Object { $_.Name -eq 'Crag Hack' }
+        $CragHack.CN | Should -Be 'Gracz/Crag Hack'
     }
 
     It 'Crag Hack has no PRFWebhook (not in entities)' {

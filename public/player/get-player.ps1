@@ -157,6 +157,7 @@ function Get-Player {
 
                 $Character = [PSCustomObject]@{
                     Name           = $CharacterName
+                    CN             = "Postać/$CharacterName"
                     IsActive       = $IsActive
                     Aliases        = $Aliases
                     Path           = $CharacterPath
@@ -216,6 +217,7 @@ function Get-Player {
         # may extend it further with aliases, PU overrides, or new characters
         $Player = [PSCustomObject]@{
             Name       = $PlayerName
+            CN         = "Gracz/$PlayerName"
             Names      = $Names
             MargonemID = $MargonemId
             PRFWebhook = $PRFWebhook
@@ -259,6 +261,7 @@ function Get-Player {
         if ($IsNewPlayer) {
             $TargetPlayer = [PSCustomObject]@{
                 Name       = $TargetPlayerName
+                CN         = "Gracz/$TargetPlayerName"
                 Names      = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
                 MargonemID = $null
                 PRFWebhook = $null
@@ -299,6 +302,7 @@ function Get-Player {
         if ($IsNewChar) {
             $TargetChar = [PSCustomObject]@{
                 Name           = $Entity.Name
+                CN             = "Postać/$($Entity.Name)"
                 IsActive       = $false
                 Aliases        = [System.Collections.Generic.List[string]]::new()
                 Path           = if ($Entity.FilePath) { $Entity.FilePath } else { "" }

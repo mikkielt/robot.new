@@ -235,7 +235,11 @@ function Resolve-Name {
         $BKTree,
 
         [Parameter(HelpMessage = "Skip Stage 3 fuzzy/Levenshtein matching to avoid false positives")]
-        [switch]$NoFuzzy
+        [switch]$NoFuzzy,
+
+        [Parameter(HelpMessage = "Return up to N fuzzy candidates (Stage 3 only)")]
+        [ValidateRange(1, 20)]
+        [int]$TopN = 1
     )
 
     if ([string]::IsNullOrWhiteSpace($Query)) { return $null }
@@ -317,6 +321,9 @@ function Resolve-Name {
 
     $BestOwner    = $null
     $BestDistance = [int]::MaxValue
+    if ($TopN -gt 1) {
+        $AllCandidates = [System.Collections.Generic.List[object]]::new()
+    }
 
     # Short names (<5 chars) allow max 1 edit to prevent false positives;
     # longer names scale to floor(length / 3) to accommodate typos
@@ -340,6 +347,15 @@ function Resolve-Name {
                     }
                 }
             }
+            if ($TopN -gt 1 -and $BKResult.Value -le $Threshold) {
+                if ($Index.ContainsKey($BKResult.Key)) {
+                    $CandidateEntry = $Index[$BKResult.Key]
+                    $CandidateOwner = Resolve-AmbiguousEntry -Entry $CandidateEntry -OwnerType $OwnerType
+                    if ($CandidateOwner) {
+                        $AllCandidates.Add([PSCustomObject]@{ Name = $CandidateOwner.Name; Distance = $BKResult.Value; Owner = $CandidateOwner })
+                    }
+                }
+            }
         }
     } elseif ($BKTree) {
         # PowerShell hashtable BK-tree fallback when C# type is unavailable
@@ -353,6 +369,15 @@ function Resolve-Name {
                     if ($Resolved) {
                         $BestDistance = $BKResult.Distance
                         $BestOwner   = $Resolved
+                    }
+                }
+            }
+            if ($TopN -gt 1 -and $BKResult.Distance -le $Threshold) {
+                if ($Index.ContainsKey($BKResult.Key)) {
+                    $CandidateEntry = $Index[$BKResult.Key]
+                    $CandidateOwner = Resolve-AmbiguousEntry -Entry $CandidateEntry -OwnerType $OwnerType
+                    if ($CandidateOwner) {
+                        $AllCandidates.Add([PSCustomObject]@{ Name = $CandidateOwner.Name; Distance = $BKResult.Distance; Owner = $CandidateOwner })
                     }
                 }
             }
@@ -378,11 +403,27 @@ function Resolve-Name {
                 }
             }
 
-            if ($BestDistance -le 1) { break }  # distance 0-1 cannot improve further
+            if ($TopN -gt 1 -and $Distance -le $Threshold) {
+                $Entry = $Index[$TokenKey]
+                $CandidateOwner = Resolve-AmbiguousEntry -Entry $Entry -OwnerType $OwnerType
+                if ($CandidateOwner) {
+                    $AllCandidates.Add([PSCustomObject]@{ Name = $CandidateOwner.Name; Distance = $Distance; Owner = $CandidateOwner })
+                }
+            }
+
+            if ($BestDistance -le 1 -and $TopN -eq 1) { break }  # distance 0-1 cannot improve further
         }
     }
 
     if ($BestDistance -le $Threshold) {
+        if ($TopN -gt 1 -and $BestOwner -and $AllCandidates.Count -gt 1) {
+            $Sorted = $AllCandidates | Sort-Object @{Expression={$_.Distance}}, @{Expression={$_.Name}} | Select-Object -First $TopN
+            if ($Sorted.Count -gt 1) {
+                $BestOwner | Add-Member -NotePropertyName 'Candidates' -NotePropertyValue @(
+                    $Sorted.ForEach({ @{ Name = $_.Name; Distance = $_.Distance } })
+                ) -Force
+            }
+        }
         if ($Cache) { $Cache[$CacheKey] = $BestOwner }
         return $BestOwner
     }

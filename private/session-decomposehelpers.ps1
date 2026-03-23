@@ -94,7 +94,7 @@ function Split-SessionSection {
     param([string[]]$Lines)
 
     $MetaTags = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
-    foreach ($T in @('narrator', 'data', 'pu', 'logi', 'lokalizacje', 'lokacje', 'zmiany', 'intel')) {
+    foreach ($T in @('narrator', 'data', 'pu', 'logi', 'lokalizacje', 'lokacje', 'zmiany', 'intel', 'transfer')) {
         [void]$MetaTags.Add($T)
     }
 
@@ -113,6 +113,7 @@ function Split-SessionSection {
         'pu'          = 'pu'
         'zmiany'      = 'changes'
         'intel'       = 'intel'
+        'transfer'    = 'transfers'
     }
 
     $MetaBlocks      = [ordered]@{}

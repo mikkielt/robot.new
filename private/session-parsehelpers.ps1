@@ -414,6 +414,34 @@ function Get-SessionListMetadata {
                     }
                 }
             }
+
+            if ($Children) {
+                foreach ($TrChild in $Children) {
+                    $TrText = $TrChild.Text.Trim()
+                    $TrArrow = $TrText.IndexOf('->')
+                    $TrComma = $TrText.IndexOf(',')
+                    if ($TrArrow -gt 0 -and $TrComma -gt 0 -and $TrComma -lt $TrArrow) {
+                        $TrAmountDenom = $TrText.Substring(0, $TrComma).Trim()
+                        $TrSource = $TrText.Substring($TrComma + 1, $TrArrow - $TrComma - 1).Trim()
+                        $TrDest = $TrText.Substring($TrArrow + 2).Trim()
+
+                        $TrSpaceIdx = $TrAmountDenom.IndexOf(' ')
+                        [int]$TrAmt = 0
+                        $TrDenomStr = $null
+                        if ($TrSpaceIdx -gt 0 -and [int]::TryParse($TrAmountDenom.Substring(0, $TrSpaceIdx), [ref]$TrAmt) -and $TrAmt -gt 0) {
+                            $TrDenomStr = $TrAmountDenom.Substring($TrSpaceIdx + 1).Trim()
+                        } else {
+                            $TrAmt = 1
+                            $TrDenomStr = $TrAmountDenom.Trim()
+                        }
+                        if ($TrDenomStr.Length -gt 0 `
+                            -and -not [string]::IsNullOrWhiteSpace($TrSource) `
+                            -and -not [string]::IsNullOrWhiteSpace($TrDest)) {
+                            $Transfers.Add([Robot.SessionTransfer]::new($TrAmt, $TrDenomStr, $TrSource, $TrDest))
+                        }
+                    }
+                }
+            }
         }
 
     }

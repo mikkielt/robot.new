@@ -125,6 +125,18 @@ namespace Robot {
             var psType = value.GetType();
             if (psType.FullName == "System.Management.Automation.PSCustomObject" ||
                 psType.FullName == "System.Management.Automation.PSObject") {
+                // Unwrap PSObject if it wraps a primitive (e.g. string from .Where())
+                var baseObjProp = psType.GetProperty("BaseObject");
+                if (baseObjProp != null) {
+                    var baseObj = baseObjProp.GetValue(value);
+                    if (baseObj != null && baseObj != value &&
+                        (baseObj is string || baseObj is int || baseObj is long ||
+                         baseObj is double || baseObj is decimal || baseObj is float ||
+                         baseObj is bool || baseObj is DateTime)) {
+                        WriteValue(writer, baseObj, depth, includeLabels);
+                        return;
+                    }
+                }
                 WritePSObject(writer, value, depth, includeLabels);
                 return;
             }

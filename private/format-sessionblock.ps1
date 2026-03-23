@@ -101,6 +101,13 @@ function ConvertTo-Gen4MetadataBlock {
                 [void]$SB.Append("    - $($Entry.RawTarget): $($Entry.Message)")
             }
         }
+        'Transfer' {
+            foreach ($Entry in $Items) {
+                [void]$SB.Append($NL)
+                $Prefix = if ($Entry.Amount -gt 1) { "$($Entry.Amount) " } else { '' }
+                [void]$SB.Append("    - $($Prefix)$($Entry.Denomination), $($Entry.Source) -> $($Entry.Destination)")
+            }
+        }
     }
 
     return $SB.ToString()
@@ -115,6 +122,7 @@ function ConvertTo-SessionMetadata {
         [object]$PU,
         [object]$Changes,
         [object]$Intel,
+        [object]$Transfers,
         [string]$NL = [System.Environment]::NewLine
     )
 
@@ -140,6 +148,9 @@ function ConvertTo-SessionMetadata {
 
     $IntelBlock = ConvertTo-Gen4MetadataBlock -Tag 'Intel' -Items $Intel -NL $NL
     if ($IntelBlock) { $Blocks.Add($IntelBlock) }
+
+    $TransferBlock = ConvertTo-Gen4MetadataBlock -Tag 'Transfer' -Items $Transfers -NL $NL
+    if ($TransferBlock) { $Blocks.Add($TransferBlock) }
 
     if ($Blocks.Count -eq 0) { return '' }
 

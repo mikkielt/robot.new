@@ -567,7 +567,7 @@ function Invoke-ApiResolveBatch {
     # temporally-valid aliases are resolvable (e.g. expired aliases won't match)
     if ($ActiveOn) {
         $FilteredEntities = Get-Entity -ActiveOn $ActiveOn -Quiet
-        $FilteredPlayers  = Get-Player -Quiet
+        $FilteredPlayers  = Get-Player
         $Idx = Get-NameIndex -Entities $FilteredEntities -Players $FilteredPlayers
         $ResolveParams.Index     = $Idx.Index
         $ResolveParams.StemIndex = $Idx.StemIndex
@@ -608,7 +608,7 @@ function Invoke-ApiResolveBatch {
                 $Resolved[$Key] = $PerWordResult
                 $MatchStages[$Key] = 2
             } else {
-                $Result = Resolve-Name -Query $Key @ResolveParams
+                $Result = Resolve-Name -Query $Key @ResolveParams -TopN 5
                 $Resolved[$Key] = $Result
                 $MatchStages[$Key] = if ($Result) { 3 } else { 0 }
             }
@@ -699,7 +699,24 @@ function Invoke-ApiResolveBatch {
             type       = if ($R.PSObject.Properties['Type']) { $R.Type } else { $null }
             status     = if ($R.PSObject.Properties['Status']) { $R.Status } else { 'Aktywny' }
             aliases    = @(if ($R.PSObject.Properties['Names']) { @($R.Names.Where({ -not [string]::Equals($_, $R.Name, 'OrdinalIgnoreCase') }).ForEach({ [string]$_ })) } else { @() })
+            cn         = if ($R.PSObject.Properties['CN']) {
+                if ($R.PSObject.Properties['Characters']) {
+                    $MatchedChar = $R.Characters.Where({
+                        [string]::Equals($_.Name, $Key, 'OrdinalIgnoreCase') -or
+                        ($_.Aliases -and $_.Aliases.Where({ [string]::Equals($_, $Key, 'OrdinalIgnoreCase') }, 'First').Count -gt 0)
+                    }, 'First')
+                    if ($MatchedChar.Count -gt 0) { $MatchedChar[0].CN } else { $R.CN }
+                } else { $R.CN }
+            } elseif ($R.PSObject.Properties['Type'] -and $R.Name) {
+                "$($R.Type)/$($R.Name)"
+            } else { $null }
             matchStage = $Stage
+        }
+
+        if ($Stage -eq 3 -and $R.PSObject.Properties['Candidates']) {
+            $Entry.candidates = @($R.Candidates.ForEach({
+                @{ name = $_.Name; distance = $_.Distance }
+            }))
         }
 
         # Enrichment: session:read scope
