@@ -1,7 +1,9 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.IO;
 using System.Net;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -14,6 +16,9 @@ namespace Robot {
     /// Request lifecycle:
     /// 1. AcceptLoopAsync receives connections and dispatches to ThreadPool
     /// 2. HandleRequestAsync runs the middleware pipeline (CORS, auth, rate limit)
+    /// 2.5. Cacheable GET routes check the sidecar file cache (ResponseCache):
+    ///      ETag match returns 304 Not Modified; sidecar HIT streams pre-serialized
+    ///      JSON directly — both paths bypass the PowerShell RequestQueue entirely
     /// 3. Static routes (health, metrics, route listing) are handled entirely in
     ///    C# without touching the RequestQueue
     /// 4. Dynamic routes enqueue an ApiRequest with a TaskCompletionSource and
@@ -22,13 +27,17 @@ namespace Robot {
     /// Thread safety: _requestCount uses Interlocked. CacheVersion is a shared
     /// static monotonic counter incremented by write handlers (via api-worker.ps1)
     /// and checked by read handlers for cross-runspace cache invalidation.
+    /// ResponseCache and RepoRoot are static fields set once at startup by
+    /// Start-RobotApi, shared across all runspaces like CacheVersion.
     /// Properties (_router, _middleware) are set once in Start() before any HTTP
     /// threads begin.
     ///
     /// Consumers: Start-RobotApi (creates instance, calls Start/Stop),
     ///            api-worker.ps1 (dequeues from RequestQueue, sets CacheVersion),
+    ///            api-handlers-write.ps1 (sidecar invalidation via ResponseCache),
     ///            Get-RobotApiStatus (reads GetStatus and CacheVersion)
     public sealed class ApiServer : IDisposable {
+        private static readonly UTF8Encoding Utf8NoBom = new UTF8Encoding(false);
         private HttpListener _listener;
         private CancellationTokenSource _cts;
         private ApiRouter _router;
@@ -51,6 +60,16 @@ namespace Robot {
         /// when stale. Static field because RunspacePool workers each get
         /// their own ApiServer reference but must share cache state.
         public static long CacheVersion;
+
+        /// Static response cache shared across all threads and runspaces.
+        /// Static for the same reason as CacheVersion — worker runspaces are
+        /// isolated and cannot access instance fields via $script: variables.
+        /// Set by Start-RobotApi after server start.
+        public static ApiResponseCache ResponseCache;
+
+        /// Repository root path. Set by Start-RobotApi.ps1 after server start.
+        /// Used by the response cache to compute domain fingerprints.
+        public static string RepoRoot;
 
         public bool IsRunning => _isRunning;
         public long RequestCount => Interlocked.Read(ref _requestCount);
@@ -208,6 +227,40 @@ namespace Robot {
                     return;
                 }
 
+                // ── Response cache intercept (sidecar check) ────────
+                var cache = ResponseCache;
+                string repoRoot = RepoRoot;
+                bool isCacheable = match.Route.CacheKey != null
+                    && cache != null && repoRoot != null
+                    && request.HttpMethod == "GET"
+                    && request.QueryString.Count == 0;
+
+                if (isCacheable) {
+                    cache.RefreshFingerprints(repoRoot);
+                    string etag = cache.BuildETag(match.Route.CacheDomains);
+
+                    // ETag / 304 Not Modified
+                    string ifNoneMatch = request.Headers["If-None-Match"];
+                    if (ifNoneMatch != null && ifNoneMatch.Trim('"') == etag) {
+                        response.StatusCode = 304;
+                        response.Close();
+                        return;
+                    }
+
+                    // Sidecar hit — stream cached JSON directly (no PS overhead)
+                    if (cache.TryLoad(match.Route.CacheKey,
+                            match.Route.CacheDomains, out byte[] cachedJson,
+                            out string cachedEtag)) {
+                        response.StatusCode = match.Route.StatusCode;
+                        response.ContentType = "application/json; charset=utf-8";
+                        response.Headers.Add("ETag", "\"" + cachedEtag + "\"");
+                        response.Headers.Add("X-Cache", "HIT");
+                        response.ContentLength64 = cachedJson.Length;
+                        response.OutputStream.Write(cachedJson, 0, cachedJson.Length);
+                        return;
+                    }
+                }
+
                 // ── Dynamic PS handler: enqueue to worker pool ──────
                 // Content-Type validation for requests with entity body
                 if (request.HasEntityBody) {
@@ -267,6 +320,13 @@ namespace Robot {
 
                 var apiResponse = await apiRequest.ResponseSource.Task.ConfigureAwait(false);
 
+                // Sidecar write: for cacheable routes with successful responses,
+                // serialize via ApiSerializer.SerializeToBytes to guarantee byte-level
+                // equality between cached and fresh responses (addresses V-5).
+                byte[] sidecarBytes = null;
+                bool shouldCache = isCacheable && apiResponse.StatusCode == 200
+                    && apiResponse.RawBody == null;
+
                 // Serialize response — three paths: raw bytes, raw JSON, or object
                 if (apiResponse.RawBody != null) {
                     // Opaque byte payload (HTML, images, etc.) with explicit content type
@@ -278,9 +338,31 @@ namespace Robot {
                     // Pre-serialized JSON from PS handler
                     ApiSerializer.WriteRaw(response, apiResponse.RawJson,
                         apiResponse.StatusCode);
+                    if (shouldCache) {
+                        sidecarBytes = Utf8NoBom.GetBytes(apiResponse.RawJson);
+                    }
                 } else {
-                    ApiSerializer.WriteObject(response, apiResponse.Body,
-                        apiResponse.StatusCode, apiResponse.IncludeLabels);
+                    if (shouldCache) {
+                        // Serialize to bytes first, then write to response + sidecar
+                        sidecarBytes = ApiSerializer.SerializeToBytes(
+                            apiResponse.Body, apiResponse.IncludeLabels);
+                        response.StatusCode = apiResponse.StatusCode;
+                        response.ContentType = "application/json; charset=utf-8";
+                        response.ContentLength64 = sidecarBytes.Length;
+                        response.OutputStream.Write(sidecarBytes, 0, sidecarBytes.Length);
+                    } else {
+                        ApiSerializer.WriteObject(response, apiResponse.Body,
+                            apiResponse.StatusCode, apiResponse.IncludeLabels);
+                    }
+                }
+
+                // ETag + sidecar persistence for cacheable route misses
+                if (shouldCache && cache != null && sidecarBytes != null) {
+                    string missEtag = cache.BuildETag(match.Route.CacheDomains);
+                    response.Headers.Add("ETag", "\"" + missEtag + "\"");
+                    response.Headers.Add("X-Cache", "MISS");
+                    cache.Save(match.Route.CacheKey,
+                        match.Route.CacheDomains, sidecarBytes);
                 }
 
             } catch (Exception ex) {

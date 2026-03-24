@@ -12,6 +12,9 @@
        in-flight requests, disconnects SSE clients, and closes the listener.
     3. Resource disposal: disposes the ApiServer and nulls the instance
        reference so Get-RobotApiStatus reports offline state.
+    4. Cache cleanup: clears static ApiServer.ResponseCache and RepoRoot
+       fields to release sidecar cache references and prevent stale state
+       if the server is restarted.
 
     Module-level data:
     - $script:ApiServerInstance: cleared to $null after shutdown
@@ -42,6 +45,10 @@ function Stop-RobotApi {
     $script:ApiServerInstance.Stop()
     $script:ApiServerInstance.Dispose()
     $script:ApiServerInstance = $null
+
+    # Clear static response cache state
+    [Robot.ApiServer]::ResponseCache = $null
+    [Robot.ApiServer]::RepoRoot = $null
 
     if (-not $Quiet) {
         Write-RobotInfo '[Stop-RobotApi] Server stopped and resources released'

@@ -82,6 +82,22 @@ namespace Robot {
             }
         }
 
+        /// Serialize any object to a UTF-8 JSON byte array without writing to
+        /// an HTTP response. Used by the response cache to capture sidecar content
+        /// using the exact same serialization logic as WriteObject — guaranteeing
+        /// byte-level equality between cached and fresh responses.
+        public static byte[] SerializeToBytes(object value, bool includeLabels = false) {
+            using (var ms = new MemoryStream(4096))
+            using (var writer = new Utf8JsonWriter(ms, new JsonWriterOptions {
+                Indented = false,
+                SkipValidation = false
+            })) {
+                WriteValue(writer, value, 0, includeLabels);
+                writer.Flush();
+                return ms.ToArray();
+            }
+        }
+
         // ── Core serialization dispatcher ────────────────────────────
 
         private static void WriteValue(Utf8JsonWriter writer, object value,

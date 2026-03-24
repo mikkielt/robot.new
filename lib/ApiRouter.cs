@@ -46,6 +46,20 @@ namespace Robot {
             _routes.Add(route);
         }
 
+        /// Register a cacheable PS handler route with sidecar metadata.
+        /// cacheKey: sidecar filename stem (e.g. "economy-snapshot").
+        /// cacheDomains: fingerprint domains this route depends on.
+        public void AddCacheableRoute(string method, string pattern,
+            string handlerName, string description, int statusCode,
+            string scope, string cacheKey, string[] cacheDomains) {
+            var route = BuildRoute(method, pattern, description, statusCode);
+            route.HandlerName = handlerName;
+            route.RequiredScope = scope;
+            route.CacheKey = cacheKey;
+            route.CacheDomains = cacheDomains;
+            _routes.Add(route);
+        }
+
         /// Register a route with a C#-only static handler delegate (no PowerShell
         /// invocation). Used for /health, /metrics, /routes endpoints.
         public void AddStaticRoute(string method, string pattern,
@@ -167,6 +181,10 @@ namespace Robot {
         public Func<RouteMatch, ApiServer, object> StaticHandler { get; set; }
         public bool IsSse { get; set; }
         public string RequiredScope { get; set; }
+
+        // Response cache metadata — null means not cacheable
+        public string CacheKey { get; set; }         // sidecar filename stem
+        public string[] CacheDomains { get; set; }   // fingerprint domains: "entity", "session", "graph"
     }
 
     /// Result of matching a request URL against the route table: matched route + captured path params.

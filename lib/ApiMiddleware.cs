@@ -158,6 +158,7 @@ namespace Robot {
                 "GET, POST, PUT, DELETE, OPTIONS");
             response.Headers.Add("Access-Control-Allow-Headers",
                 "Authorization, Content-Type");
+            response.Headers.Add("Access-Control-Expose-Headers", "ETag, X-Cache");
             response.Headers.Add("Access-Control-Max-Age", "86400"); // 24 hours — preflight cache
             return true;
         }

@@ -7,6 +7,9 @@
     dot-sourced into each worker runspace at startup. Each handler accepts
     [hashtable]$ApiContext and returns @{ StatusCode; Body }.
 
+    Helpers:
+    - Invoke-SidecarInvalidation: invalidates response cache sidecars for a domain
+
     Handlers:
     - Invoke-ApiCreateEntity:   POST /entities — creates via New-Entity
     - Invoke-ApiUpdateEntity:   PUT /entities/:name — updates via Set-Entity
@@ -22,17 +25,30 @@
     - Invoke-ApiUpdateLocation: PUT /locations/:name — updates via Set-LocationEntity
     - Invoke-ApiDeleteLocation: DELETE /locations/:name — soft-deletes location
     - Invoke-ApiCreateMap:      POST /maps — creates via New-MapEntity
+    - Invoke-ApiUpdateMap:      PUT /maps/:name — updates via Set-MapEntity
 
     All handlers pass -Confirm:$false to skip interactive prompts. After each
     successful write, Clear-ParseCaches is called to invalidate memory caches
-    (except Add-Session which handles its own cache invalidation).
-    The worker pool then increments CacheVersion so other runspaces detect
-    the invalidation and refresh their caches on next request.
+    (except Add-Session which handles its own cache invalidation), followed
+    by Invoke-SidecarInvalidation to purge any sidecar-cached HTTP responses
+    for the affected domain ('entity', 'session', or 'graph'). The worker
+    pool then increments CacheVersion so other runspaces detect the
+    invalidation and refresh their caches on next request.
 
     PSCustomObject bodies from JSON are decomposed into PowerShell parameter
     hashtables with explicit [string]/[int]/[decimal] casts to avoid type
     ambiguity from ConvertFrom-Json's dynamic typing.
 #>
+
+# ── Response cache invalidation helper ───────────────────────────────
+# Uses static field [Robot.ApiServer]::ResponseCache — accessible from
+# all runspaces (workers and main alike), unlike $script:ApiServerInstance
+# which is only set in the main runspace.
+function Invoke-SidecarInvalidation {
+    param([string]$Domain)
+    $Cache = [Robot.ApiServer]::ResponseCache
+    if ($Cache) { $Cache.InvalidateDomain($Domain) }
+}
 
 # ═══════════════════════════════════════════════════════════════════════
 # ENTITIES
@@ -73,6 +89,7 @@ function Invoke-ApiCreateEntity {
     try {
         $Result = New-Entity @Params
         Clear-ParseCaches
+        Invoke-SidecarInvalidation -Domain 'entity'
         return @{ StatusCode = 201; Body = $Result }
     } catch {
         return @{ StatusCode = 422; Body = @{ error = $_.Exception.Message } }
@@ -114,6 +131,7 @@ function Invoke-ApiUpdateEntity {
     try {
         $Result = Set-Entity @Params
         Clear-ParseCaches
+        Invoke-SidecarInvalidation -Domain 'entity'
         return @{ StatusCode = 200; Body = $Result }
     } catch {
         return @{ StatusCode = 422; Body = @{ error = $_.Exception.Message } }
@@ -144,6 +162,7 @@ function Invoke-ApiDeleteEntity {
     try {
         $Result = Remove-Entity @Params
         Clear-ParseCaches
+        Invoke-SidecarInvalidation -Domain 'entity'
         return @{ StatusCode = 200; Body = $Result }
     } catch {
         return @{ StatusCode = 422; Body = @{ error = $_.Exception.Message } }
@@ -188,6 +207,7 @@ function Invoke-ApiCreateCurrency {
     try {
         $Result = New-Entity @Params
         Clear-ParseCaches
+        Invoke-SidecarInvalidation -Domain 'entity'
         return @{ StatusCode = 201; Body = $Result }
     } catch {
         return @{ StatusCode = 422; Body = @{ error = $_.Exception.Message } }
@@ -223,6 +243,7 @@ function Invoke-ApiUpdateCurrency {
     try {
         $Result = Set-CurrencyEntity @Params
         Clear-ParseCaches
+        Invoke-SidecarInvalidation -Domain 'entity'
         return @{ StatusCode = 200; Body = $Result }
     } catch {
         return @{ StatusCode = 422; Body = @{ error = $_.Exception.Message } }
@@ -267,6 +288,7 @@ function Invoke-ApiCreatePlayer {
     try {
         $Result = New-Player @Params
         Clear-ParseCaches
+        Invoke-SidecarInvalidation -Domain 'entity'
         return @{ StatusCode = 201; Body = $Result }
     } catch {
         return @{ StatusCode = 422; Body = @{ error = $_.Exception.Message } }
@@ -310,6 +332,7 @@ function Invoke-ApiCreateCharacter {
     try {
         $Result = New-PlayerCharacter @Params
         Clear-ParseCaches
+        Invoke-SidecarInvalidation -Domain 'entity'
         return @{ StatusCode = 201; Body = $Result }
     } catch {
         return @{ StatusCode = 422; Body = @{ error = $_.Exception.Message } }
@@ -390,6 +413,7 @@ function Invoke-ApiCreateSession {
 
         try {
             $Headers = Add-Session -Path @($B.path) -Sessions $BatchSpecs.ToArray() -Confirm:$false
+            Invoke-SidecarInvalidation -Domain 'session'
             return @{
                 StatusCode = 201
                 Body = @{
@@ -465,6 +489,7 @@ function Invoke-ApiCreateSession {
 
     try {
         $Headers = Add-Session @Params
+        Invoke-SidecarInvalidation -Domain 'session'
         return @{
             StatusCode = 201
             Body = @{
@@ -500,6 +525,7 @@ function Invoke-ApiRebuildGraph {
 
     try {
         $Result = Set-SessionGraph @Params
+        Invoke-SidecarInvalidation -Domain 'graph'
         return @{ StatusCode = 200; Body = $Result }
     } catch {
         return @{ StatusCode = 422; Body = @{ error = $_.Exception.Message } }
@@ -524,6 +550,7 @@ function Invoke-ApiRebuildHashes {
 
     try {
         $Result = Set-SessionHash @Params
+        Invoke-SidecarInvalidation -Domain 'session'
         return @{ StatusCode = 200; Body = $Result }
     } catch {
         return @{ StatusCode = 422; Body = @{ error = $_.Exception.Message } }
@@ -561,6 +588,7 @@ function Invoke-ApiCreateLocation {
     try {
         $Result = New-LocationEntity @Params
         Clear-ParseCaches
+        Invoke-SidecarInvalidation -Domain 'entity'
         return @{ StatusCode = 201; Body = $Result }
     } catch {
         return @{ StatusCode = 422; Body = @{ error = $_.Exception.Message } }
@@ -596,6 +624,7 @@ function Invoke-ApiUpdateLocation {
     try {
         $Result = Set-LocationEntity @Params
         Clear-ParseCaches
+        Invoke-SidecarInvalidation -Domain 'entity'
         return @{ StatusCode = 200; Body = $Result }
     } catch {
         return @{ StatusCode = 422; Body = @{ error = $_.Exception.Message } }
@@ -617,6 +646,7 @@ function Invoke-ApiDeleteLocation {
     try {
         $Result = Remove-Entity @Params
         Clear-ParseCaches
+        Invoke-SidecarInvalidation -Domain 'entity'
         return @{ StatusCode = 200; Body = $Result }
     } catch {
         return @{ StatusCode = 422; Body = @{ error = $_.Exception.Message } }
@@ -651,6 +681,7 @@ function Invoke-ApiCreateMap {
     try {
         $Result = New-MapEntity @Params
         Clear-ParseCaches
+        Invoke-SidecarInvalidation -Domain 'entity'
         return @{ StatusCode = 201; Body = $Result }
     } catch {
         return @{ StatusCode = 422; Body = @{ error = $_.Exception.Message } }
@@ -688,6 +719,7 @@ function Invoke-ApiUpdateMap {
     try {
         $Result = Set-MapEntity @Params
         Clear-ParseCaches
+        Invoke-SidecarInvalidation -Domain 'entity'
         return @{ StatusCode = 200; Body = $Result }
     } catch {
         return @{ StatusCode = 422; Body = @{ error = $_.Exception.Message } }

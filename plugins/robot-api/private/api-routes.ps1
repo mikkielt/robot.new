@@ -14,7 +14,10 @@
        ListRoutes() reflects the final registered set.
     2. Dynamic PS read routes (GET) — dispatched via RequestQueue to
        worker runspaces that invoke handler functions from
-       api-handlers-read.ps1.
+       api-handlers-read.ps1. Expensive read endpoints (entity-state,
+       economy, leaderboard, reports) use AddCacheableRoute with sidecar
+       metadata (cacheKey + cacheDomains) for fingerprint-based HTTP
+       caching in ApiServer.HandleRequestAsync.
     3. Dynamic PS write routes (POST/PUT/DELETE) — same dispatch, with
        the worker pool incrementing CacheVersion after completion.
     4. Auth management routes (/auth/*) — token CRUD endpoints gated
@@ -97,8 +100,9 @@ function Register-AllApiRoutes {
         'Entity property diff between dates', 200, 'entity:read')
     $HandlerMap['Invoke-ApiGetEntityDelta'] = $true
 
-    $Router.AddRoute('GET', '/entity-state', 'Invoke-ApiGetEntityState',
-        'Enriched entity state with session overrides', 200, 'entity:read')
+    $Router.AddCacheableRoute('GET', '/entity-state', 'Invoke-ApiGetEntityState',
+        'Enriched entity state with session overrides', 200, 'entity:read',
+        'entity-state', @('entity', 'session'))
     $HandlerMap['Invoke-ApiGetEntityState'] = $true
 
     # --- Locations ---
@@ -138,20 +142,23 @@ function Register-AllApiRoutes {
         'Participation overlap analysis', 200, 'session:read')
     $HandlerMap['Invoke-ApiCompareParticipation'] = $true
 
-    $Router.AddRoute('GET', '/session-graph/leaderboard', 'Invoke-ApiGetLeaderboard',
-        'Top entities by session count', 200, 'session:read')
+    $Router.AddCacheableRoute('GET', '/session-graph/leaderboard', 'Invoke-ApiGetLeaderboard',
+        'Top entities by session count', 200, 'session:read',
+        'leaderboard', @('graph'))
     $HandlerMap['Invoke-ApiGetLeaderboard'] = $true
 
     # --- Currency & Economy ---
     $Router.AddRoute('GET', '/currency', 'Invoke-ApiGetCurrency', 'Currency holdings report', 200, 'entity:read')
     $HandlerMap['Invoke-ApiGetCurrency'] = $true
 
-    $Router.AddRoute('GET', '/economy/snapshot', 'Invoke-ApiGetEconomicSnapshot',
-        'Point-in-time economic analysis', 200, 'entity:read')
+    $Router.AddCacheableRoute('GET', '/economy/snapshot', 'Invoke-ApiGetEconomicSnapshot',
+        'Point-in-time economic analysis', 200, 'entity:read',
+        'economy-snapshot', @('entity', 'session'))
     $HandlerMap['Invoke-ApiGetEconomicSnapshot'] = $true
 
-    $Router.AddRoute('GET', '/economy/timeline', 'Invoke-ApiGetEconomicTimeline',
-        'Monthly economic trends', 200, 'entity:read')
+    $Router.AddCacheableRoute('GET', '/economy/timeline', 'Invoke-ApiGetEconomicTimeline',
+        'Monthly economic trends', 200, 'entity:read',
+        'economy-timeline', @('entity', 'session'))
     $HandlerMap['Invoke-ApiGetEconomicTimeline'] = $true
 
     $Router.AddRoute('GET', '/transactions', 'Invoke-ApiGetTransactions',
@@ -188,27 +195,32 @@ function Register-AllApiRoutes {
         'Entity change audit log', 200, 'admin:read')
     $HandlerMap['Invoke-ApiGetChangelog'] = $true
 
-    $Router.AddRoute('GET', '/reports/dormancy', 'Invoke-ApiGetDormancy',
-        'Inactive entity report', 200, 'admin:read')
+    $Router.AddCacheableRoute('GET', '/reports/dormancy', 'Invoke-ApiGetDormancy',
+        'Inactive entity report', 200, 'admin:read',
+        'dormancy', @('entity', 'graph'))
     $HandlerMap['Invoke-ApiGetDormancy'] = $true
 
-    $Router.AddRoute('GET', '/reports/frequency', 'Invoke-ApiGetFrequency',
-        'Session frequency trends', 200, 'admin:read')
+    $Router.AddCacheableRoute('GET', '/reports/frequency', 'Invoke-ApiGetFrequency',
+        'Session frequency trends', 200, 'admin:read',
+        'frequency', @('session'))
     $HandlerMap['Invoke-ApiGetFrequency'] = $true
 
-    $Router.AddRoute('GET', '/reports/narrators', 'Invoke-ApiGetNarrators',
-        'Narrator stats', 200, 'admin:read')
+    $Router.AddCacheableRoute('GET', '/reports/narrators', 'Invoke-ApiGetNarrators',
+        'Narrator stats', 200, 'admin:read',
+        'narrators', @('session'))
     $HandlerMap['Invoke-ApiGetNarrators'] = $true
 
     $Router.AddRoute('GET', '/reports/locations', 'Invoke-ApiGetLocations',
         'Location reference data', 200, 'admin:read')
     $HandlerMap['Invoke-ApiGetLocations'] = $true
 
-    $Router.AddRoute('GET', '/reports/location-graph', 'Invoke-ApiGetLocationGraph',
-        'Location topology', 200, 'admin:read')
+    $Router.AddCacheableRoute('GET', '/reports/location-graph', 'Invoke-ApiGetLocationGraph',
+        'Location topology', 200, 'admin:read',
+        'location-graph', @('entity', 'session'))
     $HandlerMap['Invoke-ApiGetLocationGraph'] = $true
 
-    $Router.AddRoute('GET', '/reports/pu-log', 'Invoke-ApiGetPULog', 'PU processing history', 200, 'admin:read')
+    $Router.AddCacheableRoute('GET', '/reports/pu-log', 'Invoke-ApiGetPULog', 'PU processing history', 200, 'admin:read',
+        'pu-log', @('session'))
     $HandlerMap['Invoke-ApiGetPULog'] = $true
 
     $Router.AddRoute('GET', '/reports/notifications', 'Invoke-ApiGetNotifications',

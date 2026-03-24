@@ -20,7 +20,10 @@
        Register-AllApiRoutes to build the compiled route table.
     6. HTTP start: ApiServer.Start() begins accepting connections on the
        configured prefix (e.g. http://localhost:8642/api/).
-    7. Worker pool: dot-sources api-worker.ps1, launches N PowerShell
+    7. Response cache: creates [Robot.ApiResponseCache], sets RepoRoot and
+       CacheDirectory on the static ApiServer fields for cross-runspace
+       sidecar file caching.
+    8. Worker pool: dot-sources api-worker.ps1, launches N PowerShell
        runspace threads to process queued requests.
 
     Helpers (dot-sourced):
@@ -38,6 +41,7 @@
     - [Robot.ApiRouter]: compiled route table with pattern matching
     - [Robot.ApiMiddleware]: auth, CORS, rate limiting, body size guard
     - [Robot.ApiTokenStore]: concurrent multi-token store for Bearer auth
+    - [Robot.ApiResponseCache]: fingerprint-based sidecar file cache for HTTP responses
 #>
 
 function Start-RobotApi {
@@ -209,6 +213,13 @@ function Start-RobotApi {
     # Start C# HTTP listener — begins accepting connections and queuing requests
     $Server.Start($Prefix, $Router, $Middleware)
     $script:ApiServerInstance = $Server
+
+    # Initialize response cache — static fields for cross-runspace access
+    [Robot.ApiServer]::RepoRoot = Get-RepoRoot
+    $ResponseCache = [Robot.ApiResponseCache]::new()
+    $ResponseCache.CacheDirectory = [System.IO.Path]::Combine(
+        [Robot.ApiServer]::RepoRoot, '.robot.local', '.cache', 'api')
+    [Robot.ApiServer]::ResponseCache = $ResponseCache
 
     # Launch PowerShell runspace pool to dequeue and process requests
     . "$PSScriptRoot/../private/api-worker.ps1"

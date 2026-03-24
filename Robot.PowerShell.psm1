@@ -418,6 +418,17 @@ function Clear-ParseCaches {
             # Best-effort: disk cache deletion failure doesn't affect memory invalidation
         }
     }
+
+    # API response cache: clear all sidecar files. Uses static field for
+    # cross-runspace access (works from both main runspace and workers).
+    if (([System.Management.Automation.PSTypeName]'Robot.ApiServer').Type) {
+        try {
+            $Cache = [Robot.ApiServer]::ResponseCache
+            if ($Cache) { $Cache.Clear() }
+        } catch {
+            # Best-effort
+        }
+    }
 }
 
 function Get-PluginConfig {
