@@ -76,6 +76,21 @@ $script:FormatDetectPattern = [regex]::new(
 
 # ── Functions ─────────────────────────────────────────────────────────────────
 
+function Complete-LocationSegmentBoundaries {
+    param(
+        [System.Collections.Generic.List[PSCustomObject]]$Segments,
+        [int]$TotalLineCount
+    )
+    for ($i = 0; $i -lt $Segments.Count; $i++) {
+        $Seg = $Segments[$i]
+        if ($i -lt $Segments.Count - 1) {
+            $Seg.EndLine = $Segments[$i + 1].StartLine - 1
+        } else {
+            $Seg.EndLine = $TotalLineCount - 1
+        }
+    }
+}
+
 function Get-LogFormat {
     [CmdletBinding()] param(
         [Parameter(Mandatory, HelpMessage = "Raw log content string")]
@@ -255,15 +270,7 @@ function ConvertFrom-ChatLogContent {
     }
 
     # Compute EndLine for each location segment
-    $LineCount = $ParsedLines.Count
-    for ($i = 0; $i -lt $LocationSegments.Count; $i++) {
-        $Seg = $LocationSegments[$i]
-        if ($i -lt $LocationSegments.Count - 1) {
-            $Seg.EndLine = $LocationSegments[$i + 1].StartLine - 1
-        } else {
-            $Seg.EndLine = $LineCount - 1
-        }
-    }
+    Complete-LocationSegmentBoundaries -Segments $LocationSegments -TotalLineCount $ParsedLines.Count
 
     return [PSCustomObject]@{
         Format           = 'ChatLog'
@@ -340,15 +347,7 @@ function ConvertFrom-ProseContent {
     }
 
     # Compute EndLine for each location segment
-    $LineCount = $ParsedLines.Count
-    for ($i = 0; $i -lt $LocationSegments.Count; $i++) {
-        $Seg = $LocationSegments[$i]
-        if ($i -lt $LocationSegments.Count - 1) {
-            $Seg.EndLine = $LocationSegments[$i + 1].StartLine - 1
-        } else {
-            $Seg.EndLine = $LineCount - 1
-        }
-    }
+    Complete-LocationSegmentBoundaries -Segments $LocationSegments -TotalLineCount $ParsedLines.Count
 
     return [PSCustomObject]@{
         Format           = 'Prose'

@@ -46,12 +46,6 @@
         PSData = @{
             # Tags applied to this module
             Tags = @('Nerthus', 'RPG', 'Git', 'Markdown')
-            
-            # A URL to the license for this module
-            LicenseUri = ''
-            
-            # A URL to the main website for this project
-            ProjectUri = ''
         }
     }
 }

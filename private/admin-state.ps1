@@ -158,6 +158,40 @@ function Get-AdminHistoryEntries {
     return , $Result
 }
 
+function ConvertTo-MutableStateObject {
+    param(
+        [string]$Path,
+        [int]$DefaultVersion,
+        [string]$CollectionKey
+    )
+
+    $Parsed = Read-JsonStateFile -Path $Path
+    if ($null -eq $Parsed) {
+        return [ordered]@{
+            version       = $DefaultVersion
+            $CollectionKey = [System.Collections.Generic.List[object]]::new()
+        }
+    }
+
+    $List = [System.Collections.Generic.List[object]]::new()
+    $Raw = $Parsed.$CollectionKey
+    if ($Raw) {
+        foreach ($Item in @($Raw)) { [void]$List.Add($Item) }
+    }
+
+    return [ordered]@{
+        version       = if ($Parsed.version) { $Parsed.version } else { $DefaultVersion }
+        $CollectionKey = $List
+    }
+}
+
+function Get-TimezoneOffsetString {
+    param([datetime]$ReferenceTime = [datetime]::Now)
+    $Offset = [System.TimeZoneInfo]::Local.GetUtcOffset($ReferenceTime)
+    $Sign = if ($Offset -ge [System.TimeSpan]::Zero) { '+' } else { '-' }
+    return "UTC$Sign$($Offset.ToString('hh\:mm'))"
+}
+
 function Add-AdminHistoryEntry {
     param(
         [Parameter(Mandatory, HelpMessage = "Path to the state file")]
@@ -170,29 +204,10 @@ function Add-AdminHistoryEntry {
 
     if ($Headers.Count -eq 0) { return }
 
-    # Initialize or rebuild mutable state — ConvertFrom-Json yields immutable PSCustomObjects
-    $State = Read-JsonStateFile -Path $Path
-    if ($null -eq $State) {
-        $State = [ordered]@{
-            version = 2
-            runs    = [System.Collections.Generic.List[object]]::new()
-        }
-    } else {
-        # ConvertFrom-Json returns PSCustomObject; convert to ordered hashtable
-        $RunsList = [System.Collections.Generic.List[object]]::new()
-        if ($State.runs) {
-            foreach ($R in @($State.runs)) { [void]$RunsList.Add($R) }
-        }
-        $State = [ordered]@{
-            version = if ($State.version) { $State.version } else { 2 }
-            runs    = $RunsList
-        }
-    }
+    $State = ConvertTo-MutableStateObject -Path $Path -DefaultVersion 2 -CollectionKey 'runs'
 
     $Now = [datetime]::Now
-    $TimezoneOffset = [System.TimeZoneInfo]::Local.GetUtcOffset($Now)
-    $Sign = if ($TimezoneOffset -ge [System.TimeSpan]::Zero) { '+' } else { '-' }
-    $TzStr = "UTC$Sign$($TimezoneOffset.ToString('hh\:mm'))"
+    $TzStr = Get-TimezoneOffsetString -ReferenceTime $Now
     $Timestamp = $Now.ToString('yyyy-MM-ddTHH:mm:ss')
 
     # Strip "### " prefixes and sort — ordinal sort yields chronological order since headers start with YYYY-MM-DD

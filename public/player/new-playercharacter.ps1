@@ -147,6 +147,15 @@ function New-PlayerCharacter {
 
     if ($PSCmdlet.ShouldProcess($EntitiesFile, "New-PlayerCharacter: create character entry '$CharacterName' (owner: $PlayerName, PU start: $PUStartStr)")) {
         Write-EntityFile -Path $CharTarget.FilePath -Lines $CharTarget.Lines -NL $CharTarget.NL
+
+        if (Get-Command 'Invoke-PluginHook' -ErrorAction SilentlyContinue) {
+            Invoke-PluginHook -Operation 'New-PlayerCharacter' -Phase 'AfterCreate' -Context @{
+                Operation     = 'New-PlayerCharacter'
+                PlayerName    = $PlayerName
+                CharacterName = $CharacterName
+                EntitiesFile  = $EntitiesFile
+            }
+        }
     }
 
     # The character file holds baseline properties (condition, reputation, items)

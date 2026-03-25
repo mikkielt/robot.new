@@ -512,7 +512,9 @@ $MyInvocation.MyCommand.ScriptBlock.Module.OnRemove = {
             $script:ApiServerInstance.Stop()
             $script:ApiServerInstance.Dispose()
             $script:ApiServerInstance = $null
-        } catch { }  # best-effort cleanup — module is being unloaded regardless
+        } catch {
+            [System.Console]::Error.WriteLine("[WARN Robot.PowerShell OnRemove] Cleanup failed: $_")
+        }
     }
 }
 

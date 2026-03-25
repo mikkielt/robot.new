@@ -88,6 +88,16 @@ function New-Entity {
     if ($PSCmdlet.ShouldProcess($EntitiesFile, "New-Entity: create '$Name' under ## $Type")) {
         Write-EntityFile -Path $Target.FilePath -Lines $Target.Lines -NL $Target.NL
 
+        if (Get-Command 'Invoke-PluginHook' -ErrorAction SilentlyContinue) {
+            Invoke-PluginHook -Operation 'New-Entity' -Phase 'AfterCreate' -Context @{
+                Operation    = 'New-Entity'
+                Name         = $Name
+                Type         = $Type
+                EntitiesFile = $EntitiesFile
+                Tags         = $EffectiveTags
+            }
+        }
+
         Set-SessionGraphStale -Reason "Nowa encja '$Name' została utworzona" -ResDir $Config.ResDir
     }
 

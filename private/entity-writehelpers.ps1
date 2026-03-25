@@ -248,6 +248,31 @@ function Read-EntityFile {
     }
 }
 
+function Find-EntitySectionByHeader {
+    param(
+        [string[]]$Lines,
+        [string]$HeaderText,
+        [string]$EntityType
+    )
+    $Target = "## $HeaderText"
+    for ($idx = 0; $idx -lt $Lines.Count; $idx++) {
+        if ([string]::Equals($Lines[$idx].Trim(), $Target, [System.StringComparison]::OrdinalIgnoreCase)) {
+            $EndIdx = $Lines.Count
+            for ($j = $idx + 1; $j -lt $Lines.Count; $j++) {
+                if ($Lines[$j] -match '^## ') { $EndIdx = $j; break }
+            }
+            return @{
+                HeaderIdx  = $idx
+                StartIdx   = $idx + 1
+                EndIdx     = $EndIdx
+                HeaderText = $HeaderText
+                EntityType = $EntityType
+            }
+        }
+    }
+    return $null
+}
+
 function Resolve-EntityTarget {
     param(
         [string]$FilePath,
@@ -274,6 +299,15 @@ function Resolve-EntityTarget {
         $Lines.Add('')
 
         $Section = Find-EntitySection -Lines $Lines.ToArray() -EntityType $EntityType
+        if (-not $Section) {
+            # Find-EntitySection uses EntityTypeMap; types not in the mapping
+            # won't round-trip. Fall back to direct header scan.
+            $Section = Find-EntitySectionByHeader -Lines $Lines.ToArray() -HeaderText $HeaderText -EntityType $EntityType
+        }
+        if (-not $Section) {
+            throw [System.InvalidOperationException]::new(
+                "Failed to locate ## $HeaderText section after creation in '$FilePath'")
+        }
     }
 
     $Bullet = Find-EntityBullet -Lines $Lines.ToArray() -SectionStart $Section.StartIdx -SectionEnd $Section.EndIdx -EntityName $EntityName
@@ -283,7 +317,20 @@ function Resolve-EntityTarget {
 
         # Re-scan after insertion shifted all indices
         $Section = Find-EntitySection -Lines $Lines.ToArray() -EntityType $EntityType
+        if (-not $Section) {
+            $FallbackHeader = $script:TypeToHeader[$EntityType]
+            if (-not $FallbackHeader) { $FallbackHeader = $EntityType }
+            $Section = Find-EntitySectionByHeader -Lines $Lines.ToArray() -HeaderText $FallbackHeader -EntityType $EntityType
+        }
+        if (-not $Section) {
+            throw [System.InvalidOperationException]::new(
+                "Failed to re-locate ## $EntityType section after bullet insertion for '$EntityName'")
+        }
         $Bullet = Find-EntityBullet -Lines $Lines.ToArray() -SectionStart $Section.StartIdx -SectionEnd $Section.EndIdx -EntityName $EntityName
+        if (-not $Bullet) {
+            throw [System.InvalidOperationException]::new(
+                "Failed to locate bullet for '$EntityName' after insertion in '$FilePath'")
+        }
     }
 
     return @{

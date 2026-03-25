@@ -59,28 +59,10 @@ function Add-DiscordDeliveryEntry {
         [string]$Context
     )
 
-    # Initialize or rebuild mutable state — ConvertFrom-Json yields immutable PSCustomObjects
-    $State = Read-JsonStateFile -Path $Path
-    if ($null -eq $State) {
-        $State = [ordered]@{
-            version = 1
-            entries = [System.Collections.Generic.List[object]]::new()
-        }
-    } else {
-        $EntriesList = [System.Collections.Generic.List[object]]::new()
-        if ($State.entries) {
-            foreach ($E in @($State.entries)) { [void]$EntriesList.Add($E) }
-        }
-        $State = [ordered]@{
-            version = if ($State.version) { $State.version } else { 1 }
-            entries = $EntriesList
-        }
-    }
+    $State = ConvertTo-MutableStateObject -Path $Path -DefaultVersion 1 -CollectionKey 'entries'
 
     $Now = [datetime]::Now
-    $TimezoneOffset = [System.TimeZoneInfo]::Local.GetUtcOffset($Now)
-    $Sign = if ($TimezoneOffset -ge [System.TimeSpan]::Zero) { '+' } else { '-' }
-    $TzStr = "UTC$Sign$($TimezoneOffset.ToString('hh\:mm'))"
+    $TzStr = Get-TimezoneOffsetString -ReferenceTime $Now
 
     $NewEntry = [ordered]@{
         timestamp    = $Now.ToString('yyyy-MM-ddTHH:mm:ss')

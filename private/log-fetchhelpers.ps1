@@ -162,6 +162,15 @@ function Invoke-LogFetch {
     if (-not $Response.IsSuccessStatusCode) {
         $StatusCode = [int]$Response.StatusCode
         Write-RobotWarning "[WARN Invoke-LogFetch] HTTP $StatusCode fetching '$NormalizedUrl'"
+
+        # Permanent client errors (4xx): write .failed marker to prevent redundant retries
+        if ($StatusCode -ge 400 -and $StatusCode -lt 500) {
+            if (-not [System.IO.Directory]::Exists($LogDirectory)) {
+                [void][System.IO.Directory]::CreateDirectory($LogDirectory)
+            }
+            [System.IO.File]::WriteAllText($FailedPath, "$StatusCode $NormalizedUrl")
+        }
+
         return $null
     }
 
