@@ -1,0 +1,637 @@
+{
+  "component": "reports",
+  "endpoints": [
+    {
+      "method": "GET",
+      "path": "/reports/changelog",
+      "handler": "Invoke-ApiGetChangelog",
+      "scope": "admin:read",
+      "pl": {
+        "description": "Zwraca dziennik zmian encji z opcjonalnym filtrowaniem po datach, nazwie encji i zmienionej w\u0142a\u015bciwo\u015bci.",
+        "queryParams": [
+          {
+            "name": "minDate",
+            "required": false,
+            "type": "datetime",
+            "description": "Pocz\u0105tek zakresu dat. Parsowana przez [datetime]::Parse.",
+            "format": "YYYY-MM-DD",
+            "examples": ["2025-01-01"]
+          },
+          {
+            "name": "maxDate",
+            "required": false,
+            "type": "datetime",
+            "description": "Koniec zakresu dat. Parsowana przez [datetime]::Parse.",
+            "format": "YYYY-MM-DD",
+            "examples": ["2025-12-31"]
+          },
+          {
+            "name": "entity",
+            "required": false,
+            "type": "string",
+            "description": "Filtrowanie po nazwie encji.",
+            "examples": ["Smok", "Tawerna"]
+          },
+          {
+            "name": "property",
+            "required": false,
+            "type": "string",
+            "description": "Filtrowanie po nazwie zmienionej w\u0142a\u015bciwo\u015bci.",
+            "examples": ["@status", "@lokacja"]
+          }
+        ]
+      },
+      "en": {
+        "description": "Returns the entity change audit log with optional filtering by date range, entity name, and changed property.",
+        "queryParams": [
+          {
+            "name": "minDate",
+            "required": false,
+            "type": "datetime",
+            "description": "Start of date range. Parsed via [datetime]::Parse.",
+            "format": "YYYY-MM-DD",
+            "examples": ["2025-01-01"]
+          },
+          {
+            "name": "maxDate",
+            "required": false,
+            "type": "datetime",
+            "description": "End of date range. Parsed via [datetime]::Parse.",
+            "format": "YYYY-MM-DD",
+            "examples": ["2025-12-31"]
+          },
+          {
+            "name": "entity",
+            "required": false,
+            "type": "string",
+            "description": "Filter by entity name.",
+            "examples": ["Smok", "Tawerna"]
+          },
+          {
+            "name": "property",
+            "required": false,
+            "type": "string",
+            "description": "Filter by changed property name.",
+            "examples": ["@status", "@lokacja"]
+          }
+        ]
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/reports/dormancy",
+      "handler": "Invoke-ApiGetDormancy",
+      "scope": "admin:read",
+      "pl": {
+        "description": "Zwraca raport nieaktywnych encji na podstawie progu bezruchu w miesi\u0105cach.",
+        "queryParams": [
+          {
+            "name": "thresholdMonths",
+            "required": false,
+            "type": "integer",
+            "description": "Pr\u00f3g nieaktywno\u015bci w miesi\u0105cach.",
+            "examples": [3, 6]
+          },
+          {
+            "name": "type",
+            "required": false,
+            "type": "string",
+            "description": "Filtrowanie po typie encji.",
+            "examples": ["NPC", "Lokacja"]
+          },
+          {
+            "name": "includeDeleted",
+            "required": false,
+            "type": "string",
+            "description": "Warto\u015b\u0107 'true' w\u0142\u0105cza encje usuni\u0119te mi\u0119kko (@status: Usuni\u0119ty).",
+            "examples": ["true"]
+          }
+        ]
+      },
+      "en": {
+        "description": "Returns an inactive entity report based on the dormancy threshold in months.",
+        "queryParams": [
+          {
+            "name": "thresholdMonths",
+            "required": false,
+            "type": "integer",
+            "description": "Inactivity threshold in months.",
+            "examples": [3, 6]
+          },
+          {
+            "name": "type",
+            "required": false,
+            "type": "string",
+            "description": "Filter by entity type.",
+            "examples": ["NPC", "Lokacja"]
+          },
+          {
+            "name": "includeDeleted",
+            "required": false,
+            "type": "string",
+            "description": "Set to 'true' to include soft-deleted entities (@status: Usuni\u0119ty).",
+            "examples": ["true"]
+          }
+        ]
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/reports/frequency",
+      "handler": "Invoke-ApiGetFrequency",
+      "scope": "admin:read",
+      "pl": {
+        "description": "Zwraca dane trend\u00f3w cz\u0119stotliwo\u015bci sesji z opcjonalnym filtrowaniem po datach.",
+        "queryParams": [
+          {
+            "name": "minDate",
+            "required": false,
+            "type": "datetime",
+            "description": "Pocz\u0105tek zakresu dat. Parsowana przez [datetime]::Parse.",
+            "format": "YYYY-MM-DD",
+            "examples": ["2025-01-01"]
+          },
+          {
+            "name": "maxDate",
+            "required": false,
+            "type": "datetime",
+            "description": "Koniec zakresu dat. Parsowana przez [datetime]::Parse.",
+            "format": "YYYY-MM-DD",
+            "examples": ["2025-12-31"]
+          }
+        ]
+      },
+      "en": {
+        "description": "Returns session frequency trend data with optional date range filtering.",
+        "queryParams": [
+          {
+            "name": "minDate",
+            "required": false,
+            "type": "datetime",
+            "description": "Start of date range. Parsed via [datetime]::Parse.",
+            "format": "YYYY-MM-DD",
+            "examples": ["2025-01-01"]
+          },
+          {
+            "name": "maxDate",
+            "required": false,
+            "type": "datetime",
+            "description": "End of date range. Parsed via [datetime]::Parse.",
+            "format": "YYYY-MM-DD",
+            "examples": ["2025-12-31"]
+          }
+        ]
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/reports/narrators",
+      "handler": "Invoke-ApiGetNarrators",
+      "scope": "admin:read",
+      "pl": {
+        "description": "Zwraca statystyki narrator\u00f3w wraz ze statusem rozpoznania nazw.",
+        "queryParams": [
+          {
+            "name": "minDate",
+            "required": false,
+            "type": "datetime",
+            "description": "Pocz\u0105tek zakresu dat. Parsowana przez [datetime]::Parse.",
+            "format": "YYYY-MM-DD",
+            "examples": ["2025-01-01"]
+          },
+          {
+            "name": "maxDate",
+            "required": false,
+            "type": "datetime",
+            "description": "Koniec zakresu dat. Parsowana przez [datetime]::Parse.",
+            "format": "YYYY-MM-DD",
+            "examples": ["2025-12-31"]
+          },
+          {
+            "name": "minOccurrences",
+            "required": false,
+            "type": "integer",
+            "description": "Minimalna liczba sesji wymagana do uwzgl\u0119dnienia narratora w wynikach.",
+            "examples": [5, 10]
+          },
+          {
+            "name": "unresolvedOnly",
+            "required": false,
+            "type": "string",
+            "description": "Warto\u015b\u0107 'true' ogranicza wyniki do nierozpoznanych narrator\u00f3w.",
+            "examples": ["true"]
+          }
+        ]
+      },
+      "en": {
+        "description": "Returns narrator statistics and name resolution status.",
+        "queryParams": [
+          {
+            "name": "minDate",
+            "required": false,
+            "type": "datetime",
+            "description": "Start of date range. Parsed via [datetime]::Parse.",
+            "format": "YYYY-MM-DD",
+            "examples": ["2025-01-01"]
+          },
+          {
+            "name": "maxDate",
+            "required": false,
+            "type": "datetime",
+            "description": "End of date range. Parsed via [datetime]::Parse.",
+            "format": "YYYY-MM-DD",
+            "examples": ["2025-12-31"]
+          },
+          {
+            "name": "minOccurrences",
+            "required": false,
+            "type": "integer",
+            "description": "Minimum session count to include a narrator in the results.",
+            "examples": [5, 10]
+          },
+          {
+            "name": "unresolvedOnly",
+            "required": false,
+            "type": "string",
+            "description": "Set to 'true' to return only unresolved narrators.",
+            "examples": ["true"]
+          }
+        ]
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/reports/locations",
+      "handler": "Invoke-ApiGetLocations",
+      "scope": "admin:read",
+      "pl": {
+        "description": "Zwraca encje lokacji przez potok zapyta\u0144 RSQL (filtrowanie, sortowanie, paginacja, wyb\u00f3r p\u00f3l).",
+        "queryParams": [
+          {
+            "name": "filter",
+            "required": false,
+            "type": "string",
+            "description": "Filtr RSQL do zawierania spo\u015br\u00f3d lokacji.",
+            "examples": ["name==Krak*", "type==Miasto"]
+          },
+          {
+            "name": "sort",
+            "required": false,
+            "type": "string",
+            "description": "Pola sortowania (prefix '-' dla malej\u0105co).",
+            "examples": ["name", "-lastModified"]
+          },
+          {
+            "name": "fields",
+            "required": false,
+            "type": "string",
+            "description": "Wyb\u00f3r p\u00f3l zwracanych w odpowiedzi (sparse fieldset).",
+            "examples": ["name,type,status"]
+          },
+          {
+            "name": "labels",
+            "required": false,
+            "type": "string",
+            "description": "Warto\u015b\u0107 'true' do\u0142\u0105cza przetumaczone etykiety p\u00f3l.",
+            "examples": ["true"]
+          },
+          {
+            "name": "page[size]",
+            "required": false,
+            "type": "integer",
+            "description": "Liczba wynik\u00f3w na stron\u0119.",
+            "examples": [20, 50]
+          },
+          {
+            "name": "page[cursor]",
+            "required": false,
+            "type": "string",
+            "description": "Kursor paginacji do pobrania nast\u0119pnej strony wynik\u00f3w."
+          }
+        ]
+      },
+      "en": {
+        "description": "Returns location entities via the RSQL query pipeline (filter, sort, paginate, sparse fieldset).",
+        "queryParams": [
+          {
+            "name": "filter",
+            "required": false,
+            "type": "string",
+            "description": "RSQL filter expression for locations.",
+            "examples": ["name==Krak*", "type==Miasto"]
+          },
+          {
+            "name": "sort",
+            "required": false,
+            "type": "string",
+            "description": "Sort fields (prefix with '-' for descending).",
+            "examples": ["name", "-lastModified"]
+          },
+          {
+            "name": "fields",
+            "required": false,
+            "type": "string",
+            "description": "Sparse fieldset \u2014 comma-separated list of fields to include in the response.",
+            "examples": ["name,type,status"]
+          },
+          {
+            "name": "labels",
+            "required": false,
+            "type": "string",
+            "description": "Set to 'true' to include translated field labels.",
+            "examples": ["true"]
+          },
+          {
+            "name": "page[size]",
+            "required": false,
+            "type": "integer",
+            "description": "Number of results per page.",
+            "examples": [20, 50]
+          },
+          {
+            "name": "page[cursor]",
+            "required": false,
+            "type": "string",
+            "description": "Pagination cursor for fetching the next page of results."
+          }
+        ]
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/reports/location-graph",
+      "handler": "Invoke-ApiGetLocationGraph",
+      "scope": "admin:read",
+      "pl": {
+        "description": "Zwraca topologi\u0119 zawierania lokacji i ruch\u00f3w mi\u0119dzy nimi.",
+        "queryParams": [
+          {
+            "name": "minDate",
+            "required": false,
+            "type": "datetime",
+            "description": "Pocz\u0105tek zakresu dat. Parsowana przez [datetime]::Parse.",
+            "format": "YYYY-MM-DD",
+            "examples": ["2025-01-01"]
+          },
+          {
+            "name": "maxDate",
+            "required": false,
+            "type": "datetime",
+            "description": "Koniec zakresu dat. Parsowana przez [datetime]::Parse.",
+            "format": "YYYY-MM-DD",
+            "examples": ["2025-12-31"]
+          },
+          {
+            "name": "includeMovementEdges",
+            "required": false,
+            "type": "string",
+            "description": "Warto\u015b\u0107 'true' do\u0142\u0105cza kraw\u0119dzie ruch\u00f3w mi\u0119dzy lokacjami na podstawie sesji.",
+            "examples": ["true"]
+          }
+        ]
+      },
+      "en": {
+        "description": "Returns the location containment and movement topology graph.",
+        "queryParams": [
+          {
+            "name": "minDate",
+            "required": false,
+            "type": "datetime",
+            "description": "Start of date range. Parsed via [datetime]::Parse.",
+            "format": "YYYY-MM-DD",
+            "examples": ["2025-01-01"]
+          },
+          {
+            "name": "maxDate",
+            "required": false,
+            "type": "datetime",
+            "description": "End of date range. Parsed via [datetime]::Parse.",
+            "format": "YYYY-MM-DD",
+            "examples": ["2025-12-31"]
+          },
+          {
+            "name": "includeMovementEdges",
+            "required": false,
+            "type": "string",
+            "description": "Set to 'true' to include session-based movement edges between locations.",
+            "examples": ["true"]
+          }
+        ]
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/reports/pu-log",
+      "handler": "Invoke-ApiGetPULog",
+      "scope": "admin:read",
+      "pl": {
+        "description": "Zwraca histori\u0119 przetwarzania przydzia\u0142\u00f3w PU (punkt\u00f3w umiej\u0119tno\u015bci).",
+        "queryParams": [
+          {
+            "name": "minDate",
+            "required": false,
+            "type": "datetime",
+            "description": "Pocz\u0105tek zakresu dat. Parsowana przez [datetime]::Parse.",
+            "format": "YYYY-MM-DD",
+            "examples": ["2025-01-01"]
+          },
+          {
+            "name": "maxDate",
+            "required": false,
+            "type": "datetime",
+            "description": "Koniec zakresu dat. Parsowana przez [datetime]::Parse.",
+            "format": "YYYY-MM-DD",
+            "examples": ["2025-12-31"]
+          }
+        ]
+      },
+      "en": {
+        "description": "Returns the PU (skill point) assignment processing history.",
+        "queryParams": [
+          {
+            "name": "minDate",
+            "required": false,
+            "type": "datetime",
+            "description": "Start of date range. Parsed via [datetime]::Parse.",
+            "format": "YYYY-MM-DD",
+            "examples": ["2025-01-01"]
+          },
+          {
+            "name": "maxDate",
+            "required": false,
+            "type": "datetime",
+            "description": "End of date range. Parsed via [datetime]::Parse.",
+            "format": "YYYY-MM-DD",
+            "examples": ["2025-12-31"]
+          }
+        ]
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/reports/notifications",
+      "handler": "Invoke-ApiGetNotifications",
+      "scope": "admin:read",
+      "pl": {
+        "description": "Zwraca wpisy dziennika audytu powiadomie\u0144 z opcjonalnym filtrowaniem.",
+        "queryParams": [
+          {
+            "name": "target",
+            "required": false,
+            "type": "string",
+            "description": "Filtrowanie po celu powiadomienia.",
+            "examples": ["Aldric", "Mira"]
+          },
+          {
+            "name": "directive",
+            "required": false,
+            "type": "string",
+            "description": "Filtrowanie po typie dyrektywy.",
+            "examples": ["intel", "pu"]
+          },
+          {
+            "name": "minDate",
+            "required": false,
+            "type": "datetime",
+            "description": "Pocz\u0105tek zakresu dat. Parsowana przez [datetime]::Parse.",
+            "format": "YYYY-MM-DD",
+            "examples": ["2025-01-01"]
+          },
+          {
+            "name": "maxDate",
+            "required": false,
+            "type": "datetime",
+            "description": "Koniec zakresu dat. Parsowana przez [datetime]::Parse.",
+            "format": "YYYY-MM-DD",
+            "examples": ["2025-12-31"]
+          }
+        ]
+      },
+      "en": {
+        "description": "Returns notification audit log entries with optional filtering.",
+        "queryParams": [
+          {
+            "name": "target",
+            "required": false,
+            "type": "string",
+            "description": "Filter by notification target.",
+            "examples": ["Aldric", "Mira"]
+          },
+          {
+            "name": "directive",
+            "required": false,
+            "type": "string",
+            "description": "Filter by directive type.",
+            "examples": ["intel", "pu"]
+          },
+          {
+            "name": "minDate",
+            "required": false,
+            "type": "datetime",
+            "description": "Start of date range. Parsed via [datetime]::Parse.",
+            "format": "YYYY-MM-DD",
+            "examples": ["2025-01-01"]
+          },
+          {
+            "name": "maxDate",
+            "required": false,
+            "type": "datetime",
+            "description": "End of date range. Parsed via [datetime]::Parse.",
+            "format": "YYYY-MM-DD",
+            "examples": ["2025-12-31"]
+          }
+        ]
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/reports/discord-delivery",
+      "handler": "Invoke-ApiGetDeliveryLog",
+      "scope": "admin:read",
+      "pl": {
+        "description": "Zwraca histori\u0119 dostarczania webhook\u00f3w Discord z opcjonalnym filtrowaniem.",
+        "queryParams": [
+          {
+            "name": "operation",
+            "required": false,
+            "type": "string",
+            "description": "Filtrowanie po typie operacji.",
+            "examples": ["pu", "session"]
+          },
+          {
+            "name": "recipient",
+            "required": false,
+            "type": "string",
+            "description": "Filtrowanie po odbiorcy wiadomo\u015bci.",
+            "examples": ["Aldric"]
+          },
+          {
+            "name": "failedOnly",
+            "required": false,
+            "type": "string",
+            "description": "Warto\u015b\u0107 'true' ogranicza wyniki do nieudanych dostarcze\u0144.",
+            "examples": ["true"]
+          },
+          {
+            "name": "minDate",
+            "required": false,
+            "type": "datetime",
+            "description": "Pocz\u0105tek zakresu dat. Parsowana przez [datetime]::Parse.",
+            "format": "YYYY-MM-DD",
+            "examples": ["2025-01-01"]
+          },
+          {
+            "name": "maxDate",
+            "required": false,
+            "type": "datetime",
+            "description": "Koniec zakresu dat. Parsowana przez [datetime]::Parse.",
+            "format": "YYYY-MM-DD",
+            "examples": ["2025-12-31"]
+          }
+        ]
+      },
+      "en": {
+        "description": "Returns Discord webhook delivery history with optional filtering.",
+        "queryParams": [
+          {
+            "name": "operation",
+            "required": false,
+            "type": "string",
+            "description": "Filter by operation type.",
+            "examples": ["pu", "session"]
+          },
+          {
+            "name": "recipient",
+            "required": false,
+            "type": "string",
+            "description": "Filter by message recipient.",
+            "examples": ["Aldric"]
+          },
+          {
+            "name": "failedOnly",
+            "required": false,
+            "type": "string",
+            "description": "Set to 'true' to return only failed deliveries.",
+            "examples": ["true"]
+          },
+          {
+            "name": "minDate",
+            "required": false,
+            "type": "datetime",
+            "description": "Start of date range. Parsed via [datetime]::Parse.",
+            "format": "YYYY-MM-DD",
+            "examples": ["2025-01-01"]
+          },
+          {
+            "name": "maxDate",
+            "required": false,
+            "type": "datetime",
+            "description": "End of date range. Parsed via [datetime]::Parse.",
+            "format": "YYYY-MM-DD",
+            "examples": ["2025-12-31"]
+          }
+        ]
+      }
+    }
+  ]
+}

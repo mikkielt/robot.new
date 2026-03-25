@@ -1,0 +1,87 @@
+{
+  "component": "auth",
+  "endpoints": [
+    {
+      "method": "POST",
+      "path": "/auth/token",
+      "handler": "Invoke-ApiCreateToken",
+      "scope": "auth:manage",
+      "pl": {
+        "description": "Tworzy nowy token API z podaną nazwą i zestawem uprawnień. Zwraca wygenerowany token — jest on widoczny tylko przy tworzeniu.",
+        "bodyFields": [
+          {
+            "name": "name",
+            "required": true,
+            "type": "string",
+            "description": "Unikalna nazwa identyfikująca token. Służy jako klucz do zarządzania i usuwania tokenu.",
+            "examples": ["dashboard-prod", "ci-readonly"]
+          },
+          {
+            "name": "scopes",
+            "required": true,
+            "type": "array",
+            "description": "Tablica uprawnień przyznanych tokenowi. Określa, do jakich zasobów API token ma dostęp.",
+            "examples": [["entity:read", "session:read"], ["entity:read", "entity:write", "admin:write"]]
+          }
+        ]
+      },
+      "en": {
+        "description": "Creates a new API token with the given name and scope set. Returns the generated token — it is only visible at creation time.",
+        "bodyFields": [
+          {
+            "name": "name",
+            "required": true,
+            "type": "string",
+            "description": "Unique name identifying the token. Used as the key for token management and deletion.",
+            "examples": ["dashboard-prod", "ci-readonly"]
+          },
+          {
+            "name": "scopes",
+            "required": true,
+            "type": "array",
+            "description": "Array of scopes granted to the token. Determines which API resources the token can access.",
+            "examples": [["entity:read", "session:read"], ["entity:read", "entity:write", "admin:write"]]
+          }
+        ]
+      }
+    },
+    {
+      "method": "DELETE",
+      "path": "/auth/token/:name",
+      "handler": "Invoke-ApiDeleteToken",
+      "scope": "auth:manage",
+      "pl": {
+        "description": "Usuwa token API o podanej nazwie. Parametr ścieżki :name identyfikuje token do usunięcia. Operacja jest nieodwracalna.",
+        "bodyFields": []
+      },
+      "en": {
+        "description": "Deletes an API token by name. The :name path parameter identifies the token to remove. This operation is irreversible.",
+        "bodyFields": []
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/auth/status",
+      "handler": "Invoke-ApiGetAuthStatus",
+      "scope": "auth:manage",
+      "pl": {
+        "description": "Zwraca inwentarz magazynu tokenów z metadanymi (nazwa, uprawnienia, data utworzenia), ale bez ujawniania sekretów tokenów."
+      },
+      "en": {
+        "description": "Returns a token store inventory with metadata (name, scopes, creation date) but without exposing token secrets."
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/auth/whoami",
+      "handler": "Invoke-ApiGetWhoami",
+      "scope": null,
+      "pl": {
+        "description": "Zwraca tożsamość i uprawnienia tokenu wywołującego. Dostępne dla każdego uwierzytelnionego tokenu, niezależnie od zakresu uprawnień."
+      },
+      "en": {
+        "description": "Returns the calling token's identity and scopes. Available to any authenticated token regardless of granted scopes."
+      }
+    }
+  ]
+}

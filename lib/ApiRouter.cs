@@ -188,8 +188,10 @@ namespace Robot {
     }
 
     /// Result of matching a request URL against the route table: matched route + captured path params.
+    /// QueryParams is populated by ApiServer.HandleRequestAsync before dispatch (static or dynamic).
     public sealed class RouteMatch {
         public ApiRoute Route { get; set; }
         public Dictionary<string, string> PathParams { get; set; }
+        public Dictionary<string, string> QueryParams { get; set; }
     }
 }

@@ -1,0 +1,413 @@
+{
+  "component": "maps",
+  "endpoints": [
+    {
+      "method": "GET",
+      "path": "/maps",
+      "handler": "Invoke-ApiGetMaps",
+      "scope": "entity:read",
+      "pl": {
+        "description": "Zwraca listę wszystkich encji typu Mapa. Obsługuje filtrowanie RSQL, sortowanie, paginację i rzadkie zestawy pól.",
+        "queryParams": [
+          {
+            "name": "filter",
+            "required": false,
+            "type": "string",
+            "description": "Wyrażenie filtra RSQL do zawężenia wyników.",
+            "examples": ["name==Krainy*", "status==Aktywny"]
+          },
+          {
+            "name": "sort",
+            "required": false,
+            "type": "string",
+            "description": "Pola sortowania. Prefiks '-' oznacza porządek malejący.",
+            "examples": ["name", "-name"]
+          },
+          {
+            "name": "fields",
+            "required": false,
+            "type": "string",
+            "description": "Rzadki zestaw pól — lista nazw pól oddzielonych przecinkami. Zwracane są tylko wybrane pola.",
+            "examples": ["name,slug,url"]
+          },
+          {
+            "name": "labels",
+            "required": false,
+            "type": "string",
+            "description": "Jeśli 'true', dołącza tłumaczenia etykiet pól w odpowiedzi.",
+            "examples": ["true"]
+          },
+          {
+            "name": "page[size]",
+            "required": false,
+            "type": "integer",
+            "description": "Liczba wyników na stronę.",
+            "examples": [20, 50]
+          },
+          {
+            "name": "page[cursor]",
+            "required": false,
+            "type": "string",
+            "description": "Kursor paginacji zwrócony w poprzedniej odpowiedzi. Służy do pobrania kolejnej strony wyników."
+          }
+        ]
+      },
+      "en": {
+        "description": "Returns all Mapa (map) entities. Supports RSQL filtering, sorting, pagination, and sparse fieldsets.",
+        "queryParams": [
+          {
+            "name": "filter",
+            "required": false,
+            "type": "string",
+            "description": "RSQL filter expression to narrow results.",
+            "examples": ["name==Krainy*", "status==Aktywny"]
+          },
+          {
+            "name": "sort",
+            "required": false,
+            "type": "string",
+            "description": "Sort fields. Prefix with '-' for descending order.",
+            "examples": ["name", "-name"]
+          },
+          {
+            "name": "fields",
+            "required": false,
+            "type": "string",
+            "description": "Sparse fieldset — comma-separated field names. Only the selected fields are returned.",
+            "examples": ["name,slug,url"]
+          },
+          {
+            "name": "labels",
+            "required": false,
+            "type": "string",
+            "description": "If 'true', includes field label translations in the response.",
+            "examples": ["true"]
+          },
+          {
+            "name": "page[size]",
+            "required": false,
+            "type": "integer",
+            "description": "Number of results per page.",
+            "examples": [20, 50]
+          },
+          {
+            "name": "page[cursor]",
+            "required": false,
+            "type": "string",
+            "description": "Pagination cursor returned in a previous response. Used to fetch the next page of results."
+          }
+        ]
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/maps",
+      "handler": "Invoke-ApiCreateMap",
+      "scope": "entity:write",
+      "pl": {
+        "description": "Tworzy nową encję mapy. Pola 'name' i 'slug' są wymagane.",
+        "bodyFields": [
+          {
+            "name": "name",
+            "required": true,
+            "type": "string",
+            "description": "Nazwa mapy. Musi być unikalna wśród encji.",
+            "validation": "Wymagane — żądanie zostanie odrzucone z kodem 400 jeśli brak nazwy lub sluga."
+          },
+          {
+            "name": "slug",
+            "required": true,
+            "type": "string",
+            "description": "Slug mapy używany w adresach URL i identyfikacji.",
+            "validation": "Wymagane — żądanie zostanie odrzucone z kodem 400 jeśli brak nazwy lub sluga."
+          },
+          {
+            "name": "parent",
+            "required": false,
+            "type": "string",
+            "description": "Nazwa lokacji nadrzędnej, do której mapa jest przypisana.",
+            "examples": ["Ithar"]
+          },
+          {
+            "name": "url",
+            "required": false,
+            "type": "string",
+            "description": "URL obrazu mapy.",
+            "format": "url"
+          },
+          {
+            "name": "urlNerthus",
+            "required": false,
+            "type": "string",
+            "description": "URL mapy w wersji Nerthus.",
+            "format": "url"
+          },
+          {
+            "name": "dimensions",
+            "required": false,
+            "type": "string",
+            "description": "Wymiary mapy (np. szerokość x wysokość).",
+            "examples": ["800x600", "1024x768"]
+          },
+          {
+            "name": "doors",
+            "required": false,
+            "type": "array",
+            "description": "Lista nazw połączonych lokacji (przejścia/drzwi).",
+            "examples": [["Krainy Wschodnie", "Krainy Zachodnie"]]
+          },
+          {
+            "name": "info",
+            "required": false,
+            "type": "string",
+            "description": "Dodatkowe informacje o mapie."
+          },
+          {
+            "name": "validFrom",
+            "required": false,
+            "type": "string",
+            "description": "Data początku obowiązywania mapy.",
+            "format": "date",
+            "examples": ["2025-01-15"]
+          },
+          {
+            "name": "tags",
+            "required": false,
+            "type": "object",
+            "description": "Dodatkowe tagi w postaci par klucz-wartość.",
+            "examples": [{"region": "północ", "klimat": "umiarkowany"}]
+          }
+        ]
+      },
+      "en": {
+        "description": "Creates a new map entity. The 'name' and 'slug' fields are required.",
+        "bodyFields": [
+          {
+            "name": "name",
+            "required": true,
+            "type": "string",
+            "description": "Map name. Must be unique among entities.",
+            "validation": "Required — request will be rejected with 400 if name or slug is missing."
+          },
+          {
+            "name": "slug",
+            "required": true,
+            "type": "string",
+            "description": "Map slug used in URLs and identification.",
+            "validation": "Required — request will be rejected with 400 if name or slug is missing."
+          },
+          {
+            "name": "parent",
+            "required": false,
+            "type": "string",
+            "description": "Name of the parent location the map belongs to.",
+            "examples": ["Ithar"]
+          },
+          {
+            "name": "url",
+            "required": false,
+            "type": "string",
+            "description": "Map image URL.",
+            "format": "url"
+          },
+          {
+            "name": "urlNerthus",
+            "required": false,
+            "type": "string",
+            "description": "Nerthus version map URL.",
+            "format": "url"
+          },
+          {
+            "name": "dimensions",
+            "required": false,
+            "type": "string",
+            "description": "Map dimensions (e.g. width x height).",
+            "examples": ["800x600", "1024x768"]
+          },
+          {
+            "name": "doors",
+            "required": false,
+            "type": "array",
+            "description": "List of connected location names (transitions/doors).",
+            "examples": [["Krainy Wschodnie", "Krainy Zachodnie"]]
+          },
+          {
+            "name": "info",
+            "required": false,
+            "type": "string",
+            "description": "Additional map information."
+          },
+          {
+            "name": "validFrom",
+            "required": false,
+            "type": "string",
+            "description": "Temporal start date for the map.",
+            "format": "date",
+            "examples": ["2025-01-15"]
+          },
+          {
+            "name": "tags",
+            "required": false,
+            "type": "object",
+            "description": "Additional key-value tags.",
+            "examples": [{"region": "north", "climate": "temperate"}]
+          }
+        ]
+      }
+    },
+    {
+      "method": "PUT",
+      "path": "/maps/:name",
+      "handler": "Invoke-ApiUpdateMap",
+      "scope": "entity:write",
+      "pl": {
+        "description": "Aktualizuje istniejącą encję mapy. Parametr ':name' w ścieżce identyfikuje mapę do edycji.",
+        "bodyFields": [
+          {
+            "name": "slug",
+            "required": false,
+            "type": "string",
+            "description": "Nowy slug mapy."
+          },
+          {
+            "name": "parent",
+            "required": false,
+            "type": "string",
+            "description": "Nowa lokacja nadrzędna mapy.",
+            "examples": ["Ithar"]
+          },
+          {
+            "name": "url",
+            "required": false,
+            "type": "string",
+            "description": "Nowy URL obrazu mapy.",
+            "format": "url"
+          },
+          {
+            "name": "urlNerthus",
+            "required": false,
+            "type": "string",
+            "description": "Nowy URL mapy w wersji Nerthus.",
+            "format": "url"
+          },
+          {
+            "name": "dimensions",
+            "required": false,
+            "type": "string",
+            "description": "Nowe wymiary mapy.",
+            "examples": ["800x600", "1024x768"]
+          },
+          {
+            "name": "info",
+            "required": false,
+            "type": "string",
+            "description": "Nowe dodatkowe informacje o mapie."
+          },
+          {
+            "name": "addDoors",
+            "required": false,
+            "type": "array",
+            "description": "Lista nazw lokacji do dodania jako przejścia.",
+            "examples": [["Krainy Wschodnie"]]
+          },
+          {
+            "name": "removeDoors",
+            "required": false,
+            "type": "array",
+            "description": "Lista nazw lokacji do usunięcia z przejść.",
+            "examples": [["Krainy Zachodnie"]]
+          },
+          {
+            "name": "validFrom",
+            "required": false,
+            "type": "string",
+            "description": "Nowa data początku obowiązywania mapy.",
+            "format": "date",
+            "examples": ["2025-01-15"]
+          },
+          {
+            "name": "tags",
+            "required": false,
+            "type": "object",
+            "description": "Dodatkowe tagi w postaci par klucz-wartość. Nadpisuje istniejące tagi o tych samych kluczach.",
+            "examples": [{"region": "północ"}]
+          }
+        ]
+      },
+      "en": {
+        "description": "Updates an existing map entity. The ':name' path parameter identifies the map to edit.",
+        "bodyFields": [
+          {
+            "name": "slug",
+            "required": false,
+            "type": "string",
+            "description": "New map slug."
+          },
+          {
+            "name": "parent",
+            "required": false,
+            "type": "string",
+            "description": "New parent location for the map.",
+            "examples": ["Ithar"]
+          },
+          {
+            "name": "url",
+            "required": false,
+            "type": "string",
+            "description": "New map image URL.",
+            "format": "url"
+          },
+          {
+            "name": "urlNerthus",
+            "required": false,
+            "type": "string",
+            "description": "New Nerthus version map URL.",
+            "format": "url"
+          },
+          {
+            "name": "dimensions",
+            "required": false,
+            "type": "string",
+            "description": "New map dimensions.",
+            "examples": ["800x600", "1024x768"]
+          },
+          {
+            "name": "info",
+            "required": false,
+            "type": "string",
+            "description": "New additional map information."
+          },
+          {
+            "name": "addDoors",
+            "required": false,
+            "type": "array",
+            "description": "List of location names to add as door connections.",
+            "examples": [["Krainy Wschodnie"]]
+          },
+          {
+            "name": "removeDoors",
+            "required": false,
+            "type": "array",
+            "description": "List of location names to remove from door connections.",
+            "examples": [["Krainy Zachodnie"]]
+          },
+          {
+            "name": "validFrom",
+            "required": false,
+            "type": "string",
+            "description": "New temporal start date for the map.",
+            "format": "date",
+            "examples": ["2025-01-15"]
+          },
+          {
+            "name": "tags",
+            "required": false,
+            "type": "object",
+            "description": "Additional key-value tags. Overwrites existing tags with the same keys.",
+            "examples": [{"region": "north"}]
+          }
+        ]
+      }
+    }
+  ]
+}

@@ -1,0 +1,231 @@
+{
+  "component": "economy",
+  "endpoints": [
+    {
+      "method": "GET",
+      "path": "/economy/snapshot",
+      "handler": "Invoke-ApiGetEconomicSnapshot",
+      "scope": "entity:read",
+      "pl": {
+        "description": "Zwraca analize ekonomiczna na dany moment w czasie, wraz ze wspolczynnikami Giniego. Wyniki mozna zawezic do konkretnego wlasciciela, nominalu lub ograniczyc do N najwyzszych pozycji.",
+        "queryParams": [
+          {
+            "name": "activeOn",
+            "required": false,
+            "type": "datetime",
+            "description": "Punkt czasowy analizy. Jesli pominiety, uzywany jest biezacy moment.",
+            "format": "ISO 8601",
+            "examples": ["2026-01-15", "2026-03-01T12:00:00"]
+          },
+          {
+            "name": "owner",
+            "required": false,
+            "type": "string",
+            "description": "Filtruje wyniki do wskazanego wlasciciela.",
+            "examples": ["Kupiec Norlandu"]
+          },
+          {
+            "name": "denomination",
+            "required": false,
+            "type": "string",
+            "description": "Filtruje wyniki do wskazanego nominalu waluty.",
+            "examples": ["zloto", "srebro"]
+          },
+          {
+            "name": "top",
+            "required": false,
+            "type": "integer",
+            "description": "Ogranicza wyniki do N najwyzszych pozycji.",
+            "examples": [5, 10]
+          }
+        ]
+      },
+      "en": {
+        "description": "Returns a point-in-time economic analysis with Gini coefficients. Results can be filtered by owner, denomination, or limited to the top N entries.",
+        "queryParams": [
+          {
+            "name": "activeOn",
+            "required": false,
+            "type": "datetime",
+            "description": "Temporal point for the analysis. If omitted, the current moment is used.",
+            "format": "ISO 8601",
+            "examples": ["2026-01-15", "2026-03-01T12:00:00"]
+          },
+          {
+            "name": "owner",
+            "required": false,
+            "type": "string",
+            "description": "Filter results to the specified owner.",
+            "examples": ["Kupiec Norlandu"]
+          },
+          {
+            "name": "denomination",
+            "required": false,
+            "type": "string",
+            "description": "Filter results to the specified currency denomination.",
+            "examples": ["zloto", "srebro"]
+          },
+          {
+            "name": "top",
+            "required": false,
+            "type": "integer",
+            "description": "Limit results to the top N entries.",
+            "examples": [5, 10]
+          }
+        ]
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/economy/timeline",
+      "handler": "Invoke-ApiGetEconomicTimeline",
+      "scope": "entity:read",
+      "pl": {
+        "description": "Zwraca miesieczne trendy ekonomiczne pomiedzy dwiema datami. Oba parametry minDate i maxDate sa wymagane.",
+        "queryParams": [
+          {
+            "name": "minDate",
+            "required": true,
+            "type": "datetime",
+            "description": "Poczatek zakresu czasowego. Wymagane razem z maxDate — zadanie zostanie odrzucone z kodem 400 jesli brak.",
+            "format": "ISO 8601",
+            "examples": ["2025-01-01"]
+          },
+          {
+            "name": "maxDate",
+            "required": true,
+            "type": "datetime",
+            "description": "Koniec zakresu czasowego. Wymagane razem z minDate — zadanie zostanie odrzucone z kodem 400 jesli brak.",
+            "format": "ISO 8601",
+            "examples": ["2026-03-01"]
+          },
+          {
+            "name": "entity",
+            "required": false,
+            "type": "string",
+            "description": "Filtruje wyniki do wskazanej encji.",
+            "examples": ["Gildia Handlowa"]
+          },
+          {
+            "name": "denomination",
+            "required": false,
+            "type": "string",
+            "description": "Filtruje wyniki do wskazanego nominalu waluty.",
+            "examples": ["zloto"]
+          }
+        ]
+      },
+      "en": {
+        "description": "Returns monthly economic trends between two dates. Both minDate and maxDate are required.",
+        "queryParams": [
+          {
+            "name": "minDate",
+            "required": true,
+            "type": "datetime",
+            "description": "Start of the date range. Required together with maxDate — request will be rejected with 400 if missing.",
+            "format": "ISO 8601",
+            "examples": ["2025-01-01"]
+          },
+          {
+            "name": "maxDate",
+            "required": true,
+            "type": "datetime",
+            "description": "End of the date range. Required together with minDate — request will be rejected with 400 if missing.",
+            "format": "ISO 8601",
+            "examples": ["2026-03-01"]
+          },
+          {
+            "name": "entity",
+            "required": false,
+            "type": "string",
+            "description": "Filter results to the specified entity.",
+            "examples": ["Gildia Handlowa"]
+          },
+          {
+            "name": "denomination",
+            "required": false,
+            "type": "string",
+            "description": "Filter results to the specified currency denomination.",
+            "examples": ["zloto"]
+          }
+        ]
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/transactions",
+      "handler": "Invoke-ApiGetTransactions",
+      "scope": "entity:read",
+      "pl": {
+        "description": "Zwraca wpisy z rejestru transakcji walutowych. Wyniki mozna filtrowac po encji, nominale oraz zakresie dat.",
+        "queryParams": [
+          {
+            "name": "entity",
+            "required": false,
+            "type": "string",
+            "description": "Filtruje transakcje do wskazanej encji.",
+            "examples": ["Kupiec Norlandu"]
+          },
+          {
+            "name": "denomination",
+            "required": false,
+            "type": "string",
+            "description": "Filtruje transakcje do wskazanego nominalu waluty.",
+            "examples": ["zloto", "srebro"]
+          },
+          {
+            "name": "minDate",
+            "required": false,
+            "type": "datetime",
+            "description": "Poczatek zakresu czasowego filtrowania.",
+            "format": "ISO 8601",
+            "examples": ["2025-06-01"]
+          },
+          {
+            "name": "maxDate",
+            "required": false,
+            "type": "datetime",
+            "description": "Koniec zakresu czasowego filtrowania.",
+            "format": "ISO 8601",
+            "examples": ["2026-03-01"]
+          }
+        ]
+      },
+      "en": {
+        "description": "Returns currency transaction ledger entries. Results can be filtered by entity, denomination, and date range.",
+        "queryParams": [
+          {
+            "name": "entity",
+            "required": false,
+            "type": "string",
+            "description": "Filter transactions to the specified entity.",
+            "examples": ["Kupiec Norlandu"]
+          },
+          {
+            "name": "denomination",
+            "required": false,
+            "type": "string",
+            "description": "Filter transactions to the specified currency denomination.",
+            "examples": ["zloto", "srebro"]
+          },
+          {
+            "name": "minDate",
+            "required": false,
+            "type": "datetime",
+            "description": "Start of the date range filter.",
+            "format": "ISO 8601",
+            "examples": ["2025-06-01"]
+          },
+          {
+            "name": "maxDate",
+            "required": false,
+            "type": "datetime",
+            "description": "End of the date range filter.",
+            "format": "ISO 8601",
+            "examples": ["2026-03-01"]
+          }
+        ]
+      }
+    }
+  ]
+}

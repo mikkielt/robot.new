@@ -1,0 +1,169 @@
+{
+  "component": "validate",
+  "endpoints": [
+    {
+      "method": "GET",
+      "path": "/validate/pu",
+      "handler": "Invoke-ApiValidatePU",
+      "scope": "admin:read",
+      "pl": {
+        "description": "Walidacja przydziałów PU — sprawdzanie spójności i poprawności przypisań punktów umiejętności.",
+        "queryParams": [
+          {
+            "name": "year",
+            "required": false,
+            "type": "integer",
+            "description": "Filtrowanie po roku. Ogranicza walidację do sesji z podanego roku.",
+            "examples": [2025, 2026]
+          },
+          {
+            "name": "month",
+            "required": false,
+            "type": "integer",
+            "description": "Filtrowanie po miesiącu (1-12). Ogranicza walidację do sesji z podanego miesiąca.",
+            "examples": [1, 6, 12]
+          },
+          {
+            "name": "minDate",
+            "required": false,
+            "type": "datetime",
+            "description": "Początek zakresu dat (włącznie). Parsowana przez [datetime]::Parse.",
+            "format": "YYYY-MM-DD",
+            "examples": ["2025-01-01"]
+          },
+          {
+            "name": "maxDate",
+            "required": false,
+            "type": "datetime",
+            "description": "Koniec zakresu dat (włącznie). Parsowana przez [datetime]::Parse.",
+            "format": "YYYY-MM-DD",
+            "examples": ["2025-12-31"]
+          }
+        ]
+      },
+      "en": {
+        "description": "PU assignment validation — consistency and correctness checks for skill point assignments.",
+        "queryParams": [
+          {
+            "name": "year",
+            "required": false,
+            "type": "integer",
+            "description": "Filter by year. Limits validation to sessions from the specified year.",
+            "examples": [2025, 2026]
+          },
+          {
+            "name": "month",
+            "required": false,
+            "type": "integer",
+            "description": "Filter by month (1-12). Limits validation to sessions from the specified month.",
+            "examples": [1, 6, 12]
+          },
+          {
+            "name": "minDate",
+            "required": false,
+            "type": "datetime",
+            "description": "Start of date range (inclusive). Parsed via [datetime]::Parse.",
+            "format": "YYYY-MM-DD",
+            "examples": ["2025-01-01"]
+          },
+          {
+            "name": "maxDate",
+            "required": false,
+            "type": "datetime",
+            "description": "End of date range (inclusive). Parsed via [datetime]::Parse.",
+            "format": "YYYY-MM-DD",
+            "examples": ["2025-12-31"]
+          }
+        ]
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/validate/currency",
+      "handler": "Invoke-ApiValidateCurrency",
+      "scope": "admin:read",
+      "pl": {
+        "description": "Sprawdzanie spójności transakcji walutowych — uzgadnianie sald i wykrywanie rozbieżności.",
+        "queryParams": [
+          {
+            "name": "since",
+            "required": false,
+            "type": "datetime",
+            "description": "Sprawdza transakcje od podanej daty. Parsowana przez [datetime]::Parse.",
+            "format": "YYYY-MM-DD",
+            "examples": ["2025-01-01"]
+          }
+        ]
+      },
+      "en": {
+        "description": "Currency reconciliation checks — balance verification and discrepancy detection.",
+        "queryParams": [
+          {
+            "name": "since",
+            "required": false,
+            "type": "datetime",
+            "description": "Check transactions since this date. Parsed via [datetime]::Parse.",
+            "format": "YYYY-MM-DD",
+            "examples": ["2025-01-01"]
+          }
+        ]
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/validate/sessions",
+      "handler": "Invoke-ApiValidateSessions",
+      "scope": "admin:read",
+      "pl": {
+        "description": "Sprawdzanie integralności sesji na podstawie hashowania zawartości.",
+        "queryParams": [
+          {
+            "name": "full",
+            "required": false,
+            "type": "string",
+            "description": "Wartość 'true' uruchamia pełne sprawdzenie obejmujące wszystkie sesje.",
+            "examples": ["true"]
+          },
+          {
+            "name": "since",
+            "required": false,
+            "type": "string",
+            "description": "Sprawdza sesje od podanego commita lub daty.",
+            "examples": ["abc1234", "2025-01-01"]
+          }
+        ]
+      },
+      "en": {
+        "description": "Session integrity checks based on content hashing.",
+        "queryParams": [
+          {
+            "name": "full",
+            "required": false,
+            "type": "string",
+            "description": "Set to 'true' to run a full check including all sessions.",
+            "examples": ["true"]
+          },
+          {
+            "name": "since",
+            "required": false,
+            "type": "string",
+            "description": "Check sessions since this commit or date.",
+            "examples": ["abc1234", "2025-01-01"]
+          }
+        ]
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/validate/graph",
+      "handler": "Invoke-ApiValidateGraph",
+      "scope": "admin:read",
+      "pl": {
+        "description": "Walidacja integralności indeksu grafu sesji."
+      },
+      "en": {
+        "description": "Session graph index integrity validation."
+      }
+    }
+  ]
+}

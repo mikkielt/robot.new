@@ -1,0 +1,17 @@
+{
+  "component": "files",
+  "endpoints": [
+    {
+      "method": "GET",
+      "path": "/files",
+      "handler": "Invoke-ApiGetFiles",
+      "scope": "session:read",
+      "pl": {
+        "description": "Zwraca ścieżki plików .md względem katalogu głównego repozytorium. Służy do autouzupełniania ścieżek plików w interfejsie użytkownika."
+      },
+      "en": {
+        "description": "Returns .md file paths relative to the repository root. Intended for path autocomplete in the user interface."
+      }
+    }
+  ]
+}

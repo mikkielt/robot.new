@@ -1,0 +1,107 @@
+{
+  "component": "workflow",
+  "endpoints": [
+    {
+      "method": "POST",
+      "path": "/workflow/session-graph",
+      "handler": "Invoke-ApiRebuildGraph",
+      "scope": "admin:write",
+      "pl": {
+        "description": "Przebudowuje indeks grafu sesji. Domyślnie wykonuje przebudowę przyrostową; opcje pozwalają wymusić pełną przebudowę lub ograniczyć zakres.",
+        "bodyFields": [
+          {
+            "name": "full",
+            "required": false,
+            "type": "boolean",
+            "description": "Wymusza pełną przebudowę grafu zamiast przyrostowej. Przetwarza wszystkie sesje od początku.",
+            "examples": [true]
+          },
+          {
+            "name": "eagerOnly",
+            "required": false,
+            "type": "boolean",
+            "description": "Ogranicza przebudowę tylko do eager rebuild — przetwarza jedynie sesje wymagające natychmiastowej aktualizacji.",
+            "examples": [true]
+          },
+          {
+            "name": "since",
+            "required": false,
+            "type": "string",
+            "description": "Przebudowuje graf od podanej daty lub commitu. Pozwala zawęzić zakres przebudowy przyrostowej.",
+            "examples": ["2025-06-01", "abc1234"]
+          }
+        ]
+      },
+      "en": {
+        "description": "Rebuilds the session graph index. Performs an incremental rebuild by default; options allow forcing a full rebuild or narrowing the scope.",
+        "bodyFields": [
+          {
+            "name": "full",
+            "required": false,
+            "type": "boolean",
+            "description": "Forces a full graph rebuild instead of incremental. Reprocesses all sessions from the beginning.",
+            "examples": [true]
+          },
+          {
+            "name": "eagerOnly",
+            "required": false,
+            "type": "boolean",
+            "description": "Restricts the rebuild to eager mode only — processes only sessions requiring immediate update.",
+            "examples": [true]
+          },
+          {
+            "name": "since",
+            "required": false,
+            "type": "string",
+            "description": "Rebuilds the graph starting from the given date or commit. Narrows the scope of an incremental rebuild.",
+            "examples": ["2025-06-01", "abc1234"]
+          }
+        ]
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/workflow/session-hash",
+      "handler": "Invoke-ApiRebuildHashes",
+      "scope": "admin:write",
+      "pl": {
+        "description": "Aktualizuje hasze treści sesji. Służy do wykrywania zmian w zawartości sesji od ostatniego przetworzenia.",
+        "bodyFields": [
+          {
+            "name": "full",
+            "required": false,
+            "type": "boolean",
+            "description": "Wymusza pełne przeliczenie haszy dla wszystkich sesji zamiast przyrostowego.",
+            "examples": [true]
+          },
+          {
+            "name": "since",
+            "required": false,
+            "type": "string",
+            "description": "Przelicza hasze tylko dla sesji od podanej daty lub commitu.",
+            "examples": ["2025-06-01", "abc1234"]
+          }
+        ]
+      },
+      "en": {
+        "description": "Updates session content hashes. Used for detecting changes in session content since the last processing run.",
+        "bodyFields": [
+          {
+            "name": "full",
+            "required": false,
+            "type": "boolean",
+            "description": "Forces a full hash recalculation for all sessions instead of incremental.",
+            "examples": [true]
+          },
+          {
+            "name": "since",
+            "required": false,
+            "type": "string",
+            "description": "Recalculates hashes only for sessions since the given date or commit.",
+            "examples": ["2025-06-01", "abc1234"]
+          }
+        ]
+      }
+    }
+  ]
+}

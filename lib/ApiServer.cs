@@ -219,11 +219,24 @@ namespace Robot {
                     return; // Response kept open for streaming
                 }
 
+                // Parse query params once — available to both static and dynamic handlers
+                match.QueryParams = ParseQueryString(request.QueryString);
+
                 // ── Static C# handler (no PS) ───────────────────────
                 if (match.Route.StaticHandler != null) {
                     var staticResult = match.Route.StaticHandler(match, this);
-                    ApiSerializer.WriteObject(response, staticResult,
-                        match.Route.StatusCode);
+                    // Check if static handler signaled an error status (e.g. 404)
+                    // Uses IDictionary because PS ScriptBlocks return Hashtable, not Dictionary<string,object>
+                    if (staticResult is System.Collections.IDictionary dict
+                        && dict.Contains("StatusCode")
+                        && dict["StatusCode"] is int statusCode && statusCode >= 400) {
+                        dict.Remove("StatusCode");
+                        var errorBody = dict.Contains("Body") ? dict["Body"] : dict;
+                        ApiSerializer.WriteObject(response, errorBody, statusCode);
+                    } else {
+                        ApiSerializer.WriteObject(response, staticResult,
+                            match.Route.StatusCode);
+                    }
                     return;
                 }
 
@@ -292,7 +305,7 @@ namespace Robot {
                     Method        = request.HttpMethod,
                     Path          = path,
                     PathParams    = match.PathParams,
-                    QueryParams   = ParseQueryString(request.QueryString),
+                    QueryParams   = match.QueryParams,
                     BodyBytes     = bodyBytes,
                     TokenName     = tokenInfo.Name,
                     TokenScopes   = tokenInfo.Scopes,

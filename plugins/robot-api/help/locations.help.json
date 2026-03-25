@@ -1,0 +1,451 @@
+{
+  "component": "locations",
+  "endpoints": [
+    {
+      "method": "GET",
+      "path": "/locations",
+      "handler": "Invoke-ApiGetLocationList",
+      "scope": "entity:read",
+      "pl": {
+        "description": "Zwraca listę lokacji z wzbogaconymi danymi (dzieci, drzwi, mapy). Obsługuje filtrowanie po rodzicu, nazwie, drzwiach i statusie.",
+        "queryParams": [
+          {
+            "name": "includeMaps",
+            "required": false,
+            "type": "string",
+            "description": "Dołącz encje typu Mapa do wyników. Tylko wartość 'true' jest rozpoznawana.",
+            "format": "boolean-as-string",
+            "examples": ["true"]
+          },
+          {
+            "name": "parent",
+            "required": false,
+            "type": "string",
+            "description": "Filtruj lokacje po nazwie lokacji nadrzędnej.",
+            "examples": ["Ithill", "Okolice Ithill"]
+          },
+          {
+            "name": "name",
+            "required": false,
+            "type": "string",
+            "description": "Filtruj lokacje po nazwie (dopasowanie dokładne, bez rozróżniania wielkości liter).",
+            "examples": ["Ithill"]
+          },
+          {
+            "name": "hasDoors",
+            "required": false,
+            "type": "string",
+            "description": "Filtruj lokacje posiadające drzwi (połączenia z innymi lokacjami). Tylko 'true' jest rozpoznawane.",
+            "format": "boolean-as-string",
+            "examples": ["true"]
+          },
+          {
+            "name": "isExterior",
+            "required": false,
+            "type": "string",
+            "description": "Filtruj lokacje zewnętrzne (plenerowe). Tylko 'true' jest rozpoznawane.",
+            "format": "boolean-as-string",
+            "examples": ["true"]
+          },
+          {
+            "name": "includeInactive",
+            "required": false,
+            "type": "string",
+            "description": "Dołącz nieaktywne lokacje do wyników. Domyślnie zwracane są tylko aktywne.",
+            "format": "boolean-as-string",
+            "examples": ["true"]
+          },
+          {
+            "name": "includeDeleted",
+            "required": false,
+            "type": "string",
+            "description": "Dołącz miękko usunięte lokacje (status: Usunięty) do wyników.",
+            "format": "boolean-as-string",
+            "examples": ["true"]
+          }
+        ]
+      },
+      "en": {
+        "description": "Returns an enriched list of locations via Get-LocationEntity. Supports filtering by parent, name, doors, exterior status, and soft-delete state.",
+        "queryParams": [
+          {
+            "name": "includeMaps",
+            "required": false,
+            "type": "string",
+            "description": "Include Mapa-type entities in results. Only the value 'true' is recognized.",
+            "format": "boolean-as-string",
+            "examples": ["true"]
+          },
+          {
+            "name": "parent",
+            "required": false,
+            "type": "string",
+            "description": "Filter locations by parent location name.",
+            "examples": ["Ithill", "Okolice Ithill"]
+          },
+          {
+            "name": "name",
+            "required": false,
+            "type": "string",
+            "description": "Filter locations by name (exact match, case-insensitive).",
+            "examples": ["Ithill"]
+          },
+          {
+            "name": "hasDoors",
+            "required": false,
+            "type": "string",
+            "description": "Filter to locations that have doors (connections to other locations). Only 'true' is recognized.",
+            "format": "boolean-as-string",
+            "examples": ["true"]
+          },
+          {
+            "name": "isExterior",
+            "required": false,
+            "type": "string",
+            "description": "Filter to exterior (outdoor) locations. Only 'true' is recognized.",
+            "format": "boolean-as-string",
+            "examples": ["true"]
+          },
+          {
+            "name": "includeInactive",
+            "required": false,
+            "type": "string",
+            "description": "Include inactive locations in results. By default only active locations are returned.",
+            "format": "boolean-as-string",
+            "examples": ["true"]
+          },
+          {
+            "name": "includeDeleted",
+            "required": false,
+            "type": "string",
+            "description": "Include soft-deleted locations (status: Usuniety) in results.",
+            "format": "boolean-as-string",
+            "examples": ["true"]
+          }
+        ]
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/locations/:name",
+      "handler": "Invoke-ApiGetLocation",
+      "scope": "entity:read",
+      "pl": {
+        "description": "Zwraca pojedynczą lokację z pełnym wzbogaceniem danych, w tym mapami. Wyszukiwanie po nazwie bez rozróżniania wielkości liter. Zwraca 404, jeśli lokacja nie istnieje.",
+        "queryParams": []
+      },
+      "en": {
+        "description": "Returns a single location with full enrichment including maps. Name lookup is case-insensitive. Returns 404 if the location does not exist.",
+        "queryParams": []
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/locations/:name/contents",
+      "handler": "Invoke-ApiGetLocationContents",
+      "scope": "entity:read",
+      "pl": {
+        "description": "Zwraca encje znajdujące się w danej lokacji (za pomocą Resolve-Entity). Wynik zawiera licznik i listę encji.",
+        "queryParams": []
+      },
+      "en": {
+        "description": "Returns entities located at the specified location via Resolve-Entity. Response includes a count and items array.",
+        "queryParams": []
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/locations",
+      "handler": "Invoke-ApiCreateLocation",
+      "scope": "entity:write",
+      "pl": {
+        "description": "Tworzy nową lokację za pomocą New-LocationEntity. Wymagana jest nazwa. Po utworzeniu czyści cache parsera i unieważnia cache sidecar.",
+        "bodyFields": [
+          {
+            "name": "name",
+            "required": true,
+            "type": "string",
+            "description": "Nazwa nowej lokacji. Musi być unikalna.",
+            "validation": "Wymagane — żądanie bez pola name zwraca 400.",
+            "examples": ["Karczma Pod Smokiem", "Wieża Magów"]
+          },
+          {
+            "name": "parent",
+            "required": false,
+            "type": "string",
+            "description": "Nazwa lokacji nadrzędnej.",
+            "examples": ["Ithill"]
+          },
+          {
+            "name": "doors",
+            "required": false,
+            "type": "array",
+            "description": "Lista nazw lokacji połączonych drzwiami z tworzoną lokacją.",
+            "examples": [["Rynek", "Karczma Pod Smokiem"]]
+          },
+          {
+            "name": "coordinates",
+            "required": false,
+            "type": "string",
+            "description": "Współrzędne lokacji na mapie.",
+            "examples": ["12,34"]
+          },
+          {
+            "name": "nerthusName",
+            "required": false,
+            "type": "string",
+            "description": "Nazwa lokacji w świecie gry Nerthus.",
+            "examples": ["Smocza Karczma"]
+          },
+          {
+            "name": "margonemIds",
+            "required": false,
+            "type": "array",
+            "description": "Identyfikatory map Margonem powiązanych z lokacją. Elementy są rzutowane na int.",
+            "examples": [[123, 456]]
+          },
+          {
+            "name": "validFrom",
+            "required": false,
+            "type": "string",
+            "description": "Data początkowa obowiązywania lokacji (temporal).",
+            "format": "date",
+            "examples": ["2026-01-15"]
+          },
+          {
+            "name": "tags",
+            "required": false,
+            "type": "object",
+            "description": "Dodatkowe tagi jako pary klucz-wartość. Wartość musi być obiektem (PSCustomObject).",
+            "examples": [{"klimat": "mroczny", "region": "północ"}]
+          }
+        ]
+      },
+      "en": {
+        "description": "Creates a new location entity via New-LocationEntity. Name is required. On success, clears parser caches and invalidates sidecar cache.",
+        "bodyFields": [
+          {
+            "name": "name",
+            "required": true,
+            "type": "string",
+            "description": "Name of the new location. Must be unique.",
+            "validation": "Required — a request without the name field returns 400.",
+            "examples": ["Karczma Pod Smokiem", "Wieża Magów"]
+          },
+          {
+            "name": "parent",
+            "required": false,
+            "type": "string",
+            "description": "Parent location name.",
+            "examples": ["Ithill"]
+          },
+          {
+            "name": "doors",
+            "required": false,
+            "type": "array",
+            "description": "List of location names connected via doors to this location.",
+            "examples": [["Rynek", "Karczma Pod Smokiem"]]
+          },
+          {
+            "name": "coordinates",
+            "required": false,
+            "type": "string",
+            "description": "Map coordinates for the location.",
+            "examples": ["12,34"]
+          },
+          {
+            "name": "nerthusName",
+            "required": false,
+            "type": "string",
+            "description": "Name of the location in the Nerthus game world.",
+            "examples": ["Smocza Karczma"]
+          },
+          {
+            "name": "margonemIds",
+            "required": false,
+            "type": "array",
+            "description": "Margonem map IDs associated with this location. Elements are cast to int.",
+            "examples": [[123, 456]]
+          },
+          {
+            "name": "validFrom",
+            "required": false,
+            "type": "string",
+            "description": "Temporal start date for the location.",
+            "format": "date",
+            "examples": ["2026-01-15"]
+          },
+          {
+            "name": "tags",
+            "required": false,
+            "type": "object",
+            "description": "Additional key-value tags. Value must be an object (PSCustomObject).",
+            "examples": [{"klimat": "mroczny", "region": "północ"}]
+          }
+        ]
+      }
+    },
+    {
+      "method": "PUT",
+      "path": "/locations/:name",
+      "handler": "Invoke-ApiUpdateLocation",
+      "scope": "entity:write",
+      "pl": {
+        "description": "Aktualizuje istniejącą lokację za pomocą Set-LocationEntity. Wymaga ciała żądania (body). Drzwi można dodawać i usuwać niezależnie za pomocą addDoors/removeDoors.",
+        "bodyFields": [
+          {
+            "name": "type",
+            "required": false,
+            "type": "string",
+            "description": "Nowy typ lokacji.",
+            "examples": ["Lokacja", "Budynek"]
+          },
+          {
+            "name": "parent",
+            "required": false,
+            "type": "string",
+            "description": "Nowa lokacja nadrzędna.",
+            "examples": ["Ithill"]
+          },
+          {
+            "name": "addDoors",
+            "required": false,
+            "type": "array",
+            "description": "Lista nazw lokacji, do których należy dodać drzwi.",
+            "examples": [["Rynek", "Plac Targowy"]]
+          },
+          {
+            "name": "removeDoors",
+            "required": false,
+            "type": "array",
+            "description": "Lista nazw lokacji, z których należy usunąć drzwi.",
+            "examples": [["Stary Magazyn"]]
+          },
+          {
+            "name": "coordinates",
+            "required": false,
+            "type": "string",
+            "description": "Nowe współrzędne lokacji na mapie.",
+            "examples": ["15,20"]
+          },
+          {
+            "name": "nerthusName",
+            "required": false,
+            "type": "string",
+            "description": "Nowa nazwa lokacji w świecie gry Nerthus.",
+            "examples": ["Nowa Karczma"]
+          },
+          {
+            "name": "validFrom",
+            "required": false,
+            "type": "string",
+            "description": "Data początkowa obowiązywania zmian (temporal).",
+            "format": "date",
+            "examples": ["2026-03-01"]
+          },
+          {
+            "name": "tags",
+            "required": false,
+            "type": "object",
+            "description": "Dodatkowe tagi jako pary klucz-wartość. Wartość musi być obiektem (PSCustomObject).",
+            "examples": [{"klimat": "jasny"}]
+          }
+        ]
+      },
+      "en": {
+        "description": "Updates an existing location entity via Set-LocationEntity. Request body is required. Doors can be added and removed independently using addDoors/removeDoors.",
+        "bodyFields": [
+          {
+            "name": "type",
+            "required": false,
+            "type": "string",
+            "description": "New location type.",
+            "examples": ["Lokacja", "Budynek"]
+          },
+          {
+            "name": "parent",
+            "required": false,
+            "type": "string",
+            "description": "New parent location.",
+            "examples": ["Ithill"]
+          },
+          {
+            "name": "addDoors",
+            "required": false,
+            "type": "array",
+            "description": "List of location names to add as door connections.",
+            "examples": [["Rynek", "Plac Targowy"]]
+          },
+          {
+            "name": "removeDoors",
+            "required": false,
+            "type": "array",
+            "description": "List of location names to remove from door connections.",
+            "examples": [["Stary Magazyn"]]
+          },
+          {
+            "name": "coordinates",
+            "required": false,
+            "type": "string",
+            "description": "New map coordinates for the location.",
+            "examples": ["15,20"]
+          },
+          {
+            "name": "nerthusName",
+            "required": false,
+            "type": "string",
+            "description": "New Nerthus game world name for the location.",
+            "examples": ["Nowa Karczma"]
+          },
+          {
+            "name": "validFrom",
+            "required": false,
+            "type": "string",
+            "description": "Temporal start date for the changes.",
+            "format": "date",
+            "examples": ["2026-03-01"]
+          },
+          {
+            "name": "tags",
+            "required": false,
+            "type": "object",
+            "description": "Additional key-value tags. Value must be an object (PSCustomObject).",
+            "examples": [{"klimat": "jasny"}]
+          }
+        ]
+      }
+    },
+    {
+      "method": "DELETE",
+      "path": "/locations/:name",
+      "handler": "Invoke-ApiDeleteLocation",
+      "scope": "entity:write",
+      "pl": {
+        "description": "Miękko usuwa lokację (ustawia status na Usunięty) za pomocą Remove-Entity. Lokacja nie jest fizycznie usuwana z pliku encji.",
+        "bodyFields": [
+          {
+            "name": "validFrom",
+            "required": false,
+            "type": "string",
+            "description": "Data początkowa obowiązywania usunięcia (temporal).",
+            "format": "date",
+            "examples": ["2026-03-24"]
+          }
+        ]
+      },
+      "en": {
+        "description": "Soft-deletes a location entity (sets status to Usuniety) via Remove-Entity. The location is not physically removed from the entity file.",
+        "bodyFields": [
+          {
+            "name": "validFrom",
+            "required": false,
+            "type": "string",
+            "description": "Temporal start date for the deletion.",
+            "format": "date",
+            "examples": ["2026-03-24"]
+          }
+        ]
+      }
+    }
+  ]
+}

@@ -1,0 +1,169 @@
+{
+  "component": "session-graph",
+  "endpoints": [
+    {
+      "method": "GET",
+      "path": "/session-graph/entity/:name",
+      "handler": "Invoke-ApiGetEntityProfile",
+      "scope": "session:read",
+      "pl": {
+        "description": "Zwraca profil udziału w sesjach dla wskazanej encji. Parametr :name w ścieżce to nazwa encji.",
+        "queryParams": [
+          {
+            "name": "minTier",
+            "required": false,
+            "type": "integer",
+            "description": "Minimalny poziom udziału w sesji (0 = główna, 1 = drugoplanowa, 2 = wzmianka). Filtruje wyniki do sesji o co najmniej tym poziomie udziału.",
+            "examples": [0, 1, 2]
+          }
+        ]
+      },
+      "en": {
+        "description": "Returns session participation profile for a named entity. The :name path parameter is the entity name.",
+        "queryParams": [
+          {
+            "name": "minTier",
+            "required": false,
+            "type": "integer",
+            "description": "Minimum participation tier (0 = main role, 1 = supporting role, 2 = mention). Filters results to sessions with at least this participation level.",
+            "examples": [0, 1, 2]
+          }
+        ]
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/session-graph/compare",
+      "handler": "Invoke-ApiCompareParticipation",
+      "scope": "session:read",
+      "pl": {
+        "description": "Porównuje nakładanie się udziału w sesjach pomiędzy wieloma encjami. Wymaga co najmniej jednej nazwy encji w parametrze entities.",
+        "queryParams": [
+          {
+            "name": "entities",
+            "required": true,
+            "type": "string",
+            "description": "Nazwy encji rozdzielone przecinkami. Wymagane — żądanie zostanie odrzucone z kodem 400 jeśli brak.",
+            "examples": ["Aldric,Mira", "Smok,Rycerz,Mag"]
+          },
+          {
+            "name": "minTier",
+            "required": false,
+            "type": "integer",
+            "description": "Minimalny poziom udziału w sesji (0 = główna, 1 = drugoplanowa, 2 = wzmianka). Filtruje wyniki do sesji o co najmniej tym poziomie udziału.",
+            "examples": [0, 1, 2]
+          }
+        ]
+      },
+      "en": {
+        "description": "Compares session participation overlap across multiple entities. Requires at least one entity name in the entities parameter.",
+        "queryParams": [
+          {
+            "name": "entities",
+            "required": true,
+            "type": "string",
+            "description": "Comma-separated entity names. Required — request will be rejected with 400 if missing.",
+            "examples": ["Aldric,Mira", "Smok,Rycerz,Mag"]
+          },
+          {
+            "name": "minTier",
+            "required": false,
+            "type": "integer",
+            "description": "Minimum participation tier (0 = main role, 1 = supporting role, 2 = mention). Filters results to sessions with at least this participation level.",
+            "examples": [0, 1, 2]
+          }
+        ]
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/session-graph/leaderboard",
+      "handler": "Invoke-ApiGetLeaderboard",
+      "scope": "session:read",
+      "pl": {
+        "description": "Zwraca ranking encji według liczby sesji, w których brały udział. Obsługuje filtrowanie po typie encji, zakresie dat i poziomie udziału.",
+        "queryParams": [
+          {
+            "name": "type",
+            "required": false,
+            "type": "string",
+            "description": "Filtruje wyniki po typie encji (np. NPC, Postać).",
+            "examples": ["NPC", "Postać"]
+          },
+          {
+            "name": "top",
+            "required": false,
+            "type": "integer",
+            "description": "Ogranicza wyniki do N najlepszych encji w rankingu.",
+            "examples": [10, 25, 50]
+          },
+          {
+            "name": "minTier",
+            "required": false,
+            "type": "integer",
+            "description": "Minimalny poziom udziału w sesji (0 = główna, 1 = drugoplanowa, 2 = wzmianka). Filtruje wyniki do sesji o co najmniej tym poziomie udziału.",
+            "examples": [0, 1, 2]
+          },
+          {
+            "name": "minDate",
+            "required": false,
+            "type": "datetime",
+            "description": "Początek zakresu dat (włącznie). Parsowana przez [datetime]::Parse.",
+            "format": "YYYY-MM-DD",
+            "examples": ["2025-01-01", "2025-06-15"]
+          },
+          {
+            "name": "maxDate",
+            "required": false,
+            "type": "datetime",
+            "description": "Koniec zakresu dat (włącznie). Parsowana przez [datetime]::Parse.",
+            "format": "YYYY-MM-DD",
+            "examples": ["2025-12-31"]
+          }
+        ]
+      },
+      "en": {
+        "description": "Returns top entities ranked by session participation count. Supports filtering by entity type, date range, and participation tier.",
+        "queryParams": [
+          {
+            "name": "type",
+            "required": false,
+            "type": "string",
+            "description": "Filter results by entity type (e.g. NPC, Postać).",
+            "examples": ["NPC", "Postać"]
+          },
+          {
+            "name": "top",
+            "required": false,
+            "type": "integer",
+            "description": "Limit results to the top N entries in the ranking.",
+            "examples": [10, 25, 50]
+          },
+          {
+            "name": "minTier",
+            "required": false,
+            "type": "integer",
+            "description": "Minimum participation tier (0 = main role, 1 = supporting role, 2 = mention). Filters results to sessions with at least this participation level.",
+            "examples": [0, 1, 2]
+          },
+          {
+            "name": "minDate",
+            "required": false,
+            "type": "datetime",
+            "description": "Start of date range (inclusive). Parsed via [datetime]::Parse.",
+            "format": "YYYY-MM-DD",
+            "examples": ["2025-01-01", "2025-06-15"]
+          },
+          {
+            "name": "maxDate",
+            "required": false,
+            "type": "datetime",
+            "description": "End of date range (inclusive). Parsed via [datetime]::Parse.",
+            "format": "YYYY-MM-DD",
+            "examples": ["2025-12-31"]
+          }
+        ]
+      }
+    }
+  ]
+}

@@ -1,0 +1,461 @@
+{
+  "component": "entities",
+  "endpoints": [
+    {
+      "method": "GET",
+      "path": "/entities",
+      "handler": "Invoke-ApiGetEntities",
+      "scope": "entity:read",
+      "pl": {
+        "description": "Zwraca paginowan\u0105 list\u0119 encji z obs\u0142ug\u0105 filtrowania RSQL, sortowania i wyboru p\u00f3l.",
+        "queryParams": [
+          {
+            "name": "activeOn",
+            "required": false,
+            "type": "string",
+            "format": "date-time",
+            "description": "Data, na kt\u00f3r\u0105 encje maj\u0105 by\u0107 aktywne. Filtruje wyniki wed\u0142ug wa\u017cno\u015bci czasowej.",
+            "examples": ["2025-06-15", "2025-06-15T12:00:00"]
+          },
+          {
+            "name": "filter",
+            "required": false,
+            "type": "string",
+            "description": "Wyra\u017cenie filtruj\u0105ce RSQL. Obs\u0142uguje operatory: ==, !=, =gt=, =lt=, =ge=, =le=, =in=, =out=.",
+            "examples": ["type==Posta\u0107", "status!=Usuni\u0119ty", "type==Lokacja;status==Aktywny"]
+          },
+          {
+            "name": "sort",
+            "required": false,
+            "type": "string",
+            "description": "Pola sortowania. Prefiks '-' oznacza kolejno\u015b\u0107 malej\u0105c\u0105. Mo\u017cna poda\u0107 wiele p\u00f3l oddzielonych przecinkami.",
+            "examples": ["name", "-type,name"]
+          },
+          {
+            "name": "fields",
+            "required": false,
+            "type": "string",
+            "description": "Wybrane pola do zwrotu (sparse fieldset). Lista p\u00f3l oddzielonych przecinkami. Ogranicza dane w odpowiedzi.",
+            "examples": ["name,type,status", "name,tags"]
+          },
+          {
+            "name": "labels",
+            "required": false,
+            "type": "string",
+            "description": "Gdy ustawione na 'true', do\u0142\u0105cza t\u0142umaczenia etykiet (*Label) obok p\u00f3l encji, korzystaj\u0105c ze s\u0142ownika ApiNameDictionary.",
+            "examples": ["true", "false"],
+            "default": "false"
+          },
+          {
+            "name": "page[size]",
+            "required": false,
+            "type": "integer",
+            "description": "Rozmiar strony wynik\u00f3w. Okre\u015bla maksymaln\u0105 liczb\u0119 encji na stronie.",
+            "examples": [25, 50, 100]
+          },
+          {
+            "name": "page[cursor]",
+            "required": false,
+            "type": "string",
+            "description": "Kursor paginacji do pobrania kolejnej strony wynik\u00f3w. Warto\u015b\u0107 pochodzi z pola 'nextCursor' poprzedniej odpowiedzi."
+          }
+        ]
+      },
+      "en": {
+        "description": "Returns a paginated list of entities with RSQL filtering, sorting, and sparse fieldset support.",
+        "queryParams": [
+          {
+            "name": "activeOn",
+            "required": false,
+            "type": "string",
+            "format": "date-time",
+            "description": "Date at which entities must be temporally active. Filters results by validity period.",
+            "examples": ["2025-06-15", "2025-06-15T12:00:00"]
+          },
+          {
+            "name": "filter",
+            "required": false,
+            "type": "string",
+            "description": "RSQL filter expression. Supports operators: ==, !=, =gt=, =lt=, =ge=, =le=, =in=, =out=.",
+            "examples": ["type==Posta\u0107", "status!=Usuni\u0119ty", "type==Lokacja;status==Aktywny"]
+          },
+          {
+            "name": "sort",
+            "required": false,
+            "type": "string",
+            "description": "Sort fields. Prefix with '-' for descending order. Multiple fields can be separated by commas.",
+            "examples": ["name", "-type,name"]
+          },
+          {
+            "name": "fields",
+            "required": false,
+            "type": "string",
+            "description": "Sparse fieldset — comma-separated list of fields to include in the response. Reduces payload size.",
+            "examples": ["name,type,status", "name,tags"]
+          },
+          {
+            "name": "labels",
+            "required": false,
+            "type": "string",
+            "description": "When set to 'true', includes label translations (*Label companion fields) alongside entity fields via ApiNameDictionary.",
+            "examples": ["true", "false"],
+            "default": "false"
+          },
+          {
+            "name": "page[size]",
+            "required": false,
+            "type": "integer",
+            "description": "Page size for pagination. Determines the maximum number of entities returned per page.",
+            "examples": [25, 50, 100]
+          },
+          {
+            "name": "page[cursor]",
+            "required": false,
+            "type": "string",
+            "description": "Pagination cursor to retrieve the next page of results. Value comes from the 'nextCursor' field of the previous response."
+          }
+        ]
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/entities/:name",
+      "handler": "Invoke-ApiGetEntity",
+      "scope": "entity:read",
+      "pl": {
+        "description": "Zwraca pojedyncz\u0105 encj\u0119 po nazwie. Obs\u0142uguje dopasowanie po Name i CN (canonical name) z rezerwowym rozmywaniem nazw przez Resolve-Name.",
+        "queryParams": [
+          {
+            "name": "labels",
+            "required": false,
+            "type": "string",
+            "description": "Gdy ustawione na 'true', do\u0142\u0105cza t\u0142umaczenia etykiet (*Label) obok p\u00f3l encji.",
+            "examples": ["true", "false"],
+            "default": "false"
+          }
+        ]
+      },
+      "en": {
+        "description": "Returns a single entity by name. Matches against Name and CN (canonical name) with fuzzy resolution fallback via Resolve-Name.",
+        "queryParams": [
+          {
+            "name": "labels",
+            "required": false,
+            "type": "string",
+            "description": "When set to 'true', includes label translations (*Label companion fields) alongside entity fields.",
+            "examples": ["true", "false"],
+            "default": "false"
+          }
+        ]
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/entities/:name/history",
+      "handler": "Invoke-ApiGetEntityHistory",
+      "scope": "entity:read",
+      "pl": {
+        "description": "Zwraca temporal changelog (histori\u0119 zmian) wskazanej encji. Mo\u017cna ograniczy\u0107 zakres dat.",
+        "queryParams": [
+          {
+            "name": "minDate",
+            "required": false,
+            "type": "string",
+            "format": "date-time",
+            "description": "Dolna granica zakresu dat. Pomija wpisy starsze ni\u017c podana data.",
+            "examples": ["2024-01-01"]
+          },
+          {
+            "name": "maxDate",
+            "required": false,
+            "type": "string",
+            "format": "date-time",
+            "description": "G\u00f3rna granica zakresu dat. Pomija wpisy nowsze ni\u017c podana data.",
+            "examples": ["2025-12-31"]
+          }
+        ]
+      },
+      "en": {
+        "description": "Returns the temporal changelog for a named entity. The date range can be narrowed with optional bounds.",
+        "queryParams": [
+          {
+            "name": "minDate",
+            "required": false,
+            "type": "string",
+            "format": "date-time",
+            "description": "Lower bound for the date range. Excludes changelog entries older than this date.",
+            "examples": ["2024-01-01"]
+          },
+          {
+            "name": "maxDate",
+            "required": false,
+            "type": "string",
+            "format": "date-time",
+            "description": "Upper bound for the date range. Excludes changelog entries newer than this date.",
+            "examples": ["2025-12-31"]
+          }
+        ]
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/entities/:name/delta",
+      "handler": "Invoke-ApiGetEntityDelta",
+      "scope": "entity:read",
+      "pl": {
+        "description": "Zwraca r\u00f3\u017cnic\u0119 w\u0142a\u015bciwo\u015bci (diff) encji pomi\u0119dzy dwoma datami. Oba parametry daty s\u0105 wymagane.",
+        "queryParams": [
+          {
+            "name": "from",
+            "required": true,
+            "type": "string",
+            "format": "date-time",
+            "description": "Data pocz\u0105tkowa por\u00f3wnania. Wymagana \u2014 brak powoduje odpowied\u017a 400.",
+            "examples": ["2025-01-01"]
+          },
+          {
+            "name": "to",
+            "required": true,
+            "type": "string",
+            "format": "date-time",
+            "description": "Data ko\u0144cowa por\u00f3wnania. Wymagana \u2014 brak powoduje odpowied\u017a 400.",
+            "examples": ["2025-06-30"]
+          }
+        ]
+      },
+      "en": {
+        "description": "Returns a property diff for an entity between two dates. Both date parameters are required.",
+        "queryParams": [
+          {
+            "name": "from",
+            "required": true,
+            "type": "string",
+            "format": "date-time",
+            "description": "Start date for the comparison. Required \u2014 omitting it returns a 400 error.",
+            "examples": ["2025-01-01"]
+          },
+          {
+            "name": "to",
+            "required": true,
+            "type": "string",
+            "format": "date-time",
+            "description": "End date for the comparison. Required \u2014 omitting it returns a 400 error.",
+            "examples": ["2025-06-30"]
+          }
+        ]
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/entity-state",
+      "handler": "Invoke-ApiGetEntityState",
+      "scope": "entity:read",
+      "pl": {
+        "description": "Zwraca wzbogacony stan encji z nadpisaniami wynikaj\u0105cymi z sesji. Wynik zawiera po\u0142\u0105czenie danych z entities.md i informacji sesyjnych.",
+        "queryParams": [
+          {
+            "name": "activeOn",
+            "required": false,
+            "type": "string",
+            "format": "date-time",
+            "description": "Data, na kt\u00f3r\u0105 ma by\u0107 obliczony stan encji. Domy\u015blnie u\u017cywana jest bie\u017c\u0105ca data.",
+            "examples": ["2025-06-15"]
+          }
+        ]
+      },
+      "en": {
+        "description": "Returns enriched entity state with session-derived overrides. Combines data from entities.md with session information.",
+        "queryParams": [
+          {
+            "name": "activeOn",
+            "required": false,
+            "type": "string",
+            "format": "date-time",
+            "description": "Date at which to compute entity state. Defaults to the current date if omitted.",
+            "examples": ["2025-06-15"]
+          }
+        ]
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/entities",
+      "handler": "Invoke-ApiCreateEntity",
+      "scope": "entity:write",
+      "pl": {
+        "description": "Tworzy now\u0105 encj\u0119 z opcjonalnymi tagami i dat\u0105 wa\u017cno\u015bci. Wywo\u0142uje New-Entity.",
+        "bodyFields": [
+          {
+            "name": "name",
+            "required": true,
+            "type": "string",
+            "description": "Nazwa nowej encji. Musi by\u0107 unikalna w\u015br\u00f3d istniej\u0105cych encji.",
+            "validation": "Wymagane \u2014 brak zwraca 400.",
+            "examples": ["M\u00f3j Miecz", "Twierdza P\u00f3\u0142nocy"]
+          },
+          {
+            "name": "type",
+            "required": true,
+            "type": "string",
+            "description": "Typ encji (np. Posta\u0107, Przedmiot, Lokacja, Frakcja).",
+            "validation": "Wymagane \u2014 brak zwraca 400.",
+            "examples": ["Posta\u0107", "Przedmiot", "Lokacja", "Frakcja"]
+          },
+          {
+            "name": "tags",
+            "required": false,
+            "type": "object",
+            "description": "Obiekt z parami klucz-warto\u015b\u0107 reprezentuj\u0105cymi tagi encji (np. @lokacja, @grupa, @status).",
+            "examples": [{"lokacja": "Twierdza", "status": "Aktywny"}]
+          },
+          {
+            "name": "validFrom",
+            "required": false,
+            "type": "string",
+            "description": "Data pocz\u0105tku wa\u017cno\u015bci czasowej encji. Format daty tekstowy.",
+            "examples": ["2025-01-15"]
+          }
+        ]
+      },
+      "en": {
+        "description": "Creates a new entity with optional tags and temporal validity. Calls New-Entity internally.",
+        "bodyFields": [
+          {
+            "name": "name",
+            "required": true,
+            "type": "string",
+            "description": "Name of the new entity. Must be unique among existing entities.",
+            "validation": "Required \u2014 omitting returns 400.",
+            "examples": ["M\u00f3j Miecz", "Twierdza P\u00f3\u0142nocy"]
+          },
+          {
+            "name": "type",
+            "required": true,
+            "type": "string",
+            "description": "Entity type (e.g. Posta\u0107, Przedmiot, Lokacja, Frakcja).",
+            "validation": "Required \u2014 omitting returns 400.",
+            "examples": ["Posta\u0107", "Przedmiot", "Lokacja", "Frakcja"]
+          },
+          {
+            "name": "tags",
+            "required": false,
+            "type": "object",
+            "description": "Key-value pairs representing entity tags (e.g. @lokacja, @grupa, @status).",
+            "examples": [{"lokacja": "Twierdza", "status": "Aktywny"}]
+          },
+          {
+            "name": "validFrom",
+            "required": false,
+            "type": "string",
+            "description": "Temporal validity start date for the entity.",
+            "examples": ["2025-01-15"]
+          }
+        ]
+      }
+    },
+    {
+      "method": "PUT",
+      "path": "/entities/:name",
+      "handler": "Invoke-ApiUpdateEntity",
+      "scope": "entity:write",
+      "pl": {
+        "description": "Aktualizuje tagi encji przez Set-Entity. Parametr \u015bcie\u017cki :name identyfikuje encj\u0119.",
+        "bodyFields": [
+          {
+            "name": "tags",
+            "required": true,
+            "type": "object",
+            "description": "Obiekt z parami klucz-warto\u015b\u0107 reprezentuj\u0105cymi nowe warto\u015bci tag\u00f3w. Nadpisuje istniej\u0105ce tagi o tych samych kluczach.",
+            "validation": "Wymagane i musi by\u0107 obiektem (PSCustomObject) \u2014 brak lub z\u0142y typ zwraca 400.",
+            "examples": [{"status": "Aktywny", "lokacja": "Wie\u017ca Maga"}]
+          },
+          {
+            "name": "type",
+            "required": false,
+            "type": "string",
+            "description": "Opcjonalna zmiana typu encji.",
+            "examples": ["Posta\u0107", "Przedmiot"]
+          },
+          {
+            "name": "validFrom",
+            "required": false,
+            "type": "string",
+            "description": "Opcjonalna data pocz\u0105tku wa\u017cno\u015bci czasowej aktualizacji.",
+            "examples": ["2025-03-01"]
+          }
+        ]
+      },
+      "en": {
+        "description": "Updates entity tags via Set-Entity. The :name path parameter identifies the entity.",
+        "bodyFields": [
+          {
+            "name": "tags",
+            "required": true,
+            "type": "object",
+            "description": "Key-value pairs representing new tag values. Overwrites existing tags with matching keys.",
+            "validation": "Required and must be a PSCustomObject \u2014 omitting or wrong type returns 400.",
+            "examples": [{"status": "Aktywny", "lokacja": "Wie\u017ca Maga"}]
+          },
+          {
+            "name": "type",
+            "required": false,
+            "type": "string",
+            "description": "Optional entity type change.",
+            "examples": ["Posta\u0107", "Przedmiot"]
+          },
+          {
+            "name": "validFrom",
+            "required": false,
+            "type": "string",
+            "description": "Optional temporal validity start date for the update.",
+            "examples": ["2025-03-01"]
+          }
+        ]
+      }
+    },
+    {
+      "method": "DELETE",
+      "path": "/entities/:name",
+      "handler": "Invoke-ApiDeleteEntity",
+      "scope": "entity:write",
+      "pl": {
+        "description": "Mi\u0119kko usuwa encj\u0119, oznaczaj\u0105c j\u0105 jako Usuni\u0119ty (@status: Usuni\u0119ty). Parametr \u015bcie\u017cki :name identyfikuje encj\u0119. Cia\u0142o \u017c\u0105dania jest opcjonalne.",
+        "bodyFields": [
+          {
+            "name": "type",
+            "required": false,
+            "type": "string",
+            "description": "Opcjonalny typ encji do usuni\u0119cia. Pomaga w jednoznacznej identyfikacji, je\u015bli istniej\u0105 encje o tej samej nazwie r\u00f3\u017cnych typ\u00f3w.",
+            "examples": ["Posta\u0107", "Przedmiot"]
+          },
+          {
+            "name": "validFrom",
+            "required": false,
+            "type": "string",
+            "description": "Opcjonalna data pocz\u0105tku wa\u017cno\u015bci operacji usuni\u0119cia.",
+            "examples": ["2025-06-01"]
+          }
+        ]
+      },
+      "en": {
+        "description": "Soft-deletes an entity by marking it as Usuni\u0119ty (@status: Usuni\u0119ty). The :name path parameter identifies the entity. The request body is optional.",
+        "bodyFields": [
+          {
+            "name": "type",
+            "required": false,
+            "type": "string",
+            "description": "Optional entity type for disambiguation when entities with the same name but different types exist.",
+            "examples": ["Posta\u0107", "Przedmiot"]
+          },
+          {
+            "name": "validFrom",
+            "required": false,
+            "type": "string",
+            "description": "Optional temporal validity start date for the deletion operation.",
+            "examples": ["2025-06-01"]
+          }
+        ]
+      }
+    }
+  ]
+}

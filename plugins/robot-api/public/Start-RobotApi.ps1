@@ -206,6 +206,19 @@ function Start-RobotApi {
         $Middleware.AuthToken = $Config.AuthToken
     }
 
+    # Load help sidecar files from help/ directory
+    $HelpDir = Join-Path $PSScriptRoot '..' 'help'
+    $HelpType = ([System.Management.Automation.PSTypeName]'Robot.ApiHelpRegistry').Type
+    if ($HelpType -and (Test-Path $HelpDir)) {
+        $HelpType::Load($HelpDir)
+    } elseif (-not $Quiet) {
+        if (-not $HelpType) {
+            Write-RobotWarning '[Start-RobotApi] Robot.ApiHelpRegistry not compiled — /help endpoint unavailable (restart session)'
+        } else {
+            Write-RobotWarning "[Start-RobotApi] help/ directory not found at $HelpDir — /help endpoint will be empty"
+        }
+    }
+
     # Register routes
     . "$PSScriptRoot/../private/api-routes.ps1"
     $HandlerMap = Register-AllApiRoutes -Router $Router -Server $Server

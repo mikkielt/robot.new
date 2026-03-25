@@ -1,0 +1,295 @@
+{
+  "component": "sessions",
+  "endpoints": [
+    {
+      "method": "GET",
+      "path": "/sessions",
+      "handler": "Invoke-ApiGetSessions",
+      "scope": "session:read",
+      "pl": {
+        "description": "Zwraca listę sesji z opcjonalnym filtrowaniem po datach i etykietami formatów.",
+        "queryParams": [
+          {
+            "name": "minDate",
+            "required": false,
+            "type": "datetime",
+            "description": "Minimalna data sesji (włącznie). Parsowana przez [datetime]::Parse.",
+            "format": "YYYY-MM-DD",
+            "examples": ["2025-01-01", "2025-06-15"]
+          },
+          {
+            "name": "maxDate",
+            "required": false,
+            "type": "datetime",
+            "description": "Maksymalna data sesji (włącznie). Parsowana przez [datetime]::Parse.",
+            "format": "YYYY-MM-DD",
+            "examples": ["2025-12-31"]
+          },
+          {
+            "name": "includeContent",
+            "required": false,
+            "type": "string",
+            "description": "Wartość 'true' dołącza tekst opisu sesji do odpowiedzi.",
+            "examples": ["true"],
+            "default": null
+          },
+          {
+            "name": "labels",
+            "required": false,
+            "type": "string",
+            "description": "Wartość 'true' dołącza przetłumaczone etykiety formatów sesji (pole formatLabel).",
+            "examples": ["true"],
+            "default": null
+          }
+        ]
+      },
+      "en": {
+        "description": "Returns a list of sessions with optional date filtering and format label translations.",
+        "queryParams": [
+          {
+            "name": "minDate",
+            "required": false,
+            "type": "datetime",
+            "description": "Minimum session date (inclusive). Parsed via [datetime]::Parse.",
+            "format": "YYYY-MM-DD",
+            "examples": ["2025-01-01", "2025-06-15"]
+          },
+          {
+            "name": "maxDate",
+            "required": false,
+            "type": "datetime",
+            "description": "Maximum session date (inclusive). Parsed via [datetime]::Parse.",
+            "format": "YYYY-MM-DD",
+            "examples": ["2025-12-31"]
+          },
+          {
+            "name": "includeContent",
+            "required": false,
+            "type": "string",
+            "description": "Set to 'true' to include session content text in the response.",
+            "examples": ["true"],
+            "default": null
+          },
+          {
+            "name": "labels",
+            "required": false,
+            "type": "string",
+            "description": "Set to 'true' to include format label translations (adds formatLabel field to each session).",
+            "examples": ["true"],
+            "default": null
+          }
+        ]
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/sessions",
+      "handler": "Invoke-ApiCreateSession",
+      "scope": "session:write",
+      "pl": {
+        "description": "Tworzy jedną lub wiele sesji w podanych plikach Markdown. Obsługuje tryb pojedynczy (płaskie pola w body) oraz tryb wsadowy (tablica sessions).",
+        "bodyFields": [
+          {
+            "name": "title",
+            "required": true,
+            "type": "string",
+            "description": "Tytuł sesji. W trybie wsadowym wymagany w każdym obiekcie w tablicy sessions."
+          },
+          {
+            "name": "narrator",
+            "required": true,
+            "type": "string",
+            "description": "Nazwa narratora prowadzącego sesję. W trybie wsadowym wymagany w każdym obiekcie w tablicy sessions."
+          },
+          {
+            "name": "date",
+            "required": true,
+            "type": "string",
+            "description": "Data sesji. Parsowana przez [datetime]::Parse. W trybie wsadowym wymagana w każdym obiekcie w tablicy sessions.",
+            "format": "YYYY-MM-DD",
+            "examples": ["2025-03-15"]
+          },
+          {
+            "name": "path",
+            "required": true,
+            "type": "string | array",
+            "description": "Ścieżka (lub tablica ścieżek) do docelowych plików .md, w których zostanie zapisany nagłówek sesji. W trybie wsadowym podawana na poziomie głównym body.",
+            "examples": ["sesje/2025.md", ["sesje/2025.md", "sesje/2025-archiwum.md"]]
+          },
+          {
+            "name": "dateEnd",
+            "required": false,
+            "type": "string",
+            "description": "Data zakończenia sesji wielodniowej. Parsowana przez [datetime]::Parse.",
+            "format": "YYYY-MM-DD",
+            "examples": ["2025-03-16"]
+          },
+          {
+            "name": "metadataNarrators",
+            "required": false,
+            "type": "array",
+            "description": "Dodatkowi narratorzy sesji (oprócz głównego narratora).",
+            "examples": [["Narrator2", "Narrator3"]]
+          },
+          {
+            "name": "locations",
+            "required": false,
+            "type": "array",
+            "description": "Lista odwiedzonych lokacji podczas sesji.",
+            "examples": [["Kraków", "Wawel"]]
+          },
+          {
+            "name": "logs",
+            "required": false,
+            "type": "array",
+            "description": "Adresy URL do logów sesji.",
+            "examples": [["https://example.com/log1"]]
+          },
+          {
+            "name": "content",
+            "required": false,
+            "type": "string",
+            "description": "Tekst opisu sesji wstawiany pod nagłówkiem."
+          },
+          {
+            "name": "pu",
+            "required": false,
+            "type": "array",
+            "description": "Przydziały PU (punktów umiejętności) dla postaci. Każdy element to obiekt z polami character (nazwa postaci) i value (wartość PU).",
+            "examples": [[{"character": "Aldric", "value": 2}, {"character": "Mira", "value": 1.5}]]
+          },
+          {
+            "name": "changes",
+            "required": false,
+            "type": "array",
+            "description": "Zmiany stanu encji przypisane do sesji. Każdy element to obiekt z polami entityName (nazwa encji) i tags (tablica obiektów {tag, value}).",
+            "examples": [[{"entityName": "Smok", "tags": [{"tag": "@status", "value": "Martwy"}]}]]
+          },
+          {
+            "name": "intel",
+            "required": false,
+            "type": "array",
+            "description": "Dyrektywy wywiadowcze sesji. Każdy element to obiekt z polami rawTarget (cel) i message (treść wiadomości).",
+            "examples": [[{"rawTarget": "Aldric", "message": "Zauważył ślady przy rzece"}]]
+          },
+          {
+            "name": "transfers",
+            "required": false,
+            "type": "array",
+            "description": "Transfery walutowe powiązane z sesją. Każdy element to obiekt z polami amount (kwota, domyślnie 1), denomination (waluta), source (źródło) i destination (cel).",
+            "examples": [[{"amount": 10, "denomination": "gp", "source": "Aldric", "destination": "Kupiec"}]]
+          },
+          {
+            "name": "sessions",
+            "required": false,
+            "type": "array",
+            "description": "Tryb wsadowy: tablica obiektów sesji. Każdy obiekt wymaga pól title, narrator i date oraz może zawierać opcjonalne pola (dateEnd, metadataNarrators, locations, logs, content, pu, changes, intel, transfers). Pole path podawane jest na poziomie głównym body.",
+            "examples": [[{"title": "Sesja 1", "narrator": "Jan", "date": "2025-03-15"}, {"title": "Sesja 2", "narrator": "Anna", "date": "2025-03-16"}]]
+          }
+        ]
+      },
+      "en": {
+        "description": "Creates one or more sessions in the specified Markdown files. Supports single mode (flat body fields) and batch mode (sessions array).",
+        "bodyFields": [
+          {
+            "name": "title",
+            "required": true,
+            "type": "string",
+            "description": "Session title. In batch mode, required in each object within the sessions array."
+          },
+          {
+            "name": "narrator",
+            "required": true,
+            "type": "string",
+            "description": "Name of the narrator running the session. In batch mode, required in each object within the sessions array."
+          },
+          {
+            "name": "date",
+            "required": true,
+            "type": "string",
+            "description": "Session date. Parsed via [datetime]::Parse. In batch mode, required in each object within the sessions array.",
+            "format": "YYYY-MM-DD",
+            "examples": ["2025-03-15"]
+          },
+          {
+            "name": "path",
+            "required": true,
+            "type": "string | array",
+            "description": "Path (or array of paths) to the target .md files where the session header will be written. In batch mode, specified at the top level of the request body.",
+            "examples": ["sesje/2025.md", ["sesje/2025.md", "sesje/2025-archiwum.md"]]
+          },
+          {
+            "name": "dateEnd",
+            "required": false,
+            "type": "string",
+            "description": "End date for multi-day sessions. Parsed via [datetime]::Parse.",
+            "format": "YYYY-MM-DD",
+            "examples": ["2025-03-16"]
+          },
+          {
+            "name": "metadataNarrators",
+            "required": false,
+            "type": "array",
+            "description": "Additional narrators for the session (beyond the primary narrator).",
+            "examples": [["Narrator2", "Narrator3"]]
+          },
+          {
+            "name": "locations",
+            "required": false,
+            "type": "array",
+            "description": "List of locations visited during the session.",
+            "examples": [["Kraków", "Wawel"]]
+          },
+          {
+            "name": "logs",
+            "required": false,
+            "type": "array",
+            "description": "URLs to session log resources.",
+            "examples": [["https://example.com/log1"]]
+          },
+          {
+            "name": "content",
+            "required": false,
+            "type": "string",
+            "description": "Session description text inserted below the session header."
+          },
+          {
+            "name": "pu",
+            "required": false,
+            "type": "array",
+            "description": "PU (skill point) assignments for characters. Each element is an object with character (character name) and value (PU amount).",
+            "examples": [[{"character": "Aldric", "value": 2}, {"character": "Mira", "value": 1.5}]]
+          },
+          {
+            "name": "changes",
+            "required": false,
+            "type": "array",
+            "description": "Entity state changes associated with the session. Each element is an object with entityName (entity name) and tags (array of {tag, value} objects).",
+            "examples": [[{"entityName": "Smok", "tags": [{"tag": "@status", "value": "Martwy"}]}]]
+          },
+          {
+            "name": "intel",
+            "required": false,
+            "type": "array",
+            "description": "Intel directives for the session. Each element is an object with rawTarget (target) and message (message text).",
+            "examples": [[{"rawTarget": "Aldric", "message": "Noticed tracks by the river"}]]
+          },
+          {
+            "name": "transfers",
+            "required": false,
+            "type": "array",
+            "description": "Currency transfers associated with the session. Each element is an object with amount (defaults to 1), denomination (currency), source, and destination.",
+            "examples": [[{"amount": 10, "denomination": "gp", "source": "Aldric", "destination": "Merchant"}]]
+          },
+          {
+            "name": "sessions",
+            "required": false,
+            "type": "array",
+            "description": "Batch mode: array of session objects. Each object requires title, narrator, and date, and may include optional fields (dateEnd, metadataNarrators, locations, logs, content, pu, changes, intel, transfers). The path field is specified at the top level of the request body.",
+            "examples": [[{"title": "Session 1", "narrator": "Jan", "date": "2025-03-15"}, {"title": "Session 2", "narrator": "Anna", "date": "2025-03-16"}]]
+          }
+        ]
+      }
+    }
+  ]
+}

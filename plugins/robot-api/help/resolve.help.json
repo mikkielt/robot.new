@@ -1,0 +1,63 @@
+{
+  "component": "resolve",
+  "endpoints": [
+    {
+      "method": "GET",
+      "path": "/resolve/:name",
+      "handler": "Invoke-ApiResolveName",
+      "scope": "entity:read",
+      "pl": {
+        "description": "Rozwiązuje zapytanie nazwy do encji przez dopasowanie dokładne, aliasowe i rozmyte. Parametr ścieżki :name określa szukaną nazwę."
+      },
+      "en": {
+        "description": "Resolves a name query to an entity via exact, alias, and fuzzy matching. The :name path parameter specifies the lookup query."
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/resolve/batch",
+      "handler": "Invoke-ApiResolveBatch",
+      "scope": "entity:read",
+      "pl": {
+        "description": "Rozwiązuje wiele zapytań nazw jednocześnie z wzbogaceniem wyników zależnym od uprawnień tokenu.",
+        "bodyFields": [
+          {
+            "name": "names",
+            "required": true,
+            "type": "array",
+            "description": "Tablica nazw do rozwiązania. Maksymalnie 100 wpisów.",
+            "examples": [["Kael", "Twierdza Północy", "Gildia Kupców"]]
+          },
+          {
+            "name": "activeOn",
+            "required": false,
+            "type": "string",
+            "format": "date-time",
+            "description": "Kontekst czasowy do filtrowania aliasów. Ogranicza dopasowania aliasów do tych ważnych w podanej dacie.",
+            "examples": ["2025-06-15", "2025-06-15T12:00:00"]
+          }
+        ]
+      },
+      "en": {
+        "description": "Resolves multiple name queries in a single request with scope-gated enrichment based on token permissions.",
+        "bodyFields": [
+          {
+            "name": "names",
+            "required": true,
+            "type": "array",
+            "description": "Array of name strings to resolve. Maximum 100 entries.",
+            "examples": [["Kael", "Twierdza Północy", "Gildia Kupców"]]
+          },
+          {
+            "name": "activeOn",
+            "required": false,
+            "type": "string",
+            "format": "date-time",
+            "description": "Temporal context for alias filtering. Restricts alias matches to those valid at the given date.",
+            "examples": ["2025-06-15", "2025-06-15T12:00:00"]
+          }
+        ]
+      }
+    }
+  ]
+}

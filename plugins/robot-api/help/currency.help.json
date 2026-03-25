@@ -1,0 +1,279 @@
+{
+  "component": "currency",
+  "endpoints": [
+    {
+      "method": "GET",
+      "path": "/currency",
+      "handler": "Invoke-ApiGetCurrency",
+      "scope": "entity:read",
+      "pl": {
+        "description": "Zwraca raport posiadanych walut z opcjonalnym filtrowaniem po właścicielu, nominale i dacie.",
+        "queryParams": [
+          {
+            "name": "owner",
+            "required": false,
+            "type": "string",
+            "description": "Filtruj wyniki po nazwie właściciela waluty."
+          },
+          {
+            "name": "denomination",
+            "required": false,
+            "type": "string",
+            "description": "Filtruj po nominale waluty.",
+            "examples": ["KOR", "TAL", "KOG"]
+          },
+          {
+            "name": "includeVirtual",
+            "required": false,
+            "type": "string",
+            "description": "Uwzględnij waluty wirtualne. Przekaż 'true', aby aktywować.",
+            "default": "false",
+            "validation": "Akceptuje wyłącznie wartość 'true'."
+          },
+          {
+            "name": "includeInactive",
+            "required": false,
+            "type": "string",
+            "description": "Uwzględnij nieaktywne posiadania walut. Przekaż 'true', aby aktywować.",
+            "default": "false",
+            "validation": "Akceptuje wyłącznie wartość 'true'."
+          },
+          {
+            "name": "activeOn",
+            "required": false,
+            "type": "datetime",
+            "description": "Data filtrowania temporalnego — zwraca stan posiadania walut na wskazany dzień.",
+            "format": "YYYY-MM-DD"
+          },
+          {
+            "name": "showHistory",
+            "required": false,
+            "type": "string",
+            "description": "Dołącz historyczne wartości posiadania. Przekaż 'true', aby aktywować.",
+            "default": "false",
+            "validation": "Akceptuje wyłącznie wartość 'true'."
+          },
+          {
+            "name": "asBaseUnit",
+            "required": false,
+            "type": "string",
+            "description": "Przelicz wszystkie kwoty na nominał bazowy. Przekaż 'true', aby aktywować.",
+            "default": "false",
+            "validation": "Akceptuje wyłącznie wartość 'true'."
+          }
+        ]
+      },
+      "en": {
+        "description": "Returns a currency holdings report with optional filtering by owner, denomination, and date.",
+        "queryParams": [
+          {
+            "name": "owner",
+            "required": false,
+            "type": "string",
+            "description": "Filter results by currency owner name."
+          },
+          {
+            "name": "denomination",
+            "required": false,
+            "type": "string",
+            "description": "Filter by currency denomination.",
+            "examples": ["KOR", "TAL", "KOG"]
+          },
+          {
+            "name": "includeVirtual",
+            "required": false,
+            "type": "string",
+            "description": "Include virtual currencies in the report. Pass 'true' to enable.",
+            "default": "false",
+            "validation": "Only the string 'true' is accepted."
+          },
+          {
+            "name": "includeInactive",
+            "required": false,
+            "type": "string",
+            "description": "Include inactive currency holdings. Pass 'true' to enable.",
+            "default": "false",
+            "validation": "Only the string 'true' is accepted."
+          },
+          {
+            "name": "activeOn",
+            "required": false,
+            "type": "datetime",
+            "description": "Temporal filter date — returns currency holdings as of the specified date.",
+            "format": "YYYY-MM-DD"
+          },
+          {
+            "name": "showHistory",
+            "required": false,
+            "type": "string",
+            "description": "Include historical holding values in the response. Pass 'true' to enable.",
+            "default": "false",
+            "validation": "Only the string 'true' is accepted."
+          },
+          {
+            "name": "asBaseUnit",
+            "required": false,
+            "type": "string",
+            "description": "Convert all amounts to the base denomination. Pass 'true' to enable.",
+            "default": "false",
+            "validation": "Only the string 'true' is accepted."
+          }
+        ]
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/currency",
+      "handler": "Invoke-ApiCreateCurrency",
+      "scope": "entity:write",
+      "pl": {
+        "description": "Tworzy nową encję walutową typu Przedmiot z odpowiednimi tagami walutowymi.",
+        "bodyFields": [
+          {
+            "name": "name",
+            "required": true,
+            "type": "string",
+            "description": "Nazwa nowej encji walutowej. Wymagana — bez niej żądanie zostanie odrzucone.",
+            "validation": "Walidacja: if (-not $B.name)"
+          },
+          {
+            "name": "owner",
+            "required": false,
+            "type": "string",
+            "description": "Właściciel waluty. Mapowany na tag 'należy_do'."
+          },
+          {
+            "name": "location",
+            "required": false,
+            "type": "string",
+            "description": "Lokalizacja waluty. Mapowana na tag 'lokacja'."
+          },
+          {
+            "name": "amount",
+            "required": false,
+            "type": "integer/string",
+            "description": "Ilość początkowa. Mapowana na tag 'ilość'."
+          },
+          {
+            "name": "validFrom",
+            "required": false,
+            "type": "string",
+            "description": "Data rozpoczęcia ważności temporalnej encji."
+          }
+        ]
+      },
+      "en": {
+        "description": "Creates a new currency entity of type Przedmiot with appropriate currency tags.",
+        "bodyFields": [
+          {
+            "name": "name",
+            "required": true,
+            "type": "string",
+            "description": "Name of the new currency entity. Required — the request is rejected without it.",
+            "validation": "Validated: if (-not $B.name)"
+          },
+          {
+            "name": "owner",
+            "required": false,
+            "type": "string",
+            "description": "Currency owner. Mapped to the 'należy_do' tag."
+          },
+          {
+            "name": "location",
+            "required": false,
+            "type": "string",
+            "description": "Currency location. Mapped to the 'lokacja' tag."
+          },
+          {
+            "name": "amount",
+            "required": false,
+            "type": "integer/string",
+            "description": "Initial amount. Mapped to the 'ilość' tag."
+          },
+          {
+            "name": "validFrom",
+            "required": false,
+            "type": "string",
+            "description": "Temporal validity start date for the entity."
+          }
+        ]
+      }
+    },
+    {
+      "method": "PUT",
+      "path": "/currency/:name",
+      "handler": "Invoke-ApiUpdateCurrency",
+      "scope": "entity:write",
+      "pl": {
+        "description": "Aktualizuje encję walutową — zmienia ilość, właściciela lub lokalizację za pomocą Set-CurrencyEntity.",
+        "bodyFields": [
+          {
+            "name": "amount",
+            "required": false,
+            "type": "integer",
+            "description": "Ustaw bezwzględną ilość waluty (nadpisuje bieżącą wartość)."
+          },
+          {
+            "name": "amountDelta",
+            "required": false,
+            "type": "integer",
+            "description": "Względna zmiana ilości — wartość dodatnia dodaje, ujemna odejmuje."
+          },
+          {
+            "name": "owner",
+            "required": false,
+            "type": "string",
+            "description": "Zmień właściciela waluty."
+          },
+          {
+            "name": "location",
+            "required": false,
+            "type": "string",
+            "description": "Zmień lokalizację waluty."
+          },
+          {
+            "name": "validFrom",
+            "required": false,
+            "type": "string",
+            "description": "Data rozpoczęcia ważności temporalnej zmiany."
+          }
+        ]
+      },
+      "en": {
+        "description": "Updates a currency entity — adjusts amount, owner, or location via Set-CurrencyEntity.",
+        "bodyFields": [
+          {
+            "name": "amount",
+            "required": false,
+            "type": "integer",
+            "description": "Set the absolute currency amount (overwrites the current value)."
+          },
+          {
+            "name": "amountDelta",
+            "required": false,
+            "type": "integer",
+            "description": "Relative amount change — positive values add, negative values subtract."
+          },
+          {
+            "name": "owner",
+            "required": false,
+            "type": "string",
+            "description": "Change the currency owner."
+          },
+          {
+            "name": "location",
+            "required": false,
+            "type": "string",
+            "description": "Change the currency location."
+          },
+          {
+            "name": "validFrom",
+            "required": false,
+            "type": "string",
+            "description": "Temporal validity start date for the change."
+          }
+        ]
+      }
+    }
+  ]
+}

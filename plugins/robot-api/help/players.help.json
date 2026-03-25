@@ -1,0 +1,273 @@
+{
+  "component": "players",
+  "endpoints": [
+    {
+      "method": "GET",
+      "path": "/players",
+      "handler": "Invoke-ApiGetPlayers",
+      "scope": "player:read",
+      "pl": {
+        "description": "Zwraca listę wszystkich graczy wraz z ich postaciami i danymi PU."
+      },
+      "en": {
+        "description": "Returns all players with their character rosters and PU data."
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/players/:name",
+      "handler": "Invoke-ApiGetPlayer",
+      "scope": "player:read",
+      "pl": {
+        "description": "Zwraca pojedynczego gracza po nazwie. Zwraca 404 jeśli gracz nie istnieje."
+      },
+      "en": {
+        "description": "Returns a single player by name. Returns 404 if the player does not exist."
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/players",
+      "handler": "Invoke-ApiCreatePlayer",
+      "scope": "player:write",
+      "pl": {
+        "description": "Tworzy nowego gracza z opcjonalną pierwszą postacią. Pole 'name' jest wymagane.",
+        "bodyFields": [
+          {
+            "name": "name",
+            "required": true,
+            "type": "string",
+            "description": "Nazwa gracza. Musi być unikalna w repozytorium.",
+            "validation": "Wymagane — żądanie zostanie odrzucone z kodem 400 jeśli brak."
+          },
+          {
+            "name": "margonemId",
+            "required": false,
+            "type": "string",
+            "description": "Identyfikator konta Margonem gracza.",
+            "examples": ["12345"]
+          },
+          {
+            "name": "prfWebhook",
+            "required": false,
+            "type": "string",
+            "description": "URL webhooka Discord do powiadomień PRF.",
+            "format": "url"
+          },
+          {
+            "name": "triggers",
+            "required": false,
+            "type": "array",
+            "description": "Wzorce wyzwalaczy powiadomień dla gracza.",
+            "examples": [["sesja", "pu"]]
+          },
+          {
+            "name": "characterName",
+            "required": false,
+            "type": "string",
+            "description": "Nazwa pierwszej postaci gracza. Jeśli podana, postać zostanie utworzona razem z graczem."
+          },
+          {
+            "name": "characterSheet",
+            "required": false,
+            "type": "string",
+            "description": "URL karty postaci dla pierwszej postaci.",
+            "format": "url"
+          },
+          {
+            "name": "initialPUStart",
+            "required": false,
+            "type": "decimal",
+            "description": "Początkowa wartość PU dla pierwszej postaci.",
+            "default": 0,
+            "examples": [10.0, 25.5]
+          },
+          {
+            "name": "noCharacterFile",
+            "required": false,
+            "type": "boolean",
+            "description": "Jeśli true, pomija tworzenie pliku postaci na dysku.",
+            "default": false
+          }
+        ]
+      },
+      "en": {
+        "description": "Creates a new player with an optional initial character. The 'name' field is required.",
+        "bodyFields": [
+          {
+            "name": "name",
+            "required": true,
+            "type": "string",
+            "description": "Player name. Must be unique in the repository.",
+            "validation": "Required — request will be rejected with 400 if missing."
+          },
+          {
+            "name": "margonemId",
+            "required": false,
+            "type": "string",
+            "description": "Margonem account identifier for the player.",
+            "examples": ["12345"]
+          },
+          {
+            "name": "prfWebhook",
+            "required": false,
+            "type": "string",
+            "description": "Discord webhook URL for PRF notifications.",
+            "format": "url"
+          },
+          {
+            "name": "triggers",
+            "required": false,
+            "type": "array",
+            "description": "Notification trigger patterns for the player.",
+            "examples": [["sesja", "pu"]]
+          },
+          {
+            "name": "characterName",
+            "required": false,
+            "type": "string",
+            "description": "Name of the initial character. If provided, the character will be created along with the player."
+          },
+          {
+            "name": "characterSheet",
+            "required": false,
+            "type": "string",
+            "description": "Character sheet URL for the initial character.",
+            "format": "url"
+          },
+          {
+            "name": "initialPUStart",
+            "required": false,
+            "type": "decimal",
+            "description": "Starting PU value for the initial character.",
+            "default": 0,
+            "examples": [10.0, 25.5]
+          },
+          {
+            "name": "noCharacterFile",
+            "required": false,
+            "type": "boolean",
+            "description": "If true, skips character file creation on disk.",
+            "default": false
+          }
+        ]
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/players/:name/characters",
+      "handler": "Invoke-ApiCreateCharacter",
+      "scope": "player:write",
+      "pl": {
+        "description": "Dodaje nową postać do istniejącego gracza. Pole 'characterName' jest wymagane. Parametr ':name' w ścieżce to nazwa gracza.",
+        "bodyFields": [
+          {
+            "name": "characterName",
+            "required": true,
+            "type": "string",
+            "description": "Nazwa nowej postaci. Musi być unikalna wśród postaci gracza.",
+            "validation": "Wymagane — żądanie zostanie odrzucone z kodem 400 jeśli brak."
+          },
+          {
+            "name": "characterSheet",
+            "required": false,
+            "type": "string",
+            "description": "URL karty postaci.",
+            "format": "url"
+          },
+          {
+            "name": "initialPUStart",
+            "required": false,
+            "type": "decimal",
+            "description": "Początkowa wartość PU dla postaci.",
+            "default": 0,
+            "examples": [10.0, 25.5]
+          },
+          {
+            "name": "noCharacterFile",
+            "required": false,
+            "type": "boolean",
+            "description": "Jeśli true, pomija tworzenie pliku postaci na dysku.",
+            "default": false
+          },
+          {
+            "name": "condition",
+            "required": false,
+            "type": "string",
+            "description": "Stan lub kondycja postaci (np. zdrowy, ranny).",
+            "examples": ["Zdrowy", "Ranny"]
+          },
+          {
+            "name": "specialItems",
+            "required": false,
+            "type": "array",
+            "description": "Lista nazw specjalnych przedmiotów przypisanych do postaci.",
+            "examples": [["Miecz Ognia", "Tarcza Wiatru"]]
+          },
+          {
+            "name": "filePath",
+            "required": false,
+            "type": "string",
+            "description": "Niestandardowa ścieżka pliku postaci. Jeśli pominięta, używana jest ścieżka domyślna.",
+            "format": "file-path"
+          }
+        ]
+      },
+      "en": {
+        "description": "Adds a new character to an existing player. The 'characterName' field is required. The ':name' path parameter is the player name.",
+        "bodyFields": [
+          {
+            "name": "characterName",
+            "required": true,
+            "type": "string",
+            "description": "Name of the new character. Must be unique among the player's characters.",
+            "validation": "Required — request will be rejected with 400 if missing."
+          },
+          {
+            "name": "characterSheet",
+            "required": false,
+            "type": "string",
+            "description": "Character sheet URL.",
+            "format": "url"
+          },
+          {
+            "name": "initialPUStart",
+            "required": false,
+            "type": "decimal",
+            "description": "Starting PU value for the character.",
+            "default": 0,
+            "examples": [10.0, 25.5]
+          },
+          {
+            "name": "noCharacterFile",
+            "required": false,
+            "type": "boolean",
+            "description": "If true, skips character file creation on disk.",
+            "default": false
+          },
+          {
+            "name": "condition",
+            "required": false,
+            "type": "string",
+            "description": "Character condition or state (e.g. healthy, wounded).",
+            "examples": ["Zdrowy", "Ranny"]
+          },
+          {
+            "name": "specialItems",
+            "required": false,
+            "type": "array",
+            "description": "List of special item names assigned to the character.",
+            "examples": [["Miecz Ognia", "Tarcza Wiatru"]]
+          },
+          {
+            "name": "filePath",
+            "required": false,
+            "type": "string",
+            "description": "Custom character file path. If omitted, the default path is used.",
+            "format": "file-path"
+          }
+        ]
+      }
+    }
+  ]
+}

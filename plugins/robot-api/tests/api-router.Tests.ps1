@@ -139,4 +139,17 @@ Describe 'Robot.ApiRouter' {
             $Match.Route.StaticHandler | Should -Not -BeNullOrEmpty
         }
     }
+
+    Context 'RouteMatch QueryParams property' {
+        It 'has QueryParams property on RouteMatch' {
+            $Router = [Robot.ApiRouter]::new()
+            $Router.AddRoute('GET', '/entities', 'Invoke-Handler', 'test')
+            $Match = $Router.Match('GET', '/entities')
+            # QueryParams is populated by ApiServer, not by Match — verify it exists and is settable
+            $Match.QueryParams = [System.Collections.Generic.Dictionary[string,string]]::new(
+                [System.StringComparer]::OrdinalIgnoreCase)
+            $Match.QueryParams['lang'] = 'pl'
+            $Match.QueryParams['lang'] | Should -Be 'pl'
+        }
+    }
 }

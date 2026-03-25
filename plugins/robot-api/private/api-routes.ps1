@@ -80,6 +80,28 @@ function Register-AllApiRoutes {
             return [Robot.ApiNameDictionary]::GetSchema()
         }, 'Domain name dictionary and enum values')
 
+    # Help discovery and detail — requires Robot.ApiHelpRegistry C# type
+    if (([System.Management.Automation.PSTypeName]'Robot.ApiHelpRegistry').Type) {
+        $Router.AddStaticRoute('GET', '/help',
+            [Func[Robot.RouteMatch, Robot.ApiServer, object]]{
+                param([Robot.RouteMatch]$Match, [Robot.ApiServer]$Srv)
+                return @{ components = [Robot.ApiHelpRegistry]::GetComponents() }
+            }, 'List available help components')
+
+        $Router.AddStaticRoute('GET', '/help/:component',
+            [Func[Robot.RouteMatch, Robot.ApiServer, object]]{
+                param([Robot.RouteMatch]$Match, [Robot.ApiServer]$Srv)
+                $Component = $Match.PathParams['component']
+                $Lang      = if ($Match.QueryParams -and $Match.QueryParams['lang'])    { $Match.QueryParams['lang'] }    else { $null }
+                $Include   = if ($Match.QueryParams -and $Match.QueryParams['include']) { $Match.QueryParams['include'] } else { $null }
+                $Result    = [Robot.ApiHelpRegistry]::GetHelp($Component, $Lang, $Include)
+                if ($null -eq $Result) {
+                    return @{ StatusCode = 404; Body = @{ error = "Help component not found: $Component" } }
+                }
+                return $Result
+            }, 'Component help with field descriptions')
+    }
+
     # ── SSE endpoint ──────────────────────────────────────────────────
     $Router.AddSseRoute('/events', 'Server-Sent Events stream for real-time data changes')
 

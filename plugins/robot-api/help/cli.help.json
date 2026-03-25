@@ -1,0 +1,445 @@
+{
+  "component": "cli",
+  "categories": {
+    "root": {
+      "pl": {
+        "title": "Robot CLI - Pomoc",
+        "body": [
+          "Robot CLI to interaktywne narzędzie do zarządzania",
+          "światem gry Nerthus. Znajdziesz tu wszystko, czego",
+          "potrzebujesz: sesje, postacie, NPC, lokacje, grupy,",
+          "walutę i punkty umiejętności (PU).",
+          "",
+          "Jak się poruszać:",
+          "  ↑↓        poruszanie się po menu",
+          "  Enter     wybór zaznaczonej opcji",
+          "  q/Esc     wstecz (w menu głównym: wyjście)",
+          "  h         wyświetlenie pomocy",
+          "",
+          "Menu główne zawiera 7 kategorii tematycznych.",
+          "Wybierz kategorię, aby zobaczyć dostępne operacje.",
+          "",
+          "Oznaczenia ról przy operacjach:",
+          "  [N]   Narrator — osoba prowadząca sesje",
+          "  [K]   Koordynator — osoba zarządzająca kampanią",
+          "  Operacje bez oznaczenia są dostępne dla wszystkich.",
+          "",
+          "Odśwież dane — przeładuj informacje o postaciach,",
+          "graczach i elementach świata gry. Przydatne, gdy dane",
+          "zostały zmienione poza tym narzędziem."
+        ]
+      },
+      "en": {
+        "title": "Robot CLI - Help",
+        "body": [
+          "Robot CLI is an interactive tool for managing",
+          "the Nerthus game world. Here you will find everything",
+          "you need: sessions, characters, NPCs, locations, groups,",
+          "currency and skill points (PU).",
+          "",
+          "Navigation:",
+          "  ↑↓        move through the menu",
+          "  Enter     select the highlighted option",
+          "  q/Esc     go back (in main menu: exit)",
+          "  h         show help",
+          "",
+          "The main menu contains 7 thematic categories.",
+          "Select a category to see available operations.",
+          "",
+          "Role indicators on operations:",
+          "  [N]   Narrator — person running sessions",
+          "  [K]   Coordinator — person managing the campaign",
+          "  Operations without a marker are available to everyone.",
+          "",
+          "Refresh data — reload information about characters,",
+          "players and game world elements. Useful when data",
+          "has been changed outside this tool."
+        ]
+      }
+    },
+    "Sesje": {
+      "pl": {
+        "title": "Sesje - Pomoc",
+        "body": [
+          "Tutaj zarządzasz sesjami RPG — tworzysz nowe,",
+          "edytujesz istniejące i przeglądasz historię rozgrywek.",
+          "",
+          "Nowa sesja        [N]  Kreator prowadzi krok po kroku:",
+          "                       data, narrator, lokacje, PU,",
+          "                       zmiany w świecie, powiadomienia.",
+          "Edytuj sesję      [N]  Zmień dane istniejącej sesji",
+          "                       (np. popraw datę lub narratora).",
+          "Walidacja sesji   [N]  Sprawdź, czy wszystkie nazwy",
+          "                       postaci i lokacji są poprawne.",
+          "Przeglądaj sesje       Lista sesji z filtrem dat.",
+          "                       Wybierz wiersz, aby zobaczyć",
+          "                       szczegóły.",
+          "Historia zmian         Przeglądaj historię zmian",
+          "                       w repozytorium.",
+          "",
+          "Wskazówka: Po utworzeniu sesji sprawdź ją za pomocą",
+          "Walidacji, aby upewnić się, że wszystkie nazwy",
+          "zostały rozpoznane."
+        ]
+      },
+      "en": {
+        "title": "Sessions - Help",
+        "body": [
+          "Here you manage RPG sessions — create new ones,",
+          "edit existing ones and browse gameplay history.",
+          "",
+          "New session        [N]  The wizard guides you step by step:",
+          "                        date, narrator, locations, PU,",
+          "                        world changes, notifications.",
+          "Edit session       [N]  Modify an existing session",
+          "                        (e.g. fix the date or narrator).",
+          "Validate session   [N]  Check whether all character",
+          "                        and location names are correct.",
+          "Browse sessions         Session list with date filter.",
+          "                        Select a row to see details.",
+          "Change history          Browse the repository change",
+          "                        history.",
+          "",
+          "Tip: After creating a session, run Validation to",
+          "make sure all names were recognized."
+        ]
+      }
+    },
+    "Gracze i Postacie": {
+      "pl": {
+        "title": "Gracze i Postacie - Pomoc",
+        "body": [
+          "Rejestracja i edycja graczy oraz ich postaci",
+          "w świecie gry.",
+          "",
+          "Nowy gracz        [K]  Dodaj nowego gracza do kampanii.",
+          "Nowa postać       [K]  Stwórz postać dla gracza",
+          "                       (opcjonalnie z walutą startową).",
+          "Edytuj postać     [K]  Zmień dane istniejącej postaci.",
+          "Edytuj gracza     [K]  Zmień dane gracza (wyzwalacze",
+          "                       powiadomień, alternatywne nazwy).",
+          "Usuń postać       [K]  Oznacz postać jako nieaktywną",
+          "                       (dane nie są trwale usuwane).",
+          "Przeglądaj graczy      Lista wszystkich graczy",
+          "                       z podglądem ich postaci.",
+          "Karta postaci          Szczegółowy widok wybranej",
+          "                       postaci.",
+          "",
+          "Przy wyborze nazwy nie musisz wpisywać dokładnej",
+          "nazwy — wystarczy wpisać początek, a system",
+          "podpowie pasujące wyniki."
+        ]
+      },
+      "en": {
+        "title": "Players and Characters - Help",
+        "body": [
+          "Register and edit players and their characters",
+          "in the game world.",
+          "",
+          "New player        [K]  Add a new player to the campaign.",
+          "New character      [K]  Create a character for a player",
+          "                        (optionally with starting currency).",
+          "Edit character     [K]  Modify an existing character.",
+          "Edit player        [K]  Modify player data (notification",
+          "                        triggers, alternative names).",
+          "Delete character   [K]  Mark a character as inactive",
+          "                        (data is not permanently deleted).",
+          "Browse players          List of all players with",
+          "                        a preview of their characters.",
+          "Character sheet         Detailed view of a selected",
+          "                        character.",
+          "",
+          "When choosing a name you don't need to type the exact",
+          "name — just type the beginning and the system",
+          "will suggest matching results."
+        ]
+      }
+    },
+    "Encje": {
+      "pl": {
+        "title": "Elementy świata gry - Pomoc",
+        "body": [
+          "Zarządzanie elementami świata gry: NPC, grupy,",
+          "lokacje, przedmioty.",
+          "",
+          "Nowa encja        [K]  Stwórz nowy element — wybierz",
+          "                       typ (np. NPC, Lokacja), podaj",
+          "                       nazwę i dodaj właściwości.",
+          "Edytuj encję      [K]  Zmień właściwości istniejącego",
+          "                       elementu.",
+          "Usuń encję        [K]  Oznacz element jako nieaktywny",
+          "                       (dane nie są trwale usuwane).",
+          "Przeglądaj encje       Lista elementów z filtrowaniem",
+          "                       po typie.",
+          "Historia encji         Zobacz, jak element zmieniał",
+          "                       się w czasie (na podst. sesji).",
+          "Szukaj                 Wyszukaj element po nazwie —",
+          "                       wystarczy wpisać początek.",
+          "",
+          "Właściwości elementów mogą mieć zakresy czasowe,",
+          "np. NPC może zmieniać lokację w różnych okresach gry."
+        ]
+      },
+      "en": {
+        "title": "Game World Elements - Help",
+        "body": [
+          "Manage game world elements: NPCs, groups,",
+          "locations, items.",
+          "",
+          "New entity         [K]  Create a new element — choose",
+          "                        the type (e.g. NPC, Location),",
+          "                        provide a name and add properties.",
+          "Edit entity        [K]  Modify properties of an existing",
+          "                        element.",
+          "Delete entity      [K]  Mark an element as inactive",
+          "                        (data is not permanently deleted).",
+          "Browse entities         List of elements with type",
+          "                        filtering.",
+          "Entity history          See how an element changed",
+          "                        over time (based on sessions).",
+          "Search                  Search for an element by name —",
+          "                        just type the beginning.",
+          "",
+          "Element properties can have time ranges,",
+          "e.g. an NPC can change location across different game periods."
+        ]
+      }
+    },
+    "Waluta": {
+      "pl": {
+        "title": "Waluta - Pomoc",
+        "body": [
+          "Operacje na walutach w świecie gry.",
+          "",
+          "Nowa waluta       [K]  Utwórz nowy zapis walutowy",
+          "                       (np. sakiewkę postaci).",
+          "Zmień saldo       [K]  Zmień ilość waluty bezpośrednio.",
+          "Przelej walutę    [K]  Przenieś walutę między dwoma",
+          "                       właścicielami.",
+          "Zmień lokalizację [K]  Przenieś walutę do innego",
+          "                       miejsca.",
+          "Usuń walutę       [K]  Usuń zapis walutowy.",
+          "Salda walut            Przegląd aktualnych stanów walut.",
+          "Raport walutowy        Zestawienie walut wg właściciela.",
+          "Uzgodnienie       [K]  Sprawdź poprawność wszystkich",
+          "                       walut.",
+          "",
+          "W świecie gry funkcjonują trzy nominały:",
+          "  Korony Elanckie (KOR), Talary Hirońskie (TAL),",
+          "  Kogi Skeltvorskie (KOG)."
+        ]
+      },
+      "en": {
+        "title": "Currency - Help",
+        "body": [
+          "Currency operations in the game world.",
+          "",
+          "New currency       [K]  Create a new currency record",
+          "                        (e.g. a character's purse).",
+          "Change balance     [K]  Modify the currency amount directly.",
+          "Transfer currency  [K]  Move currency between two",
+          "                        owners.",
+          "Change location    [K]  Move currency to a different",
+          "                        place.",
+          "Delete currency    [K]  Delete a currency record.",
+          "Currency balances       Overview of current currency states.",
+          "Currency report         Currency summary by owner.",
+          "Reconciliation    [K]  Verify correctness of all",
+          "                        currencies.",
+          "",
+          "Three denominations exist in the game world:",
+          "  Elancian Crowns (KOR), Hironian Talers (TAL),",
+          "  Skeltvorian Kogs (KOG)."
+        ]
+      }
+    },
+    "PU": {
+      "pl": {
+        "title": "PU (Punkty Umiejętności) - Pomoc",
+        "body": [
+          "Przydzielanie i diagnostyka Punktów Umiejętności.",
+          "PU to punkty rozwoju, które postacie otrzymują",
+          "za udział w sesjach.",
+          "",
+          "Przydział miesięczny   [K]  Nalicz PU za wybrany",
+          "                            okres. Najpierw zobaczysz",
+          "                            podgląd zmian (nic nie",
+          "                            zostanie zapisane), a dopiero",
+          "                            po zatwierdzeniu — zapis.",
+          "Diagnostyka przed      [K]  Sprawdź, czy wszystko jest",
+          "  przydziałem               gotowe do przydziału: nazwy",
+          "                            postaci, daty, poprawność.",
+          "Historia przydziałów        Przeglądaj dziennik",
+          "                            dotychczasowych przydziałów.",
+          "Uprawnienia głosowania      Sprawdź, którzy gracze mają",
+          "                            uprawnienia do głosowania.",
+          "Diagnostyka PU              Szczegółowy raport",
+          "                            poprawności PU.",
+          "",
+          "Przed przydziałem system musi rozpoznać nazwy",
+          "wszystkich postaci. Jeśli któraś nazwa nie zostanie",
+          "rozpoznana, cały przydział się zatrzyma — żadna",
+          "postać nie dostanie PU, dopóki problem nie zostanie",
+          "rozwiązany."
+        ]
+      },
+      "en": {
+        "title": "PU (Skill Points) - Help",
+        "body": [
+          "Allocation and diagnostics for Skill Points.",
+          "PU are development points that characters receive",
+          "for participating in sessions.",
+          "",
+          "Monthly allocation   [K]  Calculate PU for a selected",
+          "                          period. You will first see a",
+          "                          preview of changes (nothing is",
+          "                          saved), and only after approval",
+          "                          — the actual write.",
+          "Pre-allocation       [K]  Check whether everything is",
+          "  diagnostics              ready for allocation: character",
+          "                           names, dates, correctness.",
+          "Allocation history         Browse the log of past",
+          "                           allocations.",
+          "Voting eligibility         Check which players have",
+          "                           voting rights.",
+          "PU diagnostics             Detailed correctness report",
+          "                           for PU.",
+          "",
+          "Before allocation, the system must recognize the names",
+          "of all characters. If any name is not recognized,",
+          "the entire allocation stops — no character receives PU",
+          "until the issue is resolved."
+        ]
+      }
+    },
+    "Raporty i Narzędzia": {
+      "pl": {
+        "title": "Raporty i Narzędzia - Pomoc",
+        "body": [
+          "Raporty, narzędzia diagnostyczne, wiadomości Discord",
+          "i inne.",
+          "",
+          "Log zmian                   Przeglądaj zmiany elementów",
+          "                            świata gry z sesji.",
+          "Raport narratorów           Statystyki prowadzących.",
+          "Raport lokacji              Jak często używano lokacji.",
+          "Powiadomienia               Dziennik wysłanych",
+          "                            powiadomień.",
+          "Transakcje                  Księga przelewów walutowych.",
+          "Podgląd Intel         [N/K] Sprawdź, kto otrzyma jakie",
+          "                            wiadomości z wybranej sesji.",
+          "Discord: PU           [K]   Wyślij ponownie",
+          "                            powiadomienie PU.",
+          "Discord: Ogłoszenie   [K]   Opublikuj ogłoszenie",
+          "                            na Discordzie.",
+          "Discord: Wiadomość    [K]   Wyślij dowolną wiadomość",
+          "                            na Discord.",
+          "Szukaj nazwy                Wyszukaj element świata gry",
+          "                            po nazwie.",
+          "Pobierz logi          [K]   Pobierz zapisy rozmów",
+          "                            z sesji (z adresów URL).",
+          "Raport lokacji z logów [N]  Porównaj lokacje z zapisów",
+          "                            rozmów z lokacjami w grze."
+        ]
+      },
+      "en": {
+        "title": "Reports and Tools - Help",
+        "body": [
+          "Reports, diagnostic tools, Discord messages",
+          "and more.",
+          "",
+          "Change log                  Browse game world element",
+          "                            changes from sessions.",
+          "Narrator report             Narrator statistics.",
+          "Location report             How often locations were used.",
+          "Notifications               Log of sent notifications.",
+          "Transactions                Currency transfer ledger.",
+          "Intel preview         [N/K] Check who will receive which",
+          "                            messages from a chosen session.",
+          "Discord: PU           [K]   Resend PU notification.",
+          "Discord: Announcement [K]   Publish an announcement",
+          "                            on Discord.",
+          "Discord: Message      [K]   Send a custom message",
+          "                            on Discord.",
+          "Name search                 Search for a game world element",
+          "                            by name.",
+          "Fetch logs            [K]   Download session conversation",
+          "                            logs (from URLs).",
+          "Location report       [N]   Compare locations from",
+          "  from logs                  conversation logs with in-game",
+          "                            locations."
+        ]
+      }
+    },
+    "Przedmioty": {
+      "pl": {
+        "title": "Przedmioty - Pomoc",
+        "body": [
+          "Zarządzanie przedmiotami w świecie gry.",
+          "",
+          "Przeglądaj przedmioty      Lista przedmiotów (encje",
+          "                           typu Przedmiot) z filtrami.",
+          "                           Domyślnie wyklucza walutę.",
+          "",
+          "Filtrowanie:",
+          "  właściciel:nazwa — filtruj po właścicielu",
+          "  lokacja:nazwa    — filtruj po lokacji"
+        ]
+      },
+      "en": {
+        "title": "Items - Help",
+        "body": [
+          "Manage items in the game world.",
+          "",
+          "Browse items               List of items (entities of",
+          "                           type Item) with filters.",
+          "                           Excludes currency by default.",
+          "",
+          "Filtering:",
+          "  owner:name    — filter by owner",
+          "  location:name — filter by location"
+        ]
+      }
+    },
+    "Migracja": {
+      "pl": {
+        "title": "Migracja - Pomoc",
+        "body": [
+          "Narzędzia do przenoszenia danych ze starszego formatu",
+          "kampanii do aktualnego.",
+          "",
+          "Migracja składa się z kilku kroków (faz 0-6),",
+          "wykonywanych po kolei. Każdy krok można uruchomić",
+          "wielokrotnie bez ryzyka — postęp jest zapamiętywany.",
+          "",
+          "Szybka diagnostyka     [K]  Podsumowanie: ile zostało",
+          "                            do zrobienia.",
+          "Pełny raport           [K]  Szczegółowy raport postępu",
+          "                            migracji.",
+          "",
+          "Poszczególne fazy pojawiają się w menu tylko wtedy,",
+          "gdy pliki migracji są dostępne."
+        ]
+      },
+      "en": {
+        "title": "Migration - Help",
+        "body": [
+          "Tools for migrating data from an older campaign format",
+          "to the current one.",
+          "",
+          "Migration consists of several steps (phases 0-6),",
+          "executed in sequence. Each step can be run multiple",
+          "times safely — progress is remembered.",
+          "",
+          "Quick diagnostics    [K]  Summary: how much remains",
+          "                          to be done.",
+          "Full report          [K]  Detailed migration progress",
+          "                          report.",
+          "",
+          "Individual phases appear in the menu only when",
+          "migration files are available."
+        ]
+      }
+    }
+  }
+}

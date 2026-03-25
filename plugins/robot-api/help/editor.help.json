@@ -1,0 +1,49 @@
+{
+  "component": "editor",
+  "zones": {
+    "header_date": {
+      "pl": { "description": "Format: RRRR-MM-DD — wielodniowe: RRRR-MM-DD/DD" },
+      "en": { "description": "Format: YYYY-MM-DD — multi-day: YYYY-MM-DD/DD" }
+    },
+    "header_title": {
+      "pl": { "description": "Unikalny tytuł sesji — część identyfikatora nagłówka" },
+      "en": { "description": "Unique session title — part of the header identifier" }
+    },
+    "header_narrator": {
+      "pl": { "description": "Główny narrator sesji — podpowiedzi po 2+ znakach" },
+      "en": { "description": "Main session narrator — autocomplete after 2+ characters" }
+    },
+    "content": {
+      "pl": { "description": "Treść sesji — dowolny tekst opisu przebiegu" },
+      "en": { "description": "Session content — free-form description text" }
+    },
+    "lokacje": {
+      "pl": { "description": "Lokacje odwiedzone w sesji — każda w osobnej linii" },
+      "en": { "description": "Locations visited in the session — one per line" }
+    },
+    "logi": {
+      "pl": { "description": "Linki do logów sesji — każdy URL w osobnej linii" },
+      "en": { "description": "Session log links — one URL per line" }
+    },
+    "pu": {
+      "pl": { "description": "Punkty Umiejętności — format: Postać: wartość (np. 0,5)" },
+      "en": { "description": "Skill Points — format: Character: value (e.g. 0.5)" }
+    },
+    "zmiany": {
+      "pl": { "description": "Zmiany stanu encji — nazwa encji, potem @tag: wartość" },
+      "en": { "description": "Entity state changes — entity name, then @tag: value" }
+    },
+    "intel": {
+      "pl": { "description": "Intel dla postaci — format: Cel: Wiadomość" },
+      "en": { "description": "Intel for characters — format: Target: Message" }
+    },
+    "narrator": {
+      "pl": { "description": "Dodatkowi narratorzy — nadpisanie narratora z nagłówka" },
+      "en": { "description": "Additional narrators — overrides the header narrator" }
+    },
+    "transfer": {
+      "pl": { "description": "Transfery walut — format: Ilość Waluta, Źródło -> Cel" },
+      "en": { "description": "Currency transfers — format: Amount Currency, Source -> Destination" }
+    }
+  }
+}

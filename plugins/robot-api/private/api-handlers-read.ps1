@@ -711,6 +711,14 @@ function Invoke-ApiResolveBatch {
                 "$($R.Type)/$($R.Name)"
             } else { $null }
             matchStage = $Stage
+            filePath   = if ($R.PSObject.Properties['FilePath']) { $R.FilePath }
+                         elseif ($R.PSObject.Properties['Characters']) {
+                             $MC = $R.Characters.Where({
+                                 [string]::Equals($_.Name, $Key, 'OrdinalIgnoreCase') -or
+                                 ($_.Aliases -and $_.Aliases.Where({ [string]::Equals($_, $Key, 'OrdinalIgnoreCase') }, 'First').Count -gt 0)
+                             }, 'First')
+                             if ($MC.Count -gt 0 -and $MC[0].PSObject.Properties['Path']) { $MC[0].Path } else { $null }
+                         } else { $null }
         }
 
         if ($Stage -eq 3 -and $R.PSObject.Properties['Candidates']) {

@@ -1,0 +1,239 @@
+{
+  "component": "parse",
+  "endpoints": [
+    {
+      "method": "POST",
+      "path": "/parse/log",
+      "handler": "Invoke-ApiParseLog",
+      "scope": "session:read",
+      "pl": {
+        "description": "Parsuje surowy tekst logu na dane strukturalne. Wyodrębnia metadane, dialogi i akcje z treści logu.",
+        "bodyFields": [
+          {
+            "name": "content",
+            "required": true,
+            "type": "string",
+            "description": "Surowy tekst logu do sparsowania. Pełna zawartość tekstowa logu sesji.",
+            "examples": ["[2025-06-15 20:00] Sesja rozpoczyna się w tawernie..."]
+          }
+        ]
+      },
+      "en": {
+        "description": "Parses raw log text into structured data. Extracts metadata, dialogue, and actions from log content.",
+        "bodyFields": [
+          {
+            "name": "content",
+            "required": true,
+            "type": "string",
+            "description": "Raw log text to parse. The full text content of a session log.",
+            "examples": ["[2025-06-15 20:00] Sesja rozpoczyna się w tawernie..."]
+          }
+        ]
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/logs/fetch",
+      "handler": "Invoke-ApiFetchLogContent",
+      "scope": "session:read",
+      "pl": {
+        "description": "Pobiera surową treść logów po URL-ach. Najpierw sprawdza lokalny cache dyskowy, następnie pobiera przez HTTP.",
+        "bodyFields": [
+          {
+            "name": "urls",
+            "required": true,
+            "type": "array",
+            "description": "Tablica URL-ów logów do pobrania. Każdy URL wskazuje na zewnętrzny zasób z treścią logu.",
+            "examples": [["https://example.com/logs/session-42.txt", "https://example.com/logs/session-43.txt"]]
+          }
+        ]
+      },
+      "en": {
+        "description": "Fetches raw log content by URLs. Checks the local disk cache first, then falls back to HTTP retrieval.",
+        "bodyFields": [
+          {
+            "name": "urls",
+            "required": true,
+            "type": "array",
+            "description": "Array of log URLs to fetch. Each URL points to an external resource containing log content.",
+            "examples": [["https://example.com/logs/session-42.txt", "https://example.com/logs/session-43.txt"]]
+          }
+        ]
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/parse/session-preview",
+      "handler": "Invoke-ApiSessionPreview",
+      "scope": "session:read",
+      "pl": {
+        "description": "Generuje podgląd markdownu sesji w formacie Gen4 z walidacją nazw lokacji. Pozwala zweryfikować sesję przed zapisem.",
+        "bodyFields": [
+          {
+            "name": "title",
+            "required": true,
+            "type": "string",
+            "description": "Tytuł sesji. Pojawia się w nagłówku sesji.",
+            "examples": ["Ucieczka z Twierdzy"]
+          },
+          {
+            "name": "narrator",
+            "required": true,
+            "type": "string",
+            "description": "Główny narrator sesji. Musi odpowiadać istniejącemu narratorowi w systemie.",
+            "examples": ["MG"]
+          },
+          {
+            "name": "date",
+            "required": true,
+            "type": "string",
+            "format": "date-time",
+            "description": "Data sesji. Używana w nagłówku sesji i do sortowania chronologicznego.",
+            "examples": ["2025-06-15"]
+          },
+          {
+            "name": "dateEnd",
+            "required": false,
+            "type": "string",
+            "format": "date-time",
+            "description": "Opcjonalna data zakończenia sesji wielodniowej.",
+            "examples": ["2025-06-16"]
+          },
+          {
+            "name": "locations",
+            "required": false,
+            "type": "array",
+            "description": "Tablica nazw lokacji sesji. Nazwy są walidowane względem istniejących encji typu Lokacja.",
+            "examples": [["Twierdza Północy", "Las Mgieł"]]
+          },
+          {
+            "name": "metadataNarrators",
+            "required": false,
+            "type": "array",
+            "description": "Dodatkowi narratorzy do metadanych sesji (oprócz głównego narratora).",
+            "examples": [["MG", "MG2"]]
+          },
+          {
+            "name": "logs",
+            "required": false,
+            "type": "array",
+            "description": "Tablica URL-ów logów powiązanych z sesją.",
+            "examples": [["https://example.com/logs/session-42.txt"]]
+          },
+          {
+            "name": "content",
+            "required": false,
+            "type": "string",
+            "description": "Dodatkowa treść opisowa sesji w formacie markdown.",
+            "examples": ["Bohaterowie dotarli do twierdzy po trzech dniach podróży..."]
+          },
+          {
+            "name": "pu",
+            "required": false,
+            "type": "array",
+            "description": "Tablica przypisań PU (punktów umiejętności) do postaci. Każdy element zawiera nazwę postaci i wartość.",
+            "examples": [[{"character": "Kael", "value": 2}, {"character": "Lyra", "value": 3}]]
+          },
+          {
+            "name": "changes",
+            "required": false,
+            "type": "array",
+            "description": "Tablica zmian encji dokonanych w sesji. Każdy element zawiera nazwę encji i tablicę tagów do zmiany.",
+            "examples": [[{"entityName": "Kael", "tags": [{"tag": "lokacja", "value": "Twierdza Północy"}]}]]
+          },
+          {
+            "name": "intel",
+            "required": false,
+            "type": "array",
+            "description": "Tablica wiadomości wywiadowczych (intel) powiązanych z sesją. Każdy element zawiera cel i treść.",
+            "examples": [[{"rawTarget": "Kael", "message": "Dowiaduje się o spisku w gildii."}]]
+          }
+        ]
+      },
+      "en": {
+        "description": "Generates a Gen4 session markdown preview with location name validation. Allows verifying session content before committing.",
+        "bodyFields": [
+          {
+            "name": "title",
+            "required": true,
+            "type": "string",
+            "description": "Session title. Appears in the session header.",
+            "examples": ["Ucieczka z Twierdzy"]
+          },
+          {
+            "name": "narrator",
+            "required": true,
+            "type": "string",
+            "description": "Primary session narrator. Must match an existing narrator in the system.",
+            "examples": ["MG"]
+          },
+          {
+            "name": "date",
+            "required": true,
+            "type": "string",
+            "format": "date-time",
+            "description": "Session date. Used in the session header and for chronological ordering.",
+            "examples": ["2025-06-15"]
+          },
+          {
+            "name": "dateEnd",
+            "required": false,
+            "type": "string",
+            "format": "date-time",
+            "description": "Optional end date for multi-day sessions.",
+            "examples": ["2025-06-16"]
+          },
+          {
+            "name": "locations",
+            "required": false,
+            "type": "array",
+            "description": "Array of session location names. Names are validated against existing Lokacja-type entities.",
+            "examples": [["Twierdza Północy", "Las Mgieł"]]
+          },
+          {
+            "name": "metadataNarrators",
+            "required": false,
+            "type": "array",
+            "description": "Additional narrators for session metadata (beyond the primary narrator).",
+            "examples": [["MG", "MG2"]]
+          },
+          {
+            "name": "logs",
+            "required": false,
+            "type": "array",
+            "description": "Array of log URLs associated with the session.",
+            "examples": [["https://example.com/logs/session-42.txt"]]
+          },
+          {
+            "name": "content",
+            "required": false,
+            "type": "string",
+            "description": "Additional descriptive session content in markdown format.",
+            "examples": ["Bohaterowie dotarli do twierdzy po trzech dniach podróży..."]
+          },
+          {
+            "name": "pu",
+            "required": false,
+            "type": "array",
+            "description": "Array of PU (skill point) assignments to characters. Each element contains a character name and value.",
+            "examples": [[{"character": "Kael", "value": 2}, {"character": "Lyra", "value": 3}]]
+          },
+          {
+            "name": "changes",
+            "required": false,
+            "type": "array",
+            "description": "Array of entity changes made during the session. Each element contains an entity name and an array of tags to modify.",
+            "examples": [[{"entityName": "Kael", "tags": [{"tag": "lokacja", "value": "Twierdza Północy"}]}]]
+          },
+          {
+            "name": "intel",
+            "required": false,
+            "type": "array",
+            "description": "Array of intel messages associated with the session. Each element contains a target and message.",
+            "examples": [[{"rawTarget": "Kael", "message": "Dowiaduje się o spisku w gildii."}]]
+          }
+        ]
+      }
+    }
+  ]
+}
