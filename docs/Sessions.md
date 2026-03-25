@@ -1,6 +1,6 @@
 # Session Recording Guide
 
-## Overview
+## Purpose
 
 Narrators document game sessions in the repository using a structured Markdown format. Proper session recording ensures that PU awards, world-state changes, and notifications are processed correctly and automatically.
 
@@ -55,7 +55,9 @@ but not parsed for metadata.
         - @lokacja: Bracada
     - Sandro
         - @lokacja: Bracada
-- @Transfer: 100 koron, Crag Hack -> Gem
+- @Transfer:
+    - 100 koron, Crag Hack -> Gem
+    - Miecz Ognia, Sandro -> Crag Hack
 - @Intel:
     - Grupa/Nekromanci: Wiadomość do wszystkich członków Nekromantów
     - Solmyr: Prywatna wiadomość
@@ -71,7 +73,7 @@ but not parsed for metadata.
 | `@Logi` | Recommended | Link(s) to the session transcript |
 | `@PU` | Required for PU processing | Character name and PU value (e.g., `Crag Hack: 0.3`) |
 | `@Zmiany` | As needed | World-state changes (entity name + `@tag: value` pairs) |
-| `@Transfer` | As needed | Currency transfers between entities (see [Currency.md](Currency.md)) |
+| `@Transfer` | As needed | Currency and item transfers between entities (see [Currency.md](Currency.md)) |
 | `@Intel` | As needed | Targeted messages to specific recipients |
 
 ## PU Entry Format
@@ -117,16 +119,31 @@ Targeting options: `Grupa/Name` reaches all entities in the named group, `Lokacj
 
 ## Transfer Format
 
-Transfers record currency movements between entities during a session:
+Transfers record currency and item movements between entities during a session. They can be written in two ways: as individual inline entries, or grouped under a single `@Transfer:` header with nested items.
+
+**Inline format** — each transfer on its own line:
 
 ```markdown
 - @Transfer: 100 koron, Crag Hack -> Gem
 - @Transfer: 50 talarów, Kupiec Orrin -> Kyrre
 ```
 
-The format is: `@Transfer: {amount} {denomination}, {source} -> {destination}`
+**Nested format** — multiple transfers grouped under one header:
 
-You can use colloquial denomination names ("koron", "talarów", "kogi") — the system recognizes them automatically. Multiple transfers per session are allowed.
+```markdown
+- @Transfer:
+    - 100 koron, Crag Hack -> Gem
+    - 50 talarów, Kupiec Orrin -> Kyrre
+    - Miecz Ognia, Sandro -> Crag Hack
+```
+
+Both formats can be mixed in the same session. The general pattern for each entry is: `{amount} {denomination}, {source} -> {destination}`
+
+For **item transfers**, omit the amount — the system treats it as a single item. For example, `Miecz Ognia, Sandro -> Crag Hack` transfers the item "Miecz Ognia" from Sandro to Crag Hack.
+
+For **currency transfers**, specify the amount and denomination. You can use colloquial denomination names ("koron", "talarów", "kogi") — the system recognizes them automatically.
+
+When a session is processed, each transfer is recorded in the transaction ledger with the session date. Source and destination names must match registered entities.
 
 For more details on currency tracking, see [Currency.md](Currency.md).
 
@@ -171,9 +188,9 @@ A properly recorded session:
 4. Delivers Intel messages to the correct recipients via Discord
 5. Is logged in the processing history to prevent double-counting
 
-## Exceptions and Recovery Actions
+## Exceptions and Recovery
 
-| Situation | What happens | Recovery |
+| Situation | What Happens | Recovery |
 |---|---|---|
 | Wrong date format (e.g., `2025-6-15`) | Session silently skipped during PU processing | Fix to `YYYY-MM-DD` format |
 | Character name typo in PU | Entire PU assignment stops | Fix the name to match a registered name or alias |

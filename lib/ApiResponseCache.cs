@@ -39,7 +39,7 @@ namespace Robot {
 
         /// Refresh all domain fingerprints from file system timestamps.
         /// Called once per request cycle (before sidecar lookup).
-        /// repoRoot: from Get-RepoRoot or Set-DataDirectory override.
+        /// repoRoot: from Get-RepoRoot or Set-RepoRoot override.
         public void RefreshFingerprints(string repoRoot) {
             lock (_fpLock) {
                 _fingerprints["entity"]  = ComputeEntityFingerprint(repoRoot);

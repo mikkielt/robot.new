@@ -5,8 +5,9 @@
 
     .DESCRIPTION
     This file contains Get-Session and its core helpers. It dot-sources
-    session-parsehelpers.ps1 for format-specific content parsing and
-    session-intelhelpers.ps1 for notification routing and mention extraction.
+    session-parsehelpers.ps1 for format-specific content parsing,
+    session-intelhelpers.ps1 for notification routing and mention extraction,
+    and repo-filehelpers.ps1 for shared file enumeration with exclusion filtering.
 
     Helpers:
     - ConvertFrom-SessionHeader: parses a yyyy-MM-dd date (with optional
@@ -68,6 +69,7 @@
 . "$script:ModuleRoot/private/temporal-helpers.ps1"
 . "$script:ModuleRoot/private/session-parsehelpers.ps1"
 . "$script:ModuleRoot/private/session-intelhelpers.ps1"
+. "$script:ModuleRoot/private/repo-filehelpers.ps1"
 
 # C# types: Robot.NarratorResult, Robot.Narrator (lib/NarratorResult.cs),
 # Robot.SessionExtractor (lib/SessionExtractor.cs)
@@ -354,48 +356,9 @@ function Get-Session {
         }
     } else {
         $SearchDir = if ($Directory) { $Directory } else { $RepoRoot }
-        $AllFiles = [System.IO.Directory]::GetFiles($SearchDir, "*.md", [System.IO.SearchOption]::AllDirectories)
-
-        # Exclusion prefixes prevent scanning the module's own files and user-specified directories
-        $Sep = [System.IO.Path]::DirectorySeparatorChar
-        $ExcludePrefixes = [System.Collections.Generic.List[string]]::new()
-
-        # Auto-exclude module directory to avoid parsing devdocs/tests as session files
-        $SearchDirNorm  = $SearchDir.TrimEnd($Sep) + $Sep
-        $ModuleRootNorm = $script:ModuleRoot.TrimEnd($Sep) + $Sep
-        if ($ModuleRootNorm.StartsWith($SearchDirNorm, [System.StringComparison]::OrdinalIgnoreCase) -and
-            -not $SearchDirNorm.StartsWith($ModuleRootNorm, [System.StringComparison]::OrdinalIgnoreCase)) {
-            $ExcludePrefixes.Add($ModuleRootNorm)
-        }
-
-        # Also exclude the module's submodule copy when Set-DataDirectory points elsewhere
-        $ModuleLeafName = [System.IO.Path]::GetFileName($script:ModuleRoot.TrimEnd($Sep))
-        $ModuleInSearchDir = [System.IO.Path]::Combine($SearchDir, $ModuleLeafName) + $Sep
-        if (-not $ModuleInSearchDir.Equals($ModuleRootNorm, [System.StringComparison]::OrdinalIgnoreCase) -and
-            [System.IO.Directory]::Exists($ModuleInSearchDir.TrimEnd($Sep))) {
-            $ExcludePrefixes.Add($ModuleInSearchDir)
-        }
-
-        # Append user-specified directory exclusions
-        foreach ($Dir in $ExcludeDirectory) {
-            if ([System.IO.Directory]::Exists($Dir)) {
-                $ExcludePrefixes.Add($Dir.TrimEnd($Sep) + $Sep)
-            }
-        }
-
-        if ($ExcludePrefixes.Count -eq 0) {
-            $FilesToProcess.AddRange($AllFiles)
-        } else {
-            foreach ($f in $AllFiles) {
-                $Skip = $false
-                foreach ($Prefix in $ExcludePrefixes) {
-                    if ($f.StartsWith($Prefix, [System.StringComparison]::OrdinalIgnoreCase)) {
-                        $Skip = $true
-                        break
-                    }
-                }
-                if (-not $Skip) { $FilesToProcess.Add($f) }
-            }
+        $RepoFiles = [string[]]@(Get-RepoFiles -RepoRoot $SearchDir -Pattern '*.md' -ExcludeDirectory $ExcludeDirectory)
+        if ($RepoFiles.Count -gt 0) {
+            $FilesToProcess.AddRange($RepoFiles)
         }
     }
 

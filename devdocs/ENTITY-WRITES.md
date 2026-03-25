@@ -1,14 +1,10 @@
-# Entity Write Operations
-
----
+# Entity Write Operations - Technical Reference
 
 ## Scope
 
 The entity write subsystem consists of `private/entity-writehelpers.ps1` (low-level line-array manipulation primitives, dot-sources `private/entity-findhelpers.ps1` for find helpers) and all mutating commands: player/character-specific (`Set-Player`, `Set-PlayerCharacter`, `New-Player`, `New-PlayerCharacter`, `Remove-PlayerCharacter`), generic entity CRUD (`New-Entity`, `Set-Entity`, `Remove-Entity`), currency entity CRUD (`New-CurrencyEntity`, `Set-CurrencyEntity`, `Remove-CurrencyEntity`), and location entity CRUD (`New-LocationEntity`, `Set-LocationEntity`, `New-MapEntity`, `Set-MapEntity` in `public/location/`). Bootstrap migration helper `ConvertTo-EntitiesFromPlayers` lives in `private/entity-migrationhelpers.ps1`.
 
 Entity reading/parsing is documented in [ENTITIES.md](ENTITIES.md). Character file writing is documented in [CHARFILE.md](CHARFILE.md). Currency query (`Get-CurrencyEntity`) and reporting are documented in [CURRENCY.md](CURRENCY.md).
-
----
 
 ## Architecture Overview
 
@@ -40,8 +36,6 @@ Bootstrap migration (ConvertTo-EntitiesFromPlayers) lives in private/entity-migr
 
 All mutating commands dot-source `private/entity-writehelpers.ps1` (which in turn dot-sources `private/entity-findhelpers.ps1` and `private/operation-context.ps1`) and operate on `List[string]` line arrays with in-place index manipulation.
 
----
-
 ## Line-Array Primitives
 
 `private/entity-findhelpers.ps1` (dot-sourced by `private/entity-writehelpers.ps1`):
@@ -59,6 +53,7 @@ All mutating commands dot-source `private/entity-writehelpers.ps1` (which in tur
 | `Set-EntityTag` | Upserts a tag line: replaces if found, inserts at children end | Updated `ChildrenEnd` index |
 | `New-EntityBullet` | Inserts `* EntityName` with sorted `@tag` children | - |
 | `ConvertFrom-EntityTemplate` | Parses a rendered template into `@{ Name; Tags }` for `New-EntityBullet` | `@{ Name; Tags }` |
+| `Find-EntitySectionByHeader` | Locates a `## HeaderText` section by direct string match (fallback for types not in `EntityTypeMap`) | `{ HeaderIdx, StartIdx, EndIdx, HeaderText, EntityType }` or `$null` |
 | `Resolve-EntityTarget` | High-level orchestrator: ensure file -> find/create section -> find/create bullet | `{ Lines, NL, BulletIdx, ChildrenStart, ChildrenEnd, FilePath, Created }` |
 | `Read-EntityFile` | Reads file into `List[string]` with newline detection | `{ Lines, NL }` |
 | `Write-EntityFile` | Writes `List[string]` back to file (UTF-8 no BOM) | - |
@@ -71,8 +66,6 @@ All mutating commands dot-source `private/entity-writehelpers.ps1` (which in tur
 |---|---|---|
 | `ConvertTo-EntitiesFromPlayers` | Bootstrap: generates `entities.md` from `Get-Player` output | - |
 
----
-
 ## `Find-EntitySection`
 
 Linear scan for `## headers`. Returns the section's content range:
@@ -80,21 +73,21 @@ Linear scan for `## headers`. Returns the section's content range:
 - `StartIdx` — first content line after header
 - `EndIdx` — line before next `##` header or EOF
 
----
-
 ## `Find-EntityBullet`
 
 Scans within a section for `* EntityName` (case-insensitive, `OrdinalIgnoreCase`).
 
 Children boundary logic extends from bullet line until: next top-level bullet (`* `), non-indented non-blank line, or EOF. Trailing blank lines within children are trimmed.
 
----
-
 ## `Find-EntityTag`
 
 Returns the last occurrence of `- @tag:` within a bullet's children range. Case-insensitive tag matching. Last-occurrence semantics ensure update safety (always modifying the most recent value).
 
----
+## `Find-EntitySectionByHeader`
+
+Fallback section locator for entity types not mapped in `$EntityTypeMap`. Scans the line array for a `## HeaderText` header using `OrdinalIgnoreCase` string comparison. Returns the same structure as `Find-EntitySection`: `{ HeaderIdx, StartIdx, EndIdx, HeaderText, EntityType }`, or `$null` if not found. `EndIdx` is either the line index of the next `## ` header or the total line count (EOF).
+
+Used by `Resolve-EntityTarget` when `Find-EntitySection` returns `$null` after section creation -- this can occur for entity types whose header text does not round-trip through `EntityTypeMap`. Also used during bullet re-scan after insertion to ensure newly created sections are always locatable.
 
 ## `Set-EntityTag`
 
@@ -104,8 +97,6 @@ Upsert logic:
 
 Returns the updated `ChildrenEnd` index (may shift by 1 on insert).
 
----
-
 ## `New-EntityBullet`
 
 Creates a new `* EntityName` entry at section end:
@@ -113,8 +104,6 @@ Creates a new `* EntityName` entry at section end:
 1. Ensures a blank line before the new entry (if prior line is not blank)
 2. Inserts `* EntityName`
 3. Adds `@tag` children in alphabetically sorted order
-
----
 
 ## `Resolve-EntityTarget`
 
@@ -124,11 +113,14 @@ High-level orchestrator that ensures the entity exists, creating intermediate st
 1. Invoke-EnsureEntityFile (create entities.md if missing)
 2. Read-EntityFile -> List[string]
 3. Find-EntitySection (create section if missing)
+   3a. If Find-EntitySection returns $null after section creation,
+       fall back to Find-EntitySectionByHeader (direct header scan)
+   3b. Throw InvalidOperationException if both fail
 4. Find-EntityBullet (create bullet if missing via New-EntityBullet)
+   4a. Re-scan section via Find-EntitySection + Find-EntitySectionByHeader fallback
+   4b. Re-scan bullet; throw InvalidOperationException if not found
 5. Return { Lines, BulletIdx, ChildrenStart, ChildrenEnd, FilePath, Created }
 ```
-
----
 
 ## File I/O
 
@@ -153,8 +145,6 @@ High-level orchestrator that ensures the entity exists, creating intermediate st
 ## Mapa
 ```
 
----
-
 ## `Set-SessionGraphStale`
 
 Entity mutations can invalidate the pre-computed Tier 2 session graph cache (see `private/session-graphhelpers.ps1`). `Set-SessionGraphStale` marks the graph metadata as stale so that the next graph consumer triggers a rebuild.
@@ -174,8 +164,6 @@ The entire operation is wrapped in `try/catch` — a failure to mark the graph s
 
 Calling commands (e.g., `Set-Entity`, `Remove-Entity`, currency CRUD) invoke this function after writing entity changes to flag the graph for rebuild.
 
----
-
 ## Module-Level Regex Patterns
 
 Three precompiled regex patterns (`RegexOptions.Compiled`) defined in `private/entity-findhelpers.ps1`:
@@ -187,8 +175,6 @@ Two type-mapping hashtables:
 - `$EntityTypeMap` — section header text -> canonical type (e.g. `"grupy"` -> `"Grupa"`, `"postaci (gracze)"` -> `"Postac"`)
 - `$TypeToHeader` — canonical type -> preferred section header text (e.g. `"Grupa"` -> `"Grupa"`)
 
----
-
 ## Operation Context Integration
 
 `entity-writehelpers.ps1` dot-sources `private/operation-context.ps1` (non-fatal if missing) and sets a `$script:HasOpCtx` flag. When the operation context is available, write primitives push side-effect records into shared accumulators:
@@ -199,8 +185,6 @@ Two type-mapping hashtables:
 Calling commands drain the accumulators via `New-OperationResult` at completion, producing a `Robot.OperationResult` typed object.
 
 See [CONFIG-STATE.md](CONFIG-STATE.md) for the full operation context specification.
-
----
 
 ## Mutating Commands
 
@@ -275,8 +259,6 @@ See [CONFIG-STATE.md](CONFIG-STATE.md) for the full operation context specificat
 | Dot-sources | `private/entity-writehelpers.ps1` |
 | SupportsShouldProcess | Yes |
 
----
-
 ## Generic Entity CRUD
 
 These commands in `public/entity/` handle NPC, Grupa, Lokacja, Mapa, and Przedmiot entities. `Gracz` and `Postac` have specialized commands (see Mutating Commands section) with domain-specific logic (PU, ownership, character files). Lokacja and Mapa also have domain-specific wrappers in `public/location/` (see Location Entity CRUD section) that add parent validation, coordinate checking, and multi-valued `@drzwi` management on top of the generic commands.
@@ -291,6 +273,8 @@ These commands in `public/entity/` handle NPC, Grupa, Lokacja, Mapa, and Przedmi
 | Creation | Creates entity via `Resolve-EntityTarget` |
 | Duplicate detection | Throws if entity already exists in the target section |
 | Temporal suffix | Appends `(YYYY-MM:)` to tag values when `-ValidFrom` is provided |
+| Plugin hooks | Fires `Invoke-PluginHook -Operation 'New-Entity' -Phase 'AfterCreate'` after successful write (context includes Name, Type, EntitiesFile, Tags) |
+| Graph staleness | Calls `Set-SessionGraphStale` after write to invalidate Tier 2 cache |
 | Dot-sources | `private/entity-writehelpers.ps1`, `private/admin-config.ps1` |
 | SupportsShouldProcess | Yes (`-WhatIf`, `-Confirm`) |
 
@@ -319,8 +303,6 @@ Return object: `{ Name, Type, EntitiesFile, Tags, Created }`
 | ConfirmImpact | `High` |
 | Dot-sources | `private/entity-writehelpers.ps1`, `private/admin-config.ps1` |
 | SupportsShouldProcess | Yes |
-
----
 
 ## Currency Entity CRUD
 
@@ -381,8 +363,6 @@ Return object: `{ EntityName, Denomination, DenomShort, Tier, Owner, Location, B
 | Dot-sources | `private/entity-writehelpers.ps1`, `private/admin-config.ps1`, `private/currency-helpers.ps1` |
 | SupportsShouldProcess | Yes |
 
----
-
 ## Location Entity CRUD
 
 Domain-specific commands in `public/location/` for Lokacja and Mapa entities. These wrap the generic entity primitives (`New-Entity`, `Set-Entity`) with parent existence validation, coordinate format checking, door target verification, and multi-valued `@drzwi` tag management.
@@ -431,7 +411,22 @@ Domain-specific commands in `public/location/` for Lokacja and Mapa entities. Th
 | Dot-sources | `private/entity-writehelpers.ps1`, `private/admin-config.ps1` |
 | SupportsShouldProcess | Yes |
 
----
+`Set-MapEntity`:
+
+| Aspect | Detail |
+|---|---|
+| Source | `public/location/set-mapentity.ps1` |
+| Target | `entities.md` `## Mapa` section |
+| Parameters | `-Name` (mandatory), `-Slug`, `-Parent`, `-Url`, `-UrlNerthus`, `-Dimensions`, `-Info`, `-AddDoors`, `-RemoveDoors`, `-Tags`, `-ValidFrom`, `-EntitiesFile` |
+| Slug validation | Checks uniqueness within `## Mapa` section, excluding the target entity's own bullet; throws on duplicate (case-insensitive, strips temporal suffix) |
+| Dimensions validation | Rejects non-integer, non-positive, or wrong-count parts via `ThrowTerminatingError` |
+| Parent validation | Checks parent exists as Lokacja or Mapa bullet; throws if not found |
+| Door validation | Warns on unresolved `-AddDoors` targets (non-fatal via `Write-RobotWarning`) |
+| Simple tags | Delegates slug, parent, url, url_nerthus, dimensions, info, and custom tags to `Set-Entity -Type Mapa` |
+| Door management | `-AddDoors` appends new `@drzwi` lines at bullet children end; `-RemoveDoors` removes matching `@drzwi` lines (iterates backwards, strips temporal suffix for comparison via `HashSet[string]` with `OrdinalIgnoreCase`) |
+| ConfirmImpact | `Medium` |
+| Dot-sources | `private/entity-writehelpers.ps1`, `private/admin-config.ps1` |
+| SupportsShouldProcess | Yes (`-WhatIf`, `-Confirm`) |
 
 ## Bootstrap Migration
 
@@ -443,8 +438,6 @@ Domain-specific commands in `public/location/` for Lokacja and Mapa entities. Th
 4. PU values formatted with `([decimal]).ToString('G', InvariantCulture)`
 5. Output: UTF-8 no BOM, `StringBuilder` with 4096 initial capacity
 
----
-
 ## Write Invariants
 
 1. `Gracze.md` is never mutated by any module command
@@ -453,8 +446,6 @@ Domain-specific commands in `public/location/` for Lokacja and Mapa entities. Th
 4. All write commands support `SupportsShouldProcess` (`-WhatIf`, `-Confirm`)
 5. UTF-8 no BOM for all written files
 6. Newline style preserved on round-trip (CRLF or LF, auto-detected)
-
----
 
 ## Result Objects
 
@@ -481,8 +472,6 @@ NewPlayerCharacter Result (`New-PlayerCharacter`):
 | `CharacterFile` | string | Path to created character file (null if `-NoCharacterFile`) |
 | `PlayerCreated` | bool | Whether a new player entry was bootstrapped |
 
----
-
 ## Testing
 
 | Test file | Coverage |
@@ -506,10 +495,9 @@ NewPlayerCharacter Result (`New-PlayerCharacter`):
 | `tests/new-locationentity.Tests.ps1` | Location creation, parent validation, coordinate validation, door warnings |
 | `tests/set-locationentity.Tests.ps1` | Location update, door add/remove, multi-type support |
 | `tests/new-mapentity.Tests.ps1` | Mapa creation, slug uniqueness, dimensions validation |
+| `tests/set-mapentity.Tests.ps1` | Slug uniqueness (self-collision exclusion), dimensions validation, parent validation, door add/remove, temporal suffix, WhatIf (21 tests) |
 | `tests/get-locationentity.Tests.ps1` | Location query, filtering, enrichment |
 | `tests/operation-context.Tests.ps1` | Accumulator lifecycle, change/warning/file tracking, `New-OperationResult` drain |
-
----
 
 ## Related Documents
 

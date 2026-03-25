@@ -41,6 +41,8 @@ The fourth strategy is fuzzy matching. For names that do not match through exact
 > "Crag Hak" (typo, missing 'c') → distance 1 from "Crag Hack" → matches.
 > "Sandero" (typo) → distance 1 from "Sandro" → matches.
 
+When a name is ambiguous or heavily misspelled, fuzzy matching can return a ranked list of candidates instead of a single result. Each candidate is shown with its similarity rank, so the Coordinator can review the options and identify the intended entity. This is especially useful when multiple registered names are similarly close to the query — rather than silently picking one, the system presents all plausible matches for human review.
+
 ## Aliases and Alternative Names
 
 Entities can have multiple registered names. Aliases are added to the entity store and are matched at the same priority as the canonical name. Aliases can be time-scoped — valid only during a specific period. Narrators can use any registered alias in session text.
@@ -51,20 +53,25 @@ Nerthus names (`@nazwa_nerthus`) and slugs (`@slug`) are also searchable. When a
 
 If a name matches multiple different entities at the same priority (e.g., two NPCs share a short name token), the system marks the name as ambiguous and skips the exact match. Declension and fuzzy stages also avoid ambiguous tokens. In this case, use a more specific name (the full name rather than a single word) or register a unique alias.
 
-## When Resolution Fails
+## Exceptions and Recovery
 
-Name matching may fail despite a valid name in certain situations. Very short names (2-3 characters) have a narrow fuzzy tolerance, so even a single-character difference may not match. Unusual declension patterns with irregular Polish forms may not be covered by the built-in suffix list. Name collisions where a name closely resembles multiple entities may prevent confident resolution.
-
-When a name fails to resolve, different parts of the system respond differently. PU processing stops entirely — all character names must resolve before any PU is awarded. World-state changes (Zmiany) skip the unresolved entity with a warning and continue processing. Currency transfers skip the unresolved side with a warning. Intel messages skip the unresolved target.
-
-To fix an unresolved name, check the error or warning message for the exact unresolved name, compare it with the known entity roster, and correct the issue. If it is a typo in the session file, correct the name. If it is a name form that consistently fails, ask the Coordinator to register it as an alias. After the alias is registered, the system will match it exactly on future runs.
+| Situation | What Happens | Recovery |
+|---|---|---|
+| Very short name (2-3 characters) | Narrow fuzzy tolerance — even a single-character difference may not match | Use the full name or register an alias |
+| Unusual declension pattern | Irregular Polish forms not covered by the built-in suffix list | Register the name form as an alias |
+| Name collision | Name closely resembles multiple entities, preventing confident resolution | Use a more specific name or register a unique alias |
+| Unresolved name in PU | PU assignment stops entirely — all character names must resolve first | Fix the name in the session file or register an alias |
+| Unresolved name in Zmiany | The unresolved entity is skipped with a warning; other changes proceed | Correct the entity name or register an alias |
+| Unresolved name in @Transfer | The unresolved side is skipped with a warning | Correct the entity name or register an alias |
+| Unresolved name in @Intel | The unresolved target is skipped | Correct the target name or register an alias |
 
 ## Expected Outcomes
 
 1. Natural language tolerance — Narrators can use Polish grammatical forms naturally without worrying about exact nominative case
 2. Typo recovery — small misspellings are matched automatically via fuzzy matching
-3. Alias flexibility — entities can be known by multiple names, all equally valid for matching
-4. Fail-early for PU — unresolvable character names block PU assignment entirely, preventing incorrect awards
+3. Ranked fuzzy candidates — when multiple names are similarly close, the system presents a ranked list for the Coordinator to review instead of guessing
+4. Alias flexibility — entities can be known by multiple names, all equally valid for matching
+5. Fail-early for PU — unresolvable character names block PU assignment entirely, preventing incorrect awards
 
 ## Related Documents
 

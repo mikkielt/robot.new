@@ -1,12 +1,8 @@
 # Git Integration - Technical Reference
 
----
-
 ## Scope
 
-This document covers `Get-GitChangeLog` (structured Git history extraction) and `Get-RepoRoot` (repository root detection).
-
----
+The Git subsystem comprises `Get-GitChangeLog` (structured Git history extraction) and `Get-RepoRoot` (repository root detection).
 
 ## `Get-RepoRoot`
 
@@ -16,20 +12,18 @@ Uses `[System.IO.Directory]` and `[System.IO.Path]` (not PowerShell `$PWD`) for 
 
 `Get-RepoRoot` caches its result in `$script:CachedRepoRoot` after the first successful traversal. Subsequent calls without an explicit `-ModuleRoot` override return the cached value immediately, avoiding repeated filesystem traversal. The cache is populated as a side effect of the directory walk -- when a `.git` directory is found, the result is stored before returning.
 
-The cache is bypassed when an explicit `-ModuleRoot` parameter is provided (forces fresh traversal from the specified root) or when `$script:DataDirectoryOverride` is set (via `Set-DataDirectory`) -- the override takes absolute priority, returning immediately without consulting or updating the cache.
+The cache is bypassed when an explicit `-ModuleRoot` parameter is provided (forces fresh traversal from the specified root) or when `$script:RepoRootOverride` is set (via `Set-RepoRoot`) -- the override takes absolute priority, returning immediately without consulting or updating the cache.
 
 Cache priority order:
-1. `$script:DataDirectoryOverride` (checked first, returns immediately if set)
+1. `$script:RepoRootOverride` (checked first, returns immediately if set)
 2. `$script:CachedRepoRoot` (returned when no `-ModuleRoot` override and no data directory override)
 3. Fresh traversal (when neither cache nor override applies; result cached for future calls)
 
-`Set-DataDirectory -Reset` does not clear the traversal cache (only the manifest cache). The traversal cache persists for the module session. This is intentional: the traversal result is deterministic for a given module location and does not change within a session.
+`Set-RepoRoot -Reset` does not clear the traversal cache (only the manifest cache). The traversal cache persists for the module session. This is intentional: the traversal result is deterministic for a given module location and does not change within a session.
 
 If no `.git` directory is found in any parent of the module directory, `Get-RepoRoot` checks whether the module directory itself contains a `.git` directory or file (standalone checkout, e.g., CI environments). If found, the module root is treated as the repository root and cached. Otherwise, throws.
 
 `Get-ParentRepoRoot` is a companion function for submodule environments. It walks upward from `Get-RepoRoot` past the submodule `.git` boundary to find the enclosing parent repository root. It starts from `Get-RepoRoot` result (the submodule root), moves one directory up to exit the submodule, and continues upward until a `.git` directory is found (the parent repo root). It is not exported by the module (non Verb-Noun name) and must be dot-sourced directly for testing.
-
----
 
 ## `Get-GitChangeLog`
 
@@ -99,8 +93,6 @@ $FilterRegex = [regex]::new($PatchFilter, [RegexOptions]::Compiled)
 
 Encoding: `StandardOutputEncoding` is set to UTF-8. Git is configured with `core.quotepath=false` to prevent escaping of non-ASCII filenames. `-c core.quotepath=false` is passed as argument.
 
----
-
 ## Output Objects
 
 Commit object:
@@ -123,8 +115,6 @@ File object:
 | `RenameScore` | int | Similarity percentage (renames only) |
 | `Patch` | `List[string]` | Patch lines (full mode only, filtered if `-PatchFilter`) |
 
----
-
 ## Integration with PU Workflow
 
 `Invoke-PlayerCharacterPUAssignment` uses `Get-GitChangeLog -NoPatch` to optimize session scanning:
@@ -136,8 +126,6 @@ $MdFiles = $ChangedFiles.Files | Where-Object { $_.Path.EndsWith('.md') }
 ```
 
 On failure, the PU workflow falls back to full repository scan via `Get-Session` without `-File`.
-
----
 
 ## Edge Cases
 
@@ -152,10 +140,8 @@ On failure, the PU workflow falls back to full repository scan via `Get-Session`
 | Git not available | `Process.Start()` throws; caller must handle |
 | `Get-RepoRoot` called repeatedly | Returns cached `$script:CachedRepoRoot` after first successful traversal |
 | `Get-RepoRoot -ModuleRoot` with explicit path | Bypasses cache, performs fresh traversal from specified root |
-| `$script:DataDirectoryOverride` set | `Get-RepoRoot` returns override path immediately, no traversal or cache |
+| `$script:RepoRootOverride` set | `Get-RepoRoot` returns override path immediately, no traversal or cache |
 | Module directory is standalone git repo | `.git` check on module root succeeds; used as repo root (CI fallback) |
-
----
 
 ## Testing
 
@@ -163,8 +149,6 @@ On failure, the PU workflow falls back to full repository scan via `Get-Session`
 |---|---|
 | `tests/get-gitchangelog.Tests.ps1` | Commit parsing, file change types, rename detection, date filtering |
 | `tests/get-reporoot.Tests.ps1` | Directory traversal, error on missing `.git`, `Get-ParentRepoRoot` submodule traversal |
-
----
 
 ## Related Documents
 

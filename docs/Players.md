@@ -1,6 +1,6 @@
 # Player & Character Management
 
-## Overview
+## Purpose
 
 Coordinators register new players, create and update characters, and manage the player roster. This guide covers the full lifecycle from registration through ongoing updates to character removal.
 
@@ -23,7 +23,9 @@ The following information is used during registration:
 
 The Coordinator registers the player in the entity store. The system validates that no duplicate player exists (throws an error if one does). If a first character is requested, it is created at the same time. The player's data becomes available for name resolution, PU processing, and notifications.
 
-Once registered, the player begins receiving Discord notifications when a webhook is configured, and their character appears in PU reports and session records.
+Once registered, the player receives a canonical name (CN) — a stable, path-style identifier (e.g., the player's type followed by their name). Each character also receives its own CN. These identifiers remain consistent even if display names change elsewhere, and are used internally to link records unambiguously.
+
+The player begins receiving Discord notifications when a webhook is configured, and their character appears in PU reports and session records.
 
 ## Adding a New Character
 
@@ -97,9 +99,9 @@ After player and character management operations:
 4. Name resolution works — character names and aliases are indexed for automatic matching
 5. Removed characters are preserved — soft-delete ensures no historical data is lost
 
-## Exceptions and Recovery Actions
+## Exceptions and Recovery
 
-| Situation | What happens | Recovery |
+| Situation | What Happens | Recovery |
 |---|---|---|
 | Duplicate player name | Registration fails with an error | Use a different name or check for existing entries |
 | Duplicate character name | Creation fails with an error | Use a different name |

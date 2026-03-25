@@ -57,6 +57,8 @@ Mapa entities represent individual game maps — each floor, interior, or instan
 
 Both Mapa and Lokacja entities participate in the location hierarchy via `@lokacja` — they can have a parent location, door connections, and Nerthus names. When two maps share the same name (e.g., multiple "Apartament" in different buildings), each can be given a unique slug to distinguish them.
 
+The Coordinator can update existing Mapa entities to change their slug, dimensions, parent location, image URLs, or door connections. Door connections can be added or removed individually. The system validates that slugs are unique across all maps, that the parent location exists, and that door targets reference known entities. These updates follow the same confirmation and plugin-hook workflow as other entity modifications.
+
 Lokacja entities are automatically classified as **exterior** (has coordinates or outdoor maps), **interior** (all maps are indoor), or **unknown** (no evidence). Interior locations gain a qualified path linking them to their nearest exterior ancestor — for example, "Erathia/Komnata Rady" — making them findable by name resolution even when multiple locations share the same name.
 
 Slugs provide unique identifiers when multiple entities share the same name (common with maps and generic locations). For example, two maps both named "Komnata Rady" can be distinguished by their slugs "komnata-rady-ratusz" and "komnata-rady-zamek". Slugs are searchable — you can use a slug anywhere an entity name is expected, and the system will find the right entity.
@@ -130,9 +132,9 @@ The world-state tracking system ensures:
 4. Name resolution — entity names and aliases are recognized in session text
 5. Intel targeting — group and location memberships determine who receives targeted messages
 
-## Exceptions and Recovery Actions
+## Exceptions and Recovery
 
-| Situation | What happens | Recovery |
+| Situation | What Happens | Recovery |
 |---|---|---|
 | Unresolved entity name in Zmiany | The change is skipped with a warning | Add the entity to the registry or fix the name |
 | Circular location hierarchy | Detected automatically; falls back to flat naming | Fix the `@lokacja` chain to remove the cycle |

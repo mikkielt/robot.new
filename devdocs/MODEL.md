@@ -1,14 +1,10 @@
 # Repository Model - Technical Reference
 
----
-
 ## Scope
 
-This document describes the lore repository layout that the Robot module expects, how Markdown files are discovered and parsed into domain objects, and how data from multiple sources is merged into a unified world model. It covers file discovery, tag semantics, temporal validity, multi-source merge rules, and cache architecture.
+The repository model defines the lore repository layout that the Robot module expects, how Markdown files are discovered and parsed into domain objects, and how data from multiple sources is merged into a unified world model — covering file discovery, tag semantics, temporal validity, multi-source merge rules, and cache architecture.
 
 Data structure shapes are documented in [STRUCTURES.md](STRUCTURES.md). Individual subsystem behavior is documented in [ENTITIES.md](ENTITIES.md), [SESSIONS.md](SESSIONS.md), [CHARFILE.md](CHARFILE.md), and [PARSER.md](PARSER.md). Write mechanics are in [ENTITY-WRITES.md](ENTITY-WRITES.md). Configuration resolution is in [CONFIG-STATE.md](CONFIG-STATE.md).
-
----
 
 ## Architecture Overview
 
@@ -54,15 +50,11 @@ Find charfiles ─────────>   Read-CharacterFile ─────
                                                           Get-EntityState (session overlay)
 ```
 
----
-
 ## Repository Discovery
 
-`Get-RepoRoot` (`public/get-reporoot.ps1`) walks parent directories from `$script:ModuleRoot` (the `.robot.powershell/` directory) looking for a `.git` subdirectory or file. Returns the first ancestor containing `.git`. The result is cached in `$script:CachedRepoRoot`. `Set-DataDirectory` overrides this via `$script:DataDirectoryOverride` for testing or alternate layouts.
+`Get-RepoRoot` (`public/get-reporoot.ps1`) walks parent directories from `$script:ModuleRoot` (the `.robot.powershell/` directory) looking for a `.git` subdirectory or file. Returns the first ancestor containing `.git`. The result is cached in `$script:CachedRepoRoot`. `Set-RepoRoot` overrides this via `$script:RepoRootOverride` for testing or alternate layouts.
 
 The module expects to be a child of the lore repository, typically installed as a git submodule at `.robot.powershell/`.
-
----
 
 ## Configuration Resolution
 
@@ -89,8 +81,6 @@ Default paths resolved at tier 4:
 
 The data manifest at `{RepoRoot}/.robot.local/robot-data.psd1` provides optional path overrides. All manifest-resolved paths are validated against the repo root via `Test-PathUnderRoot` to prevent path traversal.
 
----
-
 ## Entity File Model
 
 Entity data lives in Markdown files with a specific structure. The module discovers entity files in two ways:
@@ -113,8 +103,6 @@ Each entity file contains level-2 headers that define entity type sections:
 | `## Mapa` / `## Mapy` | Mapa |
 
 Within each section, entities are level-1 bullets (`* Entity Name`) with indented child bullets for tags (`- @tag: value`).
-
----
 
 ## Entity Tag System
 
@@ -146,8 +134,6 @@ Static tags do not carry temporal validity:
 
 Any unrecognized `@tag` is stored in the `Overrides` dictionary with its values as a `List[string]`.
 
----
-
 ## Temporal Validity
 
 Temporal values follow the format `Value (ValidFrom:ValidTo)` with optional season keyword:
@@ -169,8 +155,6 @@ Partial date expansion rules (`Resolve-PartialDate` in `private/temporal-helpers
 `Test-TemporalActivity` checks whether an entry is active on a given date. Null bounds always pass (open-ended). Season constraints are checked via `Resolve-SeasonForDate` which maps dates to Polish season names: wiosna (March-May), lato (June-August), jesień (September-November), zima (December-February).
 
 Current scalar values (`Location`, `Owner`, `Status`, etc.) are derived from history lists via `Get-LastActiveValue` — the last entry whose validity window includes the query date. Multi-valued properties (`Groups`, `Doors`) use `Get-AllActiveValues` to collect all currently active entries.
-
----
 
 ## Session File Model
 
@@ -206,8 +190,6 @@ Session metadata tags are dispatched by `Robot.SessionTagParser` (`lib/SessionTa
 
 When the same session header appears in multiple files, `Merge-SessionGroup` deduplicates and merges metadata into a single Session object with combined `FilePaths` and `IsMerged = $true`.
 
----
-
 ## Player Database Model
 
 `Gracze.md` is a legacy read-only file containing a `## Lista` section with `### PlayerName` subsections. Each player carries:
@@ -219,8 +201,6 @@ When the same session header appears in multiple files, `Merge-SessionGroup` ded
 - `ID Margonem:` — game account ID
 
 `Get-Player` also scans the entity registry for entities of type `Gracz` or `Postać`. Entity-sourced player data extends (not replaces) Gracze.md data, enabling new player properties without modifying the frozen file.
-
----
 
 ## Character File Model
 
@@ -238,8 +218,6 @@ Character files live at `{CharactersDir}/{CharacterName}.md` (default: `Postaci/
 
 `Read-CharacterFile` (`private/charfile-helpers.ps1`) parses these into a `CharacterFile` PSCustomObject. Files preserve original newline style (CRLF/LF auto-detected) and use UTF-8 without BOM.
 
----
-
 ## Three-Layer Character State Merge
 
 `Get-PlayerCharacter -IncludeState` combines three data sources into a unified `PlayerCharacter` object:
@@ -256,8 +234,6 @@ Merge rules in `Get-PlayerCharacter`:
 - Multi-valued properties (`Groups`, `Doors`): all active values collected via `Merge-MultiValuedProperty`
 - Reputation: tier-level merge via `Merge-ReputationTier` — character file tiers are extended (not replaced) by entity data
 
----
-
 ## Entity State Enrichment
 
 `Get-EntityState` (`public/get-entitystate.ps1`) applies session `@Zmiany` directives chronologically on top of `Get-Entity` output:
@@ -270,8 +246,6 @@ Merge rules in `Get-PlayerCharacter`:
 6. Recompute current scalar values from enriched histories
 
 Unresolved entity names in `@Zmiany` blocks are recorded in the entity's `UnresolvedTransfers` list for diagnostic reporting.
-
----
 
 ## Name Resolution Pipeline
 
@@ -288,8 +262,6 @@ The name index (`Get-NameIndex` in `public/get-nameindex.ps1`) indexes all entit
 
 Polish declension suffixes stripped (longest-first): `-owi`, `-ami`, `-ach`, `-iem`, `-em`, `-om`, `-ą`, `-ę`, `-ie`, `-a`, `-u`, `-y`. Consonant mutations handled by `Robot.DeclensionEngine` (`lib/DeclensionEngine.cs`).
 
----
-
 ## Item and Currency Layer
 
 Items and currency entities are `Przedmiot` entities. The unified item lookup (`Robot.ItemHelper` in `lib/ItemHelper.cs`) builds two indexes:
@@ -302,8 +274,6 @@ Items and currency entities are `Przedmiot` entities. The unified item lookup (`
 `@Transfer` directives in sessions are resolved through denomination lookup first (currency path), then item name lookup (general path). Transfer resolution is atomic — if either source or destination fails, the entire transfer is skipped and logged.
 
 Currency denominations are string identifiers matching `GenericNames` entries on `Przedmiot` entities. `@ilość` tracks balance via integer quantities with support for `+`/`-` deltas.
-
----
 
 ## Cache Architecture
 
@@ -319,8 +289,6 @@ Four memory caches and one disk cache accelerate repeated operations:
 
 `Clear-ParseCaches` nulls all memory caches and deletes the `.robot.local/.cache/` directory. Called before all write operations. Disk cache failure is non-fatal.
 
----
-
 ## File I/O Invariants
 
 - All written files use UTF-8 without BOM
@@ -329,8 +297,6 @@ Four memory caches and one disk cache accelerate repeated operations:
 - Entities are soft-deleted only — marked `@status: Usunięty`, never physically removed
 - Session headers (`### YYYY-MM-DD, Title, Narrator`) are unique identifiers across the repository
 - PU assignment is fail-early — any unresolved character name aborts the entire batch
-
----
 
 ## Related Documents
 

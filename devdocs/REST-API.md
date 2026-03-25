@@ -2,7 +2,7 @@
 
 ## Scope
 
-This document covers the compiled C# server engine (`lib/Api*.cs`), the plugin shell (`plugins/robot-api/`), the RunspacePool worker bridge, the RSQL query layer, the endpoint reference, and the request/response protocol.
+The REST API subsystem comprises the compiled C# server engine (`lib/Api*.cs`), the plugin shell (`plugins/robot-api/`), the RunspacePool worker bridge, the RSQL query layer, the help registry, the fingerprint-based response cache, the endpoint reference, and the request/response protocol.
 
 For plugin system mechanics, see [PLUGINS.md](PLUGINS.md). For entity data access, see [ENTITIES.md](ENTITIES.md). For session graph reporting, see [SESSION-GRAPH.md](SESSION-GRAPH.md).
 
@@ -19,23 +19,26 @@ For plugin system mechanics, see [PLUGINS.md](PLUGINS.md). For entity data acces
                     Compiled regex route matching
                     Path param extraction
                          |
-        +----------------+------------------+
-        |                |                  |
-   Static (C#)     Dynamic (PS)        SSE
-   /health         BlockingCollection   ApiSseManager
-   /routes         <ApiRequest>         ConcurrentDictionary
-   /metrics        enqueue              broadcast
-   /schema              |
-                    RunspacePool (N=4-16)
+        +--------+-------+------------------+
+        |        |       |                  |
+   Static    Cache   Dynamic (PS)        SSE
+   (C#)      HIT    BlockingCollection   ApiSseManager
+   /health   ETag   <ApiRequest>         ConcurrentDictionary
+   /routes   304    enqueue              broadcast
+   /metrics  /help       |
+   /schema          RunspacePool (N=4-16)
                     Each: Import-Module robot
                     Dequeue → Invoke → Result
                     Set TaskCompletionSource
                          |
                     ApiSerializer (C#)
                     Utf8JsonWriter → OutputStream
+                         |
+                    ApiResponseCache (C#)
+                    Sidecar write on MISS
 ```
 
-The server uses a hybrid architecture: a compiled C# engine handles HTTP I/O, routing, middleware, and serialization, while PowerShell RunspacePool workers execute the business logic handlers. Static routes (`/health`, `/routes`, `/metrics`, `/schema`) respond entirely in C# without touching the worker pool.
+The server uses a hybrid architecture: a compiled C# engine handles HTTP I/O, routing, middleware, serialization, and response caching, while PowerShell RunspacePool workers execute the business logic handlers. Static routes (`/health`, `/routes`, `/metrics`, `/schema`, `/help`) respond entirely in C# without touching the worker pool. Cacheable GET routes check sidecar files before enqueueing to the worker pool: an ETag match returns 304, a fingerprint-valid sidecar streams pre-serialized JSON directly, and only a cache MISS falls through to PowerShell.
 
 ## Endpoint Reference
 
@@ -49,6 +52,8 @@ System endpoints respond entirely in C# without touching the worker pool:
 | GET | `/routes` | Static (C#) | Registered route list |
 | GET | `/metrics` | Static (C#) | Request count, queue depth, SSE clients, route count |
 | GET | `/schema` | Static (C#) | Name dictionary — all valid enum values with Polish/English mappings |
+| GET | `/help` | Static (C#) | List available help components |
+| GET | `/help/:component` | Static (C#) | Component help with field descriptions (`?lang=pl\|en`, `?include=description,format`) |
 | GET | `/events` | SSE (C#) | Server-Sent Events stream |
 
 Entity endpoints:
@@ -90,6 +95,7 @@ Map endpoints:
 |---|---|---|---|
 | GET | `/maps` | `Invoke-ApiGetMaps` | List all Mapa entities |
 | POST | `/maps` | `Invoke-ApiCreateMap` | Create map entity |
+| PUT | `/maps/:name` | `Invoke-ApiUpdateMap` | Update map (slug, parent, url, doors, tags) |
 
 Session endpoints:
 
@@ -180,9 +186,9 @@ Scope matching rules (implemented in `ApiMiddleware.HasScope`):
 
 | Scope | Routes |
 |---|---|
-| _(none)_ | Static: /health, /routes, /metrics, /schema; SSE: /events; GET /dashboard, /auth/whoami |
+| _(none)_ | Static: /health, /routes, /metrics, /schema, /help, /help/:component; SSE: /events; GET /dashboard, /auth/whoami |
 | `entity:read` | GET /entities, /entities/:name, /entity-state, /entities/:name/history, /entities/:name/delta, /resolve/:name, /currency, /economy/snapshot, /economy/timeline, /transactions, /locations, /locations/:name, /locations/:name/contents, /maps; POST /resolve/batch |
-| `entity:write` | POST /entities, PUT /entities/:name, DELETE /entities/:name, POST /currency, PUT /currency/:name, POST /locations, PUT /locations/:name, DELETE /locations/:name, POST /maps |
+| `entity:write` | POST /entities, PUT /entities/:name, DELETE /entities/:name, POST /currency, PUT /currency/:name, POST /locations, PUT /locations/:name, DELETE /locations/:name, POST /maps, PUT /maps/:name |
 | `player:read` | GET /players, /players/:name |
 | `player:write` | POST /players, POST /players/:name/characters |
 | `session:read` | GET /sessions, /session-graph/entity/:name, /session-graph/compare, /session-graph/leaderboard, /files; POST /parse/log, /logs/fetch, /parse/session-preview |
@@ -209,7 +215,7 @@ Remove-RobotApiToken -Name 'frontend' -Confirm:$false
 
 Authentication: when tokens are configured (multi-token store or single `AuthToken`), all requests must include `Authorization: Bearer <token>`. Multi-token authentication scans all tokens with constant-time comparison via XOR accumulator in `ApiMiddleware`. Missing or invalid token returns HTTP 401. Insufficient scope returns HTTP 403.
 
-CORS: when `CorsOrigin` is set, `ApiMiddleware` injects `Access-Control-Allow-Origin`, `Access-Control-Allow-Methods`, and `Access-Control-Allow-Headers` on every response. Preflight `OPTIONS` requests receive HTTP 204 with the same headers. When unset, no CORS headers are sent.
+CORS: when `CorsOrigin` is set, `ApiMiddleware` injects `Access-Control-Allow-Origin`, `Access-Control-Allow-Methods`, `Access-Control-Allow-Headers`, and `Access-Control-Expose-Headers` (`ETag`, `X-Cache`) on every response. Preflight `OPTIONS` requests receive HTTP 204 with the same headers. When unset, no CORS headers are sent.
 
 Read-only mode: when `ReadOnly` is `true`, `ApiMiddleware` rejects POST/PUT/DELETE requests with HTTP 403 before they reach the router.
 
@@ -240,10 +246,13 @@ Label enrichment: `?labels=true` adds English label fields alongside Polish cano
 }
 ```
 
-Error responses:
+Conditional requests: cacheable endpoints return `ETag` and `X-Cache` (`HIT` or `MISS`) headers. Clients may send `If-None-Match` with a previously received ETag to receive HTTP 304 (Not Modified) when the underlying data has not changed.
+
+Non-success responses:
 
 | HTTP Status | Condition |
 |---|---|
+| 304 | Not Modified — ETag matches current fingerprint (conditional GET, no body) |
 | 400 | Invalid JSON body or missing required parameters |
 | 401 | Missing or invalid Bearer token |
 | 403 | Insufficient scope or write request in read-only mode |
@@ -323,7 +332,7 @@ Request body:
 
 When `activeOn` is provided, the handler builds a date-filtered name index via `Get-Entity -ActiveOn` so that expired aliases do not match.
 
-Resolution uses a two-pass strategy per name. The first pass calls `Resolve-Name -NoFuzzy` (exact and declension matching only, stages 1-2). On miss, the second pass calls `Resolve-Name` with full fuzzy matching (stage 3). The `matchStage` field in the response indicates which pass produced the result: 2 for exact/declension, 3 for fuzzy, 0 for unresolved.
+Resolution uses a multi-pass strategy per name. The first pass calls `Resolve-Name -NoFuzzy` (exact and declension matching only, stages 1-2). On miss, multi-word queries attempt per-word stemming via `Get-DeclensionStem` on each word independently — this handles inflected multi-word names (e.g. "Alabastrowego Hotelu" stems to "Alabastrow Hotel") that whole-query stemming would miss. If per-word stemming produces a match, it counts as stage 2. Otherwise, the final pass calls `Resolve-Name -TopN 5` with full fuzzy matching (stage 3). The `matchStage` field in the response indicates which pass produced the result: 2 for exact/declension, 3 for fuzzy, 0 for unresolved.
 
 Response fields are scope-gated. The base response (requiring `entity:read`) always includes:
 
@@ -333,7 +342,10 @@ Response fields are scope-gated. The base response (requiring `entity:read`) alw
 | `type` | string | Entity type (Polish canonical) |
 | `status` | string | Entity status (defaults to `Aktywny` if absent) |
 | `aliases` | string[] | Known aliases excluding the canonical name |
+| `cn` | string | Canonical name path (Type/Name); for player queries matched to a character, returns the character's CN |
 | `matchStage` | int | Resolution stage: 0 = unresolved, 2 = exact/declension, 3 = fuzzy |
+| `filePath` | string | Source file path (entity FilePath or matched character Path); null when unavailable |
+| `candidates` | object[] | Fuzzy match candidates (only present when matchStage = 3); each has `name` and `distance` |
 
 With `session:read` scope, the response adds session graph enrichment:
 
@@ -366,7 +378,9 @@ Response envelope:
             "type": "NPC",
             "status": "Aktywny",
             "aliases": ["Sol"],
+            "cn": "NPC/Solmyr",
             "matchStage": 2,
+            "filePath": "entities.md",
             "sessions": 15,
             "lastActive": "2025-06-10T00:00:00",
             "tiers": { "0": 3, "1": 7, "2": 5 }
@@ -378,13 +392,13 @@ Response envelope:
 
 ## C# Class Responsibilities
 
-`Robot.ApiServer` (`lib/ApiServer.cs`) — Async HTTP listener backed by `System.Net.HttpListener`. Manages the accept loop (`GetContextAsync` on the .NET ThreadPool), dispatches each request to `Task.Run` for parallel handling, and bridges to PowerShell via a `BlockingCollection<ApiRequest>` with configurable bounded capacity (default 512). Exposes `CacheVersion` as a static `Interlocked` counter for cross-runspace cache invalidation. Provides `GetStatus()` for the status endpoint.
+`Robot.ApiServer` (`lib/ApiServer.cs`) — Async HTTP listener backed by `System.Net.HttpListener`. Manages the accept loop (`GetContextAsync` on the .NET ThreadPool), dispatches each request to `Task.Run` for parallel handling, and bridges to PowerShell via a `BlockingCollection<ApiRequest>` with configurable bounded capacity (default 512). Exposes `CacheVersion` as a static `Interlocked` counter for cross-runspace cache invalidation. Static fields `ResponseCache` and `RepoRoot` are set once at startup by `Start-RobotApi` and shared across all runspaces for sidecar file caching. The request pipeline intercepts cacheable GET routes (those with a `CacheKey`) before enqueueing: ETag match returns 304, sidecar HIT streams pre-serialized JSON directly, and only MISS falls through to the worker pool. On MISS with a 200 response, the serialized bytes are persisted as a sidecar via `ApiResponseCache.Save`. Static handlers now support returning error status codes via an `IDictionary` with a `StatusCode` key (used by `/help/:component` for 404). Provides `GetStatus()` for the status endpoint.
 
-`Robot.ApiRouter` (`lib/ApiRouter.cs`) — Compiled-regex URL route matcher. Routes are registered at startup and compiled once via `RegexOptions.Compiled`. Supports `:param` path segments that become named regex groups. Static routes (no params) use `Dictionary<string, ApiRoute>` for O(1) lookup before falling through to the regex list. Two handler types: `StaticHandler` (C# `Func<RouteMatch, ApiServer, object>`) and `HandlerName` (string identifying a PS function).
+`Robot.ApiRouter` (`lib/ApiRouter.cs`) — Compiled-regex URL route matcher. Routes are registered at startup and compiled once via `RegexOptions.Compiled`. Supports `:param` path segments that become named regex groups. Static routes (no params) use `Dictionary<string, ApiRoute>` for O(1) lookup before falling through to the regex list. Two handler types: `StaticHandler` (C# `Func<RouteMatch, ApiServer, object>`) and `HandlerName` (string identifying a PS function). `AddCacheableRoute` registers a dynamic PS route with sidecar cache metadata (`CacheKey` and `CacheDomains`) on the `ApiRoute` object. `RouteMatch` now carries a `QueryParams` dictionary populated by `ApiServer.HandleRequestAsync` before dispatch, making query parameters available to both static and dynamic handlers.
 
 `Robot.ApiMiddleware` (`lib/ApiMiddleware.cs`) — Authentication (Bearer token with constant-time comparison via XOR accumulator), CORS header injection, per-IP token bucket rate limiting with `ConcurrentDictionary`, body size enforcement, and read-only mode flag. All checks execute in compiled C# with zero PowerShell overhead.
 
-`Robot.ApiSerializer` (`lib/ApiSerializer.cs`) — Direct-to-stream JSON serialization via `System.Text.Json.Utf8JsonWriter`. Type dispatch chain: `Entity` (typed property access, no reflection), `IDictionary` (sorted keys), PSCustomObject/PSObject (reflection via `Properties` enumeration), `IList`, primitives (`string`, `int`, `long`, `double`, `decimal`, `bool`, `DateTime`), `IEnumerable`, and `ToString()` fallback. MaxDepth guard (12) prevents stack overflow on circular references.
+`Robot.ApiSerializer` (`lib/ApiSerializer.cs`) — Direct-to-stream JSON serialization via `System.Text.Json.Utf8JsonWriter`. Type dispatch chain: `Entity` (typed property access, no reflection), `IDictionary` (sorted keys), PSCustomObject/PSObject (reflection via `Properties` enumeration with `BaseObject` unwrap for wrapped primitives), `IList`, primitives (`string`, `int`, `long`, `double`, `decimal`, `bool`, `DateTime`), `IEnumerable`, and `ToString()` fallback. MaxDepth guard (12) prevents stack overflow on circular references. `SerializeToBytes` serializes any object to a UTF-8 byte array using the same dispatch logic as `WriteObject`, used by the response cache to capture sidecar content with byte-level equality between cached and fresh responses.
 
 `Robot.ApiSseManager` (`lib/ApiSseManager.cs`) — Thread-safe Server-Sent Events manager using `ConcurrentDictionary<long, SseClient>` keyed by monotonic client ID. Broadcasts events as JSON via `Utf8JsonWriter`. Dead client detection during broadcast (failed writes remove the client). 30-second heartbeat timer sends `: keepalive` comments to detect stale connections.
 
@@ -392,19 +406,25 @@ Response envelope:
 
 `Robot.ApiNameDictionary` (`lib/ApiNameDictionary.cs`) — Static, thread-safe bidirectional mapping between canonical Polish domain terms and English API labels. Covers entity types (7), statuses (3), tags (14), seasons (4), denominations (3+3 short forms), session formats (4), participation sources (5), intel directives (3), and owner types (3). All lookups O(1) via `Dictionary<string, string>` with `OrdinalIgnoreCase`. Zero allocation on the hot path.
 
+`Robot.ApiHelpRegistry` (`lib/ApiHelpRegistry.cs`) — Static, thread-safe help registry that loads sidecar `*.help.json` files from the plugin's `help/` directory. Called once by `Start-RobotApi` via `Load(directoryPath)`. Each sidecar file declares a `component` name and contains bilingual (pl/en) endpoint documentation with descriptions, query parameters, and body fields. Three structural variants are supported: API components (with `endpoints` array), the editor component (with `zones` object), and the CLI component (with `categories` object). Query API: `GetComponents()` returns sorted component names, `GetHelp(component, lang, include)` returns a filtered help object with optional language selection (`pl` or `en`) and field-level include filtering (comma-separated property names). Returns `null` for unknown components, enabling the `/help/:component` static route to return 404.
+
+`Robot.ApiResponseCache` (`lib/ApiResponseCache.cs`) — Fingerprint-based sidecar file cache for pre-serialized JSON responses. Stores cached responses as paired `.json` + `.meta` files under `.robot.local/.cache/api/`. Three independent fingerprint domains track data lifecycles: **entity** (entities.md, overflow `*-NNN-ent.md`, Gracze.md), **session** (all `.md` files under `Sesje/`), and **graph** (`_index.json` + `_meta.json` in the session-graph persistence directory). Fingerprints are computed from `LastWriteTimeUtc.Ticks` of the relevant files. The cache is accessed via the static `ApiServer.ResponseCache` field, shared across all runspaces. `TryLoad` validates sidecar fingerprints against current state and returns cached bytes on match. `Save` writes response bytes via a temp-file-then-rename pattern for atomic writes. `InvalidateDomain` scans all `.meta` files and deletes sidecars that depend on the specified domain. `Clear` removes the entire cache directory. Thread safety: file I/O is not locked — concurrent writes to the same sidecar may race, but the worst case is a redundant recompute (no corruption). Fingerprint state is protected by a lock for cross-thread consistency.
+
 ## Async Request Flow
 
 1. `HttpListener.GetContextAsync()` accepts a connection on the .NET thread pool
 2. `Task.Run` dispatches the request for parallel handling (does not block the accept loop)
 3. Middleware chain executes in C#: CORS preflight check, Bearer auth verification, per-IP rate limit check
-4. Router matches the URL against the compiled regex table and extracts path params
+4. Router matches the URL against the compiled regex table and extracts path params; query params are parsed into `RouteMatch.QueryParams`
 5. Static routes return directly from C# — the PS worker pool is never involved
 6. SSE requests register the response stream with `ApiSseManager` and keep the connection open
-7. Dynamic routes read the request body (with size check), create an `ApiRequest` with a `TaskCompletionSource<ApiResponse>`, and enqueue it to the `BlockingCollection`
-8. If the queue is full, HTTP 503 is returned immediately (backpressure)
-9. The HTTP thread awaits `TaskCompletionSource.Task` with a 60-second timeout (HTTP 504 on expiry)
-10. A PowerShell worker dequeues the request, invokes the handler, and calls `SetResult` to unblock the HTTP thread
-11. `ApiSerializer` writes the response directly to `HttpListenerResponse.OutputStream`
+7. **Cache intercept** (cacheable GET routes only, no query string): refresh domain fingerprints, check `If-None-Match` for 304, check sidecar file for HIT — both bypass the worker pool entirely
+8. Dynamic routes read the request body (with size check), create an `ApiRequest` with a `TaskCompletionSource<ApiResponse>`, and enqueue it to the `BlockingCollection`
+9. If the queue is full, HTTP 503 is returned immediately (backpressure)
+10. The HTTP thread awaits `TaskCompletionSource.Task` with a 60-second timeout (HTTP 504 on expiry)
+11. A PowerShell worker dequeues the request, invokes the handler, and calls `SetResult` to unblock the HTTP thread
+12. `ApiSerializer` writes the response directly to `HttpListenerResponse.OutputStream`
+13. **Sidecar write** (cacheable route MISS with 200 status): serialize response via `SerializeToBytes`, persist sidecar, and add `ETag` + `X-Cache: MISS` headers
 
 ## BlockingCollection / TaskCompletionSource Bridge
 
@@ -435,11 +455,12 @@ Worker dequeue loop:
 8. For write methods (POST/PUT/DELETE): increment `CacheVersion` via `Interlocked.Increment`
 9. Wrap in `ApiResponse` and call `ResponseSource.SetResult()`
 
-Graceful shutdown (`Stop-ApiWorkerPool`):
+Graceful shutdown (`Stop-ApiWorkerPool` + `Stop-RobotApi`):
 
 1. Cancel the dequeue loop via `CancellationTokenSource`
 2. Dispose each `PowerShell` instance
 3. Close and dispose each `Runspace`
+4. Clear static `ApiServer.ResponseCache` and `ApiServer.RepoRoot` fields to release sidecar cache references
 
 ## Cache Coherence Protocol
 
@@ -448,6 +469,8 @@ The module uses in-memory parse caches (`$script:CachedEntities`, `$script:Cache
 `Robot.ApiServer.CacheVersion` is a `static long` accessed via `Interlocked.Read` and `Interlocked.Increment`. Each worker thread maintains a local version number. Before executing a read handler, the worker compares its local version against the shared version. On mismatch, it calls `Clear-ParseCaches` to force a re-parse on the next data access, then updates its local version. After executing a write handler, the worker increments the shared version.
 
 This is an optimistic scheme: read-read sequences across workers share the same cache epoch without contention. Only writes (which are infrequent) force a global cache invalidation on the next read.
+
+In addition to in-memory cache invalidation, write handlers call `Invoke-SidecarInvalidation -Domain <domain>` to purge any sidecar-cached HTTP responses that depend on the affected domain. This helper accesses the static `[Robot.ApiServer]::ResponseCache` field and calls `InvalidateDomain`, which scans `.meta` files to find and delete sidecars referencing that domain. The domain mapping is: entity mutations invalidate `entity`, session writes invalidate `session`, and graph rebuilds invalidate `graph`.
 
 ## Serializer Type Dispatch
 
@@ -461,7 +484,7 @@ This is an optimistic scheme: read-read sequences across workers share the same 
 6. DateTime — ISO 8601 format `yyyy-MM-dd'T'HH:mm:ss`
 7. Robot.Entity — typed property access (all 27 properties, no reflection)
 8. IDictionary — JSON object via `DictionaryEntry` enumeration
-9. PSCustomObject / PSObject — reflection: enumerate `Properties` collection, read `Name` and `Value`
+9. PSCustomObject / PSObject — unwrap `BaseObject` if it is a primitive (string, numeric, bool, DateTime), otherwise reflection: enumerate `Properties` collection, read `Name` and `Value`
 10. IList — JSON array via indexed access
 11. IEnumerable — JSON array via `foreach`
 12. Fallback — `ToString()`
@@ -524,6 +547,56 @@ Two directions: `ResolveCanonical(category, value)` accepts either canonical or 
 
 All dictionaries are `static readonly` — zero allocation, thread-safe by construction.
 
+## Response Cache
+
+The API implements a two-tier caching strategy: in-memory parse caches per runspace (see Cache Coherence Protocol above) and fingerprint-based sidecar file caching for expensive GET endpoints.
+
+Cacheable routes are registered via `AddCacheableRoute` with a `cacheKey` (sidecar filename stem) and `cacheDomains` (fingerprint domains the route depends on). The following routes are cacheable:
+
+| Route | Cache Key | Domains |
+|---|---|---|
+| `GET /entity-state` | `entity-state` | entity, session |
+| `GET /session-graph/leaderboard` | `leaderboard` | graph |
+| `GET /economy/snapshot` | `economy-snapshot` | entity, session |
+| `GET /economy/timeline` | `economy-timeline` | entity, session |
+| `GET /reports/dormancy` | `dormancy` | entity, graph |
+| `GET /reports/frequency` | `frequency` | session |
+| `GET /reports/narrators` | `narrators` | session |
+| `GET /reports/location-graph` | `location-graph` | entity, session |
+| `GET /reports/pu-log` | `pu-log` | session |
+
+Caching is only active for GET requests with no query string parameters (filtered or paginated requests always go through the worker pool).
+
+Sidecar file format (stored under `.robot.local/.cache/api/`):
+- `<cacheKey>.json` — pre-serialized JSON response bytes
+- `<cacheKey>.meta` — line-delimited key=value pairs: `generatedAt=<ISO8601>` followed by `<domain>=<fingerprint>` for each dependency domain
+
+Request flow for cacheable routes:
+1. `RefreshFingerprints` recomputes all three domain fingerprints from file timestamps
+2. `BuildETag` concatenates domain fingerprints into a deterministic string
+3. If `If-None-Match` header matches the ETag, return **304 Not Modified**
+4. If `TryLoad` finds a valid sidecar (all domain fingerprints match), stream cached JSON with `X-Cache: HIT` and `ETag` headers
+5. On MISS, fall through to the worker pool; after a 200 response, `SerializeToBytes` captures the response and `Save` persists the sidecar with `X-Cache: MISS`
+
+Invalidation: each write handler calls `Invoke-SidecarInvalidation -Domain <domain>` after a successful mutation. This calls `ApiResponseCache.InvalidateDomain`, which scans `.meta` files and deletes any sidecar that depends on the affected domain. `Clear-ParseCaches` can also call `ResponseCache.Clear()` to wipe the entire cache directory.
+
+## Help Registry
+
+The API exposes self-documenting endpoint help via the `ApiHelpRegistry` and two static routes.
+
+Sidecar files: 17 `*.help.json` files in `plugins/robot-api/help/`, one per component. Each file contains:
+- `component` — component name (e.g. "entities", "sessions", "cli")
+- Bilingual content blocks under `pl` and `en` keys
+- Three structural variants: `endpoints` array (API components), `zones` object (editor), `categories` object (CLI)
+
+API endpoint content includes: `method`, `path`, `handler`, `scope`, plus per-language `description`, `queryParams` (with name, type, required, description, format), and `bodyFields` (with name, type, required, description).
+
+Load mechanism: `Start-RobotApi` calls `[Robot.ApiHelpRegistry]::Load($HelpDir)` once during startup. The registry parses all sidecar files into a `Dictionary<string, JsonElement>` keyed by component name. If the C# type is not compiled or the help directory is missing, a warning is emitted and the `/help` endpoints are not registered.
+
+Routes:
+- `GET /help` — returns `{ components: [...] }` with sorted component names (no auth required)
+- `GET /help/:component` — returns filtered help for one component; supports `?lang=pl|en` (language filter) and `?include=description,format` (field-level filter). Returns 404 for unknown components via the static handler error protocol (`{ StatusCode: 404, Body: { error: "..." } }`)
+
 ## Plugin Structure
 
 ```
@@ -537,14 +610,16 @@ plugins/robot-api/
 |   +-- Remove-RobotApiToken.ps1     # Delete token by name
 |   +-- Get-RobotApiToken.ps1        # List tokens (no raw values)
 +-- private/
-|   +-- api-routes.ps1               # Route registration (static + dynamic)
+|   +-- api-routes.ps1               # Route registration (static + dynamic + cacheable)
 |   +-- api-worker.ps1               # RunspacePool worker threads
 |   +-- api-handlers-read.ps1        # 38 read handlers + 1 helper
-|   +-- api-handlers-write.ps1       # 14 write handlers
+|   +-- api-handlers-write.ps1       # 15 write handlers + 1 cache invalidation helper
 |   +-- api-handlers-auth.ps1        # Auth token API handlers (4 handlers)
 |   +-- api-handlers-dashboard.ps1   # Dashboard SPA endpoint handler
 |   +-- api-handlers-events.ps1      # SSE broadcast hook handler
 |   +-- api-token-helpers.ps1        # Token file I/O and generation helpers
++-- help/                            # Sidecar help files (*.help.json) — 17 components
+|   +-- entities.help.json           # (plus auth, cli, currency, economy, editor, etc.)
 +-- cli/
 |   +-- cli-wf-robot-api.ps1         # CLI workflow functions (start/stop/status)
 +-- tests/
@@ -557,6 +632,7 @@ plugins/robot-api/
     +-- api-worker.Tests.ps1
     +-- api-token-helpers.Tests.ps1
     +-- api-token-management.Tests.ps1
+    +-- api-help-registry.Tests.ps1
 ```
 
 ## Configuration
@@ -576,7 +652,7 @@ Plugin config (`plugin.psd1`) with environment variable overrides:
 
 ## Testing
 
-Test files: `api-router.Tests.ps1` (11 tests), `api-middleware.Tests.ps1` (9 tests), `api-query.Tests.ps1` (37 tests), `api-dictionary.Tests.ps1` (28 tests), `api-server.Tests.ps1` (server lifecycle, concurrent requests, rate limit, shutdown), `api-handlers.Tests.ps1` (per-handler tests with mock ApiContext), `api-worker.Tests.ps1` (worker pool lifecycle, concurrent processing, cache version propagation)
+Test files: `api-router.Tests.ps1` (12 tests — includes RouteMatch QueryParams property test), `api-middleware.Tests.ps1` (9 tests), `api-query.Tests.ps1` (37 tests), `api-dictionary.Tests.ps1` (28 tests), `api-server.Tests.ps1` (server lifecycle, concurrent requests, rate limit, shutdown), `api-handlers.Tests.ps1` (per-handler tests with mock ApiContext), `api-worker.Tests.ps1` (worker pool lifecycle, concurrent processing, cache version propagation), `api-help-registry.Tests.ps1` (17 tests — load/components, language filtering, include filtering, content validation across all 17 help components)
 
 All tests use the `PSTypeName` guard pattern to skip if C# types are not compiled.
 

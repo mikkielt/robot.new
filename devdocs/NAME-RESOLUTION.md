@@ -1,6 +1,4 @@
-# Name Resolution Pipeline
-
----
+# Name Resolution Pipeline - Technical Reference
 
 ## Scope
 
@@ -13,8 +11,6 @@ Compiled C# dependency: `lib/BKTree.cs` provides the `Robot.BKTree` class — a 
 Compiled C# dependency: `lib/DeclensionEngine.cs` provides the `Robot.DeclensionEngine` class — Polish declension engine (nouns and adjectives) for suffix stripping and consonant alternation reversal. Constructed once at module load by `public/resolve/resolve-name.ps1`. Called on every unresolved name during `Resolve-Name` stages 2 and 2b. Falls back to the PowerShell functions `Get-DeclensionStem` and `Get-StemAlternationCandidates` when `Add-Type` fails.
 
 How name resolution is consumed by `Get-Session`, `Get-EntityState`, or `Resolve-Narrator` is documented in [SESSIONS.md](SESSIONS.md) and [ENTITIES.md](ENTITIES.md). Log location analysis is documented in [LOGS.md](LOGS.md).
-
----
 
 ## Architecture Overview
 
@@ -32,8 +28,6 @@ Get-Entity --+                              |
 ```
 
 `Get-NameIndex` is called once to build the lookup structures. `Resolve-Name` consumes them for each query. A shared `-Cache` hashtable enables cross-call memoization.
-
----
 
 ## Index Construction (`Get-NameIndex`)
 
@@ -94,8 +88,6 @@ Each index entry:
 | `Source` | string | Original full name the token came from |
 | `Priority` | int | 1 (full name) or 2 (word token) |
 | `Ambiguous` | bool | True if multiple different owners share this token at the same priority |
-
----
 
 ## BK-Tree
 
@@ -170,13 +162,11 @@ if (-not ([System.Management.Automation.PSTypeName]'Robot.BKTree').Type) {
 
 The type check ensures the class is loaded only once per session, even if `get-nameindex.ps1` is dot-sourced multiple times.
 
----
-
 ## `Robot.DeclensionEngine`
 
 Source: `lib/DeclensionEngine.cs` — compiled centrally in `Robot.PowerShell.psm1`.
 
-`Robot.DeclensionEngine` is a Polish declension engine (nouns and adjectives) for name resolution. It iterates suffix and alternation arrays using `.EndsWith()` + `.Substring()` with `OrdinalIgnoreCase` comparison. Constructed once at module load by `public/resolve/resolve-name.ps1` with Polish declension tables (locative, genitive, instrumental, dative suffixes and consonant alternation pairs).
+`Robot.DeclensionEngine` is a Polish declension engine (nouns and adjectives) for name resolution. It iterates suffix and alternation arrays using `.EndsWith()` + `.Substring()` with `OrdinalIgnoreCase` comparison. Constructed once at module load by `public/resolve/resolve-name.ps1` with Polish noun and adjective declension tables (noun: locative, genitive, instrumental, dative; adjective: genitive, dative, instrumental, locative, feminine; plus consonant alternation pairs).
 
 `GetStem(string text)` strips the first matching inflection suffix from text. Suffixes are tried in constructor input order — longest-first ordering is critical to prevent partial stripping (e.g., `"ami"` must be tried before `"i"`). Minimum stem length of 3: `text.Length` must exceed `suffix.Length + 2`. Returns the original text if no suffix matches. Example: `"Erathii"` -> `"Erathi"`, `"Sandrem"` -> `"Sandr"`.
 
@@ -186,9 +176,9 @@ Construction — the engine is instantiated with three parallel arrays:
 
 | Parameter | Type | Description |
 |---|---|---|
-| `suffixes` | `string[]` | Declension suffixes ordered longest-first — nouns: `-owi`, `-ami`, `-ach`, `-iem`, `-em`, `-om`, `-ą`, `-ę`, `-ie`, `-a`, `-u`, `-y`; adjectives: `-ego`, `-emu`, `-ymi`, `-ych`, `-ej`, `-ym` |
-| `altInflected` | `string[]` | Inflected endings to match (`-dzie`, `-ce`, `-rze`, `-dze`, `-scie`, `-ni`, `-si`, `-zi`, `-ci`) |
-| `altBase` | `string[]` | Corresponding base form replacements (`-da`, `-ka`, `-ra`, `-ga`, `-sta`, `-n`, `-s`, `-z`, `-c`) |
+| `suffixes` | `string[]` | Declension suffixes ordered longest-first — nouns: `-owi`, `-ami`, `-ach`, `-iem`, `-em`, `-om`, `-ą`, `-ę`, `-ie`, `-a`, `-u`, `-y`, `-i`; adjectives: `-ego`, `-emu`, `-ymi`, `-ych`, `-ej`, `-ym` |
+| `altInflected` | `string[]` | Inflected endings to match (`-dzie`, `-dzi`, `-ście`, `-rze`, `-dze`, `-le`, `-ce`, `-ście`, `-ni`, `-si`, `-zi`, `-ci`) |
+| `altBase` | `string[]` | Corresponding base form replacements (`-da`, `-da`, `-sta`, `-ra`, `-ga`, `-ła`, `-ka`, `-ść`, `-ń`, `-ś`, `-ź`, `-ć`) |
 
 Consumers:
 - `Resolve-Name` Stage 2 (`public/resolve/resolve-name.ps1`) — calls `GetStem` for suffix stripping, then looks up the result in the pre-built `StemIndex`
@@ -196,17 +186,21 @@ Consumers:
 
 When the C# type is unavailable, `Resolve-Name` falls back to the equivalent PowerShell functions `Get-DeclensionStem` and `Get-StemAlternationCandidates`.
 
----
-
 ## Name Resolution (`Resolve-Name`)
 
 | Function | Purpose |
 |---|---|
 | `Resolve-Name` | 4-stage lookup pipeline |
+| `Resolve-AmbiguousEntry` | Disambiguates index entries by OwnerType filter; handles both non-ambiguous (single owner) and ambiguous (typed Owners array) entries |
 | `Get-DeclensionStem` | Strips Polish case suffixes |
 | `Get-StemAlternationCandidates` | Reverses Polish consonant mutations |
 | `Get-LevenshteinDistance` | Two-row matrix edit distance — PowerShell fallback (from `private/string-helpers.ps1`) |
 | `Robot.BKTree.LevenshteinDistance` | Two-row matrix edit distance — compiled C# (from `lib/BKTree.cs`) |
+
+`Resolve-AmbiguousEntry` centralizes OwnerType-based filtering across all resolution stages. It handles two cases:
+
+- **Non-ambiguous entries** — returns `Entry.Owner` directly if no `-OwnerType` filter is set or the entry's type matches. Returns `$null` on type mismatch.
+- **Ambiguous entries** — when `-OwnerType` is specified and the entry has a typed `Owners` array, filters to owners matching the requested type. `Lokacja` filter also accepts `Mapa` type owners. Returns the single matching owner if exactly one exists; returns `$null` otherwise (zero or multiple matches).
 
 Parameters:
 
@@ -220,16 +214,18 @@ Parameters:
 | `MaxDistance` | int | Override maximum Levenshtein distance for fuzzy matching (default: `-1`, dynamic) |
 | `Cache` | hashtable | Optional cross-call memoization cache |
 | `NoFuzzy` | switch | Skip Stage 3 fuzzy/Levenshtein matching to avoid false positives |
+| `TopN` | int | Return up to N fuzzy candidates (Stage 3 only). `ValidateRange(1, 20)`, default `1`. When > 1, collects all matches within threshold and attaches a sorted `Candidates` array to the best owner (see TopN behavior below) |
 | `Players` | object[] | Pre-fetched players (for auto-building index) |
 | `Entities` | object[] | Pre-fetched entities (for auto-building index) |
+
+All stages delegate to `Resolve-AmbiguousEntry` for OwnerType-based filtering: non-ambiguous entries are returned directly if the type matches, ambiguous entries are narrowed to a single owner when exactly one matches the requested type (with `Lokacja` also accepting `Mapa`).
 
 Stage 1 — Exact Index Lookup:
 
 ```
 IF Query in Index (case-insensitive)
-    AND NOT Ambiguous
-    AND passes OwnerType filter
--> RETURN Entry.Owner
+    Resolved = Resolve-AmbiguousEntry(Entry, OwnerType)
+    IF Resolved -> RETURN Resolved
 ```
 
 Complexity: O(1) dictionary lookup.
@@ -239,7 +235,7 @@ Stage 2 — Declension-Stripped Match. Strips Polish noun and adjective declensi
 Suffix list (ordered longest-first to prevent partial stripping):
 
 ```
-Nouns:      -owi, -ami, -ach, -iem, -em, -om, -ą, -ę, -ie, -a, -u, -y
+Nouns:      -owi, -ami, -ach, -iem, -em, -om, -ą, -ę, -ie, -a, -u, -y, -i
 Adjectives: -ego, -emu, -ymi, -ych, -ej, -ym
 ```
 
@@ -260,14 +256,17 @@ Alternation mappings (12 rules):
 | Inflected ending | Base form | Example |
 |---|---|---|
 | `-dzie` | `-da` | `Vidominie` -> `Vidomina` |
-| `-ce` | `-ka` | `Zylce` -> `Zylka` |
+| `-dzi` | `-da` | (variant without final `-e`) |
+| `-ście` | `-sta` | - |
 | `-rze` | `-ra` | `Solmyrze` -> `Solmyra` |
 | `-dze` | `-ga` | - |
-| `-scie` | `-sta` | - |
-| `-ni` | `-n` | - |
-| `-si` | `-s` | - |
-| `-zi` | `-z` | - |
-| `-ci` | `-c` | - |
+| `-le` | `-ła` | - |
+| `-ce` | `-ka` | `Zylce` -> `Zylka` |
+| `-ście` | `-ść` | - |
+| `-ni` | `-ń` | - |
+| `-si` | `-ś` | - |
+| `-zi` | `-ź` | - |
+| `-ci` | `-ć` | - |
 
 ```
 candidates = ReverseConsonantMutations(Query)
@@ -298,9 +297,9 @@ Length pre-filter (linear scan only): Skip tokens where `|Query.Length - token.L
 
 Levenshtein implementation: Two-row matrix (memory-efficient). Standard dynamic programming with insert/delete/replace operations. The C# version (`Robot.BKTree.LevenshteinDistance`) uses `char.ToLowerInvariant` for case-insensitive comparison; the PowerShell version (`Get-LevenshteinDistance`) uses `String.ToLowerInvariant`. Both support early-exit via a `MaxDistance` threshold.
 
-Early exit (linear scan only): If `bestDistance <= 1`, stop scanning immediately.
+Early exit (linear scan only): If `bestDistance <= 1` and `TopN == 1`, stop scanning immediately. When `TopN > 1`, scanning continues to collect all candidates within the threshold.
 
----
+TopN behavior: When `-TopN` is greater than 1, all fuzzy matches within the threshold are collected across all three dispatch paths (C# BK-tree, legacy BK-tree, linear scan). After finding the best owner, the candidates are sorted by distance (ascending) then by name (alphabetical) and truncated to `TopN`. If more than one candidate remains, a `Candidates` note property is attached to the returned best-owner object. Each candidate entry is a hashtable with `Name` (string) and `Distance` (int) keys.
 
 ## Cache Pattern
 
@@ -322,8 +321,6 @@ if ($Cache) { $Cache[$CacheKey] = [System.DBNull]::Value }
 
 This distinguishes between "never looked up" (`ContainsKey` = false) and "looked up, no match" (`[DBNull]` sentinel), avoiding redundant resolution for names known to be unresolvable.
 
----
-
 ## Edge Cases
 
 | Scenario | Behavior |
@@ -339,17 +336,13 @@ This distinguishes between "never looked up" (`ContainsKey` = false) and "looked
 | Player/Entity dedup | `Gracz`/`Postać` entity entries defer to `Player` entries; `Postać` wins over `Gracz`; `Lokacja` wins over `wewnętrzna`/`zewnętrzna` |
 | Ambiguous + OwnerType | `Resolve-AmbiguousEntry` scans typed `Owners` array for exactly one matching type; resolves if unique |
 
----
-
 ## Testing
 
-| Test file | Coverage |
-|---|---|
-| `tests/resolve-name.Tests.ps1` | All 4 stages, type filtering, cache behavior, edge cases |
-| `tests/get-nameindex.Tests.ps1` | Priority collision, ambiguity, stem index, BK-tree construction |
-| `tests/get-entity-mapa.Tests.ps1` | @slug indexing at priority 1, slug-based resolution via `Resolve-Name` |
-
----
+| Test file | Tests | Coverage |
+|---|---|---|
+| `tests/resolve-name.Tests.ps1` | 40 | All 4 stages, type filtering, ambiguous entry disambiguation, TopN fuzzy candidates, cache behavior, edge cases |
+| `tests/get-nameindex.Tests.ps1` | 31 | Priority collision, ambiguity, typed Owners array, stem index, BK-tree construction |
+| `tests/get-entity-mapa.Tests.ps1` | - | @slug indexing at priority 1, slug-based resolution via `Resolve-Name` |
 
 ## Related Documents
 

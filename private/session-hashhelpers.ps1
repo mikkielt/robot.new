@@ -44,6 +44,9 @@
     available, with SHA256.Create() as a fallback.
 #>
 
+# Shared repo file enumeration helper (dot-directory + module exclusion)
+. "$PSScriptRoot/repo-filehelpers.ps1"
+
 # C# types: Robot.ContentHasher (lib/ContentHasher.cs), Robot.JsonHelper (lib/JsonHelper.cs)
 # Compiled centrally in Robot.PowerShell.psm1 at module import time.
 
@@ -254,6 +257,8 @@ function Write-SessionHashMeta {
 
 # Enumerate all .md files in the repository, respecting exclusion rules.
 # Excludes: dot directories, Nerthus/ subdirectory, module directory, user-specified dirs.
+# Delegates shared exclusion logic to Get-RepoFiles (repo-filehelpers.ps1),
+# then applies the domain-specific Nerthus/ subdirectory exclusion.
 function Get-HashableFiles {
     param(
         [Parameter(Mandatory, HelpMessage = "Root directory of the lore repository")]
@@ -264,67 +269,26 @@ function Get-HashableFiles {
     )
 
     $Sep = [System.IO.Path]::DirectorySeparatorChar
-    # Resolve symlinks (macOS /var -> /private/var) for consistent prefix matching
     $ResolvedRoot = [System.IO.Path]::GetFullPath($RepoRoot)
-    $RepoRootNorm = $ResolvedRoot.TrimEnd($Sep) + $Sep
-    $AllFiles = [System.IO.Directory]::GetFiles($ResolvedRoot, "*.md", [System.IO.SearchOption]::AllDirectories)
+    $RootNorm = $ResolvedRoot.TrimEnd($Sep) + $Sep
 
-    # Build exclusion prefixes
-    $ExcludePrefixes = [System.Collections.Generic.List[string]]::new()
+    $BaseFiles = Get-RepoFiles -RepoRoot $RepoRoot -Pattern '*.md' -ExcludeDirectory $ExcludeDirectory
 
-    # Exclude dot directories (any directory component starting with '.')
-    # and Nerthus/ subdirectory — handled per-file below via component scan
-
-    # Exclude user-specified directories
-    if ($ExcludeDirectory) {
-        foreach ($Dir in $ExcludeDirectory) {
-            if ([System.IO.Directory]::Exists($Dir)) {
-                $ExcludePrefixes.Add($Dir.TrimEnd($Sep) + $Sep)
-            }
-        }
-    }
-
+    # Domain-specific: exclude Nerthus/ subdirectory (not handled by Get-RepoFiles)
     $Result = [System.Collections.Generic.List[string]]::new()
-
-    foreach ($FilePath in $AllFiles) {
-        # Get the relative path from repo root
-        if (-not $FilePath.StartsWith($RepoRootNorm, [System.StringComparison]::OrdinalIgnoreCase)) {
-            continue
-        }
-        $RelPath = $FilePath.Substring($RepoRootNorm.Length)
-
-        # Split into directory components and check each
+    foreach ($FilePath in $BaseFiles) {
+        $RelPath = $FilePath.Substring($RootNorm.Length)
+        $Parts = $RelPath.Split(
+            [char[]]@([char]'\', [char]'/'),
+            [System.StringSplitOptions]::RemoveEmptyEntries)
         $Skip = $false
-        $Parts = $RelPath.Split([char[]]@([char]'\', [char]'/'), [System.StringSplitOptions]::RemoveEmptyEntries)
-
-        # Check directory components (all except the filename)
-        for ($i = 0; $i -lt $Parts.Length - 1; $i++) {
-            $Part = $Parts[$i]
-            # Exclude dot directories
-            if ($Part.StartsWith('.')) {
-                $Skip = $true
-                break
-            }
-            # Exclude Nerthus/ subdirectory
-            if ([string]::Equals($Part, 'Nerthus', [System.StringComparison]::OrdinalIgnoreCase)) {
+        for ($I = 0; $I -lt $Parts.Length - 1; $I++) {
+            if ([string]::Equals($Parts[$I], 'Nerthus', [System.StringComparison]::OrdinalIgnoreCase)) {
                 $Skip = $true
                 break
             }
         }
-
-        if ($Skip) { continue }
-
-        # Check user-specified exclusion prefixes
-        foreach ($Prefix in $ExcludePrefixes) {
-            if ($FilePath.StartsWith($Prefix, [System.StringComparison]::OrdinalIgnoreCase)) {
-                $Skip = $true
-                break
-            }
-        }
-
-        if (-not $Skip) {
-            [void]$Result.Add($FilePath)
-        }
+        if (-not $Skip) { [void]$Result.Add($FilePath) }
     }
 
     return $Result

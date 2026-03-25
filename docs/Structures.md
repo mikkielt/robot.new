@@ -10,8 +10,6 @@ This guide covers the shape of data that the system stores and returns. It answe
 
 For working with entities, see [World-State.md](World-State.md). For session recording, see [Sessions.md](Sessions.md). For player management, see [Players.md](Players.md). For currency, see [Currency.md](Currency.md). For economic reports, see [Economy.md](Economy.md). For term definitions, see [Glossary.md](Glossary.md).
 
----
-
 ## Entity Data
 
 An entity is any tracked element of the game world. Each entity carries:
@@ -34,8 +32,6 @@ An entity is any tracked element of the game world. Each entity carries:
 
 Every entity property that changes over time (location, status, groups, owner, aliases, and others) keeps a full history. Each history entry records the value, when it became active, when it stopped being active (if ever), and an optional season restriction. The system uses these histories to answer questions like "Where was this NPC in January 2024?" or "Who was in the Bractwo Miecza last summer?"
 
----
-
 ## Location and Map Entity Data
 
 When querying locations, the system returns enriched records that combine the entity's base properties with hierarchy and connectivity information:
@@ -56,8 +52,6 @@ When querying locations, the system returns enriched records that combine the en
 | Status | Active, inactive, or removed |
 
 Mapa entities carry additional map-specific metadata: a unique slug for disambiguation, a CDN image URL, an optional Nerthus-specific image URL, and tile dimensions.
-
----
 
 ## Session Data
 
@@ -83,8 +77,6 @@ A session record captures everything that happened during one game session:
 
 When the same session appears in multiple files (cross-file sessions), the system automatically merges them into a single record with combined data.
 
----
-
 ## Player and Character Data
 
 A player record represents a real person who participates in the campaign:
@@ -92,6 +84,7 @@ A player record represents a real person who participates in the campaign:
 | Field | What it holds |
 |---|---|
 | Name | Player name |
+| CN | Canonical name — a stable, path-style identifier for the player |
 | Margonem ID | Their Margonem game account ID |
 | Webhook | Discord notification webhook URL |
 | Triggers | Restricted topics that should trigger warnings |
@@ -102,6 +95,7 @@ Each character within a player carries:
 | Field | What it holds |
 |---|---|
 | Name | Character name |
+| CN | Canonical name — a stable, path-style identifier for the character |
 | Active | Whether the character is currently active |
 | Aliases | Alternative names |
 | File path | Path to the character's detail file |
@@ -124,8 +118,6 @@ When full state is requested, additional fields are merged from the character fi
 | Described sessions | Sessions recorded in the character file, each with date, title, and narrator |
 
 Each reputation entry records the location name and an optional detail describing the reputation.
-
----
 
 ## Currency Data
 
@@ -151,15 +143,11 @@ Each currency holding is tracked as an entity with:
 
 Currency holdings are classified as physical (owned by a player character — represents actual game items) or virtual (owned by an NPC, group, or player account — represents RP bookkeeping).
 
----
-
 ## Item Data
 
 Items (Przedmiot entities) are tracked with enriched properties: entity name, owner, owner type (Physical for player characters, Virtual for NPCs/groups, Unknown otherwise), location, quantity, status, and whether the item is a currency denomination. Items default to excluding currency entities and inactive/deleted entries.
 
 Reverse lookups let you query entities by property values: "what entities are at location X?", "what does character Y own?", "who is in group Z?" Filters are AND-combined and optional. Results are original entity objects with no transformation.
-
----
 
 ## Reports and Analysis
 
@@ -191,15 +179,11 @@ A PU assignment log records each batch processing run: timestamp, timezone, and 
 
 A notification log lists all `@Intel` deliveries: date, session, targeting directive, message, and recipients.
 
----
-
 ## Location and Session Graphs
 
 The location graph maps how locations connect to each other through containment (parent-child hierarchy), door connections, routes observed in sessions, movements seen in chat logs, and teleportation (non-adjacent transitions). Each connection records when it was first and last observed, and whether it may be outdated.
 
 The session graph maps which entities participated in which sessions. Participation is classified into three tiers: direct (characters and narrators), mentioned (entity names appearing in session text), and inferred (from log analysis). The graph tracks total sessions, unique participants, and format distribution.
-
----
 
 ## How Data Connects
 
@@ -209,25 +193,19 @@ The entity store provides base properties and temporal histories. Session `@Zmia
 
 When the Coordinator queries a character's full state, the system merges data from the entity registry, all relevant sessions, and the character file. The most recently dated value takes priority for single-value properties. For multi-value properties (like group memberships), all active values are collected.
 
----
-
 ## Expected Outcomes
 
 After reading this guide, you should understand what information the system records for each domain concept, how entity histories work and what fields are tracked over time, what data a session record contains and how session directives feed into other parts of the system, how player and character data is assembled from multiple sources, and how currency, reports, and graphs are structured.
 
----
+## Exceptions and Recovery
 
-## Exceptions and Recovery Actions
-
-| Situation | What happens | Recovery |
+| Situation | What Happens | Recovery |
 |---|---|---|
 | Missing entity property | Property returns empty or null | Check whether the property was ever set in the entity store or session changes |
 | Unresolved entity name | Name resolution failed, data not linked | Register the entity or fix the name spelling |
 | Orphaned currency | Currency entity's owner is inactive or removed | Transfer the currency to an active entity or remove it |
 | Stale history entries | Property changes with overlapping or contradictory dates | Review the temporal scoping in entity tags and session dates |
 | Missing character file | Character state merges without charfile data | Create the character file using the standard template |
-
----
 
 ## Related Documents
 

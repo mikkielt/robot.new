@@ -1,12 +1,10 @@
-# Session Pipeline
+# Session Pipeline - Technical Reference
 
 ## Scope
 
 The session subsystem comprises `Get-Session` (extraction, format detection, deduplication, Intel resolution), `Set-Session` (modification, format upgrade), `New-Session` (Gen4 generation), `Add-Session` (chronological insertion of new sessions into files), and their private helpers across four files: `session-parsehelpers.ps1`, `session-decomposehelpers.ps1`, `session-intelhelpers.ps1`, and `format-sessionblock.ps1`.
 
 PU computation from session data is documented in [PU.md](PU.md). Entity state merging from session Zmiany is documented in [ENTITIES.md](ENTITIES.md).
-
----
 
 ## Architecture Overview
 
@@ -54,8 +52,6 @@ Add-Session (insertion path)
     └── Session graph eager refresh
 ```
 
----
-
 ## Format Generations
 
 | Gen | Era | Location format | Log format | Metadata blocks | Detection heuristic |
@@ -63,13 +59,11 @@ Add-Session (insertion path)
 | Gen1 | START–2022 | None | `Logi: https://…` plain text | None | Fallback (no other match) |
 | Gen2 | 2022–2023 | `*Lokalizacja: A, B*` (italic) | `Logi: https://…` plain text | None | First non-empty line starts with `*Lokalizacj` |
 | Gen3 | 2024–2026 | `- Lokalizacje:` list item | `- Logi:` list item | `- PU:`, `- Zmiany:`, `- Efekty:` | Root list item with `pu` prefix (no `@`) |
-| Gen4 | 2026+ | `- @Lokacje:` list item | `- @Logi:` list item | `- @Narrator:`, `- @Data:`, `- @PU:`, `- @Zmiany:`, `- @Intel:` | Root list item starting with `@` + letter |
+| Gen4 | 2026+ | `- @Lokacje:` list item | `- @Logi:` list item | `- @Narrator:`, `- @Data:`, `- @PU:`, `- @Zmiany:`, `- @Intel:`, `- @Transfer:` | Root list item starting with `@` + letter |
 
 All four formats remain parseable. `Get-Session` auto-detects and normalizes transparently.
 
 Format detection (`Get-SessionFormat`) evaluates per-section heuristics in order: (1) `$FirstNonEmptyLine` starts with `*Lokalizacj` selects Gen2; (2) root list items where `$LI.Indent -eq 0` and text starts with `@` + letter selects Gen4, or text starts with `pu` followed by `:` or space selects Gen3; (3) fallback selects Gen1.
-
----
 
 ## Get-Session — Extraction Pipeline
 
@@ -125,8 +119,6 @@ When a `-ProgressCallback` scriptblock is provided, `Get-Session` invokes it dur
 
 `Get-Session` performs a single combined pass over `$SessionSections` that pre-filters, caches date regex matches, and builds the parseable sections list. This merges what was previously two separate passes. Date regex matches are cached in `$CachedDateMatches` (Dictionary keyed by section index). Parsed dates are cached in `$CachedDateParsed` for reuse by `ConvertFrom-SessionHeader`. A `$HasCandidateSession` flag enables early file skip when no sections fall within the date range. `$ParseableIndices` (HashSet) tracks which sections have valid dates for narrator result alignment.
 
----
-
 ## Date Parsing — ConvertFrom-SessionHeader
 
 | Parameter | Type | Mandatory | Description |
@@ -140,8 +132,6 @@ Parses `### YYYY-MM-DD` headers via `ConvertTo-SessionDate`. Accepts optional `-
 
 Supports date ranges: `2022-12-21/22` -> `Date = Dec 21`, `DateEnd = Dec 22`. The `/DD` suffix must be same month/year.
 
----
-
 ## Title Extraction — Get-SessionTitle
 
 | Parameter | Type | Mandatory | Description |
@@ -150,8 +140,6 @@ Supports date ranges: `2022-12-21/22` -> `Date = Dec 21`, `DateEnd = Dec 22`. Th
 | `DateInfo` | object | No | Hashtable from `ConvertFrom-SessionHeader` with `DateStr` and `EndDayStr` |
 
 Strips the date portion (10 characters for `yyyy-MM-dd`, plus `/DD` suffix length if present) and the trailing narrator segment (after last comma) from the header text. Returns the session title. If `$DateInfo` is `$null`, returns the header unchanged.
-
----
 
 ## Location Extraction — Get-SessionLocations
 
@@ -171,8 +159,6 @@ Three strategies, tried in order: (1) Entity resolution (Gen3/Gen4) — for each
 Returns `List[string]`.
 
 Location values may contain `->` separators indicating movement routes (e.g., `Steadwick -> Przełęcz Gryfów -> Zamek Gryfów`). `Get-NamedLocationReport` splits these and extracts RouteEdges — ordered pairs of consecutive segments — preserving traversal direction. The report output is `[PSCustomObject]@{ Locations; RouteEdges }` where `RouteEdges` is `@{ Source; Target; SessionDate; Header; FilePath }`.
-
----
 
 ## Metadata Extraction — Get-SessionListMetadata
 
@@ -202,12 +188,10 @@ Extracted fields:
 | Logs | Child URLs or local file paths under `logi` tag; entries starting with `res/logs/` are accepted alongside `https://...` URLs. Also checks inline URL on root line |
 | Changes (Zmiany) | Entity names at 4-space indent, `@tag: value` at 8-space indent |
 | Intel | `RawTarget: Message` pairs under `intel` tag |
-| Transfers | `@Transfer: {amount} {denomination}, {source} -> {destination}` or `@Transfer: {item}, {source} -> {destination}` inline on root line |
+| Transfers | `@Transfer: {amount} {denomination}, {source} -> {destination}` or `@Transfer: {item}, {source} -> {destination}` inline on root line. Also supports nested children with the same `{amount} {denom}, {source} -> {destination}` format |
 | DateOverride | Inline `@Data: YYYY-MM-DD` value or first child of `@Data:` block |
 
 Returns hashtable with keys: `Logs`, `PU`, `Changes`, `Intel`, `Transfers`, `Narrators`, `DateOverride`.
-
----
 
 ## Plain-Text Log Fallback — Get-SessionPlainTextLogs
 
@@ -218,8 +202,6 @@ Returns hashtable with keys: `Logs`, `PU`, `Changes`, `Intel`, `Transfers`, `Nar
 
 Applied when list-based `$Logs.Count -eq 0`. Scans raw content lines for `Logi: <url>` patterns (Gen1/Gen2). Returns `List[string]` of URLs.
 
----
-
 ## @Narrator Override
 
 When a `- @Narrator:` block is present in session metadata, it completely replaces header-based narrator resolution. The override takes precedence over any narrator segment parsed from the `### date, title, narrator` header.
@@ -227,8 +209,6 @@ When a `- @Narrator:` block is present in session metadata, it completely replac
 The canonical narrator name(s) from the `@Narrator` block are used directly — no fuzzy resolution is applied. `RawText` from the original header is preserved in the session object for round-trip fidelity. If the `@Narrator` block is absent, standard header-based resolution via `Resolve-Narrator` applies as before.
 
 This mechanism supports narrator normalization during migration: the `@Narrator` block provides a verified canonical name, while the original header text remains untouched.
-
----
 
 ## @Data Override
 
@@ -242,8 +222,6 @@ Format (inline):
 ```
 
 The date value must be in `YYYY-MM-DD` format. Invalid values are silently ignored. When present, `@Data` replaces the header-parsed date in the session object's `Date` field. If the header has no valid date at all, `@Data` provides the date and prevents the session from being recorded as failed. `@Data` is excluded from mention detection. In `Set-Session`, use `-DateOverride '2024-07-14'` to write the `@Data` block. Example: `Set-Session -DateOverride '2024-07-14' -File 'Postaci/Gracze/Crag Hack.md'`
-
----
 
 ## Session Deduplication — Merge-SessionGroup
 
@@ -267,8 +245,6 @@ Array field merging strategies:
 | Intel | Deduped by `RawTarget|Message` composite key |
 
 Merged sessions carry `IsMerged = $true`, `DuplicateCount`, and `FilePaths[]`.
-
----
 
 ## Intel Resolution — Resolve-IntelTargets
 
@@ -296,8 +272,6 @@ The `Grupa/` directive builds a `HashSet` of all known names for the resolved gr
 
 Resolution uses stages 1/2/2b of name resolution (exact, declension, stem alternation). Fuzzy matching (stage 3) is skipped for Intel.
 
----
-
 ## Test-LocationMatch
 
 | Parameter | Type | Mandatory | Description |
@@ -307,8 +281,6 @@ Resolution uses stages 1/2/2b of name resolution (exact, declension, stem altern
 
 Handles slash-separated path values (e.g. `Ithan/Ratusz Ithan`) by splitting on `/` and checking each segment against the location set. Returns `$true` if any segment matches. Used by the `Lokacja/` directive to identify non-location entities within a location tree.
 
----
-
 ## Webhook Resolution — Resolve-EntityWebhook
 
 | Parameter | Type | Mandatory | Description |
@@ -317,8 +289,6 @@ Handles slash-separated path values (e.g. `Ithan/Ratusz Ithan`) by splitting on 
 | `Players` | object[] | Yes | All players from `Get-Player` |
 
 Priority chain: (1) Entity's own `@prfwebhook` override (last value, must start with `https://discord.com/api/webhooks/`). (2) For `Postać` or `Gracz` entities: owning Player's `PRFWebhook`. (3) For objects with a `PRFWebhook` property (Player objects from `Resolve-Name`): use directly. (4) `$null` if none available.
-
----
 
 ## Mention Extraction — Get-SessionMentions
 
@@ -345,8 +315,6 @@ Phase 3 tokenizes via Markdown link extraction, formatting strip (`**`, `*`, `__
 Phase 4 resolves unique tokens via stages 1/2/2b (no fuzzy matching — `-NoFuzzy` flag). Tokens are deduplicated into a `HashSet[string]` (OrdinalIgnoreCase) before resolution to avoid redundant `Resolve-Name` calls. Typical session: ~150 tokens but only ~50 unique, saving ~3x function call overhead.
 
 Phase 5 deduplicates into `Dictionary[string, object]` keyed by entity name (OrdinalIgnoreCase) and builds output objects.
-
----
 
 ## Set-Session — Modification Pipeline
 
@@ -375,7 +343,7 @@ Returns `List[object]` of match objects with `HeaderLineIdx`, `SectionStartIdx`,
 
 | Category | Tags | Canonical Key | Handling |
 |---|---|---|---|
-| Meta blocks | `narrator`, `data`, `pu`, `logi`, `lokalizacje`, `lokacje`, `zmiany`, `intel` | `narrator`, `data`, `pu`, `logs`, `locations`, `changes`, `intel` | Replaceable by parameters or upgradeable |
+| Meta blocks | `narrator`, `data`, `pu`, `logi`, `lokalizacje`, `lokacje`, `zmiany`, `intel`, `transfer` | `narrator`, `data`, `pu`, `logs`, `locations`, `changes`, `intel`, `transfers` | Replaceable by parameters or upgradeable |
 | Preserved blocks | `objaśnienia`, `efekty`, `komunikaty`, `straty`, `nagrody` | Lowercase tag name | Written back unchanged |
 | Body lines | Everything else | — | Replaceable via `-Content` |
 | Legacy: italic locations | `*Lokalizacj*` line | `locations-italic` | Captured, converted during upgrade |
@@ -388,8 +356,6 @@ Returns hashtable with keys: `MetaBlocks` ([ordered] dict), `PreservedBlocks` (L
 `Get-FormatFromSplit` takes `MetaBlocks` (OrderedDictionary) from `Split-SessionSection` output and derives the session format generation: (1) Empty `MetaBlocks` selects Gen1. (2) Contains `locations-italic` key selects Gen2. (3) First structured key's root line starts with `- @` selects Gen4, otherwise Gen3. (4) Contains only `logs-plain` selects Gen1.
 
 Metadata replacement uses full-replace semantics: `$null` (or omit) leaves unchanged; `@()` (empty array) clears the block; non-empty value replaces entirely.
-
----
 
 ## Format Upgrade Conversions
 
@@ -407,19 +373,13 @@ Metadata replacement uses full-replace semantics: `$null` (or omit) leaves uncha
 
 `Resolve-LogUrlToLocalPath` takes `Url` (string) and optional `LogDirectory` (string). Returns the original URL unchanged if `$LogDirectory` is empty or the URL does not start with `http`. Otherwise normalizes the URL via `Normalize-LogUrl`, converts to a filename via `ConvertTo-LogFileName`, checks if the file exists in `$LogDirectory`, and returns `res/logs/$FileName` if found. Used during format upgrade to localize log URLs that have been downloaded by migration Phase 4.
 
----
-
 ## New-Session — Gen4 Generation
 
 Header format: `### yyyy-MM-dd[/dd], Title, Narrator`. Optional `DateEnd` appended as `/dd` suffix (validated: same month/year, > Date).
 
-Delegates to `ConvertTo-SessionMetadata` which calls `ConvertTo-Gen4MetadataBlock` per field. Canonical block order: `@Narrator` -> `@Data` -> `@Lokacje` -> `@Logi` -> `@PU` -> `@Zmiany` -> `@Intel`.
-
-`@Transfer` is not rendered by `ConvertTo-SessionMetadata` — it is a read-only parsed field from `Get-SessionListMetadata`, not a writable metadata block.
+Delegates to `ConvertTo-SessionMetadata` which calls `ConvertTo-Gen4MetadataBlock` per field. Canonical block order: `@Narrator` -> `@Data` -> `@Lokacje` -> `@Logi` -> `@PU` -> `@Zmiany` -> `@Intel` -> `@Transfer`. Accepts a `-Transfers` parameter (object[], each entry with Amount, Denomination, Source, Destination).
 
 Returns a string — does not write to disk.
-
----
 
 ## Add-Session — Chronological Insertion
 
@@ -436,6 +396,7 @@ Returns a string — does not write to disk.
 | `Logs` | string[] | Single | Session log URLs |
 | `Changes` | object[] | Single | Entity state changes (Zmiany entries) |
 | `Intel` | object[] | Single | Intel targeting entries (RawTarget + Message) |
+| `Transfers` | object[] | Single | Transfer entries (Amount + Denomination + Source + Destination) |
 | `Content` | string | Single | Free-form body text content |
 | `Sessions` | hashtable[] | Batch | Array of session hashtables, each with Date/Title/Narrator keys |
 
@@ -450,8 +411,6 @@ For existing files, sessions are sorted by date and inserted bottom-to-top (desc
 After writing: fires `Invoke-PluginHook` (BeforeWrite, AfterWrite, AfterCreate), calls `Clear-ParseCaches`, registers with `Add-OperationFile`, and performs eager session graph refresh. `SupportsShouldProcess` with `ConfirmImpact = 'Medium'`.
 
 Returns `string[]` — array of all inserted session header texts.
-
----
 
 ## File Map
 
@@ -484,10 +443,9 @@ Rendering rules per tag:
 | `@PU` | `    - Character: Value` (decimal with `InvariantCulture`) |
 | `@Zmiany` | `    - EntityName` (4-space) -> `        - @tag: value` (8-space) |
 | `@Intel` | `    - RawTarget: Message` (4-space) |
+| `@Transfer` | `    - [Amount] Denomination, Source -> Destination` (4-space). Amount prefix omitted when 1 |
 
 Returns `$null` if items are empty/null — caller must check before including in output.
-
----
 
 ## Edge Cases
 
@@ -507,8 +465,6 @@ Returns `$null` if items are empty/null — caller must check before including i
 | Transfer with invalid amount | Skipped (amount must be positive integer) |
 | Transfer missing source/destination | Skipped |
 | Local log paths in `.Logs` | Sessions modified by migration Phase 5 may contain `res/logs/filename` entries instead of `https://...` URLs. Both formats are handled by `Get-SessionLog` and `Invoke-SessionLogFetch` |
-
----
 
 ## Session Object Properties
 
@@ -595,8 +551,6 @@ Transfer object (`Session.Transfers`):
 | `Source` | string | Source entity name |
 | `Destination` | string | Destination entity name |
 
----
-
 ## Precompiled Regex Patterns
 
 Session parse helpers (`session-parsehelpers.ps1`):
@@ -629,8 +583,6 @@ Diagnostics (from other files, shared via module scope):
 | Variable | Pattern | Purpose |
 |---|---|---|
 | `$PULikePattern` | `^\s+[-\*]\s+(.+?):\s*([\d,\.]+)\s*$` | PU-like child line (for diagnostics) |
-
----
 
 ## Compiled C# Types
 
@@ -708,8 +660,6 @@ Narrator Result Types (`lib/NarratorResult.cs`) — `Robot.NarratorResult` and `
 
 Consumers: `resolve-narrator.ps1`, `get-session.ps1` (narrator override), PU assignment, CLI narrator display.
 
----
-
 ## Testing
 
 | Test file | Coverage |
@@ -721,8 +671,6 @@ Consumers: `resolve-narrator.ps1`, `get-session.ps1` (narrator override), PU ass
 | `tests/format-sessionblock.Tests.ps1` | Block rendering, canonical ordering, null handling |
 
 Fixtures: `sessions-gen1.md`, `sessions-gen2.md`, `sessions-gen3.md`, `sessions-gen4.md`, `sessions-duplicate.md`, `sessions-zmiany.md`, `sessions-failed.md`.
-
----
 
 ## Related Documents
 

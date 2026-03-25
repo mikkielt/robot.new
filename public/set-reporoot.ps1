@@ -1,15 +1,15 @@
 <#
     .SYNOPSIS
-    Overrides or resets the data directory used as the lore repository root.
+    Overrides or resets the repository root used by the lore module.
 
     .DESCRIPTION
     By default, Get-RepoRoot locates the lore repository by walking upward from the
-    module directory looking for a .git folder. Set-DataDirectory allows overriding
+    module directory looking for a .git folder. Set-RepoRoot allows overriding
     that detection with an explicit path, or resetting back to the default git-based
     discovery.
 
     Module-level data:
-    - $DataDirectoryOverride: stores the explicit path override (or $null when reset)
+    - $RepoRootOverride: stores the explicit path override (or $null when reset)
     - $CachedManifest / $CachedManifestDir: cleared on both -Path and -Reset so that
       Find-DataManifest re-scans from the new root on next use
 
@@ -21,14 +21,14 @@
     standard .git-based detection logic.
 #>
 
-function Set-DataDirectory {
+function Set-RepoRoot {
     <#
         .SYNOPSIS
-        Sets or resets the data directory override for the lore repository root.
+        Sets or resets the repository root override for the lore repository.
     #>
 
     [CmdletBinding()] param(
-        [Parameter(Mandatory, Position = 0, ParameterSetName = "Path", HelpMessage = "Absolute path to the directory to use as the data root")]
+        [Parameter(Mandatory, Position = 0, ParameterSetName = "Path", HelpMessage = "Absolute path to the directory to use as the repository root")]
         [string]$Path,
 
         [Parameter(Mandatory, ParameterSetName = "Reset", HelpMessage = "Clear the override and revert to git-based detection")]
@@ -39,9 +39,9 @@ function Set-DataDirectory {
         if (-not [System.IO.Directory]::Exists($Path)) {
             throw "Directory not found: '$Path'"
         }
-        $script:DataDirectoryOverride = [System.IO.Path]::GetFullPath($Path)
+        $script:RepoRootOverride = [System.IO.Path]::GetFullPath($Path)
     } else {
-        $script:DataDirectoryOverride = $null
+        $script:RepoRootOverride = $null
     }
 
     # Invalidate manifest cache — next Find-DataManifest call will re-scan

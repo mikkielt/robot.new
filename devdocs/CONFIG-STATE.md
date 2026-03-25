@@ -1,10 +1,8 @@
-# Configuration & State
+# Configuration & State - Technical Reference
 
 ## Scope
 
-The configuration and state subsystem comprises `private/admin-config.ps1` (configuration resolution, path management, template rendering), `private/admin-state.ps1` (append-only history file management for PU processing), `private/operation-context.ps1` (accumulator-based operation tracking for write commands), and `public/set-datadirectory.ps1` (data directory override for testing and non-standard layouts).
-
----
+The configuration and state subsystem comprises `private/admin-config.ps1` (configuration resolution, path management, template rendering), `private/admin-state.ps1` (append-only history file management for PU processing), `private/operation-context.ps1` (accumulator-based operation tracking for write commands), and `public/set-reporoot.ps1` (repository root override for testing and non-standard layouts).
 
 ## Configuration Resolution
 
@@ -19,7 +17,7 @@ Functions:
 | `Get-AdminTemplate` | Loads and renders template files with placeholder substitution |
 | `Find-DataManifest` | Checks for `.robot.local/robot-data.psd1` at a fixed path within the repo root |
 | `Test-PathUnderRoot` | Validates that a resolved path is under a given root directory (prevents path traversal) |
-| `Set-DataDirectory` | Overrides or resets the lore repository root (in `public/set-datadirectory.ps1`) |
+| `Set-RepoRoot` | Overrides or resets the lore repository root (in `public/set-reporoot.ps1`) |
 
 Resolution order for each config value (`Resolve-ConfigValue`):
 
@@ -97,8 +95,6 @@ Algorithm: (1) Resolve both `Path` and `Root` to absolute form via `[System.IO.P
 
 Returns `$true` if the path is under the root, `$false` otherwise.
 
----
-
 ## State Management
 
 Source: `private/admin-state.ps1`.
@@ -108,6 +104,8 @@ Functions:
 | Function | Purpose |
 |---|---|
 | `Get-AdminHistoryEntries` | Reads processed session headers from a state file |
+| `ConvertTo-MutableStateObject` | Generic JSON state file reader that returns a mutable ordered hashtable with a `List[object]` collection |
+| `Get-TimezoneOffsetString` | Returns a formatted UTC offset string (e.g. `UTC+02:00`) for the local timezone |
 | `Add-AdminHistoryEntry` | Appends new entries with timestamp |
 
 State files are JSON files in `.robot.local/res/`:
@@ -146,11 +144,13 @@ State files are JSON files in `.robot.local/res/`:
 }
 ```
 
-Timestamp format uses `DateTimeOffset.Now` for timezone-aware timestamps. Handles negative UTC offsets. Session headers are sorted chronologically using `[StringComparer]::Ordinal` (works because headers start with `YYYY-MM-DD`). The `### ` prefix is stripped before storage. If the state file doesn't exist, it is created with an empty `runs` array. Parent directory is created if missing.
+`ConvertTo-MutableStateObject` is a shared helper that reads a JSON state file and returns an `[ordered]@{}` hashtable with a mutable `List[object]` for the named collection key. Used by both `Add-AdminHistoryEntry` (collection key `runs`, default version `2`) and `Add-DiscordDeliveryEntry` in `discord-state.ps1` (collection key `entries`, default version `1`). When the file does not exist (or `Read-JsonStateFile` returns `$null`), it returns a fresh hashtable with the default version and an empty list. When the file exists, it rebuilds the collection from `ConvertFrom-Json` output (which yields immutable PSCustomObjects) into a mutable `List[object]`.
+
+`Get-TimezoneOffsetString` returns the local timezone offset formatted as `UTC+HH:MM` or `UTC-HH:MM`. Accepts an optional `ReferenceTime` parameter (defaults to `[datetime]::Now`) to compute the offset via `[System.TimeZoneInfo]::Local.GetUtcOffset()`. Used by both `Add-AdminHistoryEntry` and `Add-DiscordDeliveryEntry` to produce timezone-aware timestamps.
+
+Timestamp format uses timezone-aware timestamps via `Get-TimezoneOffsetString`. Handles negative UTC offsets. Session headers are sorted chronologically using `[StringComparer]::Ordinal` (works because headers start with `YYYY-MM-DD`). The `### ` prefix is stripped before storage. If the state file doesn't exist, it is created with an empty `runs` array. Parent directory is created if missing.
 
 State file location: `$Config.ResDir` resolves to `<RepoRoot>/.robot.local/res/pu-sessions.json`. This is separate from the module directory (`.robot.powershell/`) and lives in `.robot.local/res/` for historical compatibility with the legacy system.
-
----
 
 ## Operation Context
 
@@ -224,11 +224,9 @@ Has `SuppressMessageAttribute` for `PSUseShouldProcessForStateChangingFunctions`
 
 Write helpers push records as side effects: `Set-EntityTag` calls `Add-OperationChange` (tag name, old value, new value); `Write-EntityFile` calls `Add-OperationFile` (file path); `Write-CharacterFile` calls `Add-OperationFile` (file path). Availability is checked via `$script:HasOpCtx` flag, set at dot-source time by probing for `Add-OperationChange` (in entity-writehelpers.ps1) or `Add-OperationFile` (in charfile-helpers.ps1).
 
----
+## Set-RepoRoot
 
-## Set-DataDirectory
-
-Source: `public/set-datadirectory.ps1`.
+Source: `public/set-reporoot.ps1`.
 
 Overrides or resets the data directory used as the lore repository root. Useful for testing and non-standard layouts where the lore repository is not the git ancestor of the module.
 
@@ -237,9 +235,7 @@ Overrides or resets the data directory used as the lore repository root. Useful 
 | `Path` | string | `Path` | Mandatory. Absolute path to the directory to use as the data root. Must exist. |
 | `Reset` | switch | `Reset` | Mandatory. Clears the override and reverts to git-based detection. |
 
-Path mode validates directory existence, stores `[System.IO.Path]::GetFullPath($Path)` in `$script:DataDirectoryOverride`. Subsequent `Get-RepoRoot` calls return this path instead of performing git traversal. Reset mode sets `$script:DataDirectoryOverride` to `$null`. Both modes clear `$script:CachedManifest` and `$script:CachedManifestDir` so that `Find-DataManifest` re-scans from the new root on next use.
-
----
+Path mode validates directory existence, stores `[System.IO.Path]::GetFullPath($Path)` in `$script:RepoRootOverride`. Subsequent `Get-RepoRoot` calls return this path instead of performing git traversal. Reset mode sets `$script:RepoRootOverride` to `$null`. Both modes clear `$script:CachedManifest` and `$script:CachedManifestDir` so that `Find-DataManifest` re-scans from the new root on next use.
 
 ## Warning Suppression
 
@@ -282,16 +278,12 @@ Scope of conversion:
 | Infrastructure (`plugin-hooks`, `plugin-loader`, `admin-config`) | No | Module import time |
 | Migration (`migration-state`) | No | Not CLI-reachable |
 
----
-
 ## Environment Variables
 
 | Variable | Purpose |
 |---|---|
 | `NERTHUS_REPO_WEBHOOK` | Default Discord webhook URL |
 | `NERTHUS_BOT_USERNAME` | Default bot display name |
-
----
 
 ## Local Config File
 
@@ -307,8 +299,6 @@ PowerShell data file format:
 ```
 
 Loaded via `Import-PowerShellDataFile` with error handling. Missing file is not an error -- the priority chain falls through to the next source.
-
----
 
 ## Edge Cases
 
@@ -328,10 +318,8 @@ Loaded via `Import-PowerShellDataFile` with error handling. Missing file is not 
 | Single file in operation | `New-OperationResult` returns `FilePath` as scalar string |
 | No files in operation | `New-OperationResult` returns `FilePath` as `$null` |
 | Manifest path resolves outside repo root | Skipped with warning to stderr; `Test-PathUnderRoot` returns `$false` |
-| `Set-DataDirectory` with non-existent path | Throws `"Directory not found: '$Path'"` |
-| `Set-DataDirectory -Reset` | Clears override and manifest cache; `Get-RepoRoot` reverts to git traversal |
-
----
+| `Set-RepoRoot` with non-existent path | Throws `"Directory not found: '$Path'"` |
+| `Set-RepoRoot -Reset` | Clears override and manifest cache; `Get-RepoRoot` reverts to git traversal |
 
 ## Testing
 
@@ -343,8 +331,6 @@ Loaded via `Import-PowerShellDataFile` with error handling. Missing file is not 
 | `tests/operation-context.Tests.ps1` | Accumulator lifecycle, change/warning/file tracking, `New-OperationResult` drain |
 
 Fixtures: `local.config.psd1`, `pu-sessions.json`, template files in `tests/fixtures/templates/`.
-
----
 
 ## Related Documents
 

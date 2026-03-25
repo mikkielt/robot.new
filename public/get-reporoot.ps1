@@ -11,10 +11,10 @@
       Used by manifest discovery (Find-DataManifest).
 
     Module-level data:
-    - $DataDirectoryOverride: when set by Set-DataDirectory, Get-RepoRoot returns
+    - $RepoRootOverride: when set by Set-RepoRoot, Get-RepoRoot returns
       this path instead of performing git traversal
     - $CachedRepoRoot: memoized result of the upward .git search, cleared when
-      Set-DataDirectory is called
+      Set-RepoRoot is called
 
     Get-RepoRoot traverses the directory tree upward from the module's parent directory,
     looking for a .git subdirectory or file. Returns the first ancestor that contains one.
@@ -45,9 +45,9 @@ function Get-RepoRoot {
         [switch]$Optional
     )
 
-    # Set-DataDirectory override takes precedence over git traversal
-    if ($script:DataDirectoryOverride) {
-        return $script:DataDirectoryOverride
+    # Set-RepoRoot override takes precedence over git traversal
+    if ($script:RepoRootOverride) {
+        return $script:RepoRootOverride
     }
 
     # Memoized — avoid repeated filesystem traversal on every caller invocation

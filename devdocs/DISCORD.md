@@ -1,12 +1,8 @@
 # Discord Messaging - Technical Reference
 
----
-
 ## Scope
 
-This document covers `Send-DiscordMessage` (webhook sender), PU notification message construction in `Invoke-PlayerCharacterPUAssignment`, Intel message dispatch via `Resolve-EntityWebhook`, and delivery tracking via `discord-state.ps1`.
-
----
+The Discord subsystem comprises `Send-DiscordMessage` (webhook sender), PU notification message construction in `Invoke-PlayerCharacterPUAssignment`, Intel message dispatch via `Resolve-EntityWebhook`, and delivery tracking via `discord-state.ps1`.
 
 ## `Send-DiscordMessage`
 
@@ -56,8 +52,6 @@ Return object:
 
 Error handling: URL format is validated before attempting POST. HTTP errors throw with the status code and response body in the exception message (format: `"Discord webhook returned HTTP NNN: body"`). Resource cleanup runs in a `finally` block (`HttpClient`, `ByteArrayContent`, `Response` all disposed). Delivery tracking is handled by callers via `Add-DiscordDeliveryEntry` (see Delivery Tracking section below).
 
----
-
 ## PU Notification Messages
 
 In `Invoke-PlayerCharacterPUAssignment`, notifications are grouped per player:
@@ -102,8 +96,6 @@ Webhook is resolved from `$Items[0].Character.Player.PRFWebhook` (first result's
 
 Individual `Send-DiscordMessage` failures are caught and logged to stderr as `[WARN]`. They do not abort the remaining notifications. Both successes and failures are persisted to the delivery state file via `Add-DiscordDeliveryEntry`.
 
----
-
 ## Intel Message Dispatch
 
 Webhook resolution priority chain (`Resolve-EntityWebhook`):
@@ -121,8 +113,6 @@ Intel messages are constructed during `Get-Session` processing when `@Intel` blo
 
 The actual sending is left to the consumer -- `Get-Session` only resolves targets and webhooks.
 
----
-
 ## Edge Cases
 
 | Scenario | Behavior |
@@ -134,8 +124,6 @@ The actual sending is left to the consumer -- `Get-Session` only resolves target
 | Multiple characters, same player | Combined into single message |
 | `Send-DiscordMessage` exception | Caught per-player; other notifications continue |
 | `-WhatIf` mode | Returns preview object; no HTTP request made |
-
----
 
 ## Delivery Tracking
 
@@ -168,7 +156,7 @@ The state file uses a structured JSON format (version 1):
 }
 ```
 
-`Add-DiscordDeliveryEntry` reads or initializes the JSON state, rebuilds the entries list as mutable `List[object]` (since `ConvertFrom-Json` yields immutable PSCustomObjects), appends a new entry, and writes back via `Save-JsonStateFile`. Depends on `Save-JsonStateFile` / `Read-JsonStateFile` from `admin-state.ps1`.
+`Add-DiscordDeliveryEntry` delegates JSON state initialization and mutability conversion to `ConvertTo-MutableStateObject` (from `admin-state.ps1`) with collection key `entries` and default version `1`. It then appends a new entry and writes back via `Save-JsonStateFile`. Timezone formatting uses `Get-TimezoneOffsetString` (also from `admin-state.ps1`). Depends on `ConvertTo-MutableStateObject`, `Get-TimezoneOffsetString`, `Save-JsonStateFile`, and `Read-JsonStateFile` from `admin-state.ps1`.
 
 The legacy Markdown entry format (`- YYYY-MM-dd HH:mm:ss (timezone) [OK|FAIL] Operation -> Recipient (HTTP NNN)`) is no longer written. Migration Phase 0 converts the legacy `discord-delivery.md` to `discord-delivery.json` via `Convert-DiscordDeliveryToJson` in `migration/phase0-helpers.ps1`.
 
@@ -186,8 +174,6 @@ HTTP status codes in FAIL entries are extracted from the exception message via r
 
 `Invoke-DiscordPUNotificationWorkflow` (CLI workflow) queries `Get-DiscordDeliveryLog -FailedOnly -Operation PU` for a selected player, reconstructs the notification from the context string (format: `"YYYY-MM PU: CharName +3.00"`), and re-sends via `Send-DiscordMessage`. Re-sends are logged as `PU-Resend` operations.
 
----
-
 ## Testing
 
 | Test file | Coverage |
@@ -196,8 +182,6 @@ HTTP status codes in FAIL entries are extracted from the exception message via r
 | `tests/invoke-playercharacterpuassignment.Tests.ps1` | Message grouping, webhook resolution, notification format |
 | `tests/discord-state.Tests.ps1` | State file write/read round-trip, regex parsing |
 | `tests/get-discorddeliverylog.Tests.ps1` | Filtering, sorting, edge cases |
-
----
 
 ## Related Documents
 

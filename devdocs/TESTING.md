@@ -1,12 +1,8 @@
 # Testing Guide - Technical Reference
 
----
-
 ## Scope
 
-This document covers the test infrastructure: Pester conventions, test file organization, fixture design, loading patterns, mock strategies, shared helpers, and how to add tests for new functions.
-
----
+The test infrastructure comprises Pester conventions, test file organization, fixture design, loading patterns, mock strategies, shared helpers, and guidance for adding tests to new functions.
 
 ## Prerequisites
 
@@ -15,8 +11,6 @@ Pester v5.0+ is the only external dependency. PowerShell 5.1 or PowerShell Core 
 ```powershell
 Install-Module Pester -MinimumVersion 5.0 -Force -SkipPublisherCheck
 ```
-
----
 
 ## Running Tests
 
@@ -54,8 +48,6 @@ Configuration (`.pesterconfig.psd1`):
     }
 }
 ```
-
----
 
 ## File Organization
 
@@ -197,6 +189,7 @@ tests/
 +-- new-locationentity.Tests.ps1
 +-- set-locationentity.Tests.ps1
 +-- new-mapentity.Tests.ps1
++-- set-mapentity.Tests.ps1
 +-- seasonal-and-location.Tests.ps1
 +-- mapa-entity.Tests.ps1
 |
@@ -323,7 +316,13 @@ tests/
 
 The `templates/` fixture directory contains only the 2 templates used by write tests (`New-PlayerCharacter`). The remaining 6 production templates (in the module's `templates/` dir) are not duplicated; tests that need them reference the module root directly.
 
----
+Plugin test files live alongside their plugins:
+
+```
+plugins/robot-api/tests/
++-- api-help-registry.Tests.ps1                    # ApiHelpRegistry C# type tests
++-- api-router.Tests.ps1                           # API router endpoint tests
+```
 
 ## Shared Helpers (`TestHelpers.ps1`)
 
@@ -345,8 +344,6 @@ Functions:
 | `Import-RobotModule` | Imports `Robot.PowerShell.psd1 -Force` |
 | `Import-RobotHelpers` | Dot-sources helper files by name from module root |
 | `Write-TestFile` | Writes UTF-8 no-BOM content to a file path |
-
----
 
 ## Loading Patterns
 
@@ -419,8 +416,6 @@ BeforeAll {
 
 Engine tests validate data structures and logic (region calculation, buffer operations, segment comparison, component state management) without actual terminal rendering. Engine files use `$script:` variables for screen state (`ScreenWidth`, `ScreenHeight`, `Regions`). Components are hashtables with `Render` and `HandleKey` scriptblocks. Tests exercise component factories (`New-MenuListComponent`, `New-ResultTableComponent`, etc.) and their state transitions. No mocking of `Get-RepoRoot` is needed (engine tests are pure UI logic).
 
----
-
 ## Test Structure Convention
 
 Every test file follows the same skeleton:
@@ -443,8 +438,6 @@ AfterAll {
     Remove-TestTempDir   # Only in files that create temp dirs
 }
 ```
-
----
 
 ## Mock Patterns
 
@@ -479,8 +472,6 @@ $Lines = [System.IO.File]::ReadAllLines("$script:TempRoot/entities.md")
 $Lines | Should -Contain "    - @margonemid: 12345"
 ```
 
----
-
 ## Fixture Design
 
 Fixtures use synthetic, controlled data with no dependency on actual repository content. They are minimal but complete -- enough data to exercise all code paths. Fixtures cross-reference each other (e.g., `Gracze.md` players match `entities.md` entries).
@@ -501,8 +492,6 @@ Key fixtures:
 | `sessions-failed.md` | Malformed dates with valid PU content | `test-playercharacterpuassignment` |
 | `pu-sessions.json` | Pre-processed session history | History deduplication |
 
----
-
 ## Testing Strategies
 
 Temporal filtering tests use extensive date-range testing for validity windows. Fixtures include entities with various `(YYYY-MM:YYYY-MM)` ranges to verify `Test-TemporalActivity`, `Get-LastActiveValue`, and `Get-AllActiveValues`.
@@ -512,8 +501,6 @@ Merge logic tests use multiple fixture files (`entities.md`, `entities-100-ent.m
 Polish declension tests in `resolve-name.Tests.ps1` include test cases for suffix stripping and stem alternation with Polish morphological forms (e.g., `"Solmyra"` -> `"Solmyr"`, `"Vidominie"` -> `"Vidomina"`).
 
 Format generation tests use separate fixture files per format generation to ensure all four formats are tested independently for parsing, metadata extraction, and format upgrade paths.
-
----
 
 ## Adding Tests for New Functions
 
@@ -525,18 +512,14 @@ Format generation tests use separate fixture files per format generation to ensu
 6. Use temp dirs for writes: `New-TestTempDir` + `Copy-FixtureToTemp` + `Remove-TestTempDir`
 7. Verify with assertions: use Pester's `Should` syntax
 
----
-
 ## Statistics
 
 | Metric | Count |
 |---|---|
-| Test files | 105 |
+| Test files | 106 |
 | Test cases (`It` blocks) | ~2,160 |
 | Fixture files | ~90 |
 | Loading patterns | 5 (A: exported, B: internal+dot-source, C: standalone helper, D: parser, E: engine component) |
-
----
 
 ## Related Documents
 

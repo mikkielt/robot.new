@@ -57,7 +57,7 @@ function Start-ApiWorkerPool {
 
     $ModRoot          = $script:ModuleRoot
     $Queue            = $Server.RequestQueue
-    $DataDirOverride  = $script:DataDirectoryOverride
+    $RepoRootOverride = $script:RepoRootOverride
 
     $script:ApiWorkerRunspaces = [System.Collections.Generic.List[object]]::new()
 
@@ -181,11 +181,11 @@ function Start-ApiWorkerPool {
         [void]$PS.Invoke()
         $PS.Commands.Clear()
 
-        # Propagate data directory override so workers resolve the same root
-        if ($DataDirOverride) {
+        # Propagate repo root override so workers resolve the same root
+        if ($RepoRootOverride) {
             $PS.Commands.Clear()
-            [void]$PS.AddCommand('Set-DataDirectory')
-            [void]$PS.AddParameter('Path', $DataDirOverride)
+            [void]$PS.AddCommand('Set-RepoRoot')
+            [void]$PS.AddParameter('Path', $RepoRootOverride)
             [void]$PS.Invoke()
             $PS.Commands.Clear()
         }

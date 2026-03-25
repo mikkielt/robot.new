@@ -27,7 +27,7 @@ Entities — browse, search, and inspect all entities (NPCs, locations, items, g
 
 Locations — browse locations with enriched hierarchy, door connections, child locations, and entity counts. Query which entities are present at a given location. Create, update, and remove locations with the same parent and coordinate validation as the CLI.
 
-Maps — list all game-map entries and create new ones.
+Maps — list all game-map entries, create new ones, and update existing maps (slug, dimensions, parent, doors).
 
 Players and characters — player roster with character assignments.
 
@@ -47,11 +47,13 @@ File listing — retrieve a list of Markdown file paths from the repository, use
 
 Dashboard — the web dashboard is served directly by the API as a self-contained page, accessible in a browser at the server address.
 
+Help — the API provides a self-documenting help endpoint. API consumers can query endpoint documentation directly from the running server, including available routes, accepted parameters, and response formats. This makes it possible to explore the API without external documentation.
+
 All data uses Polish canonical values for types, statuses, and domain terms. Clients can request English labels alongside Polish values for localization.
 
 ## Write Operations
 
-When write access is enabled, the API supports creating new entities (with a name and type), updating entity tags, soft-deleting entities (marking them as Usunięty — they are never physically removed), creating and updating locations and maps (with parent validation and coordinate checks), creating players and player characters, creating or updating currency holdings, creating sessions (single or batch), and triggering maintenance workflows such as rebuilding the session graph or updating session content hashes.
+When write access is enabled, the API supports creating new entities (with a name and type), updating entity tags, soft-deleting entities (marking them as Usunięty — they are never physically removed), creating and updating locations and maps (with parent validation, coordinate checks, slug uniqueness, and door connection management), creating players and player characters, creating or updating currency holdings, creating sessions (single or batch), and triggering maintenance workflows such as rebuilding the session graph or updating session content hashes.
 
 Write operations automatically notify connected real-time clients when entities are created or modified.
 
@@ -60,6 +62,10 @@ Write operations automatically notify connected real-time clients when entities 
 List queries support filtering by any field (type, status, name, location, and others), with both Polish and English values accepted. Multiple filters can be combined. Results can be sorted by any field in ascending or descending order, and limited to specific fields for efficiency.
 
 Large result sets are paginated automatically. The default page size is 50 items, with a maximum of 500. Each response includes a continuation token for retrieving the next page.
+
+## Response Caching
+
+The API caches responses and supports conditional requests using ETags. When the underlying data has not changed, the server returns a short "not modified" response instead of recomputing the full result. This reduces bandwidth and improves response times for clients that poll frequently, such as dashboards and bots.
 
 ## Real-Time Notifications
 

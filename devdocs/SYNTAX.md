@@ -1,4 +1,4 @@
-# Syntax & Comment Style Guide
+# Syntax & Comment Style Guide - Technical Specification
 
 ## Comment Styles
 
@@ -58,8 +58,6 @@ Warnings to stderr use a `[WARN FunctionName]` prefix pattern:
 [System.Console]::Error.WriteLine("[WARN Get-Entity] Cycle detected in @lokacja chain for '$($Entity.Name)'")
 ```
 
----
-
 ## Naming Conventions
 
 PascalCase for all variables, no exceptions:
@@ -102,8 +100,6 @@ Parameters use PascalCase, typed, with `[Parameter()]` attributes containing `He
 [object[]]$Players
 ```
 
----
-
 ## Code Patterns
 
 The codebase prefers .NET static methods over PowerShell cmdlets for performance and cross-platform consistency:
@@ -143,8 +139,6 @@ The codebase prefers .NET static methods over PowerShell cmdlets for performance
 [datetime]::TryParseExact($Str, "yyyy-MM-dd", [System.Globalization.CultureInfo]::InvariantCulture, ...)
 [System.DateTimeOffset]::Parse($DateString, [System.Globalization.CultureInfo]::InvariantCulture)
 ```
-
----
 
 ## Compiled C# Types
 
@@ -186,8 +180,8 @@ Current types:
 | `lib/EntityTagParser.cs` | `Robot.EntityTagParser` | Compiled 14-way entity tag dispatcher with temporal validity parsing for get-entity.ps1 |
 | `lib/ParseCacheHelper.cs` | `Robot.ParseCacheHelper` | Disk cache persistence for MarkdownScanner.ScanResult with version gating for get-markdown.ps1 |
 | `lib/SessionExtractor.cs` | `Robot.SessionExtractor` | Per-section session structural extractor with format detection and tag dispatch for get-session.ps1 |
-
----
+| `lib/ApiHelpRegistry.cs` | `Robot.ApiHelpRegistry` | Sidecar-based endpoint help registry with per-route documentation loading |
+| `lib/ApiResponseCache.cs` | `Robot.ApiResponseCache` | Fingerprint-based response cache with domain-scoped sidecar invalidation |
 
 ## Output Suppression
 
@@ -198,8 +192,6 @@ Current types:
 [void]$FilesToProcess.Add($FilePath)
 [void]$ExcludedListItems.Add($LIId)
 ```
-
----
 
 ## Object Creation
 
@@ -225,8 +217,6 @@ $SessionProps = [ordered]@{
 }
 ```
 
----
-
 ## String Comparison
 
 Case-insensitive comparison uses .NET comparers:
@@ -248,8 +238,6 @@ $Text.StartsWith($Prefix)  # ordinal by default, acceptable for known-ASCII pref
 ```powershell
 if ($FileName -ieq 'Robot.PowerShell.psm1') { continue }
 ```
-
----
 
 ## Parameter Declarations
 
@@ -277,8 +265,6 @@ Standalone scripts use bare `param()`:
 param([string]$FilePath)
 ```
 
----
-
 ## Return Convention
 
 Explicit `return` keyword is always used:
@@ -302,8 +288,6 @@ if ($FilesToProcess.Count -eq 1 -and $PSCmdlet.ParameterSetName -eq "File") {
     return $AllResults
 }
 ```
-
----
 
 ## Error Handling
 
@@ -362,8 +346,6 @@ try {
 }
 ```
 
----
-
 ## Caching and Memoization
 
 Caches use `[hashtable]` with `[DBNull]::Value` as a sentinel for "looked up, found nothing":
@@ -381,8 +363,6 @@ if ($Cache -and $Cache.ContainsKey($CacheKey)) {
 if ($Cache) { $Cache[$CacheKey] = [System.DBNull]::Value }
 ```
 
----
-
 ## Precompiled Regex
 
 Regex patterns used across multiple calls are compiled and stored at script scope or as local variables before loops:
@@ -396,8 +376,6 @@ $CommitRegex = [regex]'^COMMIT\x1F(.+?)\x1F(.+?)\x1F(.+?)\x1F(.+)$'
 $MdLinkPattern = [regex]'\[(.+?)\]\((.+?)\)'
 ```
 
----
-
 ## Identity-Based Lookups
 
 `RuntimeHelpers.GetHashCode()` is used to get stable object identity hashes for parent-child lookups:
@@ -409,8 +387,6 @@ if (-not $ChildrenOf.ContainsKey($ParentId)) {
 }
 $ChildrenOf[$ParentId].Add($LI)
 ```
-
----
 
 ## Entity File Syntax (Markdown)
 
@@ -475,8 +451,6 @@ Some tags accept nested bullets for multi-line content:
         - Dowodzi legionem umarlych
 ```
 
----
-
 ## Entity-Level @Tags
 
 Tags with dedicated handling in the entity parser (`get-entity.ps1`):
@@ -507,8 +481,6 @@ Override tags with established conventions for locations:
 | `@wymiary` | Tile grid dimensions for Mapa entities (width, height) | `@wymiary: 64, 96` |
 | `@tlo` | Background image reference. Supports seasonal markers | `@tlo: ithan-zima.png (zima)` |
 
----
-
 ## Session-Level @Tags (Gen4 Metadata)
 
 Gen4 sessions use `@`-prefixed block items inside the session section, parsed by `session-parsehelpers.ps1`:
@@ -523,8 +495,6 @@ Gen4 sessions use `@`-prefixed block items inside the session section, parsed by
 | `@Transfer` | Transfer directives — currency: `{amount} {denomination}, {source} -> {destination}`, item: `{item}, {source} -> {destination}` or `{amount} {item}, {source} -> {destination}` |
 | `@Narrator` | Narrator name override (when header narrator differs from canonical name) |
 | `@Data` | Date override for malformed or placeholder headers |
-
----
 
 ## Module Manifest (.psd1)
 
@@ -544,8 +514,6 @@ The manifest uses PowerShell data syntax (`@{ }`) with inline `#` comments for f
     AliasesToExport = @()
 }
 ```
-
----
 
 ## Module Loader (.psm1)
 

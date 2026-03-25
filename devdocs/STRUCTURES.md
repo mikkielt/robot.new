@@ -1,16 +1,12 @@
-# Data Structures
-
----
+# Data Structures - Technical Reference
 
 ## Scope
 
-This document is the canonical reference for all PSCustomObject shapes and compiled C# types returned by Robot module functions. Each section documents one structure or a group of related structures with exact property names, types, and the source file where the structure is defined.
+All PSCustomObject shapes and compiled C# types returned by Robot module functions are catalogued with exact property names, types, and the source file where each structure originates.
 
-Behavioral documentation (algorithms, edge cases, parameters) lives in the per-subsystem devdocs. This document covers shapes only.
+Behavioral documentation (algorithms, edge cases, parameters) lives in the per-subsystem devdocs; only shapes are covered below.
 
 General entity behavior: [ENTITIES.md](ENTITIES.md). Session parsing: [SESSIONS.md](SESSIONS.md). Currency subsystem: [CURRENCY.md](CURRENCY.md). Player management: [CHARFILE.md](CHARFILE.md). Reporting: [ECONOMY.md](ECONOMY.md), [SESSION-GRAPH.md](SESSION-GRAPH.md), [LOCATION-GRAPH.md](LOCATION-GRAPH.md), [LOGS.md](LOGS.md). Auditing: [AUDITING.md](AUDITING.md). Write internals: [ENTITY-WRITES.md](ENTITY-WRITES.md).
-
----
 
 ## Architecture Overview
 
@@ -70,8 +66,6 @@ PUAssignmentLog ──────────────────── PU 
 NotificationLog ──────────────────── Intel delivery report entry
 ```
 
----
-
 ## Entity Object
 
 Compiled C# type `Robot.Entity` in `lib/EntityModel.cs`. Returned by `Get-Entity` and enriched by `Get-EntityState`.
@@ -110,8 +104,6 @@ Compiled C# type `Robot.Entity` in `lib/EntityModel.cs`. Returned by `Get-Entity
 
 Current scalar properties (`Type`, `Owner`, `Location`, `Status`, etc.) hold the last-active value resolved from their corresponding history list. History lists contain `TemporalEntry` or `CoordinateTemporalEntry` objects sorted by `ValidFrom`.
 
----
-
 ## Temporal History Types
 
 Compiled C# types in `lib/TemporalEntry.cs`. Used in all entity history lists.
@@ -134,8 +126,6 @@ Compiled C# types in `lib/TemporalEntry.cs`. Used in all entity history lists.
 | `ValidFrom` | DateTime? | Start of validity period |
 | `ValidTo` | DateTime? | End of validity period |
 | `Season` | string | Season restriction |
-
----
 
 ## Map Traversal Types
 
@@ -226,8 +216,6 @@ Compiled C# types in `lib/MapTraversalGraph.cs`. Used by `Get-MapTraversalGraph`
 | `Count` | int | Total occurrences across all sessions |
 | `Variants` | string[] | All distinct raw forms seen |
 
----
-
 ## Session Object
 
 PSCustomObject built in `public/session/get-session.ps1` (lines 902-922). Returned by `Get-Session`.
@@ -258,8 +246,6 @@ PSCustomObject built in `public/session/get-session.ps1` (lines 902-922). Return
 `Intel` array elements after resolution contain: `RawTarget` (string), `Message` (string), `Directive` (string: Grupa, Lokacja, or Direct), `TargetName` (string), `Recipients` (object[] with `Name`, `Type`, `Webhook`).
 
 `Mentions` array elements contain: `Name` (string), `Type` (string), `Owner` (object).
-
----
 
 ## Session Metadata Types
 
@@ -302,8 +288,6 @@ Compiled C# types in `lib/SessionMetadata.cs`. Extracted by `Robot.SessionExtrac
 | `Source` | string | Source entity name |
 | `Destination` | string | Destination entity name |
 
----
-
 ## Narrator Types
 
 Compiled C# types in `lib/NarratorResult.cs`. Returned as `Session.Narrator`.
@@ -325,8 +309,6 @@ Compiled C# types in `lib/NarratorResult.cs`. Returned as `Session.Narrator`.
 | `Player` | object | Resolved Player PSCustomObject (backreference) |
 | `Confidence` | string | Resolution confidence for this narrator |
 
----
-
 ## Player Object
 
 PSCustomObject built in `public/player/get-player.ps1` (lines 217-224). Returned by `Get-Player`.
@@ -334,13 +316,12 @@ PSCustomObject built in `public/player/get-player.ps1` (lines 217-224). Returned
 | Property | Type | Description |
 |---|---|---|
 | `Name` | string | Player name |
+| `CN` | string | Hierarchical canonical name (`Gracz/{PlayerName}`) |
 | `Names` | HashSet[string] | All searchable names (player name + character names + aliases), case-insensitive |
 | `MargonemID` | string | Margonem game ID (or `$null`) |
 | `PRFWebhook` | string | Discord webhook URL for notifications (or `$null`) |
 | `Triggers` | string[] | Restricted topic triggers |
 | `Characters` | List[object] | List of Character objects |
-
----
 
 ## Character Object
 
@@ -349,6 +330,7 @@ PSCustomObject built in `public/player/get-player.ps1` (lines 158-168). Nested i
 | Property | Type | Description |
 |---|---|---|
 | `Name` | string | Character name |
+| `CN` | string | Hierarchical canonical name (`Postać/{CharacterName}`) |
 | `IsActive` | bool | Whether the character is marked active in Gracze.md |
 | `Aliases` | string[] | Alternative names |
 | `Path` | string | Character file path (empty string if none) |
@@ -357,8 +339,6 @@ PSCustomObject built in `public/player/get-player.ps1` (lines 158-168). Nested i
 | `PUSum` | decimal? | Total PU accumulated (or `$null`) |
 | `PUTaken` | decimal? | PU taken/used (or `$null`) |
 | `AdditionalInfo` | string or List[string] | Extra metadata from Gracze.md |
-
----
 
 ## PlayerCharacter Object
 
@@ -386,8 +366,6 @@ PSCustomObject built in `public/player/get-playercharacter.ps1` (lines 163-183).
 | `AdditionalNotes` | string[] | Additional notes (three-layer merge) |
 | `DescribedSessions` | object[] | Session entries from character file (see DescribedSession) |
 
----
-
 ## Character File Object
 
 PSCustomObject built in `private/charfile-helpers.ps1` (lines 311-323). Returned by `Read-CharacterFile`.
@@ -406,8 +384,6 @@ PSCustomObject built in `private/charfile-helpers.ps1` (lines 311-323). Returned
 | `DescribedSessions` | object[] | Entries from **Opisane sesje:** section (see DescribedSession) |
 | `Sections` | Dictionary[string, object] | Section metadata for in-place rewrites (see CharacterSection) |
 
----
-
 ## Reputation Object
 
 PSCustomObject built in `private/charfile-helpers.ps1` (lines 221-225). Nested in CharacterFile and PlayerCharacter.
@@ -425,8 +401,6 @@ PSCustomObject built in `private/charfile-helpers.ps1` (lines 221-225). Nested i
 | `Location` | string | Location name |
 | `Detail` | string | Description or detail text (or `$null`) |
 
----
-
 ## DescribedSession Object
 
 PSCustomObject built in `private/charfile-helpers.ps1` (lines 302-306). Nested in CharacterFile and PlayerCharacter.
@@ -436,8 +410,6 @@ PSCustomObject built in `private/charfile-helpers.ps1` (lines 302-306). Nested i
 | `Date` | DateTime? | Parsed session date (or `$null` if unparseable) |
 | `Title` | string | Session title |
 | `Narrator` | string | Narrator name (or `$null`) |
-
----
 
 ## CharacterSection Object
 
@@ -449,8 +421,6 @@ Hashtable returned by `Find-CharacterSection` in `private/charfile-helpers.ps1` 
 | `InlineContent` | string | Content after `**Header:**` on the same line |
 | `ContentStart` | int | First content line index (after header) |
 | `ContentEnd` | int | Line index past the last content line |
-
----
 
 ## Currency Denomination
 
@@ -466,8 +436,6 @@ PSCustomObject defined in `private/currency-helpers.ps1` (lines 40-60). Three co
 
 `ConvertFrom-CurrencyBaseUnit` returns a hashtable with keys `Korony` (int), `Talary` (int), `Kogi` (int).
 
----
-
 ## Currency Entity Object
 
 PSCustomObject built in `public/currency/get-currencyentity.ps1` (lines 100-109). Returned by `Get-CurrencyEntity`.
@@ -482,8 +450,6 @@ PSCustomObject built in `public/currency/get-currencyentity.ps1` (lines 100-109)
 | `Location` | string | Location name (or `$null`) |
 | `Balance` | int | Current quantity |
 | `Status` | string | Entity status |
-
----
 
 ## Currency Report Object
 
@@ -504,8 +470,6 @@ PSCustomObject built in `public/reporting/get-currencyreport.ps1` (lines 126-139
 | `LastChangeDate` | DateTime | Date of last quantity change |
 | `Warnings` | string[] | Status flags: NegativeBalance, StaleBalance |
 | `History` | object[] | QuantityHistory TemporalEntry array (only with `-ShowHistory`) |
-
----
 
 ## Currency Reconciliation Object
 
@@ -529,8 +493,6 @@ PSCustomObject returned by `Test-CurrencyReconciliation` in `public/reporting/te
 | `Severity` | string | Error or Warning |
 | `Entity` | string | Affected entity name (or session header for AsymmetricTransaction) |
 | `Detail` | string | Human-readable description |
-
----
 
 ## Economic Snapshot Object
 
@@ -558,8 +520,6 @@ PSCustomObject built in `public/reporting/get-economicsnapshot.ps1` (lines 129-1
 | `WealthKogi` | int | Total wealth in base units |
 | `OwnerCategory` | string | Physical, Virtual, or Unknown |
 
----
-
 ## Economic Timeline Entry
 
 PSCustomObject built in `public/reporting/get-economictimeline.ps1` (lines 248-255). Array returned by `Get-EconomicTimeline`.
@@ -572,8 +532,6 @@ PSCustomObject built in `public/reporting/get-economictimeline.ps1` (lines 248-2
 | `VirtualSupplyKogi` | int | Virtual supply in base units |
 | `SupplyByDenomination` | hashtable | `{ DenomName = @{ Total; Physical; Virtual } }` |
 | `TransferCount` | int | Number of transfers in this month |
-
----
 
 ## Materialization Report Object
 
@@ -615,8 +573,6 @@ PSCustomObject built in `public/reporting/get-materializationreport.ps1` (lines 
 | `Denomination` | string | Denomination name |
 | `Quantity` | int | Currency quantity |
 | `BaseValueKogi` | int | Value in base units |
-
----
 
 ## Location Graph Objects
 
@@ -666,8 +622,6 @@ Summary object:
 | `ExteriorNodes` | int | Outdoor locations |
 | `InteriorNodes` | int | Indoor locations |
 | `PossiblyStaleEdges` | int | Potentially outdated edges |
-
----
 
 ## Session Graph Objects
 
@@ -726,8 +680,6 @@ FilePathInvolvement — returned by `Get-FilePathInvolvement` in `private/sessio
 | `Name` | string | Entity name |
 | `Type` | string | Entity type |
 
----
-
 ## Log Objects
 
 C# types in `lib/LogParser.cs` and PSCustomObjects in `private/parse-logcontent.ps1`.
@@ -761,8 +713,6 @@ C# types in `lib/LogParser.cs` and PSCustomObjects in `private/parse-logcontent.
 | `EndLine` | int | Last line index in this segment |
 | `Resolved` | string | Resolved entity name (set by PowerShell after name resolution) |
 | `Stage` | string | Resolution stage (set by PowerShell after name resolution) |
-
----
 
 ## Markdown Parser Objects
 
@@ -813,8 +763,6 @@ C# types in `lib/MarkdownScanner.cs`. Returned by `Robot.MarkdownScanner.Scan()`
 | `Type` | string | MarkdownLink or PlainUrl |
 | `Text` | string | Link display text (`$null` for PlainUrl) |
 | `Url` | string | Link URL |
-
----
 
 ## Auditing Report Objects
 
@@ -883,8 +831,6 @@ PSCustomObjects returned by reporting functions in `public/reporting/`. See [AUD
 | `RecipientCount` | int | Number of recipients |
 | `Recipients` | string[] | Recipient names |
 
----
-
 ## Entity Write Helper Objects
 
 Hashtables returned by internal write helpers in `private/entity-writehelpers.ps1`. See [ENTITY-WRITES.md](ENTITY-WRITES.md) for behavioral documentation.
@@ -935,8 +881,6 @@ Hashtables returned by internal write helpers in `private/entity-writehelpers.ps
 | `Lines` | List[string] | File content lines |
 | `NL` | string | Detected newline style |
 
----
-
 ## CRUD Return Objects
 
 PSCustomObjects returned by public create commands. All CRUD commands support `-WhatIf`/`-Confirm`.
@@ -985,8 +929,6 @@ PSCustomObjects returned by public create commands. All CRUD commands support `-
 | `Amount` | int | Initial amount |
 | `EntitiesFile` | string | Entities file path |
 
----
-
 ## Name Resolution Objects
 
 Structures returned by name resolution functions. See [NAME-RESOLUTION.md](NAME-RESOLUTION.md) for behavioral documentation.
@@ -1009,8 +951,6 @@ Index entry (value in `Index` dictionary):
 | `Priority` | int | Resolution priority (lower = higher priority) |
 | `Ambiguous` | bool | Whether the token maps to multiple owners |
 
----
-
 ## Currency Entities Filtered Object
 
 PSCustomObject returned by `Get-CurrencyEntitiesFiltered` in `private/currency-helpers.ps1`. Used internally by reporting and reconciliation functions.
@@ -1024,8 +964,6 @@ PSCustomObject returned by `Get-CurrencyEntitiesFiltered` in `private/currency-h
 | `Quantity` | int | Parsed integer quantity (0 if missing) |
 | `Status` | string | Entity status (Aktywny default) |
 | `OwnerCategory` | string | Physical, Virtual, or Unknown (only with `-EntityLookup`) |
-
----
 
 ## Item Entity Object
 
@@ -1042,8 +980,6 @@ Returned by `Get-ItemEntity`. Enriched Przedmiot entity with owner classificatio
 | `IsCurrency` | bool | Whether this item matches a currency denomination |
 | `Denomination` | string | Resolved denomination name (null if not currency) |
 | `LastChangeDate` | datetime? | Most recent ValidFrom across owner/location/status/quantity histories |
-
----
 
 ## Location Entity Object
 
@@ -1078,13 +1014,9 @@ MapData subobject (for Mapa entities, extracted from `Entity.Overrides`):
 | `UrlNerthus` | string | Nerthus map image URL (`@url_nerthus` override) |
 | `Dimensions` | string | Tile dimensions (`@wymiary` override) |
 
----
-
 ## Resolve-Entity Result
 
 Returned by `Resolve-Entity`. Passes through original `Robot.Entity` objects — no enrichment or projection. Filter parameters are AND-combined: Owner, Location, Group, Type, Status, Name (substring).
-
----
 
 ## Dormancy Report Object
 
@@ -1102,8 +1034,6 @@ Returned by `Get-DormancyReport`. One entry per dormant entity, sorted by `DaysD
 
 Activity sources checked: all 9 history lists (ValidFrom scan) + session graph index `_index.json` (participant dates). Entities with `Status = Usunięty` excluded by default.
 
----
-
 ## Session Frequency Trend Object
 
 Returned by `Get-SessionFrequencyTrend`. One entry per calendar month with sessions.
@@ -1118,8 +1048,6 @@ Returned by `Get-SessionFrequencyTrend`. One entry per calendar month with sessi
 
 Sessions with null Date are skipped. Narrator names extracted from `Session.Narrator.Name` (object) or string value.
 
----
-
 ## Entity Delta Object
 
 Returned by `Get-EntityDelta`. One entry per changed property between two date snapshots.
@@ -1131,8 +1059,6 @@ Returned by `Get-EntityDelta`. One entry per changed property between two date s
 | `After` | object | Value at ToDate (scalar or string[] for multi-valued) |
 
 Scalar comparison uses `OrdinalIgnoreCase` with null→empty normalization. Multi-valued comparison uses `HashSet[string]` symmetric diff. Entity resolution supports primary name and alias (Names collection) matching.
-
----
 
 ## Testing
 
@@ -1163,8 +1089,6 @@ Scalar comparison uses `OrdinalIgnoreCase` with null→empty normalization. Mult
 | `tests/get-dormancyreport.Tests.ps1` | DormancyReport object, threshold filtering, LastSource |
 | `tests/get-sessionfrequencytrend.Tests.ps1` | SessionFrequencyTrend object, narrator dedup, format breakdown |
 | `tests/get-entitydelta.Tests.ps1` | EntityDelta object, scalar/multi-valued diffs, alias resolution |
-
----
 
 ## Related Documents
 
