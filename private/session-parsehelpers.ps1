@@ -15,8 +15,9 @@
                                fallback for Gen3/Gen4)
     - Get-SessionListMetadata: extracts PU awards, log URLs, entity state changes
                                (Zmiany), @Intel entries, @Transfer entries, @Narrator
-                               overrides, and @Data overrides from structured list items
-                               (Gen3/Gen4 format, @ stripped via $MatchText)
+                               overrides, @Data overrides, and @Pliki file paths from
+                               structured list items (Gen3/Gen4 format, @ stripped via
+                               $MatchText)
     - Get-SessionPlainTextLogs: scans raw content lines for "Logi: <url>" patterns
                                as a Gen1/Gen2 fallback
 
@@ -25,12 +26,12 @@
       ("- PU:" or "- @PU:"); also used by Test-PlayerCharacterPUAssignment
       and Test-SessionIntegrity for diagnostics
 
-    Get-SessionListMetadata is the heaviest helper. It processes up to 8
+    Get-SessionListMetadata is the heaviest helper. It processes up to 9
     tag types per session (PU, Logi, Zmiany, Intel, Transfer, Narrator,
-    Data, Lokacje) with a pre-built parent-to-children hashtable (ChildrenOf)
+    Data, Lokacje, Pliki) with a pre-built parent-to-children hashtable (ChildrenOf)
     keyed by ParentIndex/LocalIndex integers to avoid O(n^2) list scanning. When Robot.SessionTagParser is available,
     list items are flattened to parallel arrays and dispatched to compiled
-    C# code with prefix-based 8-way dispatch for per-item tag routing.
+    C# code with prefix-based 9-way dispatch for per-item tag routing.
 
     Get-SessionLocations uses a two-strategy approach for Gen3/Gen4:
     first attempts entity-resolution to identify location lists by content
@@ -234,6 +235,7 @@ function Get-SessionListMetadata {
             Transfers    = $Transfers
             Narrators    = $CsResult.Narrators
             DateOverride = $CsResult.DateOverride
+            Files        = $CsResult.Files
         }
     }
 
@@ -244,6 +246,7 @@ function Get-SessionListMetadata {
     $Intel        = [System.Collections.Generic.List[object]]::new()
     $Transfers    = [System.Collections.Generic.List[object]]::new()
     $Narrators    = [System.Collections.Generic.List[string]]::new()
+    $Files        = [System.Collections.Generic.List[string]]::new()
     $DateOverride = $null
 
     foreach ($ListItem in $SectionLists) {
@@ -444,6 +447,18 @@ function Get-SessionListMetadata {
             }
         }
 
+        # Pliki: file path references (or @Pliki: in Gen4)
+        if ($MatchText.StartsWith('pliki') -and $MatchText.Length -gt 5 -and ($MatchText[5] -eq ':' -or $MatchText[5] -eq ' ')) {
+            if ($Children) {
+                foreach ($FileItem in $Children) {
+                    $FileVal = $FileItem.Text.Trim()
+                    if (-not [string]::IsNullOrWhiteSpace($FileVal)) {
+                        $Files.Add($FileVal)
+                    }
+                }
+            }
+        }
+
     }
 
     return @{
@@ -454,6 +469,7 @@ function Get-SessionListMetadata {
         Transfers    = $Transfers
         Narrators    = $Narrators
         DateOverride = $DateOverride
+        Files        = $Files
     }
 }
 

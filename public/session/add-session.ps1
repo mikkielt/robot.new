@@ -23,11 +23,13 @@
 
     Processing pipeline:
     1. Normalize input into session specs (single wraps into one-element list)
-    2. Generate markdown for each session via New-Session (fail-early on invalid params)
-    3. Per file: validate path under repo root, read content, detect NL style,
+    2. Compute repo-relative paths from -Path and auto-inject as Files for
+       @Pliki metadata (self-documenting write targets) unless overridden
+    3. Generate markdown for each session via New-Session (fail-early on invalid params)
+    4. Per file: validate path under repo root, read content, detect NL style,
        check for duplicate headers, find chronological insertion points,
        splice bottom-to-top, write UTF-8 no BOM
-    4. Fire plugin hooks (BeforeWrite, AfterWrite, AfterCreate), clear parse caches,
+    5. Fire plugin hooks (BeforeWrite, AfterWrite, AfterCreate), clear parse caches,
        register operation file, eager graph refresh
 
     Module-level data:
@@ -155,7 +157,22 @@ function Add-Session {
     # ── 2. Generate markdown for each spec (fail-early) ────────────────
     $Generated = [System.Collections.Generic.List[hashtable]]::new($Specs.Count)
     $OptionalKeys = @('DateEnd', 'MetadataNarrators', 'Locations', 'PU',
-                      'Logs', 'Changes', 'Intel', 'Transfers', 'Content')
+                      'Logs', 'Changes', 'Intel', 'Transfers', 'Content', 'Files')
+
+    $RepoRoot = Get-RepoRoot
+
+    # Auto-populate Files from Path for @Pliki metadata (self-documenting write targets)
+    $RelPaths = [System.Collections.Generic.List[string]]::new($Path.Count)
+    $RootLen = $RepoRoot.Length + 1
+    foreach ($P in $Path) {
+        $Abs = if ([System.IO.Path]::IsPathRooted($P)) { $P }
+               else { [System.IO.Path]::GetFullPath($P) }
+        if ($Abs.Length -gt $RootLen) {
+            $RelPaths.Add($Abs.Substring($RootLen).Replace('\', '/'))
+        } else {
+            $RelPaths.Add($Abs.Replace('\', '/'))
+        }
+    }
 
     foreach ($Spec in $Specs) {
         $NewParams = @{
@@ -165,6 +182,9 @@ function Add-Session {
         }
         foreach ($Key in $OptionalKeys) {
             if ($Spec.ContainsKey($Key)) { $NewParams[$Key] = $Spec[$Key] }
+        }
+        if (-not $NewParams.ContainsKey('Files')) {
+            $NewParams['Files'] = $RelPaths.ToArray()
         }
 
         $Markdown = New-Session @NewParams
@@ -189,7 +209,6 @@ function Add-Session {
     # ── 3. Process each target file ────────────────────────────────────
     $UTF8NoBOM = [System.Text.UTF8Encoding]::new($false)
     $HasHooks  = Get-Command 'Invoke-PluginHook' -ErrorAction SilentlyContinue
-    $RepoRoot  = Get-RepoRoot
 
     $AllHeaders = [System.Collections.Generic.List[string]]::new($Sorted.Count)
     foreach ($S in $Sorted) { $AllHeaders.Add($S.HeaderText) }

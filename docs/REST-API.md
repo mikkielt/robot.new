@@ -43,11 +43,13 @@ Name resolution — resolve any name to its entity or player, with fuzzy matchin
 
 Log parsing — submit raw log text and receive structured data back, or provide log URLs to fetch and parse their content. Preview session markdown with name resolution before committing.
 
-File listing — retrieve a list of Markdown file paths from the repository, useful for autocomplete in client applications.
+File listing — retrieve a flat list of Markdown file paths from the repository, or a hierarchical directory tree of those files. The flat list is useful for autocomplete in client applications; the tree structure supports file browsers and path navigation in dashboards.
 
 Dashboard — the web dashboard is served directly by the API as a self-contained page, accessible in a browser at the server address.
 
-Help — the API provides a self-documenting help endpoint. API consumers can query endpoint documentation directly from the running server, including available routes, accepted parameters, and response formats. This makes it possible to explore the API without external documentation.
+Help — the API is self-documenting. A help index lists all available help components (such as API endpoints, editor zones, and CLI categories). Querying a specific component returns detailed field descriptions, accepted parameters, and response formats. Results can be filtered by language (Polish or English) and by which fields to include, so clients fetch only the documentation they need. Help data is loaded once at server startup from sidecar files shipped with the plugin.
+
+Server diagnostics — a set of lightweight endpoints provide operational information without touching campaign data. These include a health check (confirms the server is running), a route listing (all registered endpoints with methods and descriptions), a metrics summary (uptime, request count, queue depth, route count), and a schema dictionary (all domain names, types, statuses, and enum values used by the API). These endpoints are handled entirely by the server engine with no worker overhead, making them suitable for monitoring and integration discovery.
 
 All data uses Polish canonical values for types, statuses, and domain terms. Clients can request English labels alongside Polish values for localization.
 
@@ -65,7 +67,9 @@ Large result sets are paginated automatically. The default page size is 50 items
 
 ## Response Caching
 
-The API caches responses and supports conditional requests using ETags. When the underlying data has not changed, the server returns a short "not modified" response instead of recomputing the full result. This reduces bandwidth and improves response times for clients that poll frequently, such as dashboards and bots.
+The API caches responses for expensive read operations (entity state, economy, leaderboard, dormancy, frequency, narrator statistics, location graph, and PU processing history). Cached results are stored as files on disk and reused across server restarts. Each cached response tracks which data domains it depends on — entities, sessions, or the session graph. When data in a domain changes (for example, after a write operation modifies an entity), all cached responses that depend on that domain are automatically invalidated.
+
+Clients that include conditional request headers (ETags) receive a short "not modified" response when the underlying data has not changed, reducing bandwidth and improving response times for dashboards and bots that poll frequently.
 
 ## Real-Time Notifications
 

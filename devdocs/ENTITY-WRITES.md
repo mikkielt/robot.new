@@ -155,12 +155,13 @@ Entity mutations can invalidate the pre-computed Tier 2 session graph cache (see
 | `ResDir` | string | Mandatory. Path to the `.robot.local/res` resource directory containing `session-graph/`. |
 
 Implementation:
-1. Dot-sources `private/session-graphhelpers.ps1` if `Read-SessionGraphMeta` is not already available
-2. Reads `session-graph/_meta.json` via `Read-SessionGraphMeta`
-3. Sets `Tier2Stale = $true` and `Tier2StaleReason` in the metadata hashtable
-4. Writes updated metadata via `Write-SessionGraphMeta`
+1. Invalidates all parse caches via `Clear-ParseCaches` (positioned before the try block to guarantee cache clearing even if graph staleness tracking fails)
+2. Dot-sources `private/session-graphhelpers.ps1` if `Read-SessionGraphMeta` is not already available
+3. Reads `session-graph/_meta.json` via `Read-SessionGraphMeta`
+4. Sets `Tier2Stale = $true` and `Tier2StaleReason` in the metadata hashtable
+5. Writes updated metadata via `Write-SessionGraphMeta`
 
-The entire operation is wrapped in `try/catch` — a failure to mark the graph stale does not abort the entity write. This ensures that graph cache availability is never a prerequisite for entity mutations.
+Steps 2-5 are wrapped in `try/catch` — a failure to mark the graph stale does not abort the entity write. Cache invalidation in step 1 is outside the try block so it always executes.
 
 Calling commands (e.g., `Set-Entity`, `Remove-Entity`, currency CRUD) invoke this function after writing entity changes to flag the graph for rebuild.
 
@@ -238,7 +239,7 @@ See [CONFIG-STATE.md](CONFIG-STATE.md) for the full operation context specificat
 | Target 3 | `Postaci/Gracze/<Name>.md` (character file from template) |
 | Tags | `@nalezy_do`, `@plik`, `@pu_startowe` |
 | Duplicate detection | Throws if character already exists |
-| PU start | Uses `Get-NewPlayerCharacterPUCount` as fallback when `InitialPUStart` not specified (minimum 20) |
+| PU start | Uses `Get-NewPlayerCharacterPUCount` (formula: `Floor((Sum(PUTaken) / 2) + 20)`) as fallback when `InitialPUStart` not specified; falls back to `20` if the function is unavailable |
 | Template | `player-character-file.md.template` with `{CharacterSheetUrl}`, `{Triggers}`, `{AdditionalInfo}` placeholders |
 | Skip file | `-NoCharacterFile` switch |
 | Optional | Initial character file properties: `-Condition`, `-SpecialItems`, `-Reputation*`, `-AdditionalNotes` |
@@ -476,28 +477,28 @@ NewPlayerCharacter Result (`New-PlayerCharacter`):
 
 | Test file | Coverage |
 |---|---|
-| `tests/entity-writehelpers.Tests.ps1` | Find/Set/New primitives, file I/O, bootstrap, `ConvertFrom-EntityTemplate` |
-| `tests/set-player.Tests.ps1` | Tag upsert, trigger replacement, webhook validation |
-| `tests/set-playercharacter.Tests.ps1` | Dual-target writes, PU derivation, alias handling |
-| `tests/set-playercharacter-charfile.Tests.ps1` | Character file property writes |
-| `tests/new-player.Tests.ps1` | Creation, duplicate detection, delegation |
-| `tests/new-playercharacter.Tests.ps1` | Creation, template rendering, PU start fallback |
-| `tests/remove-playercharacter.Tests.ps1` | Soft-delete, status writing |
-| `tests/przedmiot-entity.Tests.ps1` | Auto-creation of Przedmiot entities |
-| `tests/new-entity.Tests.ps1` | Generic creation, duplicate detection, tag writing, ValidFrom |
-| `tests/set-entity.Tests.ps1` | Tag upsert, auto-creation, cross-section search, temporal suffix |
-| `tests/remove-entity.Tests.ps1` | Soft-delete, status writing, ConfirmImpact |
-| `tests/mapa-entity.Tests.ps1` | Mapa type registration, skeleton creation, New/Set/Remove-Entity with Mapa |
-| `tests/new-currencyentity.Tests.ps1` | Denomination validation, auto-naming, duplicate detection, template |
-| `tests/set-currencyentity.Tests.ps1` | Absolute/delta quantity, owner/location, mutual exclusion |
-| `tests/get-currencyentity.Tests.ps1` | Filtering, denomination resolution, balance, inactive exclusion |
-| `tests/remove-currencyentity.Tests.ps1` | Soft-delete, non-zero balance warning |
-| `tests/new-locationentity.Tests.ps1` | Location creation, parent validation, coordinate validation, door warnings |
-| `tests/set-locationentity.Tests.ps1` | Location update, door add/remove, multi-type support |
-| `tests/new-mapentity.Tests.ps1` | Mapa creation, slug uniqueness, dimensions validation |
+| `tests/entity-writehelpers.Tests.ps1` | Find/Set/New primitives, file I/O, bootstrap, `ConvertFrom-EntityTemplate` (38 tests) |
+| `tests/set-player.Tests.ps1` | Tag upsert, trigger replacement, webhook validation (8 tests) |
+| `tests/set-playercharacter.Tests.ps1` | Dual-target writes, PU derivation, alias handling (12 tests) |
+| `tests/set-playercharacter-charfile.Tests.ps1` | Character file property writes (5 tests) |
+| `tests/new-player.Tests.ps1` | Creation, duplicate detection, delegation (10 tests) |
+| `tests/new-playercharacter.Tests.ps1` | Creation, template rendering, PU start computation (8 tests) |
+| `tests/remove-playercharacter.Tests.ps1` | Soft-delete, status writing (4 tests) |
+| `tests/przedmiot-entity.Tests.ps1` | Auto-creation of Przedmiot entities (5 tests) |
+| `tests/new-entity.Tests.ps1` | Generic creation, duplicate detection, tag writing, ValidFrom (8 tests) |
+| `tests/set-entity.Tests.ps1` | Tag upsert, auto-creation, cross-section search, temporal suffix (10 tests) |
+| `tests/remove-entity.Tests.ps1` | Soft-delete, status writing, ConfirmImpact (9 tests) |
+| `tests/mapa-entity.Tests.ps1` | Mapa type registration, skeleton creation, New/Set/Remove-Entity with Mapa (10 tests) |
+| `tests/new-currencyentity.Tests.ps1` | Denomination validation, auto-naming, duplicate detection, template (7 tests) |
+| `tests/set-currencyentity.Tests.ps1` | Absolute/delta quantity, owner/location, mutual exclusion (10 tests) |
+| `tests/get-currencyentity.Tests.ps1` | Filtering, denomination resolution, balance, inactive exclusion (11 tests) |
+| `tests/remove-currencyentity.Tests.ps1` | Soft-delete, non-zero balance warning (7 tests) |
+| `tests/new-locationentity.Tests.ps1` | Location creation, parent validation, coordinate validation, door warnings (14 tests) |
+| `tests/set-locationentity.Tests.ps1` | Location update, door add/remove, multi-type support (12 tests) |
+| `tests/new-mapentity.Tests.ps1` | Mapa creation, slug uniqueness, dimensions validation (12 tests) |
 | `tests/set-mapentity.Tests.ps1` | Slug uniqueness (self-collision exclusion), dimensions validation, parent validation, door add/remove, temporal suffix, WhatIf (21 tests) |
-| `tests/get-locationentity.Tests.ps1` | Location query, filtering, enrichment |
-| `tests/operation-context.Tests.ps1` | Accumulator lifecycle, change/warning/file tracking, `New-OperationResult` drain |
+| `tests/get-locationentity.Tests.ps1` | Location query, filtering, enrichment (30 tests) |
+| `tests/operation-context.Tests.ps1` | Accumulator lifecycle, change/warning/file tracking, `New-OperationResult` drain (14 tests) |
 
 ## Related Documents
 

@@ -7,11 +7,12 @@
     the REST API. Called by Start-RobotApi during server initialization.
 
     Routes are organized in four tiers:
-    1. Static C# routes (/health, /routes, /metrics, /schema) — handled
-       entirely in compiled C# via Func<RouteMatch, ApiServer, object>
-       delegates. No RunspacePool invocation, zero PowerShell overhead.
-       The /routes closure captures $Router via GetNewClosure() so
-       ListRoutes() reflects the final registered set.
+    1. Static C# routes (/health, /routes, /metrics, /schema, /help) —
+       handled entirely in compiled C# via static methods on ApiServer,
+       registered as Func<RouteMatch, ApiServer, object> delegates.
+       No RunspacePool invocation, zero PowerShell overhead.
+       The /routes handler accesses the router via ApiServer.Router at
+       request time (set during Start).
     2. Dynamic PS read routes (GET) — dispatched via RequestQueue to
        worker runspaces that invoke handler functions from
        api-handlers-read.ps1. Expensive read endpoints (entity-state,
@@ -48,58 +49,37 @@ function Register-AllApiRoutes {
     $HandlerMap = @{}
 
     # ── Static C# routes (no PS invocation) ───────────────────────────
+    # These use pure C# static methods on [Robot.ApiServer] as delegates.
+    # Previous ScriptBlock-based delegates failed on thread pool threads
+    # because PowerShell ScriptBlocks require a Runspace to execute.
 
+    $T = [Func[Robot.RouteMatch, Robot.ApiServer, object]]
     $Router.AddStaticRoute('GET', '/health',
-        [Func[Robot.RouteMatch, Robot.ApiServer, object]]{
-            param([Robot.RouteMatch]$Match, [Robot.ApiServer]$Srv)
-            $S = $Srv.GetStatus()
-            $S['status'] = 'ok'
-            return $S
-        }, 'System health check')
+        $T::CreateDelegate($T, [Robot.ApiServer].GetMethod('HandleHealth')),
+        'System health check')
 
-    # Capture $Router so GetNewClosure() can reference it from the Func delegate
-    $CapturedRouter = $Router
     $Router.AddStaticRoute('GET', '/routes',
-        [Func[Robot.RouteMatch, Robot.ApiServer, object]]{
-            param([Robot.RouteMatch]$Match, [Robot.ApiServer]$Srv)
-            return @{ routes = $CapturedRouter.ListRoutes() }
-        }.GetNewClosure(), 'List registered API routes')
+        $T::CreateDelegate($T, [Robot.ApiServer].GetMethod('HandleRoutes')),
+        'List registered API routes')
 
     $Router.AddStaticRoute('GET', '/metrics',
-        [Func[Robot.RouteMatch, Robot.ApiServer, object]]{
-            param([Robot.RouteMatch]$Match, [Robot.ApiServer]$Srv)
-            $S = $Srv.GetStatus()
-            $S['routeCount'] = $CapturedRouter.ListRoutes().Count
-            return $S
-        }.GetNewClosure(), 'Server metrics')
+        $T::CreateDelegate($T, [Robot.ApiServer].GetMethod('HandleMetrics')),
+        'Server metrics')
 
     # Schema discovery — exposes domain name dictionary via compiled C# for zero-PS-overhead
     $Router.AddStaticRoute('GET', '/schema',
-        [Func[Robot.RouteMatch, Robot.ApiServer, object]]{
-            param([Robot.RouteMatch]$Match, [Robot.ApiServer]$Srv)
-            return [Robot.ApiNameDictionary]::GetSchema()
-        }, 'Domain name dictionary and enum values')
+        $T::CreateDelegate($T, [Robot.ApiServer].GetMethod('HandleSchema')),
+        'Domain name dictionary and enum values')
 
     # Help discovery and detail — requires Robot.ApiHelpRegistry C# type
     if (([System.Management.Automation.PSTypeName]'Robot.ApiHelpRegistry').Type) {
         $Router.AddStaticRoute('GET', '/help',
-            [Func[Robot.RouteMatch, Robot.ApiServer, object]]{
-                param([Robot.RouteMatch]$Match, [Robot.ApiServer]$Srv)
-                return @{ components = [Robot.ApiHelpRegistry]::GetComponents() }
-            }, 'List available help components')
+            $T::CreateDelegate($T, [Robot.ApiServer].GetMethod('HandleHelp')),
+            'List available help components')
 
         $Router.AddStaticRoute('GET', '/help/:component',
-            [Func[Robot.RouteMatch, Robot.ApiServer, object]]{
-                param([Robot.RouteMatch]$Match, [Robot.ApiServer]$Srv)
-                $Component = $Match.PathParams['component']
-                $Lang      = if ($Match.QueryParams -and $Match.QueryParams['lang'])    { $Match.QueryParams['lang'] }    else { $null }
-                $Include   = if ($Match.QueryParams -and $Match.QueryParams['include']) { $Match.QueryParams['include'] } else { $null }
-                $Result    = [Robot.ApiHelpRegistry]::GetHelp($Component, $Lang, $Include)
-                if ($null -eq $Result) {
-                    return @{ StatusCode = 404; Body = @{ error = "Help component not found: $Component" } }
-                }
-                return $Result
-            }, 'Component help with field descriptions')
+            $T::CreateDelegate($T, [Robot.ApiServer].GetMethod('HandleHelpComponent')),
+            'Component help with field descriptions')
     }
 
     # ── SSE endpoint ──────────────────────────────────────────────────
@@ -310,6 +290,8 @@ function Register-AllApiRoutes {
     # --- Files ---
     $Router.AddRoute('GET', '/files', 'Invoke-ApiGetFiles', 'List .md file paths for autocomplete', 200, 'session:read')
     $HandlerMap['Invoke-ApiGetFiles'] = $true
+    $Router.AddRoute('GET', '/files/tree', 'Invoke-ApiGetFilesTree', 'Directory tree of .md files', 200, 'session:read')
+    $HandlerMap['Invoke-ApiGetFilesTree'] = $true
 
     # ── Dashboard ──────────────────────────────────────────────────────
     $Router.AddRoute('GET', '/dashboard', 'Invoke-ApiGetDashboard',

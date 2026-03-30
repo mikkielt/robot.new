@@ -72,6 +72,7 @@ namespace Robot {
             public List<string> MetaNarrators; // from @Narrator tag, for PS override
             public string Content;         // null unless requested
             public string FirstNonEmptyLine;
+            public List<string> Files;
         }
 
         // ── Precompiled patterns ────────────────────────────────────
@@ -246,6 +247,7 @@ namespace Robot {
                 RawIntel = intelList,
                 NarratorRawText = narratorRawText,
                 MetaNarrators = tagResult.Narrators,
+                Files = tagResult.Files,
                 Content = includeContent ? content : null,
                 FirstNonEmptyLine = firstNonEmptyLine
             };
@@ -323,10 +325,10 @@ namespace Robot {
 
         // ── Tag dispatch ────────────────────────────────────────────
 
-        /// 8-way tag dispatch reusing SessionTagParser types for structured output.
+        /// 9-way tag dispatch reusing SessionTagParser types for structured output.
         /// Processes root list items only (parentIndices[i] < 0), dispatching on
-        /// lowercased tag prefix: PU, Logi, Zmiany, Intel, Narrator, Data, Transfer.
-        /// Children of each root tag provide the actual values.
+        /// lowercased tag prefix: PU, Logi, Zmiany, Intel, Narrator, Data, Transfer,
+        /// Pliki. Children of each root tag provide the actual values.
         private static SessionTagParser.ParsedMetadata DispatchTags(
             string[] texts, int[] parentIndices,
             Dictionary<int, List<int>> childrenOf,
@@ -523,6 +525,21 @@ namespace Robot {
                                     Amount = amount, Denomination = denomStr,
                                     Source = source, Destination = destination
                                 });
+                            }
+                        }
+                    }
+                    continue;
+                }
+
+                // Pliki: "pliki:" or "pliki " prefix — file paths as plain strings
+                if (match.Length > 5 && match[0] == 'p' && match[1] == 'l' &&
+                    match[2] == 'i' && match[3] == 'k' && match[4] == 'i' &&
+                    (match[5] == ':' || match[5] == ' ')) {
+                    if (children != null) {
+                        foreach (int ci in children) {
+                            string path = texts[ci].Trim();
+                            if (!string.IsNullOrWhiteSpace(path)) {
+                                result.Files.Add(path);
                             }
                         }
                     }

@@ -101,7 +101,7 @@ Uses two precompiled regex patterns: `$script:PastebinUrlPattern` matches non-ra
 
 `Invoke-LogFetch` takes `Url` (string, mandatory), `LogDirectory` (string, mandatory), and optional `RetryFailed` (switch). Fetch logic: (1) Normalize URL, compute filename and file path. (2) Cache hit — file exists at `res/logs/{filename}`, read from disk via `[System.IO.File]::ReadAllText`, return content. (3) Failed marker — `res/logs/{filename}.failed` exists, return `$null` (unless `-RetryFailed`). (4) Fresh fetch — HTTP GET via shared `HttpClient`, write to disk on success, remove `.failed` marker if present, return content. (5) On non-success HTTP response: warn to stderr; for 4xx client errors (status 400-499), write a `.failed` marker containing the status code and URL to prevent redundant retries on subsequent calls; return `$null`. (6) On network error: warn to stderr, return `$null`. `Invoke-SessionLogFetch` handles additional `.failed` marker logic for server errors and retries.
 
-`Invoke-LogBatchFetch` takes `Urls` (string[], mandatory), `LogDirectory` (string, mandatory), optional `DelayMs` (int, default 500), and optional `RetryFailed` (switch). Deduplicates URLs via `HashSet[string]` (OrdinalIgnoreCase) after normalization. Fetches each sequentially via `Invoke-LogFetch`. Only actual HTTP requests (not cache hits) incur the throttle delay. Reports progress via `Write-Progress`. Returns a hashtable mapping normalized URLs to their text content. URLs that fail are mapped to `$null`.
+`Invoke-LogBatchFetch` takes `Urls` (string[], mandatory), `LogDirectory` (string, mandatory), optional `DelayMs` (int, default 500), and optional `RetryFailed` (switch). Deduplicates URLs via `HashSet[string]` (OrdinalIgnoreCase) after normalization. Fetches each sequentially via `Invoke-LogFetch`. The throttle delay applies only to successful HTTP fetches (not cache hits or failed requests). Reports progress via `Write-Progress`. Returns a hashtable mapping normalized URLs to their text content. URLs that fail are mapped to `$null`.
 
 `Resolve-LogUrlToLocalPath` (in `private/session-decomposehelpers.ps1`) takes `Url` (string, mandatory) and `LogDirectory` (string, mandatory). Replaces a log URL with a local `res/logs/` path if the corresponding cached file exists on disk. Used during migration Phase 5 (`-UpgradeFormat`) and by `ConvertTo-Gen4FromRawBlock` / `ConvertFrom-PlainTextLog` to localize log references in session metadata. Resolution logic: (1) If `$LogDirectory` is empty or `$null`, returns the original `$Url` unchanged. (2) If `$Url` does not start with `http` (already a local path), returns it unchanged. (3) Normalizes the URL via `Normalize-LogUrl`, converts to a cache filename via `ConvertTo-LogFileName`, and checks if the file exists at `$LogDirectory/$FileName`. (4) If the file exists, returns `res/logs/$FileName`. Otherwise returns the original `$Url`.
 
@@ -340,10 +340,13 @@ Two CLI entries under the "Logi" section:
 | `private/cli/cli-registry.ps1` | Private | CLI menu entries (fetch-logs, log-location-report) |
 | `private/cli/cli-wf-reporting.ps1` | Private | CLI workflow functions |
 | `tests/get-sessionlog.Tests.ps1` | Tests | 38 tests: URL, parsing, pipeline |
-| `tests/get-namedloglocationreport.Tests.ps1` | Tests | 9 tests: resolution report |
+| `tests/get-namedloglocationreport.Tests.ps1` | Tests | 14 tests: resolution report |
 | `tests/invoke-sessionlogfetch.Tests.ps1` | Tests | 3 tests: mass fetch workflow |
 | `tests/fixtures/log-chatlog.txt` | Fixture | ChatLog format sample |
+| `tests/fixtures/log-chatlog-avlee.txt` | Fixture | ChatLog format sample (Avlee) |
+| `tests/fixtures/log-chatlog-route.txt` | Fixture | ChatLog format sample (route) |
 | `tests/fixtures/log-prose.txt` | Fixture | Prose format sample |
+| `tests/fixtures/log-prose-dungeon.txt` | Fixture | Prose format sample (dungeon) |
 
 ## Related Documents
 

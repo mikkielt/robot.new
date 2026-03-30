@@ -18,7 +18,7 @@ Get-Session (read path)
     ├── session-parsehelpers.ps1
     │     ├── Get-SessionTitle (strip date/narrator from header)
     │     ├── Get-SessionLocations (format-specific location extraction)
-    │     ├── Get-SessionListMetadata (PU, Logi, Zmiany, Intel, Transfer, Narrator, Data)
+    │     ├── Get-SessionListMetadata (PU, Logi, Zmiany, Intel, Transfer, Narrator, Data, Pliki)
     │     └── Get-SessionPlainTextLogs (Gen1/2 fallback)
     ├── Format detection (Gen1–Gen4 heuristics)
     ├── Cross-file deduplication (Merge-SessionGroup)
@@ -59,7 +59,7 @@ Add-Session (insertion path)
 | Gen1 | START–2022 | None | `Logi: https://…` plain text | None | Fallback (no other match) |
 | Gen2 | 2022–2023 | `*Lokalizacja: A, B*` (italic) | `Logi: https://…` plain text | None | First non-empty line starts with `*Lokalizacj` |
 | Gen3 | 2024–2026 | `- Lokalizacje:` list item | `- Logi:` list item | `- PU:`, `- Zmiany:`, `- Efekty:` | Root list item with `pu` prefix (no `@`) |
-| Gen4 | 2026+ | `- @Lokacje:` list item | `- @Logi:` list item | `- @Narrator:`, `- @Data:`, `- @PU:`, `- @Zmiany:`, `- @Intel:`, `- @Transfer:` | Root list item starting with `@` + letter |
+| Gen4 | 2026+ | `- @Lokacje:` list item | `- @Logi:` list item | `- @Narrator:`, `- @Data:`, `- @PU:`, `- @Zmiany:`, `- @Intel:`, `- @Transfer:`, `- @Pliki:` | Root list item starting with `@` + letter |
 
 All four formats remain parseable. `Get-Session` auto-detects and normalizes transparently.
 
@@ -190,8 +190,9 @@ Extracted fields:
 | Intel | `RawTarget: Message` pairs under `intel` tag |
 | Transfers | `@Transfer: {amount} {denomination}, {source} -> {destination}` or `@Transfer: {item}, {source} -> {destination}` inline on root line. Also supports nested children with the same `{amount} {denom}, {source} -> {destination}` format |
 | DateOverride | Inline `@Data: YYYY-MM-DD` value or first child of `@Data:` block |
+| Files | File path strings under `pliki` tag (for `@Pliki` metadata) |
 
-Returns hashtable with keys: `Logs`, `PU`, `Changes`, `Intel`, `Transfers`, `Narrators`, `DateOverride`.
+Returns hashtable with keys: `Logs`, `PU`, `Changes`, `Intel`, `Transfers`, `Narrators`, `DateOverride`, `Files`.
 
 ## Plain-Text Log Fallback — Get-SessionPlainTextLogs
 
@@ -239,12 +240,16 @@ Array field merging strategies:
 
 | Field | Strategy |
 |---|---|
-| Locations | `HashSet` union |
-| Logs | `HashSet` union |
+| Locations | `HashSet` union (OrdinalIgnoreCase) |
+| Logs | `HashSet` union (OrdinalIgnoreCase) |
 | PU | Deduped by `Character|Value` composite key |
+| Changes | Concatenated (all copies) |
+| Transfers | Concatenated (all copies) |
+| Mentions | `Dictionary` union keyed by entity name (OrdinalIgnoreCase) |
 | Intel | Deduped by `RawTarget|Message` composite key |
+| DeclaredFiles | `HashSet` union (OrdinalIgnoreCase) |
 
-Merged sessions carry `IsMerged = $true`, `DuplicateCount`, and `FilePaths[]`.
+Merged sessions carry `IsMerged = $true`, `DuplicateCount`, `FilePaths[]`, and `CopyFormats[]` (per-file format provenance).
 
 ## Intel Resolution — Resolve-IntelTargets
 
@@ -365,7 +370,7 @@ Metadata replacement uses full-replace semantics: `$null` (or omit) leaves uncha
 | Gen2 italic locations | `ConvertFrom-ItalicLocation` | `- @Lokacje:` with expanded children |
 | Gen1/2 plain text logs | `ConvertFrom-PlainTextLog` | `- @Logi:` with child URLs |
 
-`ConvertTo-Gen4FromRawBlock` takes `Tag` (string, canonical key), `Lines` (string[], raw block lines), `NL` (string, newline), and optional `LogDirectory` (string, for log URL localization). It maps canonical keys to Gen4 tag names: `narrator`->`Narrator`, `data`->`Data`, `locations`->`Lokacje`, `logs`->`Logi`, `pu`->`PU`, `changes`->`Zmiany`, `intel`->`Intel`. Detects indent base from first meaningful child and normalizes to 4-space multiples. Inline CSV values on root lines are expanded to nested 4-space indented children. When `$Tag -eq 'logs'` and `$LogDirectory` is provided, each child URL is passed through `Resolve-LogUrlToLocalPath` to replace URLs with local paths when the cached file exists.
+`ConvertTo-Gen4FromRawBlock` takes `Tag` (string, canonical key), `Lines` (string[], raw block lines), `NL` (string, newline), and optional `LogDirectory` (string, for log URL localization). It maps canonical keys to Gen4 tag names: `narrator`->`Narrator`, `data`->`Data`, `locations`->`Lokacje`, `logs`->`Logi`, `pu`->`PU`, `changes`->`Zmiany`, `intel`->`Intel`, `transfer`->`Transfer`, `files`->`Pliki`. Detects indent base from first meaningful child and normalizes to 4-space multiples. Inline CSV values on root lines are expanded to nested 4-space indented children. When `$Tag -eq 'logs'` and `$LogDirectory` is provided, each child URL is passed through `Resolve-LogUrlToLocalPath` to replace URLs with local paths when the cached file exists.
 
 `ConvertFrom-ItalicLocation` takes `Line` (string, Gen2 italic location line) and `NL` (string, newline). Extracts locations from `*Lokalizacj[ae]?:\s*(.+?)\*` regex, comma-splits, and delegates to `ConvertTo-Gen4MetadataBlock -Tag 'Lokacje'`. Returns `$null` if regex does not match or no items extracted.
 
@@ -375,9 +380,25 @@ Metadata replacement uses full-replace semantics: `$null` (or omit) leaves uncha
 
 ## New-Session — Gen4 Generation
 
-Header format: `### yyyy-MM-dd[/dd], Title, Narrator`. Optional `DateEnd` appended as `/dd` suffix (validated: same month/year, > Date).
+| Parameter | Type | Mandatory | Description |
+|---|---|---|---|
+| `Date` | datetime | Yes | Session date |
+| `DateEnd` | datetime | No | End date for multi-day sessions (same month as Date, must be later than Date) |
+| `Title` | string | Yes | Session title |
+| `Narrator` | string | Yes | Narrator name for session header |
+| `MetadataNarrators` | string[] | No | Canonical narrator names for `@Narrator` metadata (when different from header) |
+| `Locations` | string[] | No | Location names |
+| `PU` | object[] | No | PU award entries (Character + Value) |
+| `Logs` | string[] | No | Session log URLs |
+| `Changes` | object[] | No | Entity state changes (Zmiany entries) |
+| `Intel` | object[] | No | Intel targeting entries (RawTarget + Message) |
+| `Transfers` | object[] | No | Transfer entries (Amount + Denomination + Source + Destination) |
+| `Files` | string[] | No | Target file paths for `@Pliki` metadata |
+| `Content` | string | No | Free-form body text content |
 
-Delegates to `ConvertTo-SessionMetadata` which calls `ConvertTo-Gen4MetadataBlock` per field. Canonical block order: `@Narrator` -> `@Data` -> `@Lokacje` -> `@Logi` -> `@PU` -> `@Zmiany` -> `@Intel` -> `@Transfer`. Accepts a `-Transfers` parameter (object[], each entry with Amount, Denomination, Source, Destination).
+Header format: `### yyyy-MM-dd[/dd], Title, Narrator`. When `DateEnd` is provided, the day suffix is appended as `/dd` (e.g., `2026-03-15/17`). Validation: `DateEnd` must be in the same calendar month as `Date` and later than `Date`.
+
+Delegates to `ConvertTo-SessionMetadata` which calls `ConvertTo-Gen4MetadataBlock` per field. Canonical block order: `@Narrator` -> `@Data` -> `@Lokacje` -> `@Logi` -> `@PU` -> `@Zmiany` -> `@Intel` -> `@Transfer` -> `@Pliki`.
 
 Returns a string — does not write to disk.
 
@@ -444,6 +465,7 @@ Rendering rules per tag:
 | `@Zmiany` | `    - EntityName` (4-space) -> `        - @tag: value` (8-space) |
 | `@Intel` | `    - RawTarget: Message` (4-space) |
 | `@Transfer` | `    - [Amount] Denomination, Source -> Destination` (4-space). Amount prefix omitted when 1 |
+| `@Pliki` | `    - FilePath` (4-space indent) |
 
 Returns `$null` if items are empty/null — caller must check before including in output.
 
@@ -490,7 +512,9 @@ Session object returned by `Get-Session`:
 | `Transfers` | object[] | Transfer directives from `- @Transfer:` lines (Amount, Denomination, Source, Destination). Supports both currency (`{amount} {denom}`) and item (`{item}` or `{amount} {item}`) formats |
 | `Mentions` | object[] | Deduplicated array of mention objects (only with `-IncludeMentions`) |
 | `Intel` | object[] | Resolved `@Intel` entries with recipient webhooks |
+| `DeclaredFiles` | string[] | File paths from `@Pliki` metadata |
 | `LogData` | object | Parsed log data (only with `-IncludeLogs`, from `Get-SessionLog`) |
+| `CopyFormats` | object[] | Per-file format provenance (FilePath + Format) after dedup merge, `$null` for single-copy sessions |
 | `ParseError` | string | Error description (only with `-IncludeFailed`) |
 
 Narrator subproperties (`Session.Narrator`):
@@ -615,10 +639,11 @@ ExtractedSession output type:
 | `MetaNarrators` | List[string] | Names from `@Narrator` tag (for PS override) |
 | `Content` | string | Raw section content (null unless `includeContent` is true) |
 | `FirstNonEmptyLine` | string | First non-empty content line (for Gen2 detection) |
+| `Files` | List[string] | File paths from `@Pliki` tag |
 
 Consumer: `get-session.ps1`.
 
-`Robot.SessionTagParser` (`lib/SessionTagParser.cs`) is a compiled session tag dispatcher for `Get-SessionListMetadata`. Single-pass parent->children index build (`Dictionary<int, List<int>>`) followed by character-level prefix matching on lowered `@`-tag prefixes. Eight tag types dispatched: `@PU`, `@Logi`, `@Zmiany`, `@Intel`, `@Narrator`, `@Data`, `@Transfer`, `@Lokacje`.
+`Robot.SessionTagParser` (`lib/SessionTagParser.cs`) is a compiled session tag dispatcher for `Get-SessionListMetadata`. Single-pass parent->children index build (`Dictionary<int, List<int>>`) followed by character-level prefix matching on lowered `@`-tag prefixes. Nine tag types dispatched: `@PU`, `@Logi`, `@Zmiany`, `@Intel`, `@Narrator`, `@Data`, `@Transfer`, `@Lokacje`, `@Pliki`.
 
 PU values support comma-as-decimal (Polish locale: `"0,3"` -> `0.3`).
 
@@ -628,7 +653,7 @@ Internal types (used by `SessionExtractor.DispatchTags` and the `Parse` method):
 
 | Type | Kind | Fields | Description |
 |---|---|---|---|
-| `ParsedMetadata` | class | `PU`, `Logs`, `Changes`, `Intel`, `Transfers`, `Narrators`, `DateOverride` | Aggregate result with typed collections |
+| `ParsedMetadata` | class | `PU`, `Logs`, `Changes`, `Intel`, `Transfers`, `Narrators`, `DateOverride`, `Files` | Aggregate result with typed collections |
 | `PUEntry` | struct | `Character`, `Value`, `HasValue` | PU award with optional decimal value |
 | `ChangeEntry` | class | `EntityName`, `Tags[]` | Entity change directive |
 | `TagEntry` | struct | `Tag`, `Value` | Single `@tag: value` pair |
@@ -662,15 +687,15 @@ Consumers: `resolve-narrator.ps1`, `get-session.ps1` (narrator override), PU ass
 
 ## Testing
 
-| Test file | Coverage |
-|---|---|
-| `tests/get-session.Tests.ps1` | All format generations, date parsing, deduplication, metadata extraction, Intel, mentions |
-| `tests/set-session.Tests.ps1` | Section decomposition, format upgrade, metadata replacement, preserved blocks |
-| `tests/new-session.Tests.ps1` | Gen4 generation, header construction, round-trip compatibility |
-| `tests/add-session.Tests.ps1` | Chronological insertion, duplicate detection, batch mode, path validation |
-| `tests/format-sessionblock.Tests.ps1` | Block rendering, canonical ordering, null handling |
+| Test file | Tests | Coverage |
+|---|---|---|
+| `tests/get-session.Tests.ps1` | 117 | All format generations, date parsing, deduplication, metadata extraction, Intel, mentions |
+| `tests/set-session.Tests.ps1` | 40 | Section decomposition, format upgrade, metadata replacement, preserved blocks |
+| `tests/format-sessionblock.Tests.ps1` | 27 | Block rendering, canonical ordering, null handling |
+| `tests/add-session.Tests.ps1` | 20 | Chronological insertion, duplicate detection, batch mode, path validation |
+| `tests/new-session.Tests.ps1` | 9 | Gen4 generation, header construction, round-trip compatibility |
 
-Fixtures: `sessions-gen1.md`, `sessions-gen2.md`, `sessions-gen3.md`, `sessions-gen4.md`, `sessions-duplicate.md`, `sessions-zmiany.md`, `sessions-failed.md`.
+Fixtures: `sessions-gen1.md`, `sessions-gen2.md`, `sessions-gen2-multi-loc.md`, `sessions-gen3.md`, `sessions-gen4.md`, `sessions-gen4-full.md`, `sessions-gen4-pliki.md`, `sessions-duplicate.md`, `sessions-zmiany.md`, `sessions-deep-zmiany.md`, `sessions-failed.md`, `sessions-changes.md`, `sessions-code-fence.md`, `sessions-co-narrator.md`, `sessions-date-range.md`, `sessions-empty-body.md`, `sessions-item-transfer.md`, `sessions-multi-transfer.md`, `sessions-transfer-fuzzy.md`, `sessions-many.md`, `sessions-narrator-override.md`, `sessions-no-metadata.md`, `sessions-plik-zmiany.md`, `sessions-route-edges.md`, `sessions-location-graph.md`, `sessions-unicode.md`, `sessions-unresolved.md`.
 
 ## Related Documents
 

@@ -7,20 +7,23 @@ namespace Robot {
     /// Compiled session tag dispatcher for Get-SessionListMetadata.
     ///
     /// Performs single-pass parent->children index build followed by character-level
-    /// prefix matching on lowered @-tag prefixes. Dispatches eight tag types with
+    /// prefix matching on lowered @-tag prefixes. Dispatches nine tag types with
     /// typed struct output, eliminating per-item object construction overhead.
     ///
     /// Algorithm: single-pass parent->children index build (Dictionary<int, List<int>>),
-    /// then character-level prefix matching on the lowered @-tag prefix. Eight tag types
-    /// dispatched: @PU, @Logi, @Zmiany, @Intel, @Narrator, @Data, @Transfer, @Lokacje.
+    /// then character-level prefix matching on the lowered @-tag prefix. Nine tag types
+    /// dispatched: @PU, @Logi, @Zmiany, @Intel, @Narrator, @Data, @Transfer, @Lokacje,
+    /// @Pliki.
     ///
     /// Input: flat parallel arrays (texts[], parentIndices[]) from MarkdownScanner output,
     /// plus precompiled Regex for PU value parsing and URL extraction (shared with the
     /// PowerShell fallback path).
     ///
     /// Output: ParsedMetadata with typed collections (PUEntry, ChangeEntry, IntelEntry,
-    /// TransferEntry structs). Transfer parsing handles the "{amount} {denom}, {src} -> {dst}"
-    /// format inline. PU values support comma-as-decimal (Polish locale: "0,3" -> 0.3).
+    /// TransferEntry structs) and flat string collections (Logs, Narrators, Files).
+    /// Transfer parsing handles the "{amount} {denom}, {src} -> {dst}" format inline.
+    /// PU values support comma-as-decimal (Polish locale: "0,3" -> 0.3).
+    /// @Pliki collects child text items as plain repo-relative file paths.
     ///
     /// Consumers: Get-SessionListMetadata (session-parsehelpers.ps1)
     public sealed class SessionTagParser {
@@ -34,6 +37,7 @@ namespace Robot {
             public List<IntelEntry> Intel = new List<IntelEntry>();
             public List<TransferEntry> Transfers = new List<TransferEntry>();
             public List<string> Narrators = new List<string>();
+            public List<string> Files = new List<string>();
             public string DateOverride;
         }
 
@@ -296,6 +300,21 @@ namespace Robot {
                                     Source = source,
                                     Destination = destination
                                 });
+                            }
+                        }
+                    }
+                    continue;
+                }
+
+                // Pliki: "pliki:" or "pliki " prefix — file paths as plain strings
+                if (match.Length > 5 && match[0] == 'p' && match[1] == 'l' &&
+                    match[2] == 'i' && match[3] == 'k' && match[4] == 'i' &&
+                    (match[5] == ':' || match[5] == ' ')) {
+                    if (children != null) {
+                        foreach (int ci in children) {
+                            string path = texts[ci].Trim();
+                            if (!string.IsNullOrWhiteSpace(path)) {
+                                result.Files.Add(path);
                             }
                         }
                     }

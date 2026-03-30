@@ -367,7 +367,7 @@ Characters with `Status = 'Usuniety'` are excluded unless `-IncludeDeleted`.
 | Property | Type | Description |
 |---|---|---|
 | `Name` | string | Canonical display name |
-| `CN` | string | Hierarchical canonical name |
+| `CN` | string | Hierarchical canonical name (set in post-parse CN pass via `Resolve-EntityCN`) |
 | `Names` | `HashSet[string]` | All resolvable names (OrdinalIgnoreCase) |
 | `Aliases` | `List[object]` | Time-scoped alias objects `{ Text, ValidFrom, ValidTo }` |
 | `Type` | string | Entity type |
@@ -394,6 +394,7 @@ Characters with `Status = 'Usuniety'` are excluded unless `-IncludeDeleted`.
 | `Overrides` | hashtable | Generic `@tag` -> value list dictionary |
 | `TypeHistory` | `List[object]` | Type changes with validity ranges |
 | `OwnerHistory` | `List[object]` | Ownership changes with validity ranges |
+| `UnresolvedTransfers` | `List[object]` | Diagnostics: unresolved `@Transfer` entries (populated by `Get-EntityState`) |
 
 ---
 
@@ -402,6 +403,7 @@ Characters with `Status = 'Usuniety'` are excluded unless `-IncludeDeleted`.
 | Property | Type | Description |
 |---|---|---|
 | `Name` | string | Player's display name (from level-3 header) |
+| `CN` | string | Canonical name (`Gracz/{PlayerName}`) |
 | `Names` | `HashSet[string]` | All resolvable names (player + characters + aliases) |
 | `MargonemID` | string | Margonem game ID |
 | `PRFWebhook` | string | Discord webhook URL for notifications |
@@ -415,6 +417,7 @@ Characters with `Status = 'Usuniety'` are excluded unless `-IncludeDeleted`.
 | Property | Type | Description |
 |---|---|---|
 | `Name` | string | Character name |
+| `CN` | string | Canonical name (`Postać/{CharacterName}`) |
 | `IsActive` | bool | Whether this is the player's active character |
 | `Aliases` | string[] | Alternative names |
 | `Path` | string | Relative path to character file (from `Gracze.md` link or `@plik` entity tag) |
@@ -456,7 +459,7 @@ Characters with `Status = 'Usuniety'` are excluded unless `-IncludeDeleted`.
 
 Three compiled C# types in the `Robot` namespace replace PowerShell-native `[PSCustomObject]` construction on the entity hot path. All are loaded via a single batch `Add-Type` call in `Robot.PowerShell.psm1` at module import time (guarded by `PSTypeName` check to avoid recompilation). PowerShell fallback paths exist for all three when compilation fails.
 
-`Robot.Entity` (`lib/EntityModel.cs`) is the central 27-property entity domain model. Each `Get-Entity` invocation constructs one `Robot.Entity` instance per registered entity. Collection properties (`Names`, `Aliases`, `Groups`, `Doors`, `Coordinates`, all `*History` lists, `Overrides`, `GenericNames`, `Contains`, `UnresolvedTransfers`) are typed as `object` to preserve compatibility with PowerShell's `List[object]` creation pattern and the `Comparison[object]` sort delegates used by `Robot.TemporalSorter`. PowerShell accesses these via dynamic dispatch (`.Count`, `.Add()`, `.Sort()`, indexer).
+`Robot.Entity` (`lib/EntityModel.cs`) is the central 29-property entity domain model. Each `Get-Entity` invocation constructs one `Robot.Entity` instance per registered entity. Collection properties (`Names`, `Aliases`, `Groups`, `Doors`, `Coordinates`, all `*History` lists, `Overrides`, `GenericNames`, `Contains`, `UnresolvedTransfers`) are typed as `object` to preserve compatibility with PowerShell's `List[object]` creation pattern and the `Comparison[object]` sort delegates used by `Robot.TemporalSorter`. PowerShell accesses these via dynamic dispatch (`.Count`, `.Add()`, `.Sort()`, indexer).
 
 Consumers: `Get-Entity` (construction at lines 423/715), `Get-EntityState` (mutation of history lists, resorting), `Get-Player`, `Get-NameIndex`, `Resolve-Name`, `Get-EntityHistory`, CLI entity display, all reporting functions.
 
@@ -536,16 +539,17 @@ Consumer: `get-entity.ps1` (sole consumer via `[Robot.EntityTagParser]::Parse`).
 
 | Test file | Coverage |
 |---|---|
-| `tests/get-entity.Tests.ps1` | Multi-file merge, @tag parsing, temporal filtering, CN resolution, cycle detection |
-| `tests/get-entitystate.Tests.ps1` | Session override application, auto-dating, name resolution, history resorting |
-| `tests/get-playercharacter.Tests.ps1` | Flat projection, filters, pass-through entities |
-| `tests/get-playercharacter-state.Tests.ps1` | Three-layer merge, IncludeState, IncludeDeleted |
-| `tests/entity-status.Tests.ps1` | Status lifecycle, temporal status transitions |
-| `tests/przedmiot-entity.Tests.ps1` | Przedmiot type mappings, entity creation, duplicate detection |
-| `tests/currency-entity.Tests.ps1` | Currency entity creation, @ilosc tag handling, quantity updates |
-| `tests/get-entity-mapa.Tests.ps1` | Mapa type parsing, @slug resolution, @url/@url_nerthus overrides, hierarchical CN, door-paths |
-| `tests/get-entity-isexterior.Tests.ps1` | IsExterior classification, exterior-qualified paths, temporal qualified paths, Resolve-Name integration |
-| `tests/get-locationentity.Tests.ps1` | Location query, filtering, enrichment, door target resolution, map data extraction, ExteriorParent/QualifiedPath |
+| `tests/get-entity.Tests.ps1` | Multi-file merge, @tag parsing, temporal filtering, CN resolution, cycle detection (105 tests) |
+| `tests/get-entitystate.Tests.ps1` | Session override application, auto-dating, name resolution, history resorting (38 tests) |
+| `tests/get-player.Tests.ps1` | Player parsing, entity overlay, CN property, name index (34 tests) |
+| `tests/get-playercharacter.Tests.ps1` | Flat projection, filters, pass-through entities (21 tests) |
+| `tests/get-playercharacter-state.Tests.ps1` | Three-layer merge, IncludeState, IncludeDeleted (9 tests) |
+| `tests/entity-status.Tests.ps1` | Status lifecycle, temporal status transitions (18 tests) |
+| `tests/przedmiot-entity.Tests.ps1` | Przedmiot type mappings, entity creation, duplicate detection (5 tests) |
+| `tests/currency-entity.Tests.ps1` | Currency entity creation, @ilosc tag handling, quantity updates (4 tests) |
+| `tests/get-entity-mapa.Tests.ps1` | Mapa type parsing, @slug resolution, @url/@url_nerthus overrides, hierarchical CN, door-paths (19 tests) |
+| `tests/get-entity-isexterior.Tests.ps1` | IsExterior classification, exterior-qualified paths, temporal qualified paths, Resolve-Name integration (14 tests) |
+| `tests/get-locationentity.Tests.ps1` | Location query, filtering, enrichment, door target resolution, map data extraction, ExteriorParent/QualifiedPath (30 tests) |
 
 Fixtures: `entities.md`, `entities-100-ent.md`, `entities-200-ent.md`, `sessions-zmiany.md`, `entities-mapa.md`, `entities-slug.md`, `entities-exterior.md`.
 

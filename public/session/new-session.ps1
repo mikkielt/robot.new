@@ -14,7 +14,7 @@
     1. Build the "### YYYY-MM-DD, Title, Narrator" header line, with optional
        multi-day suffix ("YYYY-MM-DD/DD") when DateEnd is provided.
     2. Delegate metadata rendering to ConvertTo-SessionMetadata, which serializes
-       @Lokacje, @PU, @Logi, @Zmiany, @Intel, and @Narrator blocks.
+       @Narrator, @Lokacje, @PU, @Logi, @Zmiany, @Intel, @Transfer, and @Pliki blocks.
     3. Assemble header + optional body + optional metadata via StringBuilder,
        separated by double newlines for Markdown paragraph spacing.
 
@@ -70,6 +70,9 @@ function New-Session {
         [Parameter(HelpMessage = "Transfer entries (Amount + Denomination + Source + Destination)")]
         [object[]]$Transfers,
 
+        [Parameter(HelpMessage = "Target file paths to record as @Pliki metadata")]
+        [string[]]$Files,
+
         [Parameter(HelpMessage = "Free-form body text content")]
         [string]$Content
     )
@@ -97,6 +100,7 @@ function New-Session {
         -Changes    $Changes `
         -Intel      $Intel `
         -Transfers  $Transfers `
+        -Files      $Files `
         -NL         $NL
 
     # Assemble with double-newline separators for Markdown paragraph breaks

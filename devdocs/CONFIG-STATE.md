@@ -2,7 +2,7 @@
 
 ## Scope
 
-The configuration and state subsystem comprises `private/admin-config.ps1` (configuration resolution, path management, template rendering), `private/admin-state.ps1` (append-only history file management for PU processing), `private/operation-context.ps1` (accumulator-based operation tracking for write commands), and `public/set-reporoot.ps1` (repository root override for testing and non-standard layouts).
+The configuration and state subsystem comprises `private/admin-config.ps1` (configuration resolution, path management, template rendering), `private/admin-state.ps1` (atomic JSON persistence with crash-safe writes and backup recovery, plus append-only history file management for PU processing), `private/operation-context.ps1` (accumulator-based operation tracking for write commands), and `public/set-reporoot.ps1` (repository root override for testing and non-standard layouts).
 
 ## Configuration Resolution
 
@@ -103,6 +103,8 @@ Functions:
 
 | Function | Purpose |
 |---|---|
+| `Save-JsonStateFile` | Atomic JSON write with temp-file swap and `.bak` backup |
+| `Read-JsonStateFile` | Reads JSON state file with backup recovery on corruption |
 | `Get-AdminHistoryEntries` | Reads processed session headers from a state file |
 | `ConvertTo-MutableStateObject` | Generic JSON state file reader that returns a mutable ordered hashtable with a `List[object]` collection |
 | `Get-TimezoneOffsetString` | Returns a formatted UTC offset string (e.g. `UTC+02:00`) for the local timezone |
@@ -112,16 +114,19 @@ State files are JSON files in `.robot.local/res/`:
 
 ```json
 {
+  "version": 2,
   "runs": [
     {
-      "timestamp": "2025-06-15 14:30 (UTC+02:00)",
+      "processedAt": "2025-06-15T14:30:00",
+      "timezone": "UTC+02:00",
       "sessions": [
         "2025-06-01, Session Title, Narrator",
         "2025-06-08, Another Session, Narrator"
       ]
     },
     {
-      "timestamp": "2025-07-15 10:00 (UTC+02:00)",
+      "processedAt": "2025-07-15T10:00:00",
+      "timezone": "UTC+02:00",
       "sessions": [
         "2025-07-01, July Session, Narrator"
       ]
@@ -130,13 +135,34 @@ State files are JSON files in `.robot.local/res/`:
 }
 ```
 
-`Get-AdminHistoryEntries` reads the JSON runs array and extracts all session header strings. The normalization pipeline: (1) Trim leading/trailing whitespace. (2) Collapse multiple spaces to single space (via precompiled `\s{2,}` regex). (3) Strip leading `### ` prefix. Output is a `HashSet[string]` with `OrdinalIgnoreCase` comparer for O(1) membership testing. Both stripped and unstripped forms are available for comparison. The hash set provides efficient deduplication lookups when filtering sessions in the PU pipeline.
+`Save-JsonStateFile` implements crash-safe writes via a three-step temp-file swap:
+
+| Parameter | Type | Description |
+|---|---|---|
+| `Path` | string | Mandatory. Absolute path to the JSON state file. |
+| `Data` | object | Mandatory. The data object to serialize via `ConvertTo-Json`. |
+| `Depth` | int | JSON serialization depth, defaults to `10`. |
+
+Algorithm: (1) Create parent directory if missing. (2) Serialize `$Data` to JSON. (3) Write to `$Path.tmp` (UTF-8 no BOM). (4) If `$Path` already exists, rotate current file to `$Path.bak` (deleting prior backup). (5) Move `.tmp` into place. This guarantees the file is never in a half-written state even if the process is killed mid-write.
+
+`Read-JsonStateFile` reads and deserializes a JSON state file with backup recovery:
+
+| Parameter | Type | Description |
+|---|---|---|
+| `Path` | string | Mandatory. Absolute path to the JSON state file. |
+
+Algorithm: (1) Return `$null` if file does not exist. (2) Read and parse via `ConvertFrom-Json`. (3) On parse failure (truncation, corruption), try `$Path.bak` left by the last successful `Save-JsonStateFile` write. (4) If backup parses successfully, copy it over the corrupted primary file and return the recovered data. (5) If backup also fails, return `$null`. Warnings are emitted via `Write-RobotWarning` at each fallback step.
+
+Both functions are shared by `admin-state.ps1` and `discord-state.ps1`.
+
+`Get-AdminHistoryEntries` reads the JSON runs array via `Read-JsonStateFile` and extracts all session header strings. The normalization pipeline: (1) Trim leading/trailing whitespace. (2) Collapse multiple spaces to single space (via precompiled `\s{2,}` regex). Output is a `HashSet[string]` with `OrdinalIgnoreCase` comparer for O(1) membership testing. The hash set provides efficient deduplication lookups when filtering sessions in the PU pipeline.
 
 `Add-AdminHistoryEntry` appends a new run object with a timestamped entry:
 
 ```json
 {
-  "timestamp": "YYYY-MM-dd HH:mm (UTC±HH:MM)",
+  "processedAt": "YYYY-MM-ddTHH:mm:ss",
+  "timezone": "UTC±HH:MM",
   "sessions": [
     "session header 1",
     "session header 2"
@@ -144,11 +170,11 @@ State files are JSON files in `.robot.local/res/`:
 }
 ```
 
-`ConvertTo-MutableStateObject` is a shared helper that reads a JSON state file and returns an `[ordered]@{}` hashtable with a mutable `List[object]` for the named collection key. Used by both `Add-AdminHistoryEntry` (collection key `runs`, default version `2`) and `Add-DiscordDeliveryEntry` in `discord-state.ps1` (collection key `entries`, default version `1`). When the file does not exist (or `Read-JsonStateFile` returns `$null`), it returns a fresh hashtable with the default version and an empty list. When the file exists, it rebuilds the collection from `ConvertFrom-Json` output (which yields immutable PSCustomObjects) into a mutable `List[object]`.
+`ConvertTo-MutableStateObject` is a shared helper that reads a JSON state file via `Read-JsonStateFile` and returns an `[ordered]@{}` hashtable with a mutable `List[object]` for the named collection key. Used by both `Add-AdminHistoryEntry` (collection key `runs`, default version `2`) and `Add-DiscordDeliveryEntry` in `discord-state.ps1` (collection key `entries`, default version `1`). When `Read-JsonStateFile` returns `$null` (file missing or unrecoverable corruption), it returns a fresh hashtable with the default version and an empty list. When the file exists, it rebuilds the collection from `ConvertFrom-Json` output (which yields immutable PSCustomObjects) into a mutable `List[object]`.
 
 `Get-TimezoneOffsetString` returns the local timezone offset formatted as `UTC+HH:MM` or `UTC-HH:MM`. Accepts an optional `ReferenceTime` parameter (defaults to `[datetime]::Now`) to compute the offset via `[System.TimeZoneInfo]::Local.GetUtcOffset()`. Used by both `Add-AdminHistoryEntry` and `Add-DiscordDeliveryEntry` to produce timezone-aware timestamps.
 
-Timestamp format uses timezone-aware timestamps via `Get-TimezoneOffsetString`. Handles negative UTC offsets. Session headers are sorted chronologically using `[StringComparer]::Ordinal` (works because headers start with `YYYY-MM-DD`). The `### ` prefix is stripped before storage. If the state file doesn't exist, it is created with an empty `runs` array. Parent directory is created if missing.
+Timestamp format uses timezone-aware timestamps via `Get-TimezoneOffsetString`. Handles negative UTC offsets. Session headers are sorted chronologically using `[StringComparer]::Ordinal` (works because headers start with `YYYY-MM-DD`). The `### ` prefix is stripped before storage. If the state file doesn't exist, it is created with an empty `runs` array. Parent directory is created by `Save-JsonStateFile`.
 
 State file location: `$Config.ResDir` resolves to `<RepoRoot>/.robot.local/res/pu-sessions.json`. This is separate from the module directory (`.robot.powershell/`) and lives in `.robot.local/res/` for historical compatibility with the legacy system.
 
@@ -309,7 +335,10 @@ Loaded via `Import-PowerShellDataFile` with error handling. Missing file is not 
 | Missing `.robot.local/robot-data.psd1` manifest | Not an error; falls back to hardcoded paths |
 | Manifest found at fixed path | Paths resolved relative to `.robot.local/` directory, cached per session |
 | Negative UTC offset | Formatted correctly (e.g., `UTC-05:00`) |
-| Missing `.robot.local/res/` directory | Created automatically by `Add-AdminHistoryEntry` |
+| Missing `.robot.local/res/` directory | Created automatically by `Save-JsonStateFile` |
+| Corrupted JSON state file | `Read-JsonStateFile` falls back to `.bak` copy; restores backup as primary on success |
+| Both primary and backup corrupted | `Read-JsonStateFile` returns `$null`; consumers start with empty state |
+| Process killed during `Save-JsonStateFile` | At worst `.tmp` is orphaned; primary or `.bak` is intact |
 | Duplicate session headers in history | Deduplicated by `HashSet` on read |
 | Whitespace variations in headers | Normalized (collapsed to single space) before comparison |
 | `operation-context.ps1` not loaded | `$script:HasOpCtx` is `$false`; write helpers skip accumulator calls |
@@ -325,10 +354,11 @@ Loaded via `Import-PowerShellDataFile` with error handling. Missing file is not 
 
 | Test file | Coverage |
 |---|---|
-| `tests/admin-config.Tests.ps1` | Priority chain, path resolution, template loading, manifest discovery, caching |
-| `tests/admin-state.Tests.ps1` | History reading, normalization, appending, file creation |
-| `tests/get-reporoot.Tests.ps1` | `Get-ParentRepoRoot` (submodule boundary traversal) |
-| `tests/operation-context.Tests.ps1` | Accumulator lifecycle, change/warning/file tracking, `New-OperationResult` drain |
+| `tests/admin-config.Tests.ps1` | Priority chain, path resolution, template loading, manifest discovery, caching (12 tests) |
+| `tests/admin-state.Tests.ps1` | `Save-JsonStateFile`/`Read-JsonStateFile` atomic writes, backup recovery, history reading, normalization, appending (19 tests) |
+| `tests/discord-state.Tests.ps1` | `Add-DiscordDeliveryEntry`, `Get-DiscordDeliveryEntries`, shared JSON state utilities (24 tests) |
+| `tests/get-reporoot.Tests.ps1` | `Get-ParentRepoRoot` (submodule boundary traversal) (11 tests) |
+| `tests/operation-context.Tests.ps1` | Accumulator lifecycle, change/warning/file tracking, `New-OperationResult` drain (14 tests) |
 
 Fixtures: `local.config.psd1`, `pu-sessions.json`, template files in `tests/fixtures/templates/`.
 
@@ -337,4 +367,4 @@ Fixtures: `local.config.psd1`, `pu-sessions.json`, template files in `tests/fixt
 - [PU.md](PU.md) -- PU pipeline uses history entries for deduplication
 - [ENTITY-WRITES.md](ENTITY-WRITES.md) -- Write commands consume `Get-AdminConfig` and operation context
 - [CHARFILE.md](CHARFILE.md) -- Character file writing uses operation context (`Write-CharacterFile`)
-- [DISCORD.md](DISCORD.md) -- Webhook config resolution
+- [DISCORD.md](DISCORD.md) -- Webhook config resolution; `discord-state.ps1` consumes `Save-JsonStateFile`/`Read-JsonStateFile`

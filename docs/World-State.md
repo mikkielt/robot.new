@@ -38,6 +38,12 @@ The Coordinator can update any entity's properties at any time. Each update is t
 
 Entities are never physically deleted. The Coordinator marks them as removed (Usunięty) with an effective date. Removed entities stop appearing in standard queries and reports, remain available for historical lookups, and can be restored later if the removal was a mistake.
 
+## Canonical Names
+
+Every entity receives a canonical name (CN) — a stable, path-style identifier that uniquely identifies it across the system. Non-location entities use the format "Type/Name" (e.g., "NPC/Sandro", "Grupa/Bractwo Miecza"). Lokacja and Mapa entities use hierarchical paths built by walking the location containment chain upward (e.g., "Lokacja/Eder/Ithan/Ratusz Ithan"). Players and characters also carry canonical names ("Gracz/Roland", "Postać/Crag Hack").
+
+Canonical names are computed automatically from the entity's type and position in the location hierarchy. They are used for stable references in reports, the API, and argument completion when searching for entities by name.
+
 ## How Entities Are Organized
 
 All entity data is stored in structured Markdown files. Each entity has a name (the canonical display name), a type (which category it belongs to), metadata (properties like location, group memberships, status, and aliases), and history (a timeline of changes to each property).
@@ -57,7 +63,7 @@ Mapa entities represent individual game maps — each floor, interior, or instan
 
 Both Mapa and Lokacja entities participate in the location hierarchy via `@lokacja` — they can have a parent location, door connections, and Nerthus names. When two maps share the same name (e.g., multiple "Apartament" in different buildings), each can be given a unique slug to distinguish them.
 
-The Coordinator can update existing Mapa entities to change their slug, dimensions, parent location, image URLs, or door connections. Door connections can be added or removed individually. The system validates that slugs are unique across all maps, that the parent location exists, and that door targets reference known entities. These updates follow the same confirmation and plugin-hook workflow as other entity modifications.
+The Coordinator can update existing Mapa entities through a dedicated map management operation that supports changing the slug, dimensions, parent location, image URLs, description, or door connections. Door connections can be added or removed individually in the same operation. The system validates that slugs are unique across all maps, that the parent location exists, and warns when door targets do not reference known entities. These updates follow the same confirmation and plugin-hook workflow as other entity modifications.
 
 Lokacja entities are automatically classified as **exterior** (has coordinates or outdoor maps), **interior** (all maps are indoor), or **unknown** (no evidence). Interior locations gain a qualified path linking them to their nearest exterior ancestor — for example, "Erathia/Komnata Rady" — making them findable by name resolution even when multiple locations share the same name.
 

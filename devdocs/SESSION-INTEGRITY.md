@@ -14,8 +14,9 @@ The session integrity subsystem provides SHA256 content hashing for Markdown fil
 | `Write-SessionHashFile` | `private/session-hashhelpers.ps1` | Persist hash map to JSON sidecar |
 | `Read-SessionHashMeta` | `private/session-hashhelpers.ps1` | Load operational metadata (`_meta.json`) |
 | `Write-SessionHashMeta` | `private/session-hashhelpers.ps1` | Persist operational metadata |
-| `Get-HashableFiles` | `private/session-hashhelpers.ps1` | Enumerate `.md` files respecting exclusion rules |
+| `Get-HashableFiles` | `private/session-hashhelpers.ps1` | Enumerate `.md` files via `Get-RepoFiles` with domain-specific `Nerthus/` exclusion |
 | `Get-RelativeHashPath` | `private/session-hashhelpers.ps1` | Repo-relative path with forward slashes |
+| `Get-RepoFiles` | `private/repo-filehelpers.ps1` | Shared file enumeration with dot-directory and module exclusion (dot-sourced by `session-hashhelpers.ps1`) |
 
 `Set-SessionHash` is a write command (`SupportsShouldProcess`). `Test-SessionIntegrity` is read-only.
 
@@ -26,14 +27,18 @@ PU assignment logic (`Invoke-PlayerCharacterPUAssignment`) is documented in [PU.
 ## Architecture Overview
 
 ```
+private/repo-filehelpers.ps1          Shared file enumeration (dot-sourced by session-hashhelpers)
+└── Get-RepoFiles                     RepoRoot -> List[filePath] (dot-dir + module exclusion)
+
 private/session-hashhelpers.ps1       Hashing primitives (non-Verb-Noun, dot-sourced)
+├── dot-sources: repo-filehelpers.ps1
 ├── Get-ContentHash                   SHA256(whitespace-strip(content))
 ├── Get-FileHeaderHashes              Markdown result -> Dict[header, hash]
 ├── Read-SessionHashFile              JSON sidecar -> Dict[header, hash]
 ├── Write-SessionHashFile             Dict[header, hash] -> JSON sidecar
 ├── Read-SessionHashMeta              _meta.json -> hashtable
 ├── Write-SessionHashMeta             hashtable -> _meta.json
-├── Get-HashableFiles                 RepoRoot -> List[filePath] (exclusion-filtered)
+├── Get-HashableFiles                 Get-RepoFiles + Nerthus/ exclusion
 └── Get-RelativeHashPath              Absolute path -> repo-relative forward-slash path
 
 public/workflow/set-sessionhash.ps1   Hash writer (exported, SupportsShouldProcess)
@@ -149,15 +154,17 @@ Read algorithm: (1) Return defaults if file does not exist. (2) Read and parse w
 | `RepoRoot` | string | Yes | Root directory of the lore repository |
 | `ExcludeDirectory` | string[] | No | Additional directories to exclude |
 
-Exclusion rules:
+Delegates shared exclusion logic to `Get-RepoFiles` (`private/repo-filehelpers.ps1`), then applies the domain-specific `Nerthus/` subdirectory exclusion on the results. Exclusion layers applied in total:
 
-| Rule | Mechanism |
+| Rule | Source |
 |---|---|
-| Dot directories (`.git/`, `.robot.local/`, `.robot.powershell/`) | Component scan: any directory starting with `.` |
-| `Nerthus/` subdirectory | Component scan: case-insensitive match on `Nerthus` |
-| User-specified directories | Absolute prefix matching via `$ExcludePrefixes` |
+| Dot directories (`.git/`, `.robot.local/`, `.robot.powershell/`) | `Get-RepoFiles`: per-component scan |
+| Module directory (`$script:ModuleRoot`) | `Get-RepoFiles`: prefix match |
+| Set-RepoRoot redirect copy | `Get-RepoFiles`: module leaf name under search root |
+| User-specified directories | `Get-RepoFiles`: absolute prefix matching |
+| `Nerthus/` subdirectory | `Get-HashableFiles`: per-component case-insensitive match |
 
-Algorithm: (1) Resolve symlinks via `[System.IO.Path]::GetFullPath` (handles macOS `/var` -> `/private/var`). (2) Enumerate all `*.md` files recursively via `[System.IO.Directory]::GetFiles`. (3) For each file, compute relative path from repo root. (4) Split into directory components; skip if any component starts with `.` or equals `Nerthus` (case-insensitive). (5) Check against user-specified exclusion prefixes. (6) Collect surviving paths into result list.
+Algorithm: (1) Call `Get-RepoFiles -RepoRoot $RepoRoot -Pattern '*.md' -ExcludeDirectory $ExcludeDirectory`. (2) For each returned file, compute relative path from repo root. (3) Split into directory components; skip if any component equals `Nerthus` (case-insensitive). (4) Collect surviving paths into result list.
 
 Returns `List[string]` -- absolute paths to hashable `.md` files.
 
@@ -311,7 +318,12 @@ This avoids re-loading when the module has already sourced the helpers.
 
 ## Testing
 
-Test file: `tests/test-sessionintegrity.Tests.ps1`
+| Test file | Coverage |
+|---|---|
+| `tests/test-sessionintegrity.Tests.ps1` | Hashing primitives, sidecar I/O, metadata round-trip, hashable file enumeration, hash writer, integrity validator |
+| `tests/repo-filehelpers.Tests.ps1` | `Get-RepoFiles` dot-directory exclusion, user exclusion, module root exclusion, custom pattern, Nerthus pass-through |
+
+Describe blocks in `test-sessionintegrity.Tests.ps1`:
 
 | Describe Block | Coverage |
 |---|---|
@@ -344,6 +356,6 @@ Loading pattern: A (exported functions) + B (dot-source internal helpers).
 - [SESSIONS.md](SESSIONS.md) -- session parsing pipeline and format generations
 - [PU.md](PU.md) -- PU assignment algorithm (uses same `@PU:` pattern)
 - [CONFIG-STATE.md](CONFIG-STATE.md) -- `Get-AdminConfig` and `ResDir` resolution
-- [GIT.md](GIT.md) -- `Get-GitChangeLog` used for incremental mode
+- [GIT.md](GIT.md) -- `Get-GitChangeLog` used for incremental mode, `Get-RepoFiles` shared helper
 - [PARSER.md](PARSER.md) -- `Get-Markdown` output structure consumed by `Get-FileHeaderHashes`
 - [SESSION-GRAPH.md](SESSION-GRAPH.md) -- session participation graph (reuses `Get-ContentHash`)

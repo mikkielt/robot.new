@@ -172,6 +172,24 @@ namespace Robot {
                 return;
             }
 
+            // Plain C# objects (e.g. SessionPU, SessionIntel, SessionTransfer) —
+            // reflect public instance properties so they serialize as JSON objects
+            // instead of falling through to ToString().
+            var publicProps = psType.GetProperties(
+                System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance);
+            if (publicProps.Length > 0) {
+                writer.WriteStartObject();
+                foreach (var prop in publicProps) {
+                    if (!prop.CanRead) continue;
+                    object pval = null;
+                    try { pval = prop.GetValue(value); } catch { continue; }
+                    writer.WritePropertyName(prop.Name);
+                    WriteValue(writer, pval, depth + 1, includeLabels);
+                }
+                writer.WriteEndObject();
+                return;
+            }
+
             // Fallback: stringify
             writer.WriteStringValue(value.ToString());
         }

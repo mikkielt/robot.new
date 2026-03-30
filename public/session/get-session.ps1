@@ -20,8 +20,8 @@
     - Merge-SessionGroup: deduplicates sessions sharing the same header
       across files, selecting the metadata-richest primary via scoring
       and merging array fields (locations, logs, PU, changes, transfers,
-      mentions, Intel) via HashSet/Dictionary union. Reports scalar
-      field conflicts (Title, Format) as warnings.
+      mentions, Intel, DeclaredFiles) via HashSet/Dictionary union.
+      Reports scalar field conflicts (Title, Format) as warnings.
 
     Module-level data:
     - $script:SessionFileCache: per-file session cache (WP-4) storing
@@ -213,6 +213,7 @@ function Merge-SessionGroup {
     $MergedMentions     = [System.Collections.Generic.Dictionary[string, object]]::new([System.StringComparer]::OrdinalIgnoreCase)
     $MergedIntel        = [System.Collections.Generic.List[object]]::new()
     $IntelSet           = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::Ordinal)
+    $MergedDeclaredFiles = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
 
     foreach ($S in $Group) {
         if ($S.Locations) {
@@ -248,6 +249,9 @@ function Merge-SessionGroup {
                 }
             }
         }
+        if ($S.DeclaredFiles) {
+            foreach ($DF in $S.DeclaredFiles) { [void]$MergedDeclaredFiles.Add($DF) }
+        }
     }
 
     $MergedContent = $null
@@ -280,6 +284,7 @@ function Merge-SessionGroup {
         Transfers      = $MergedTransfers.ToArray()
         Mentions       = [object[]]$MergedMentions.Values
         Intel          = $MergedIntel.ToArray()
+        DeclaredFiles  = [string[]]$MergedDeclaredFiles
         CopyFormats    = $CopyFormatsList.ToArray()
     }
 
@@ -540,6 +545,7 @@ function Get-Session {
                         RawIntel         = if ($CsSess.RawIntel) { $CsSess.RawIntel } else { [System.Collections.Generic.List[object]]::new() }
                         NarratorRawText  = $CsSess.NarratorRawText
                         MetaNarrators    = if ($CsSess.MetaNarrators) { @($CsSess.MetaNarrators) } else { @() }
+                        Files            = if ($CsSess.Files) { @($CsSess.Files) } else { @() }
                         Content          = $CsSess.Content
                         FirstNonEmptyLine = $CsSess.FirstNonEmptyLine
                         SectionIndex     = $SectI
@@ -684,6 +690,7 @@ function Get-Session {
                         RawIntel         = if ($ListMeta.Intel -and $ListMeta.Intel.Count -gt 0) { $ListMeta.Intel } else { [System.Collections.Generic.List[object]]::new() }
                         NarratorRawText  = $NarratorRaw
                         MetaNarrators    = if ($ListMeta.Narrators -and $ListMeta.Narrators.Count -gt 0) { @($ListMeta.Narrators) } else { @() }
+                        Files            = if ($ListMeta.Files) { @($ListMeta.Files) } else { @() }
                         Content          = if ($IncludeContent) { $Section.Content } else { $null }
                         FirstNonEmptyLine = $FirstNonEmptyLine
                         SectionIndex     = $SectI
@@ -861,6 +868,7 @@ function Get-Session {
             $PUArr = if ($StructSess.PU) { @($StructSess.PU) } else { @() }
             $ChangesArr = if ($StructSess.Changes) { @($StructSess.Changes) } else { @() }
             $TransfersArr = if ($StructSess.Transfers) { @($StructSess.Transfers) } else { @() }
+            $DeclaredFilesArr = if ($StructSess.Files) { @($StructSess.Files) } else { @() }
 
             $SessionProps = [ordered]@{
                 FilePath       = $FilePath
@@ -881,6 +889,7 @@ function Get-Session {
                 Transfers      = $TransfersArr
                 Mentions       = $MentionsV
                 Intel          = $IntelV
+                DeclaredFiles  = $DeclaredFilesArr
             }
             $AllSessions.Add([PSCustomObject]$SessionProps)
         }
@@ -906,6 +915,7 @@ function Get-Session {
                     Changes        = @()
                     Mentions       = @()
                     Intel          = @()
+                    DeclaredFiles  = @()
                     ParseError     = "Header does not contain a valid yyyy-MM-dd date"
                 }
                 $FailedSessions.Add($FailedSession)

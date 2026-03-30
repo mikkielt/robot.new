@@ -399,6 +399,18 @@ Describe 'Robot.ApiServer' {
         }
     }
 
+    Context 'Debug static field' {
+        It 'defaults to $false' {
+            [Robot.ApiServer]::Debug | Should -BeFalse
+        }
+
+        It 'can be set to $true' {
+            [Robot.ApiServer]::Debug = $true
+            [Robot.ApiServer]::Debug | Should -BeTrue
+            [Robot.ApiServer]::Debug = $false  # cleanup
+        }
+    }
+
     Context 'Cache version' {
         It 'has static CacheVersion accessible and mutable' {
             # Direct field access (Interlocked requires true managed ref

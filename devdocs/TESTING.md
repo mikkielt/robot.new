@@ -73,6 +73,7 @@ tests/
 +-- parse-markdownfile.Tests.ps1
 +-- operation-context.Tests.ps1
 +-- argument-completers.Tests.ps1
++-- repo-filehelpers.Tests.ps1
 |
 |   # Entity data access
 +-- get-entity.Tests.ps1
@@ -244,6 +245,7 @@ tests/
     +-- entities-mapa.md                            # Mapa entity test data
     +-- entities-seasonal.md                        # Seasonal temporal scoping
     +-- entities-slug.md                            # @slug tag test data
+    +-- entities-location-subtypes.md               # Location subtype dedup test data
     +-- entities-temporal-plik.md                   # Temporal @plik tag test data
     |
     |   # Session fixtures
@@ -490,6 +492,7 @@ Key fixtures:
 | `sessions-duplicate.md` | Identical headers for deduplication | `Merge-SessionGroup` |
 | `sessions-zmiany.md` | Zmiany blocks with `@tag` overrides | `get-entitystate` |
 | `sessions-failed.md` | Malformed dates with valid PU content | `test-playercharacterpuassignment` |
+| `entities-location-subtypes.md` | Lokacja + wewnetrzna/zewnetrzna pairs with shared names | `get-nameindex` (location subtype dedup) |
 | `pu-sessions.json` | Pre-processed session history | History deduplication |
 
 ## Testing Strategies
@@ -501,6 +504,14 @@ Merge logic tests use multiple fixture files (`entities.md`, `entities-100-ent.m
 Polish declension tests in `resolve-name.Tests.ps1` include test cases for suffix stripping and stem alternation with Polish morphological forms (e.g., `"Solmyra"` -> `"Solmyr"`, `"Vidominie"` -> `"Vidomina"`).
 
 Format generation tests use separate fixture files per format generation to ensure all four formats are tested independently for parsing, metadata extraction, and format upgrade paths.
+
+Name index disambiguation tests in `get-nameindex.Tests.ps1` call `Add-IndexToken` directly with synthetic entity objects to verify type-priority dedup rules (Postac wins over Gracz, Lokacja wins over location subtypes) independent of fixture data.
+
+Filesystem isolation tests in `repo-filehelpers.Tests.ps1` use `BeforeEach`/`AfterEach` instead of `BeforeAll`/`AfterAll` to create and tear down temp directories per test case, ensuring each `It` block starts with a clean directory tree.
+
+C# type guard pattern in plugin tests uses `Set-ItResult -Skipped -Because 'Robot.ApiHelpRegistry not compiled'` inside `BeforeAll` to gracefully skip the entire `Describe` block when compiled .NET types are unavailable (e.g., running tests outside the full module load context).
+
+Slug uniqueness and validation tests in `set-mapentity.Tests.ps1` verify `Should -Throw` with wildcard error messages (`*Slug*already exists*`, `*Invalid dimensions format*`) for input validation and cross-entity constraint checks.
 
 ## Adding Tests for New Functions
 
@@ -516,9 +527,9 @@ Format generation tests use separate fixture files per format generation to ensu
 
 | Metric | Count |
 |---|---|
-| Test files | 106 |
-| Test cases (`It` blocks) | ~2,160 |
-| Fixture files | ~90 |
+| Test files | 110 core + 14 plugin |
+| Test cases (`It` blocks) | ~2,590 |
+| Fixture files | ~95 |
 | Loading patterns | 5 (A: exported, B: internal+dot-source, C: standalone helper, D: parser, E: engine component) |
 
 ## Related Documents

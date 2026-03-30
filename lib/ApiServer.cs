@@ -71,7 +71,16 @@ namespace Robot {
         /// Used by the response cache to compute domain fingerprints.
         public static string RepoRoot;
 
+        /// Debug mode flag. When true, the dashboard handler injects client-side
+        /// debug configuration into the served HTML. Set by Start-RobotApi.ps1
+        /// from -DebugMode parameter.
+        public static bool Debug;
+
         public bool IsRunning => _isRunning;
+
+        /// The route table, set during Start(). Exposed so built-in handlers
+        /// (HandleRoutes, HandleMetrics) can query it at request time.
+        public ApiRouter Router => _router;
         public long RequestCount => Interlocked.Read(ref _requestCount);
         public DateTime StartedAt => _startedAt;
 
@@ -397,6 +406,60 @@ namespace Robot {
                 if (key != null) dict[key] = qs[key];
             }
             return dict;
+        }
+
+        // ── Built-in static route handlers (pure C#, no PS runspace) ────
+        // Registered as Func<RouteMatch, ApiServer, object> delegates by
+        // api-routes.ps1. These replace the original PowerShell ScriptBlock
+        // wrappers that failed on bare thread pool threads.
+
+        public static object HandleHealth(RouteMatch match, ApiServer srv) {
+            var d = srv.GetStatus();
+            d["status"] = "ok";
+            return d;
+        }
+
+        public static object HandleRoutes(RouteMatch match, ApiServer srv) {
+            return new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase) {
+                ["routes"] = srv.Router.ListRoutes()
+            };
+        }
+
+        public static object HandleMetrics(RouteMatch match, ApiServer srv) {
+            var d = srv.GetStatus();
+            d["routeCount"] = srv.Router.ListRoutes().Count;
+            return d;
+        }
+
+        public static object HandleSchema(RouteMatch match, ApiServer srv) {
+            return ApiNameDictionary.GetSchema();
+        }
+
+        public static object HandleHelp(RouteMatch match, ApiServer srv) {
+            return new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase) {
+                ["components"] = ApiHelpRegistry.GetComponents()
+            };
+        }
+
+        public static object HandleHelpComponent(RouteMatch match, ApiServer srv) {
+            string component = match.PathParams["component"];
+            string lang = null;
+            string include = null;
+            if (match.QueryParams != null) {
+                match.QueryParams.TryGetValue("lang", out lang);
+                match.QueryParams.TryGetValue("include", out include);
+            }
+            var result = ApiHelpRegistry.GetHelp(component, lang, include);
+            if (result == null) {
+                var body = new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase) {
+                    ["error"] = "Help component not found: " + component
+                };
+                return new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase) {
+                    ["StatusCode"] = 404,
+                    ["Body"] = body
+                };
+            }
+            return result;
         }
 
         public void Dispose() {

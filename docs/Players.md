@@ -38,9 +38,11 @@ The following information is used when creating a character:
 | Character sheet URL | Recommended | Link to the character sheet |
 | Starting PU | Optional | Calculated automatically if not specified |
 
-When a new character is created without specifying starting PU, the system calculates it automatically. It sums all earned PU (PU zdobyte) across the player's existing characters, then applies the formula: half of the total earned PU plus 20, rounded down. New players with no prior characters start at 20 PU.
+When a new character is created without specifying starting PU, the system calculates it automatically. It sums all earned PU (PU zdobyte) across the player's eligible characters, then applies the formula: half of the total earned PU plus 20, rounded down. New players with no prior characters start at 20 PU.
 
-Example: A player has two characters with 30 and 10 earned PU. New character starts with: floor((30 + 10) / 2 + 20) = floor(40) = 40 PU.
+The calculation excludes removed characters (status Usunięty) and characters that never started play (starting PU of zero). Inactive characters (status Nieaktywny) are included, because their earned PU still represents legitimate play history.
+
+Example: A player has two active characters with 30 and 10 earned PU, and one removed character with 50 earned PU. The removed character is excluded. New character starts with: floor((30 + 10) / 2 + 20) = floor(40) = 40 PU.
 
 The character is registered in the entity store with ownership and starting PU. A character file is created from a standard template (unless skipped). The character becomes available for PU processing and name resolution. If the player does not exist yet, a player entry is automatically created.
 

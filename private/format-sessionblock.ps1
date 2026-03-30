@@ -17,10 +17,12 @@
     @Zmiany blocks support two-level nesting (entity name + tag children).
 
     ConvertTo-SessionMetadata orchestrates the canonical rendering order:
-    @Narrator, @Data, @Lokacje, @Logi, @PU, @Zmiany, @Intel. Each block
-    is rendered via ConvertTo-Gen4MetadataBlock and skipped when its input
-    is $null or empty. The blocks are joined with the caller-supplied newline
-    style (NL parameter) to preserve the file's original line endings.
+    @Narrator, @Data, @Lokacje, @Logi, @PU, @Zmiany, @Intel, @Transfer,
+    @Pliki. Each block is rendered via ConvertTo-Gen4MetadataBlock and
+    skipped when its input is $null or empty. @Pliki renders last because
+    file paths are operational metadata, not session content. The blocks
+    are joined with the caller-supplied newline style (NL parameter) to
+    preserve the file's original line endings.
 
     Both functions use StringBuilder for efficient string assembly. The
     output is consumed directly by session file writers that splice it
@@ -108,6 +110,12 @@ function ConvertTo-Gen4MetadataBlock {
                 [void]$SB.Append("    - $($Prefix)$($Entry.Denomination), $($Entry.Source) -> $($Entry.Destination)")
             }
         }
+        'Pliki' {
+            foreach ($Path in $Items) {
+                [void]$SB.Append($NL)
+                [void]$SB.Append("    - $Path")
+            }
+        }
     }
 
     return $SB.ToString()
@@ -123,6 +131,7 @@ function ConvertTo-SessionMetadata {
         [object]$Changes,
         [object]$Intel,
         [object]$Transfers,
+        [object]$Files,
         [string]$NL = [System.Environment]::NewLine
     )
 
@@ -151,6 +160,9 @@ function ConvertTo-SessionMetadata {
 
     $TransferBlock = ConvertTo-Gen4MetadataBlock -Tag 'Transfer' -Items $Transfers -NL $NL
     if ($TransferBlock) { $Blocks.Add($TransferBlock) }
+
+    $PlikiBlock = ConvertTo-Gen4MetadataBlock -Tag 'Pliki' -Items $Files -NL $NL
+    if ($PlikiBlock) { $Blocks.Add($PlikiBlock) }
 
     if ($Blocks.Count -eq 0) { return '' }
 

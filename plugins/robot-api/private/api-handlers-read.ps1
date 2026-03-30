@@ -34,7 +34,7 @@
                 Invoke-ApiGetDeliveryLog
     Parsing:    Invoke-ApiFetchLogContent, Invoke-ApiParseLog,
                 Invoke-ApiSessionPreview
-    Files:      Invoke-ApiGetFiles
+    Files:      Invoke-ApiGetFiles, Invoke-ApiGetFilesTree
 
     Handlers follow a common pattern: extract query parameters, build a
     splatted parameter hashtable for the backing module function (with -Quiet
@@ -1156,8 +1156,7 @@ function Invoke-ApiFetchLogContent {
 
     # Build log directory from exported Get-RepoRoot (no module-private deps)
     $RepoRoot = Get-RepoRoot
-    $Config = Get-AdminConfig
-    $LogDir = [System.IO.Path]::Combine($Config.ResDir, 'logs')
+    $LogDir = [System.IO.Path]::Combine($RepoRoot, '.robot.local', 'res', 'logs')
 
     # Inline URL normalization (mirrors log-fetchhelpers.ps1 logic)
     $PbPattern = [regex]'^https?://(?:www\.)?pastebin\.com/(?!raw/)([A-Za-z0-9]+)/?$'
@@ -1192,12 +1191,20 @@ function Invoke-ApiFetchLogContent {
 
             $Content = $null
 
+            # Try direct relative path from repo root (e.g. res/logs/filename)
+            if (-not $Norm.StartsWith('http', [System.StringComparison]::OrdinalIgnoreCase)) {
+                $DirectPath = [System.IO.Path]::Combine($RepoRoot, $UrlStr)
+                if ([System.IO.File]::Exists($DirectPath)) {
+                    $Content = [System.IO.File]::ReadAllText($DirectPath)
+                }
+            }
+
             # Try disk cache first
-            if ([System.IO.File]::Exists($FilePath)) {
+            if ($null -eq $Content -and [System.IO.File]::Exists($FilePath)) {
                 $Content = [System.IO.File]::ReadAllText($FilePath)
             }
-            # Also check local (non-HTTP) paths under .robot/
-            elseif (-not $Norm.StartsWith('http', [System.StringComparison]::OrdinalIgnoreCase)) {
+            # Also check local (non-HTTP) paths under .robot.local/
+            if ($null -eq $Content -and -not $Norm.StartsWith('http', [System.StringComparison]::OrdinalIgnoreCase)) {
                 $LocalPath = [System.IO.Path]::Combine($RepoRoot, '.robot.local', $UrlStr)
                 if ([System.IO.File]::Exists($LocalPath)) {
                     $Content = [System.IO.File]::ReadAllText($LocalPath)
@@ -1391,5 +1398,64 @@ function Invoke-ApiGetFiles {
             files = $RelPaths.ToArray()
             count = $RelPaths.Count
         }
+    }
+}
+
+function Invoke-ApiGetFilesTree {
+    <#
+        .SYNOPSIS
+        Returns .md file paths as a directory tree structure for path navigation.
+    #>
+
+    [CmdletBinding()] param(
+        [Parameter(Mandatory)] [hashtable]$ApiContext
+    )
+
+    $Root = Get-RepoRoot
+    $Files = [System.IO.Directory]::GetFiles($Root, '*.md', [System.IO.SearchOption]::AllDirectories)
+    $RootLen = $Root.Length + 1
+
+    # Build tree as nested hashtables
+    $Tree = @{ name = '/'; type = 'dir'; children = [System.Collections.Generic.List[object]]::new() }
+    $DirLookup = @{ '' = $Tree }
+
+    foreach ($F in $Files) {
+        $Rel = $F.Substring($RootLen).Replace('\', '/')
+        if ($Rel.StartsWith('.')) { continue }
+
+        $Parts = $Rel.Split('/')
+        $DirPath = ''
+
+        # Ensure all parent directories exist in the tree
+        for ($I = 0; $I -lt $Parts.Count - 1; $I++) {
+            $ParentPath = $DirPath
+            $DirPath = if ($DirPath.Length -eq 0) { $Parts[$I] } else { "$DirPath/$($Parts[$I])" }
+
+            if (-not $DirLookup.ContainsKey($DirPath)) {
+                $DirNode = @{
+                    name     = $Parts[$I]
+                    type     = 'dir'
+                    children = [System.Collections.Generic.List[object]]::new()
+                }
+                $DirLookup[$ParentPath].children.Add($DirNode)
+                $DirLookup[$DirPath] = $DirNode
+            }
+        }
+
+        # Add file leaf
+        $ParentDir = if ($Parts.Count -gt 1) {
+            [string]::Join('/', $Parts[0..($Parts.Count - 2)])
+        } else { '' }
+
+        $DirLookup[$ParentDir].children.Add(@{
+            name = $Parts[$Parts.Count - 1]
+            type = 'file'
+            path = $Rel
+        })
+    }
+
+    return @{
+        StatusCode = 200
+        Body       = $Tree
     }
 }

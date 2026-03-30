@@ -74,7 +74,9 @@ function Start-RobotApi {
         [int]$Workers,
         [switch]$ReadOnly,
         [switch]$Quiet,
-        [switch]$Force
+        [switch]$Force,
+        [Parameter(HelpMessage = "Enable debug mode — dashboard emits debug-level console output")]
+        [switch]$DebugMode
     )
 
     # Fail early if C# types weren't compiled — avoids cryptic errors downstream
@@ -97,6 +99,7 @@ function Start-RobotApi {
     if ($Address) { $Config.ListenAddress = $Address }
     if ($Workers) { $Config.WorkerCount   = $Workers }
     if ($ReadOnly){ $Config.ReadOnly      = $true }
+    if ($DebugMode){ $Config.DebugMode   = $true }
 
     # Fallback defaults when plugin.psd1 is missing or incomplete
     if (-not $Config.ListenPort)         { $Config.ListenPort         = 8642 }
@@ -233,6 +236,7 @@ function Start-RobotApi {
     $ResponseCache.CacheDirectory = [System.IO.Path]::Combine(
         [Robot.ApiServer]::RepoRoot, '.robot.local', '.cache', 'api')
     [Robot.ApiServer]::ResponseCache = $ResponseCache
+    [Robot.ApiServer]::Debug = [bool]$Config.DebugMode
 
     # Launch PowerShell runspace pool to dequeue and process requests
     . "$PSScriptRoot/../private/api-worker.ps1"
@@ -243,6 +247,10 @@ function Start-RobotApi {
         Write-RobotInfo "[Start-RobotApi] C# engine started on $Prefix"
         Write-RobotInfo "[Start-RobotApi] $($Config.WorkerCount) PowerShell workers active"
         Write-RobotInfo "[Start-RobotApi] Rate limit: $($Config.RateLimitPerSecond) req/s per IP"
+    }
+
+    if ([Robot.ApiServer]::Debug -and -not $Quiet) {
+        Write-RobotInfo "[Start-RobotApi] DEBUG MODE enabled — dashboard will emit debug logs"
     }
 
     return Get-RobotApiStatus

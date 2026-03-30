@@ -29,7 +29,7 @@ Every session starts with a level-3 header containing the date, title, and narra
 
 The date format is always `YYYY-MM-DD`. Incorrect formats (like `2025-6-15` or `15-06-2025`) are reported as errors.
 
-For multi-day sessions, use a slash for the end day: `### 2025-06-21/22, Weekend Session, Catherine` (must be in the same month).
+For multi-day sessions, append a slash and the end day to the date: `### 2025-06-21/22, Weekend Session, Catherine`. The start and end dates must be in the same calendar month, and the end day must be later than the start day. The system records both the start and end dates for the session.
 
 ## Metadata Blocks (Current Format)
 
@@ -61,6 +61,8 @@ but not parsed for metadata.
 - @Intel:
     - Grupa/Nekromanci: Wiadomość do wszystkich członków Nekromantów
     - Solmyr: Prywatna wiadomość
+- @Pliki:
+    - sesje/sesje-erathia.md
 ```
 
 ## Metadata Fields
@@ -75,6 +77,7 @@ but not parsed for metadata.
 | `@Zmiany` | As needed | World-state changes (entity name + `@tag: value` pairs) |
 | `@Transfer` | As needed | Currency and item transfers between entities (see [Currency.md](Currency.md)) |
 | `@Intel` | As needed | Targeted messages to specific recipients |
+| `@Pliki` | As needed | File paths where this session is recorded (populated automatically when adding sessions programmatically) |
 
 ## PU Entry Format
 
@@ -147,6 +150,18 @@ When a session is processed, each transfer is recorded in the transaction ledger
 
 For more details on currency tracking, see [Currency.md](Currency.md).
 
+## Declared Files (Pliki) Format
+
+The `@Pliki` block records which repository files contain this session. When the Coordinator adds a session programmatically, the system automatically populates `@Pliki` with the repo-relative paths of the target files. This makes each session self-documenting — you can see at a glance where the session was written.
+
+```markdown
+- @Pliki:
+    - sesje/sesje-erathia.md
+    - sesje/sesje-bracada.md
+```
+
+When the same session appears in multiple files, the declared file lists from all copies are merged during deduplication.
+
 ## Older Format Generations
 
 The system reads four format generations. Sessions written before 2026 do not need to be rewritten — the system auto-detects and parses all formats.
@@ -160,7 +175,7 @@ The system reads four format generations. Sessions written before 2026 do not ne
 
 When writing new sessions, always use the current format (with `@` prefix).
 
-The main difference between Gen3 (2024-2026) and Gen4 (current) is the `@` prefix on metadata tags. Gen4 uses `@Lokacje` (instead of `Lokalizacje`), `@Logi` (instead of `Logi`), `@PU` (instead of `PU`), and `@Zmiany` (instead of `Zmiany`). Gen4 also introduces `@Transfer`, `@Intel`, `@Narrator`, and `@Data` metadata blocks. Entity-level tags inside `@Zmiany` always used the `@` prefix in both formats.
+The main difference between Gen3 (2024-2026) and Gen4 (current) is the `@` prefix on metadata tags. Gen4 uses `@Lokacje` (instead of `Lokalizacje`), `@Logi` (instead of `Logi`), `@PU` (instead of `PU`), and `@Zmiany` (instead of `Zmiany`). Gen4 also introduces `@Transfer`, `@Intel`, `@Narrator`, `@Data`, and `@Pliki` metadata blocks. Entity-level tags inside `@Zmiany` always used the `@` prefix in both formats.
 
 ## Adding Sessions Programmatically
 

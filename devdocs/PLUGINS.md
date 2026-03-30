@@ -34,10 +34,15 @@ Robot.PowerShell.psm1 (module entry point)
 
 Hook Registry (private/plugin-hooks.ps1)
     |
-    +-- Write-EntityFile --> BeforeWrite / AfterWrite
-    +-- Set-Session ------> BeforeWrite / AfterWrite
-    +-- New-Entity -------> AfterCreate
-    +-- New-PlayerCharacter -> AfterCreate
+    +-- Write-EntityFile ------> BeforeWrite / AfterWrite
+    +-- Write-CharacterFile ---> BeforeWrite / AfterWrite
+    +-- Set-Session -----------> BeforeWrite / AfterWrite
+    +-- Add-Session -----------> BeforeWrite / AfterWrite / AfterCreate
+    +-- New-Entity ------------> AfterCreate
+    +-- Remove-Entity ---------> AfterWrite
+    +-- New-PlayerCharacter ---> AfterCreate
+    +-- New-Player ------------> AfterCreate
+    +-- Set-CurrencyEntity ----> AfterWrite
 ```
 
 Core functions are loaded first. Plugins are discovered, validated, and loaded in dependency order. Plugin public functions are exported alongside core functions via a single `Export-ModuleMember` call at the end of `Robot.PowerShell.psm1`. The hook registry connects plugin handlers to core write operations.
@@ -217,10 +222,18 @@ Hook points:
 |---|---|---|---|---|
 | `Write-EntityFile` | `BeforeWrite` | Yes | `Path`, `Lines`, `NL` | Validate or enrich content before write |
 | `Write-EntityFile` | `AfterWrite` | No | `Path`, `Lines`, `NL` | Side-effects: logging, sync, notifications |
+| `Write-CharacterFile` | `BeforeWrite` | Yes | `Path`, `Content` | Validate character file content before write |
+| `Write-CharacterFile` | `AfterWrite` | No | `Path` | Side-effects: logging, sync |
 | `Set-Session` | `BeforeWrite` | Yes | `FilePath`, `HeaderText`, `NewContent` | Validate session modifications |
 | `Set-Session` | `AfterWrite` | No | `FilePath`, `HeaderText`, `NewContent` | Side-effects: logging, notifications |
+| `Add-Session` | `BeforeWrite` | Yes | `FilePath`, `Headers`, `NewContent` | Validate new session content before write |
+| `Add-Session` | `AfterWrite` | No | `FilePath`, `Headers`, `NewContent` | Side-effects: logging, notifications |
+| `Add-Session` | `AfterCreate` | No | `FilePath`, `Headers` | Side-effects: post-creation processing |
 | `New-Entity` | `AfterCreate` | No | `Name`, `Type`, `Tags`, `FilePath` | Side-effects: logging, external sync |
+| `Remove-Entity` | `AfterWrite` | No | `Name`, `EntityType`, `Path` | Side-effects: notifications, graph invalidation |
 | `New-PlayerCharacter` | `AfterCreate` | No | `PlayerName`, `CharacterName`, `FilePath`, `CharacterFile` | Side-effects: logging, external sync |
+| `New-Player` | `AfterCreate` | No | `Name` | Side-effects: notifications, external sync |
+| `Set-CurrencyEntity` | `AfterWrite` | No | `Name`, `Amount` | Side-effects: notifications, economy tracking |
 
 `Invoke-PluginHook` invocation:
 
@@ -275,10 +288,18 @@ function Invoke-LLMValidation {
 |---|---|---|
 | `Write-EntityFile` | `BeforeWrite` | `Operation`, `Path`, `Lines` (`List[string]`, mutable), `NL` |
 | `Write-EntityFile` | `AfterWrite` | `Operation`, `Path`, `Lines` (`List[string]`), `NL` |
+| `Write-CharacterFile` | `BeforeWrite` | `Operation`, `Path`, `Content` |
+| `Write-CharacterFile` | `AfterWrite` | `Operation`, `Path` |
 | `Set-Session` | `BeforeWrite` | `Operation`, `FilePath`, `HeaderText`, `NewContent` |
 | `Set-Session` | `AfterWrite` | `Operation`, `FilePath`, `HeaderText`, `NewContent` |
+| `Add-Session` | `BeforeWrite` | `Operation`, `FilePath`, `Headers` (`string[]`), `NewContent` |
+| `Add-Session` | `AfterWrite` | `Operation`, `FilePath`, `Headers` (`string[]`), `NewContent` |
+| `Add-Session` | `AfterCreate` | `Operation`, `FilePath`, `Headers` (`string[]`) |
 | `New-Entity` | `AfterCreate` | `Operation`, `Name`, `Type`, `Tags`, `FilePath` |
+| `Remove-Entity` | `AfterWrite` | `Operation`, `Name`, `EntityType`, `Path` |
 | `New-PlayerCharacter` | `AfterCreate` | `Operation`, `PlayerName`, `CharacterName`, `FilePath`, `CharacterFile` |
+| `New-Player` | `AfterCreate` | `Operation`, `Name` |
+| `Set-CurrencyEntity` | `AfterWrite` | `Operation`, `Name`, `Amount` |
 
 Handler behaviors:
 

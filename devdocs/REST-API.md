@@ -148,6 +148,7 @@ Parse, file, and dashboard endpoints:
 | POST | `/logs/fetch` | `Invoke-ApiFetchLogContent` | Fetch raw log content by URLs (disk cache then HTTP) |
 | POST | `/parse/session-preview` | `Invoke-ApiSessionPreview` | Preview session markdown with name resolution |
 | GET | `/files` | `Invoke-ApiGetFiles` | List .md file paths for autocomplete |
+| GET | `/files/tree` | `Invoke-ApiGetFilesTree` | Directory tree of .md files for path navigation |
 | GET | `/dashboard` | `Invoke-ApiGetDashboard` | Web dashboard SPA (text/html) |
 
 Auth management endpoints:
@@ -191,7 +192,7 @@ Scope matching rules (implemented in `ApiMiddleware.HasScope`):
 | `entity:write` | POST /entities, PUT /entities/:name, DELETE /entities/:name, POST /currency, PUT /currency/:name, POST /locations, PUT /locations/:name, DELETE /locations/:name, POST /maps, PUT /maps/:name |
 | `player:read` | GET /players, /players/:name |
 | `player:write` | POST /players, POST /players/:name/characters |
-| `session:read` | GET /sessions, /session-graph/entity/:name, /session-graph/compare, /session-graph/leaderboard, /files; POST /parse/log, /logs/fetch, /parse/session-preview |
+| `session:read` | GET /sessions, /session-graph/entity/:name, /session-graph/compare, /session-graph/leaderboard, /files, /files/tree; POST /parse/log, /logs/fetch, /parse/session-preview |
 | `session:write` | POST /sessions |
 | `admin:read` | GET /validate/\*, /reports/\* |
 | `admin:write` | POST /workflow/\* |
@@ -445,19 +446,19 @@ Worker initialization (`Start-ApiWorkerPool`):
 
 Worker dequeue loop:
 
-1. `$Server.RequestQueue.Take($Cts.Token)` blocks until a request arrives
+1. `$Queue.Take()` blocks until a request arrives (terminates via `InvalidOperationException` when `CompleteAdding` is called)
 2. Check cache coherence: read shared `CacheVersion`, compare to local version, call `Clear-ParseCaches` on mismatch
 3. Look up handler by name from `$HandlerMap`
-4. Build `$ApiContext` hashtable with `PathParams`, `QueryParams`, `Body`, `Method`, `Path`
+4. Build `$ApiContext` hashtable with `PathParams`, `QueryParams`, `Body`, `Method`, `Path`, `TokenName`, `TokenScopes`
 5. Parse JSON body if present
-6. Invoke the handler: `$PS.AddCommand($HandlerName).AddParameter('ApiContext', $Ctx).Invoke()`
+6. Invoke the handler directly: `& $HandlerName -ApiContext $Ctx`
 7. Extract result hashtable with `StatusCode` and `Body`
 8. For write methods (POST/PUT/DELETE): increment `CacheVersion` via `Interlocked.Increment`
 9. Wrap in `ApiResponse` and call `ResponseSource.SetResult()`
 
 Graceful shutdown (`Stop-ApiWorkerPool` + `Stop-RobotApi`):
 
-1. Cancel the dequeue loop via `CancellationTokenSource`
+1. Stop each worker's `PowerShell` instance (aborts the dequeue loop)
 2. Dispose each `PowerShell` instance
 3. Close and dispose each `Runspace`
 4. Clear static `ApiServer.ResponseCache` and `ApiServer.RepoRoot` fields to release sidecar cache references
@@ -612,7 +613,7 @@ plugins/robot-api/
 +-- private/
 |   +-- api-routes.ps1               # Route registration (static + dynamic + cacheable)
 |   +-- api-worker.ps1               # RunspacePool worker threads
-|   +-- api-handlers-read.ps1        # 38 read handlers + 1 helper
+|   +-- api-handlers-read.ps1        # 40 read handlers + 1 helper
 |   +-- api-handlers-write.ps1       # 15 write handlers + 1 cache invalidation helper
 |   +-- api-handlers-auth.ps1        # Auth token API handlers (4 handlers)
 |   +-- api-handlers-dashboard.ps1   # Dashboard SPA endpoint handler
@@ -629,6 +630,7 @@ plugins/robot-api/
     +-- api-dictionary.Tests.ps1
     +-- api-server.Tests.ps1
     +-- api-handlers.Tests.ps1
+    +-- api-handlers-session.Tests.ps1
     +-- api-worker.Tests.ps1
     +-- api-token-helpers.Tests.ps1
     +-- api-token-management.Tests.ps1
@@ -652,7 +654,7 @@ Plugin config (`plugin.psd1`) with environment variable overrides:
 
 ## Testing
 
-Test files: `api-router.Tests.ps1` (12 tests — includes RouteMatch QueryParams property test), `api-middleware.Tests.ps1` (9 tests), `api-query.Tests.ps1` (37 tests), `api-dictionary.Tests.ps1` (28 tests), `api-server.Tests.ps1` (server lifecycle, concurrent requests, rate limit, shutdown), `api-handlers.Tests.ps1` (per-handler tests with mock ApiContext), `api-worker.Tests.ps1` (worker pool lifecycle, concurrent processing, cache version propagation), `api-help-registry.Tests.ps1` (17 tests — load/components, language filtering, include filtering, content validation across all 17 help components)
+Test files: `api-router.Tests.ps1` (15 tests — route matching, static route O(1) lookup, RouteMatch QueryParams property), `api-middleware.Tests.ps1` (25 tests — auth, CORS, rate limiting, scope matching, read-only mode), `api-query.Tests.ps1` (37 tests), `api-dictionary.Tests.ps1` (28 tests), `api-server.Tests.ps1` (20 tests — server lifecycle, concurrent requests, rate limit, shutdown, cache version), `api-handlers.Tests.ps1` (32 tests — per-handler tests with mock ApiContext), `api-handlers-session.Tests.ps1` (15 tests — session creation single and batch modes), `api-worker.Tests.ps1` (10 tests — worker pool lifecycle, concurrent processing, cache version propagation), `api-token-helpers.Tests.ps1` (9 tests — token file I/O and generation), `api-token-management.Tests.ps1` (6 tests — New/Remove/Get-RobotApiToken), `api-help-registry.Tests.ps1` (17 tests — load/components, language filtering, include filtering, content validation across all 17 help components)
 
 All tests use the `PSTypeName` guard pattern to skip if C# types are not compiled.
 

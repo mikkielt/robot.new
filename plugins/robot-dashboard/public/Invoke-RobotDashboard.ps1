@@ -20,7 +20,9 @@ function Invoke-RobotDashboard {
     [CmdletBinding()] param(
         [Parameter(HelpMessage = "Override the API port (default: from plugin config or 8642)")]
         [int]$Port,
-        [switch]$Force
+        [switch]$Force,
+        [Parameter(HelpMessage = "Enable debug mode — browser console emits debug-level logs")]
+        [switch]$DebugMode
     )
 
     # Resolve effective port — needed for external probe and URL construction
@@ -49,8 +51,9 @@ function Invoke-RobotDashboard {
             Write-RobotInfo "[Invoke-RobotDashboard] Reusing existing API on port $EffectivePort"
         } else {
             $StartParams = @{ Quiet = $true }
-            if ($Port)  { $StartParams.Port  = $Port }
-            if ($Force) { $StartParams.Force = $true }
+            if ($Port)      { $StartParams.Port      = $Port }
+            if ($Force)     { $StartParams.Force     = $true }
+            if ($DebugMode) { $StartParams.DebugMode = $true }
             Start-RobotApi @StartParams
         }
     }

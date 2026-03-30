@@ -51,7 +51,11 @@ Nerthus names (`@nazwa_nerthus`) and slugs (`@slug`) are also searchable. When a
 
 ## When Ambiguity Prevents a Match
 
-If a name matches multiple different entities at the same priority (e.g., two NPCs share a short name token), the system marks the name as ambiguous and skips the exact match. Declension and fuzzy stages also avoid ambiguous tokens. In this case, use a more specific name (the full name rather than a single word) or register a unique alias.
+If a name matches multiple different entities at the same priority (e.g., two NPCs share a short name token), the system marks the name as ambiguous and skips the exact match. Declension and fuzzy stages also avoid ambiguous tokens.
+
+When the context specifies the expected entity type, the system can resolve ambiguity automatically. For example, if a name matches both an NPC and a Lokacja but the system is looking for a location, it picks the Lokacja match. Location lookups also accept Mapa entities, since maps and locations represent the same physical places. If exactly one entity matches the expected type, the ambiguity is resolved without user intervention.
+
+When type-based disambiguation does not apply, use a more specific name (the full name rather than a single word) or register a unique alias.
 
 ## Exceptions and Recovery
 
@@ -70,8 +74,9 @@ If a name matches multiple different entities at the same priority (e.g., two NP
 1. Natural language tolerance — Narrators can use Polish grammatical forms naturally without worrying about exact nominative case
 2. Typo recovery — small misspellings are matched automatically via fuzzy matching
 3. Ranked fuzzy candidates — when multiple names are similarly close, the system presents a ranked list for the Coordinator to review instead of guessing
-4. Alias flexibility — entities can be known by multiple names, all equally valid for matching
-5. Fail-early for PU — unresolvable character names block PU assignment entirely, preventing incorrect awards
+4. Type-based disambiguation — when a name matches multiple entity types, the system narrows to the expected type automatically
+5. Alias flexibility — entities can be known by multiple names, all equally valid for matching
+6. Fail-early for PU — unresolvable character names block PU assignment entirely, preventing incorrect awards
 
 ## Related Documents
 

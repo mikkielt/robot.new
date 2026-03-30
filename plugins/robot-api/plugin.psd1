@@ -58,6 +58,12 @@
             Default     = 65536
             Required    = $false
         }
+        DebugMode = @{
+            Description = 'Enable debug mode — dashboard emits debug-level console output'
+            EnvVar      = 'ROBOT_API_DEBUG'
+            Default     = $false
+            Required    = $false
+        }
     }
     Hooks             = @(
         @{

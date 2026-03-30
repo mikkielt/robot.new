@@ -6,7 +6,7 @@ The name resolution subsystem consists of `Get-NameIndex` (index construction), 
 
 Shared dependency: `private/string-helpers.ps1` provides `Get-LevenshteinDistance` (PowerShell fallback), dot-sourced by `public/resolve/resolve-name.ps1`, `public/get-nameindex.ps1`, `public/reporting/get-namedlocationreport.ps1`, and `public/reporting/get-namedloglocationreport.ps1`.
 
-Compiled C# dependency: `lib/BKTree.cs` provides the `Robot.BKTree` class — a compiled C# BK-tree with integrated case-insensitive Levenshtein distance. Loaded via `Add-Type` in `public/get-nameindex.ps1`. Called on every unresolved token during name resolution across all session processing. Falls back to the legacy PowerShell BK-tree helpers when `Add-Type` fails.
+Compiled C# dependency: `lib/BKTree.cs` provides the `Robot.BKTree` class — a compiled C# BK-tree with integrated case-insensitive Levenshtein distance. Compiled centrally in `Robot.PowerShell.psm1` at module import time. Called on every unresolved token during name resolution across all session processing. Falls back to the legacy PowerShell BK-tree helpers when compilation fails.
 
 Compiled C# dependency: `lib/DeclensionEngine.cs` provides the `Robot.DeclensionEngine` class — Polish declension engine (nouns and adjectives) for suffix stripping and consonant alternation reversal. Constructed once at module load by `public/resolve/resolve-name.ps1`. Called on every unresolved name during `Resolve-Name` stages 2 and 2b. Falls back to the PowerShell functions `Get-DeclensionStem` and `Get-StemAlternationCandidates` when `Add-Type` fails.
 
@@ -93,7 +93,7 @@ Each index entry:
 
 A [BK-tree](https://en.wikipedia.org/wiki/BK-tree) partitions strings by Levenshtein edit distance, enabling O(log N) approximate matching. Two implementations exist: a compiled C# class (`Robot.BKTree`) and a legacy PowerShell hashtable fallback.
 
-The `Robot.BKTree` class (`lib/BKTree.cs`) is the primary implementation, loaded via `Add-Type` at module import time. It provides:
+The `Robot.BKTree` class (`lib/BKTree.cs`) is the primary implementation, compiled centrally in `Robot.PowerShell.psm1` at module import time. It provides:
 
 - Integrated Levenshtein distance — `LevenshteinDistance(s, t, maxDist)` is a static two-row matrix, case-insensitive via `char.ToLowerInvariant`, with early-exit threshold (returns `maxDist + 1` when true distance exceeds threshold).
 - Tree structure — sealed class with `string _key` and `Dictionary<int, BKTree> _children`.
@@ -132,7 +132,7 @@ FUNCTION Search-BKTree(tree, query, threshold):
     stack = [tree]
     WHILE stack not empty:
         current = pop()
-        distance = Levenshtein(query, current.Key)
+        distance = Levenshtein(query, current.Key, maxDistance=threshold)
         IF distance <= threshold -> add to results
         LOW = distance - threshold
         HIGH = distance + threshold
@@ -149,18 +149,7 @@ Type selection: If `Robot.BKTree` type is available (C# compiled successfully), 
 
 `Search-BKTree` (legacy) handles a `$null` tree safely (returns empty results). `Resolve-Name` dispatches to the correct search method based on `$BKTree -is [Robot.BKTree]`.
 
-C# type loading in `public/get-nameindex.ps1` at file scope (before any function definitions):
-
-```powershell
-if (-not ([System.Management.Automation.PSTypeName]'Robot.BKTree').Type) {
-    $CsPath = [System.IO.Path]::Combine($script:ModuleRoot, 'lib', 'BKTree.cs')
-    if ([System.IO.File]::Exists($CsPath)) {
-        Add-Type -TypeDefinition ([System.IO.File]::ReadAllText($CsPath)) -Language CSharp
-    }
-}
-```
-
-The type check ensures the class is loaded only once per session, even if `get-nameindex.ps1` is dot-sourced multiple times.
+C# type loading: `Robot.BKTree` is compiled centrally in `Robot.PowerShell.psm1` at module import time alongside all other `lib/*.cs` types. The `PSTypeName` guard in `Get-NameIndex` checks availability before creating a `Robot.BKTree` instance vs. the PowerShell hashtable fallback.
 
 ## `Robot.DeclensionEngine`
 
@@ -192,6 +181,7 @@ When the C# type is unavailable, `Resolve-Name` falls back to the equivalent Pow
 |---|---|
 | `Resolve-Name` | 4-stage lookup pipeline |
 | `Resolve-AmbiguousEntry` | Disambiguates index entries by OwnerType filter; handles both non-ambiguous (single owner) and ambiguous (typed Owners array) entries |
+| `Get-EntityFilesFingerprint` | Builds a `LastWriteTimeUtc`-based fingerprint across entity source files for module-scoped name index cache invalidation |
 | `Get-DeclensionStem` | Strips Polish case suffixes |
 | `Get-StemAlternationCandidates` | Reverses Polish consonant mutations |
 | `Get-LevenshteinDistance` | Two-row matrix edit distance — PowerShell fallback (from `private/string-helpers.ps1`) |
@@ -201,6 +191,17 @@ When the C# type is unavailable, `Resolve-Name` falls back to the equivalent Pow
 
 - **Non-ambiguous entries** — returns `Entry.Owner` directly if no `-OwnerType` filter is set or the entry's type matches. Returns `$null` on type mismatch.
 - **Ambiguous entries** — when `-OwnerType` is specified and the entry has a typed `Owners` array, filters to owners matching the requested type. `Lokacja` filter also accepts `Mapa` type owners. Returns the single matching owner if exactly one exists; returns `$null` otherwise (zero or multiple matches).
+
+`Get-EntityFilesFingerprint` concatenates `LastWriteTimeUtc` ticks from all entity source files (`entities.md`, overflow `*-NNN-ent.md` files, `Gracze.md`) into a single fingerprint string. Returns `$null` when no entity files are found (fresh repo or test environment), which forces a cache miss.
+
+When no caller-provided `Index` is passed, `Resolve-Name` checks the module-scoped name index cache before rebuilding. Two `$script:` variables hold the cache state:
+
+| Variable | Type | Purpose |
+|---|---|---|
+| `$script:CachedNameIndex` | hashtable | Last `Get-NameIndex` result (`Index`, `StemIndex`, `BKTree`) |
+| `$script:CachedNameIndexKey` | string | Fingerprint from `Get-EntityFilesFingerprint` matching the cached index |
+
+On each standalone call (no `-Index` parameter), `Resolve-Name` computes the current fingerprint via `Get-EntityFilesFingerprint`. If it matches `$script:CachedNameIndexKey`, the cached `$script:CachedNameIndex` is reused directly. A mismatch (or `$null` fingerprint) triggers a full `Get-Entity` + `Get-NameIndex` rebuild, and the result is persisted for subsequent calls within the same module session. This avoids the ~4s rebuild that would otherwise run on every standalone `Resolve-Name` invocation (e.g., from `session-parsehelpers` Intel resolution).
 
 Parameters:
 
@@ -243,8 +244,8 @@ Adjectives: -ego, -emu, -ymi, -ych, -ej, -ym
 stem = StripLongestMatchingSuffix(Query)    # minimum 3-char stem
 IF stem in StemIndex:
     FOR each tokenKey in StemIndex[stem]:
-        IF tokenKey in Index AND NOT Ambiguous AND type match:
-            RETURN Owner
+        Resolved = Resolve-AmbiguousEntry(Index[tokenKey], OwnerType)
+        IF Resolved -> RETURN Resolved
 ```
 
 Examples: `"Solmyra"` -> stem `"Solmyr"` -> resolves to Solmyr. `"Sandrem"` -> stem `"Sandro"`.
@@ -271,8 +272,8 @@ Alternation mappings (12 rules):
 ```
 candidates = ReverseConsonantMutations(Query)
 FOR each candidate:
-    IF candidate in Index AND NOT Ambiguous AND type match:
-        RETURN Owner
+    Resolved = Resolve-AmbiguousEntry(Index[candidate], OwnerType)
+    IF Resolved -> RETURN Resolved
 ```
 
 Stage 3 — Levenshtein Fuzzy Match.

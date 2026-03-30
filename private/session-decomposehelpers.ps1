@@ -21,7 +21,8 @@
     - Gen1: bare session text, optional "Logi: <url>" plain text lines
     - Gen2: italic location line (*Lokalizacja: X, Y*), plain text logs
     - Gen3: structured list items (- PU:, - Lokalizacje:, - Logi:, - Zmiany:)
-    - Gen4: @-prefixed list items (- @PU:, - @Lokacje:, - @Logi:, - @Zmiany:)
+    - Gen4: @-prefixed list items (- @PU:, - @Lokacje:, - @Logi:, - @Zmiany:,
+            - @Transfer:, - @Pliki:)
 
     Split-SessionSection is the core decomposition function. It classifies
     root-level list items into metadata blocks (PU, Logi, Lokacje, etc.),
@@ -264,6 +265,8 @@ function ConvertTo-Gen4FromRawBlock {
         'pu'        { 'PU' }
         'changes'   { 'Zmiany' }
         'intel'     { 'Intel' }
+        'transfer'  { 'Transfer' }
+        'files'     { 'Pliki' }
         default     { $Tag }
     }
 

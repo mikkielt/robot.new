@@ -2,11 +2,11 @@
 
 ## Scope
 
-The Git subsystem comprises `Get-GitChangeLog` (structured Git history extraction) and `Get-RepoRoot` (repository root detection).
+The Git subsystem comprises `Get-GitChangeLog` (structured Git history extraction), `Get-RepoRoot` (repository root detection), `Set-RepoRoot` (root override), and `Get-RepoFiles` (shared file enumeration helper).
 
 ## `Get-RepoRoot`
 
-Traverses the directory tree upward from the current working directory to find the nearest `.git` folder.
+Traverses the directory tree upward from the module's parent directory to find the nearest `.git` folder.
 
 Uses `[System.IO.Directory]` and `[System.IO.Path]` (not PowerShell `$PWD`) for RunspacePool independence -- `$PWD` is not available in worker threads. Stops at filesystem root (`GetPathRoot()` check). Throws if no `.git` directory found in any parent.
 
@@ -16,7 +16,7 @@ The cache is bypassed when an explicit `-ModuleRoot` parameter is provided (forc
 
 Cache priority order:
 1. `$script:RepoRootOverride` (checked first, returns immediately if set)
-2. `$script:CachedRepoRoot` (returned when no `-ModuleRoot` override and no data directory override)
+2. `$script:CachedRepoRoot` (returned when no `-ModuleRoot` override)
 3. Fresh traversal (when neither cache nor override applies; result cached for future calls)
 
 `Set-RepoRoot -Reset` does not clear the traversal cache (only the manifest cache). The traversal cache persists for the module session. This is intentional: the traversal result is deterministic for a given module location and does not change within a session.
@@ -24,6 +24,40 @@ Cache priority order:
 If no `.git` directory is found in any parent of the module directory, `Get-RepoRoot` checks whether the module directory itself contains a `.git` directory or file (standalone checkout, e.g., CI environments). If found, the module root is treated as the repository root and cached. Otherwise, throws.
 
 `Get-ParentRepoRoot` is a companion function for submodule environments. It walks upward from `Get-RepoRoot` past the submodule `.git` boundary to find the enclosing parent repository root. It starts from `Get-RepoRoot` result (the submodule root), moves one directory up to exit the submodule, and continues upward until a `.git` directory is found (the parent repo root). It is not exported by the module (non Verb-Noun name) and must be dot-sourced directly for testing.
+
+## `Set-RepoRoot`
+
+Source: `public/set-reporoot.ps1`. Overrides or resets the repository root used by `Get-RepoRoot`.
+
+| Parameter | Type | ParameterSet | Description |
+|---|---|---|---|
+| `Path` | string | Path | Absolute directory path to use as the repository root |
+| `Reset` | switch | Reset | Clear the override and revert to git-based detection |
+
+When `-Path` is given, subsequent `Get-RepoRoot` calls return that path instead of performing git traversal. Validates that the directory exists via `[System.IO.Directory]::Exists` and resolves to an absolute path via `[System.IO.Path]::GetFullPath`. Stores the result in `$script:RepoRootOverride`.
+
+When `-Reset` is given, `$script:RepoRootOverride` is set to `$null`, reverting to standard `.git`-based detection. Both parameter sets invalidate the manifest cache (`$script:CachedManifest`, `$script:CachedManifestDir`) so that `Find-DataManifest` re-scans from the new root on next use.
+
+## `Get-RepoFiles`
+
+Source: `private/repo-filehelpers.ps1`. Shared helper for enumerating repository files with exclusion filtering. Consumed by `Get-Session` and `Get-HashableFiles` via dot-sourcing.
+
+| Parameter | Type | Mandatory | Description |
+|---|---|---|---|
+| `RepoRoot` | string | Yes | Root directory of the repository |
+| `Pattern` | string | No | File glob pattern (default: `*.md`) |
+| `ExcludeDirectory` | string[] | No | Additional directories to exclude |
+
+Four-layer exclusion filter:
+
+| Layer | Mechanism |
+|---|---|
+| Dot directories (`.git/`, `.robot.local/`, `.robot.powershell/`) | Per-component scan: any path segment starting with `.` |
+| Module directory (`$script:ModuleRoot`) | Prefix match against resolved module root |
+| Set-RepoRoot redirect copy | Module leaf name under the search root, when it differs from the physical module location |
+| User-specified directories | Absolute prefix matching via caller-provided paths |
+
+Returns `List[string]` of absolute paths matching the pattern. Builds all exclusion prefixes once, then filters the file list in a single pass.
 
 ## `Get-GitChangeLog`
 
@@ -142,15 +176,22 @@ On failure, the PU workflow falls back to full repository scan via `Get-Session`
 | `Get-RepoRoot -ModuleRoot` with explicit path | Bypasses cache, performs fresh traversal from specified root |
 | `$script:RepoRootOverride` set | `Get-RepoRoot` returns override path immediately, no traversal or cache |
 | Module directory is standalone git repo | `.git` check on module root succeeds; used as repo root (CI fallback) |
+| `Set-RepoRoot -Path` with nonexistent directory | Throws `"Directory not found"` |
+| `Set-RepoRoot -Reset` | Clears override, `Get-RepoRoot` resumes git traversal |
+| `Get-RepoFiles` with empty directory | Returns empty list |
+| `Get-RepoFiles` with dot-directory files | Excluded from results |
+| `Get-RepoFiles` with `$script:ModuleRoot` set | Module tree auto-excluded |
 
 ## Testing
 
-| Test file | Coverage |
-|---|---|
-| `tests/get-gitchangelog.Tests.ps1` | Commit parsing, file change types, rename detection, date filtering |
-| `tests/get-reporoot.Tests.ps1` | Directory traversal, error on missing `.git`, `Get-ParentRepoRoot` submodule traversal |
+| Test file | Tests | Coverage |
+|---|---|---|
+| `tests/get-gitchangelog.Tests.ps1` | - | Commit parsing, file change types, rename detection, date filtering |
+| `tests/get-reporoot.Tests.ps1` | 11 | Directory traversal, `-Optional` switch, error on missing `.git`, `-ModuleRoot` override, `Get-ParentRepoRoot` submodule traversal |
+| `tests/repo-filehelpers.Tests.ps1` | 7 | Content directory inclusion, dot-directory exclusion, user-specified exclusion, custom pattern, module root exclusion, Nerthus pass-through, empty directory |
 
 ## Related Documents
 
 - [PU.md](PU.md) - Git Optimization in the PU pipeline
 - [MIGRATION.md](MIGRATION.md) - Module Structure
+- [SESSION-INTEGRITY.md](SESSION-INTEGRITY.md) - `Get-HashableFiles` delegates to `Get-RepoFiles`

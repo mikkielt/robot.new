@@ -8,9 +8,9 @@
     Tests for Invoke-RobotDashboard public function (parameter validation).
     Tests for dashboard route registration in api-routes.ps1.
 
-    The handler resolves sources from Robot.Dashboard/src/ (standalone
-    project, priority 1) or plugins/robot-dashboard/private/ (legacy
-    fallback). Tests validate both paths.
+    The handler serves Robot.Dashboard/dist/index.html (Vite build output,
+    priority 1) or plugins/robot-dashboard/private/dashboard.html (legacy
+    fallback).
 #>
 
 BeforeAll {
@@ -99,6 +99,49 @@ Describe 'Invoke-ApiGetDashboard' {
 
             $Result = Invoke-ApiGetDashboard -ApiContext $Ctx
             $Result.Body | Should -BeNullOrEmpty
+        }
+    }
+
+    Context 'Debug mode HTML injection' {
+        BeforeAll {
+            if (-not ([System.Management.Automation.PSTypeName]'Robot.ApiServer').Type) {
+                Set-ItResult -Skipped -Because 'Robot.ApiServer not compiled'
+            }
+        }
+
+        It 'injects __ROBOT_DEBUG__ when Debug is true' {
+            $script:DashboardHtmlBytes = $null
+            [Robot.ApiServer]::Debug = $true
+            $Ctx = @{
+                PathParams  = @{}
+                QueryParams = @{}
+                Body        = $null
+                Method      = 'GET'
+                Path        = '/dashboard'
+            }
+
+            $Result = Invoke-ApiGetDashboard -ApiContext $Ctx
+            $HtmlText = [System.Text.Encoding]::UTF8.GetString($Result.RawBody)
+            $HtmlText | Should -Match '__ROBOT_DEBUG__'
+            [Robot.ApiServer]::Debug = $false
+            $script:DashboardHtmlBytes = $null
+        }
+
+        It 'does not inject __ROBOT_DEBUG__ when Debug is false' {
+            $script:DashboardHtmlBytes = $null
+            [Robot.ApiServer]::Debug = $false
+            $Ctx = @{
+                PathParams  = @{}
+                QueryParams = @{}
+                Body        = $null
+                Method      = 'GET'
+                Path        = '/dashboard'
+            }
+
+            $Result = Invoke-ApiGetDashboard -ApiContext $Ctx
+            $HtmlText = [System.Text.Encoding]::UTF8.GetString($Result.RawBody)
+            $HtmlText | Should -Not -Match '__ROBOT_DEBUG__'
+            $script:DashboardHtmlBytes = $null
         }
     }
 
@@ -202,8 +245,13 @@ Describe 'Robot.Dashboard project structure' {
             [System.IO.Path]::Combine($PSScriptRoot, '..', '..', '..', '..', 'Robot.Dashboard'))
     }
 
-    It 'has src/index.html' {
-        $Path = [System.IO.Path]::Combine($script:DashboardRoot, 'src', 'index.html')
+    It 'has index.html (Vite entry point)' {
+        $Path = [System.IO.Path]::Combine($script:DashboardRoot, 'index.html')
+        [System.IO.File]::Exists($Path) | Should -BeTrue
+    }
+
+    It 'has src/main.ts (TypeScript entry)' {
+        $Path = [System.IO.Path]::Combine($script:DashboardRoot, 'src', 'main.ts')
         [System.IO.File]::Exists($Path) | Should -BeTrue
     }
 
@@ -212,22 +260,13 @@ Describe 'Robot.Dashboard project structure' {
         [System.IO.File]::Exists($Path) | Should -BeTrue
     }
 
-    It 'has all required JS modules' {
-        $JsDir = [System.IO.Path]::Combine($script:DashboardRoot, 'src', 'js')
-        $Expected = @(
-            'dashboard-core.js', 'dashboard-nav.js', 'dashboard-sessions.js',
-            'dashboard-session-create.js', 'dashboard-entities.js',
-            'dashboard-locations.js', 'dashboard-players.js',
-            'dashboard-reports.js', 'dashboard-tokens.js', 'dashboard-init.js'
-        )
-        foreach ($JsFile in $Expected) {
-            $Path = [System.IO.Path]::Combine($JsDir, $JsFile)
-            [System.IO.File]::Exists($Path) | Should -BeTrue -Because "$JsFile should exist"
-        }
+    It 'has vite.config.ts' {
+        $Path = [System.IO.Path]::Combine($script:DashboardRoot, 'vite.config.ts')
+        [System.IO.File]::Exists($Path) | Should -BeTrue
     }
 
-    It 'has build.sh' {
-        $Path = [System.IO.Path]::Combine($script:DashboardRoot, 'build.sh')
+    It 'has dist/index.html (build output)' {
+        $Path = [System.IO.Path]::Combine($script:DashboardRoot, 'dist', 'index.html')
         [System.IO.File]::Exists($Path) | Should -BeTrue
     }
 }

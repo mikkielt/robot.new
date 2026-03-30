@@ -408,6 +408,7 @@ function Invoke-ApiCreateSession {
                     [PSCustomObject]@{ Amount = [int]($_.amount ?? 1); Denomination = [string]$_.denomination; Source = [string]$_.source; Destination = [string]$_.destination }
                 })
             }
+            if ($S.files) { $Spec.Files = @($S.files) }
             [void]$BatchSpecs.Add($Spec)
         }
 
