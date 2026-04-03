@@ -40,58 +40,6 @@
 # Eliminates PowerShell interpretation overhead on the hottest path
 # (16,500+ calls per Get-Session run for fuzzy name resolution).
 
-# Legacy PowerShell BK-tree — fallback when Add-Type fails (e.g. no C# compiler)
-function Add-BKTreeNode {
-    param(
-        [hashtable]$Node,
-        [string]$Key
-    )
-
-    $Distance = Get-LevenshteinDistance -Source $Node.Key -Target $Key
-    if ($Distance -eq 0) { return }  # duplicate — BK-tree nodes are unique
-
-    if ($Node.Children.ContainsKey($Distance)) {
-        Add-BKTreeNode -Node $Node.Children[$Distance] -Key $Key
-    } else {
-        $Node.Children[$Distance] = @{ Key = $Key; Children = @{} }
-    }
-}
-
-function Search-BKTree {
-    param(
-        [hashtable]$Tree,
-        [string]$Query,
-        [int]$Threshold
-    )
-
-    if ($null -eq $Tree -or $null -eq $Tree.Key) { return @() }
-
-    # Iterative traversal — triangle inequality prunes branches outside [d-t, d+t] range
-    $Results = [System.Collections.Generic.List[object]]::new()
-    $Stack   = [System.Collections.Generic.Stack[hashtable]]::new()
-    $Stack.Push($Tree)
-
-    while ($Stack.Count -gt 0) {
-        $Current  = $Stack.Pop()
-        $Distance = Get-LevenshteinDistance -Source $Query -Target $Current.Key -MaxDistance $Threshold
-
-        if ($Distance -le $Threshold) {
-            $Results.Add([PSCustomObject]@{ Key = $Current.Key; Distance = $Distance })
-        }
-
-        $Low  = $Distance - $Threshold
-        $High = $Distance + $Threshold
-
-        foreach ($ChildDist in $Current.Children.Keys) {
-            if ($ChildDist -ge $Low -and $ChildDist -le $High) {
-                $Stack.Push($Current.Children[$ChildDist])
-            }
-        }
-    }
-
-    return $Results
-}
-
 function Add-IndexToken {
     param(
         [string]$Token,
@@ -317,10 +265,7 @@ function Get-NameIndex {
                 [void]$BKTree.Add($AllKeys[$k])
             }
         } else {
-            $BKTree = @{ Key = $AllKeys[0]; Children = @{} }
-            for ($k = 1; $k -lt $AllKeys.Count; $k++) {
-                Add-BKTreeNode -Node $BKTree -Key $AllKeys[$k]
-            }
+            $BKTree = $null
         }
     }
 

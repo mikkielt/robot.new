@@ -95,49 +95,6 @@ Describe 'Get-NameIndex' {
     }
 }
 
-Describe 'Add-BKTreeNode and Search-BKTree' {
-    It 'BK-tree search finds nearby keys' {
-        $Tree = @{ Key = 'Xeron'; Children = @{} }
-        Add-BKTreeNode -Node $Tree -Key 'Xeroni'
-        Add-BKTreeNode -Node $Tree -Key 'Abc'
-
-        $Results = Search-BKTree -Tree $Tree -Query 'Xeron' -Threshold 1
-        $Results.Count | Should -BeGreaterOrEqual 1
-        $ResultKeys = $Results | ForEach-Object { $_.Key }
-        $ResultKeys | Should -Contain 'Xeron'
-    }
-
-    It 'BK-tree search returns empty for distant keys' {
-        $Tree = @{ Key = 'Aaaaa'; Children = @{} }
-        Add-BKTreeNode -Node $Tree -Key 'Zzzzz'
-        $Results = Search-BKTree -Tree $Tree -Query 'Xxxxx' -Threshold 1
-        ($Results | Where-Object { $_.Key -eq 'Aaaaa' }) | Should -BeNullOrEmpty
-    }
-
-    It 'BK-tree handles single node tree' {
-        $Tree = @{ Key = 'Xeron'; Children = @{} }
-        $Results = Search-BKTree -Tree $Tree -Query 'Xeron' -Threshold 0
-        $Results.Count | Should -Be 1
-        $Results[0].Key | Should -Be 'Xeron'
-    }
-
-    It 'BK-tree returns empty for threshold 0 non-exact match' {
-        $Tree = @{ Key = 'Xeron'; Children = @{} }
-        $Results = Search-BKTree -Tree $Tree -Query 'Xeroni' -Threshold 0
-        $Results.Count | Should -Be 0
-    }
-
-    It 'BK-tree handles multiple insertions at same distance' {
-        $Tree = @{ Key = 'Aaa'; Children = @{} }
-        Add-BKTreeNode -Node $Tree -Key 'Bbb'
-        Add-BKTreeNode -Node $Tree -Key 'Ccc'
-        Add-BKTreeNode -Node $Tree -Key 'Ddd'
-        $Results = Search-BKTree -Tree $Tree -Query 'Aab' -Threshold 1
-        $ResultKeys = $Results | ForEach-Object { $_.Key }
-        $ResultKeys | Should -Contain 'Aaa'
-    }
-}
-
 Describe 'Get-NameIndex - many aliases entity' {
     BeforeAll {
         $script:ManyAliasEntities = Get-Entity -Path (Join-Path $script:FixturesRoot 'entities-many-aliases.md')

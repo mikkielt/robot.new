@@ -20,15 +20,14 @@
 
     Loading order (later layers depend on earlier ones):
     1. Primitives     - colors, arrow menu, result table (leaf, no CLI deps)
-    2. Fuzzy          - fuzzy search (depends on primitives)
-    3. Display        - detail card, NavState refresh (depends on primitives)
-    4. Wizard         - auto-gen wizard system (depends on primitives + fuzzy + display)
-    5. Registry       - menu entries, pure data
-    6. Routing        - menu dispatch + main/sub loops (depends on all above)
-    6.5 Plugin merge  - merge plugin menu items, categories, help into CLI state
-    7. Workflows      - domain-specific composite operations
-    7.5 Plugin CLI    - dot-source plugin cli/*.ps1 workflow files
-    8. Migration      - phase integration (overrides stubs from routing)
+    2. Fuzzy + Help   - fuzzy search, help system (depend on primitives)
+    3. Wizard         - auto-gen wizard system (depends on primitives + fuzzy)
+    4. Registry       - menu entries, pure data
+    5. Routing        - menu dispatch + main/sub loops (depends on all above)
+    5.5 Plugin merge  - merge plugin menu items, categories, help into CLI state
+    6. Workflows      - domain-specific composite operations
+    6.5 Plugin CLI    - dot-source plugin cli/*.ps1 workflow files
+    7. Migration      - phase integration (overrides stubs from routing)
 #>
 
 function Invoke-RobotCLI {
@@ -51,7 +50,6 @@ function Invoke-RobotCLI {
 
     # Layer 2: Core systems (depend on primitives)
     . "$CLIRoot/cli-fuzzy.ps1"
-    . "$CLIRoot/cli-display.ps1"
     . "$CLIRoot/cli-help.ps1"
 
     # Layer 3: Wizard (depends on primitives + fuzzy + display)
@@ -66,9 +64,9 @@ function Invoke-RobotCLI {
     # Layer 5.5: Merge plugin-contributed menu items into routing tables
     Merge-PluginMenuItems
 
-    # Layer 6: Workflows (depend on primitives, fuzzy, wizard, display)
+    # Layer 6: Workflows (depend on primitives, fuzzy, wizard)
     foreach ($WF in @('cli-wf-session','cli-wf-player','cli-wf-entity',
-                       'cli-wf-currency','cli-wf-pu','cli-wf-discord','cli-wf-reporting')) {
+                       'cli-wf-currency','cli-wf-economy','cli-wf-pu','cli-wf-discord','cli-wf-reporting')) {
         $WFPath = [System.IO.Path]::Combine($CLIRoot, "$WF.ps1")
         if ([System.IO.File]::Exists($WFPath)) { . $WFPath }
     }

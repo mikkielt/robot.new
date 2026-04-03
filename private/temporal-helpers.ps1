@@ -67,10 +67,17 @@ $script:AnnotationKeywords = [System.Collections.Generic.HashSet[string]]::new(
 function ConvertFrom-ValidityString {
     param([string]$InputText)
 
-    $Match = $script:ValidityPattern.Match($InputText.Trim())
+    $Trimmed = $InputText.Trim()
+
+    # Fast path: no parenthetical suffix — no temporal bounds possible
+    if (-not $Trimmed.Contains('(')) {
+        return @{ Text = $Trimmed; ValidFrom = $null; ValidTo = $null; Season = $null; Annotation = $null }
+    }
+
+    $Match = $script:ValidityPattern.Match($Trimmed)
 
     if (-not $Match.Success) {
-        return @{ Text = $InputText.Trim(); ValidFrom = $null; ValidTo = $null; Season = $null; Annotation = $null }
+        return @{ Text = $Trimmed; ValidFrom = $null; ValidTo = $null; Season = $null; Annotation = $null }
     }
 
     $Name       = $Match.Groups[1].Value.Trim()
@@ -293,11 +300,14 @@ function Get-AllActiveValues {
 
     if ($History.Count -eq 0) { return @() }
 
-    $Active = $History.Where({ Test-TemporalActivity -Item $_ -ActiveOn $ActiveOn })
-    if ($Active.Count -eq 0) { return @() }
+    $Values = [System.Collections.Generic.List[string]]::new($History.Count)
+    foreach ($Entry in $History) {
+        if (Test-TemporalActivity -Item $Entry -ActiveOn $ActiveOn) {
+            $Values.Add($Entry.$PropertyName)
+        }
+    }
 
-    $Values = [System.Collections.Generic.List[string]]::new($Active.Count)
-    foreach ($Entry in $Active) { $Values.Add($Entry.$PropertyName) }
+    if ($Values.Count -eq 0) { return @() }
     return $Values.ToArray()
 }
 

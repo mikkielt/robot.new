@@ -68,6 +68,8 @@
 # Compiled centrally in Robot.PowerShell.psm1 at module import time.
 
 . "$script:ModuleRoot/private/temporal-helpers.ps1"
+. "$script:ModuleRoot/private/entity-findhelpers.ps1"
+. "$script:ModuleRoot/private/entity-mergehelpers.ps1"
 function Resolve-EntityCN {
     param(
         [object]$Entity,
@@ -225,27 +227,9 @@ function Get-Entity {
         }
     }
 
-    # Polish singular/plural section headers -> canonical type names.
-    # Unmatched headers (e.g. "Instrukcja") default to "Entity" and are skipped.
-    $TypeMap = @{
-        "npc"              = "NPC"
-        "grupy"            = "Grupa"
-        "grupa"            = "Grupa"
-        "lokacje"          = "Lokacja"
-        "lokacja"          = "Lokacja"
-        "gracz"            = "Gracz"
-        "gracze"           = "Gracz"
-        "postać (gracz)"   = "Postać"
-        "postaci (gracze)" = "Postać"
-        "postać"           = "Postać"
-        "postaci"          = "Postać"
-        "przedmiot"        = "Przedmiot"
-        "przedmioty"       = "Przedmiot"
-        "mapa"             = "Mapa"
-        "mapy"             = "Mapa"
-    }
+    # Section header -> type mapping loaded from entity-findhelpers.ps1 ($script:EntityTypeMap)
 
-    # WP-5: C# fast path availability — checked once before the section loop to avoid
+    # C# fast path availability — checked once before the section loop to avoid
     # per-section type probes. When available, tag dispatch + validity parsing run in
     # compiled C# (~3-5x faster than PS switch dispatch on large entity files).
     $UseCSharpTagParser = ([System.Management.Automation.PSTypeName]'Robot.EntityTagParser').Type -ne $null
@@ -254,8 +238,8 @@ function Get-Entity {
         $SectionType = "Entity"
         if ($Section.Header) {
             $HeaderLower = $Section.Header.Text.ToLowerInvariant().Trim()
-            if ($TypeMap.ContainsKey($HeaderLower)) {
-                $SectionType = $TypeMap[$HeaderLower]
+            if ($script:EntityTypeMap.ContainsKey($HeaderLower)) {
+                $SectionType = $script:EntityTypeMap[$HeaderLower]
             }
         }
 
@@ -323,136 +307,44 @@ function Get-Entity {
                 }
 
                 # Deduplicate names and resolve scalar values from temporal histories
-                $Names          = [System.Collections.Generic.HashSet[string]]::new($Names, [System.StringComparer]::OrdinalIgnoreCase)
-                $ActiveLocation = Get-LastActiveValue  -History $LocationHistory -PropertyName 'Value' -ActiveOn $ActiveOn
-                $ActiveDoors    = Get-AllActiveValues   -History $DoorHistory     -PropertyName 'Value' -ActiveOn $ActiveOn
-                $ActiveType     = Get-LastActiveValue  -History $TypeHistory     -PropertyName 'Value' -ActiveOn $ActiveOn
-                if (-not $ActiveType) { $ActiveType = $SectionType }
-                $ActiveOwner    = Get-LastActiveValue  -History $OwnerHistory    -PropertyName 'Value' -ActiveOn $ActiveOn
-                $ActiveGroups   = Get-AllActiveValues   -History $GroupHistory    -PropertyName 'Value' -ActiveOn $ActiveOn
-                $ActiveStatus   = Get-LastActiveValue  -History $StatusHistory   -PropertyName 'Value' -ActiveOn $ActiveOn
-                if (-not $ActiveStatus) { $ActiveStatus = 'Aktywny' }
-                $ActiveQuantity = Get-LastActiveValue  -History $QuantityHistory -PropertyName 'Value' -ActiveOn $ActiveOn
-                $ActiveFilePath = Get-LastActiveValue  -History $FilePathHistory -PropertyName 'Value' -ActiveOn $ActiveOn
-                $ActiveNerthusName = Get-LastActiveValue -History $NerthusNameHistory -PropertyName 'Value' -ActiveOn $ActiveOn
+                $Names = [System.Collections.Generic.HashSet[string]]::new($Names, [System.StringComparer]::OrdinalIgnoreCase)
 
-                $ActiveCoordinates = $null
-                if ($CoordinateHistory.Count -gt 0) {
-                    $ActiveCoordEntries = $CoordinateHistory.Where({ Test-TemporalActivity -Item $_ -ActiveOn $ActiveOn })
-                    if ($ActiveCoordEntries.Count -gt 0) {
-                        $LastCoord = $ActiveCoordEntries[$ActiveCoordEntries.Count - 1]
-                        $ActiveCoordinates = @{ X = $LastCoord.X; Y = $LastCoord.Y }
-                    }
-                }
+                $Scalars = Resolve-EntityScalars `
+                    -LocationHistory $LocationHistory -DoorHistory $DoorHistory `
+                    -TypeHistory $TypeHistory -OwnerHistory $OwnerHistory `
+                    -GroupHistory $GroupHistory -StatusHistory $StatusHistory `
+                    -QuantityHistory $QuantityHistory -FilePathHistory $FilePathHistory `
+                    -NerthusNameHistory $NerthusNameHistory -CoordinateHistory $CoordinateHistory `
+                    -DefaultType $SectionType -ActiveOn $ActiveOn
 
                 # Path-qualified names (e.g. "Ithan/Ratusz") enable unambiguous resolution via door context
-                if (($SectionType -eq 'Lokacja' -or $SectionType -eq 'Mapa') -and $ActiveDoors.Count -gt 0) {
-                    foreach ($DoorName in $ActiveDoors) {
+                if (($SectionType -eq 'Lokacja' -or $SectionType -eq 'Mapa') -and $Scalars.Doors.Count -gt 0) {
+                    foreach ($DoorName in $Scalars.Doors) {
                         [void]$Names.Add("$DoorName/$EntityName")
                     }
                 }
 
                 $EntityKey = "$SectionType/$EntityName"
                 if ($EntityMap.ContainsKey($EntityKey)) {
-                    # Same-name entity from another file — merge all histories and recompute scalars
-                    $Existing = $EntityMap[$EntityKey]
-
-                    foreach ($NameEntry in $Names) { [void]$Existing.Names.Add($NameEntry) }
-                    $Existing.Aliases.AddRange($Aliases)
-
-                    foreach ($Key in $Overrides.Keys) {
-                        if (-not $Existing.Overrides.ContainsKey($Key)) {
-                            $Existing.Overrides[$Key] = [System.Collections.Generic.List[string]]::new()
-                        }
-                        $Existing.Overrides[$Key].AddRange($Overrides[$Key])
-                    }
-
-                    $Existing.TypeHistory.AddRange($TypeHistory)
-                    $Existing.OwnerHistory.AddRange($OwnerHistory)
-                    $Existing.GroupHistory.AddRange($GroupHistory)
-                    $Existing.LocationHistory.AddRange($LocationHistory)
-                    $Existing.DoorHistory.AddRange($DoorHistory)
-                    $Existing.StatusHistory.AddRange($StatusHistory)
-                    $Existing.QuantityHistory.AddRange($QuantityHistory)
-                    $Existing.GenericNames.AddRange($GenericNames)
-                    foreach ($GN in $GenericNames) { [void]$Existing.Names.Add($GN) }
-                    $Existing.Contains.AddRange($ContainsList)
-
-                    $Existing.FilePathHistory.AddRange($FilePathHistory)
-                    $Existing.NerthusNameHistory.AddRange($NerthusNameHistory)
-                    $Existing.CoordinateHistory.AddRange($CoordinateHistory)
-
-                    # Recompute active scalars from merged histories — latest active entry wins
-                    if ($SectionType -ne "Entity") { $Existing.Type = $SectionType }
-                    $MergedType = Get-LastActiveValue -History $Existing.TypeHistory -PropertyName 'Value' -ActiveOn $ActiveOn
-                    if ($MergedType) { $Existing.Type = $MergedType }
-
-                    $MergedOwner = Get-LastActiveValue -History $Existing.OwnerHistory -PropertyName 'Value' -ActiveOn $ActiveOn
-                    if ($MergedOwner) { $Existing.Owner = $MergedOwner }
-
-                    $Existing.Groups = Get-AllActiveValues -History $Existing.GroupHistory -PropertyName 'Value' -ActiveOn $ActiveOn
-
-                    $MergedLoc = Get-LastActiveValue -History $Existing.LocationHistory -PropertyName 'Value' -ActiveOn $ActiveOn
-                    if ($MergedLoc) { $Existing.Location = $MergedLoc }
-
-                    $Existing.Doors = Get-AllActiveValues -History $Existing.DoorHistory -PropertyName 'Value' -ActiveOn $ActiveOn
-
-                    $MergedStatus = Get-LastActiveValue -History $Existing.StatusHistory -PropertyName 'Value' -ActiveOn $ActiveOn
-                    if ($MergedStatus) { $Existing.Status = $MergedStatus }
-
-                    $MergedQuantity = Get-LastActiveValue -History $Existing.QuantityHistory -PropertyName 'Value' -ActiveOn $ActiveOn
-                    if ($MergedQuantity) { $Existing.Quantity = $MergedQuantity }
-
-                    $MergedFilePath = Get-LastActiveValue -History $Existing.FilePathHistory -PropertyName 'Value' -ActiveOn $ActiveOn
-                    if ($MergedFilePath) { $Existing.FilePath = $MergedFilePath }
-
-                    $MergedNerthusName = Get-LastActiveValue -History $Existing.NerthusNameHistory -PropertyName 'Value' -ActiveOn $ActiveOn
-                    if ($MergedNerthusName) { $Existing.NerthusName = $MergedNerthusName }
-
-                    if ($Existing.CoordinateHistory.Count -gt 0) {
-                        $MergedCoordEntries = $Existing.CoordinateHistory.Where({ Test-TemporalActivity -Item $_ -ActiveOn $ActiveOn })
-                        if ($MergedCoordEntries.Count -gt 0) {
-                            $LastCoord = $MergedCoordEntries[$MergedCoordEntries.Count - 1]
-                            $Existing.Coordinates = @{ X = $LastCoord.X; Y = $LastCoord.Y }
-                        }
-                    }
-
-                    # Regenerate path-qualified names after door list merge
-                    if (($Existing.Type -eq 'Lokacja' -or $Existing.Type -eq 'Mapa') -and $Existing.Doors.Count -gt 0) {
-                        foreach ($DoorName in $Existing.Doors) {
-                            [void]$Existing.Names.Add("$DoorName/$($Existing.Name)")
-                        }
-                    }
+                    Merge-EntityHistories -Existing $EntityMap[$EntityKey] `
+                        -Names $Names -Aliases $Aliases -Overrides $Overrides `
+                        -TypeHistory $TypeHistory -OwnerHistory $OwnerHistory `
+                        -GroupHistory $GroupHistory -LocationHistory $LocationHistory `
+                        -DoorHistory $DoorHistory -StatusHistory $StatusHistory `
+                        -QuantityHistory $QuantityHistory -GenericNames $GenericNames `
+                        -ContainsList $ContainsList -FilePathHistory $FilePathHistory `
+                        -NerthusNameHistory $NerthusNameHistory -CoordinateHistory $CoordinateHistory `
+                        -SectionType $SectionType -ActiveOn $ActiveOn
                 }
                 else {
-                    $Entity = [Robot.Entity]::new()
-                    $Entity.Name               = $EntityName
-                    $Entity.CN                 = $null
-                    $Entity.Names              = $Names
-                    $Entity.Aliases            = $Aliases
-                    $Entity.Type               = $ActiveType
-                    $Entity.Owner              = $ActiveOwner
-                    $Entity.Groups             = $ActiveGroups
-                    $Entity.Overrides          = $Overrides
-                    $Entity.TypeHistory        = $TypeHistory
-                    $Entity.OwnerHistory       = $OwnerHistory
-                    $Entity.GroupHistory       = $GroupHistory
-                    $Entity.Location           = $ActiveLocation
-                    $Entity.LocationHistory    = $LocationHistory
-                    $Entity.Doors              = $ActiveDoors
-                    $Entity.DoorHistory        = $DoorHistory
-                    $Entity.Status             = $ActiveStatus
-                    $Entity.StatusHistory      = $StatusHistory
-                    $Entity.Quantity           = $ActiveQuantity
-                    $Entity.QuantityHistory    = $QuantityHistory
-                    $Entity.GenericNames       = $GenericNames
-                    $Entity.FilePath           = $ActiveFilePath
-                    $Entity.FilePathHistory    = $FilePathHistory
-                    $Entity.NerthusName        = $ActiveNerthusName
-                    $Entity.NerthusNameHistory = $NerthusNameHistory
-                    $Entity.Coordinates        = $ActiveCoordinates
-                    $Entity.CoordinateHistory  = $CoordinateHistory
-                    $Entity.Contains           = $ContainsList
+                    $Entity = New-EntityFromParsed -EntityName $EntityName `
+                        -Names $Names -Aliases $Aliases -Overrides $Overrides -Scalars $Scalars `
+                        -TypeHistory $TypeHistory -OwnerHistory $OwnerHistory `
+                        -GroupHistory $GroupHistory -LocationHistory $LocationHistory `
+                        -DoorHistory $DoorHistory -StatusHistory $StatusHistory `
+                        -QuantityHistory $QuantityHistory -GenericNames $GenericNames `
+                        -ContainsList $ContainsList -FilePathHistory $FilePathHistory `
+                        -NerthusNameHistory $NerthusNameHistory -CoordinateHistory $CoordinateHistory
                     $EntityMap[$EntityKey] = $Entity
                     $Entities.Add($Entity)
                 }
@@ -615,136 +507,44 @@ function Get-Entity {
                 }
 
                 # Deduplicate names and resolve scalar values from temporal histories
-                $Names          = [System.Collections.Generic.HashSet[string]]::new($Names, [System.StringComparer]::OrdinalIgnoreCase)
-                $ActiveLocation = Get-LastActiveValue  -History $LocationHistory -PropertyName 'Value' -ActiveOn $ActiveOn
-                $ActiveDoors    = Get-AllActiveValues   -History $DoorHistory     -PropertyName 'Value' -ActiveOn $ActiveOn
-                $ActiveType     = Get-LastActiveValue  -History $TypeHistory     -PropertyName 'Value' -ActiveOn $ActiveOn
-                if (-not $ActiveType) { $ActiveType = $SectionType }
-                $ActiveOwner    = Get-LastActiveValue  -History $OwnerHistory    -PropertyName 'Value' -ActiveOn $ActiveOn
-                $ActiveGroups   = Get-AllActiveValues   -History $GroupHistory    -PropertyName 'Value' -ActiveOn $ActiveOn
-                $ActiveStatus   = Get-LastActiveValue  -History $StatusHistory   -PropertyName 'Value' -ActiveOn $ActiveOn
-                if (-not $ActiveStatus) { $ActiveStatus = 'Aktywny' }  # default: all entities are active
-                $ActiveQuantity = Get-LastActiveValue  -History $QuantityHistory -PropertyName 'Value' -ActiveOn $ActiveOn
-                $ActiveFilePath = Get-LastActiveValue  -History $FilePathHistory -PropertyName 'Value' -ActiveOn $ActiveOn
-                $ActiveNerthusName = Get-LastActiveValue -History $NerthusNameHistory -PropertyName 'Value' -ActiveOn $ActiveOn
+                $Names = [System.Collections.Generic.HashSet[string]]::new($Names, [System.StringComparer]::OrdinalIgnoreCase)
 
-                $ActiveCoordinates = $null
-                if ($CoordinateHistory.Count -gt 0) {
-                    $ActiveCoordEntries = $CoordinateHistory.Where({ Test-TemporalActivity -Item $_ -ActiveOn $ActiveOn })
-                    if ($ActiveCoordEntries.Count -gt 0) {
-                        $LastCoord = $ActiveCoordEntries[-1]
-                        $ActiveCoordinates = @{ X = $LastCoord.X; Y = $LastCoord.Y }
-                    }
-                }
+                $Scalars = Resolve-EntityScalars `
+                    -LocationHistory $LocationHistory -DoorHistory $DoorHistory `
+                    -TypeHistory $TypeHistory -OwnerHistory $OwnerHistory `
+                    -GroupHistory $GroupHistory -StatusHistory $StatusHistory `
+                    -QuantityHistory $QuantityHistory -FilePathHistory $FilePathHistory `
+                    -NerthusNameHistory $NerthusNameHistory -CoordinateHistory $CoordinateHistory `
+                    -DefaultType $SectionType -ActiveOn $ActiveOn
 
                 # Path-qualified names (e.g. "Ithan/Ratusz") enable unambiguous resolution via door context
-                if (($SectionType -eq 'Lokacja' -or $SectionType -eq 'Mapa') -and $ActiveDoors.Count -gt 0) {
-                    foreach ($DoorName in $ActiveDoors) {
+                if (($SectionType -eq 'Lokacja' -or $SectionType -eq 'Mapa') -and $Scalars.Doors.Count -gt 0) {
+                    foreach ($DoorName in $Scalars.Doors) {
                         [void]$Names.Add("$DoorName/$EntityName")
                     }
                 }
 
                 $EntityKey = "$SectionType/$EntityName"
                 if ($EntityMap.ContainsKey($EntityKey)) {
-                    # Same-name entity from another file — merge all histories and recompute scalars
-                    $Existing = $EntityMap[$EntityKey]
-
-                    foreach ($NameEntry in $Names) { [void]$Existing.Names.Add($NameEntry) }
-                    $Existing.Aliases.AddRange($Aliases)
-
-                    foreach ($Key in $Overrides.Keys) {
-                        if (-not $Existing.Overrides.ContainsKey($Key)) {
-                            $Existing.Overrides[$Key] = [System.Collections.Generic.List[string]]::new()
-                        }
-                        $Existing.Overrides[$Key].AddRange($Overrides[$Key])
-                    }
-
-                    $Existing.TypeHistory.AddRange($TypeHistory)
-                    $Existing.OwnerHistory.AddRange($OwnerHistory)
-                    $Existing.GroupHistory.AddRange($GroupHistory)
-                    $Existing.LocationHistory.AddRange($LocationHistory)
-                    $Existing.DoorHistory.AddRange($DoorHistory)
-                    $Existing.StatusHistory.AddRange($StatusHistory)
-                    $Existing.QuantityHistory.AddRange($QuantityHistory)
-                    $Existing.GenericNames.AddRange($GenericNames)
-                    foreach ($GN in $GenericNames) { [void]$Existing.Names.Add($GN) }
-                    $Existing.Contains.AddRange($ContainsList)
-
-                    $Existing.FilePathHistory.AddRange($FilePathHistory)
-                    $Existing.NerthusNameHistory.AddRange($NerthusNameHistory)
-                    $Existing.CoordinateHistory.AddRange($CoordinateHistory)
-
-                    # Recompute active scalars from merged histories — latest active entry wins
-                    if ($SectionType -ne "Entity") { $Existing.Type = $SectionType }
-                    $MergedType = Get-LastActiveValue -History $Existing.TypeHistory -PropertyName 'Value' -ActiveOn $ActiveOn
-                    if ($MergedType) { $Existing.Type = $MergedType }
-
-                    $MergedOwner = Get-LastActiveValue -History $Existing.OwnerHistory -PropertyName 'Value' -ActiveOn $ActiveOn
-                    if ($MergedOwner) { $Existing.Owner = $MergedOwner }
-
-                    $Existing.Groups = Get-AllActiveValues -History $Existing.GroupHistory -PropertyName 'Value' -ActiveOn $ActiveOn
-
-                    $MergedLoc = Get-LastActiveValue -History $Existing.LocationHistory -PropertyName 'Value' -ActiveOn $ActiveOn
-                    if ($MergedLoc) { $Existing.Location = $MergedLoc }
-
-                    $Existing.Doors = Get-AllActiveValues -History $Existing.DoorHistory -PropertyName 'Value' -ActiveOn $ActiveOn
-
-                    $MergedStatus = Get-LastActiveValue -History $Existing.StatusHistory -PropertyName 'Value' -ActiveOn $ActiveOn
-                    if ($MergedStatus) { $Existing.Status = $MergedStatus }
-
-                    $MergedQuantity = Get-LastActiveValue -History $Existing.QuantityHistory -PropertyName 'Value' -ActiveOn $ActiveOn
-                    if ($MergedQuantity) { $Existing.Quantity = $MergedQuantity }
-
-                    $MergedFilePath = Get-LastActiveValue -History $Existing.FilePathHistory -PropertyName 'Value' -ActiveOn $ActiveOn
-                    if ($MergedFilePath) { $Existing.FilePath = $MergedFilePath }
-
-                    $MergedNerthusName = Get-LastActiveValue -History $Existing.NerthusNameHistory -PropertyName 'Value' -ActiveOn $ActiveOn
-                    if ($MergedNerthusName) { $Existing.NerthusName = $MergedNerthusName }
-
-                    if ($Existing.CoordinateHistory.Count -gt 0) {
-                        $MergedCoordEntries = $Existing.CoordinateHistory.Where({ Test-TemporalActivity -Item $_ -ActiveOn $ActiveOn })
-                        if ($MergedCoordEntries.Count -gt 0) {
-                            $LastCoord = $MergedCoordEntries[-1]
-                            $Existing.Coordinates = @{ X = $LastCoord.X; Y = $LastCoord.Y }
-                        }
-                    }
-
-                    # Regenerate path-qualified names after door list merge
-                    if (($Existing.Type -eq 'Lokacja' -or $Existing.Type -eq 'Mapa') -and $Existing.Doors.Count -gt 0) {
-                        foreach ($DoorName in $Existing.Doors) {
-                            [void]$Existing.Names.Add("$DoorName/$($Existing.Name)")
-                        }
-                    }
+                    Merge-EntityHistories -Existing $EntityMap[$EntityKey] `
+                        -Names $Names -Aliases $Aliases -Overrides $Overrides `
+                        -TypeHistory $TypeHistory -OwnerHistory $OwnerHistory `
+                        -GroupHistory $GroupHistory -LocationHistory $LocationHistory `
+                        -DoorHistory $DoorHistory -StatusHistory $StatusHistory `
+                        -QuantityHistory $QuantityHistory -GenericNames $GenericNames `
+                        -ContainsList $ContainsList -FilePathHistory $FilePathHistory `
+                        -NerthusNameHistory $NerthusNameHistory -CoordinateHistory $CoordinateHistory `
+                        -SectionType $SectionType -ActiveOn $ActiveOn
                 }
                 else {
-                    $Entity = [Robot.Entity]::new()
-                    $Entity.Name               = $EntityName
-                    $Entity.CN                 = $null  # resolved in post-parse CN pass
-                    $Entity.Names              = $Names
-                    $Entity.Aliases            = $Aliases
-                    $Entity.Type               = $ActiveType
-                    $Entity.Owner              = $ActiveOwner
-                    $Entity.Groups             = $ActiveGroups
-                    $Entity.Overrides          = $Overrides
-                    $Entity.TypeHistory        = $TypeHistory
-                    $Entity.OwnerHistory       = $OwnerHistory
-                    $Entity.GroupHistory       = $GroupHistory
-                    $Entity.Location           = $ActiveLocation
-                    $Entity.LocationHistory    = $LocationHistory
-                    $Entity.Doors              = $ActiveDoors
-                    $Entity.DoorHistory        = $DoorHistory
-                    $Entity.Status             = $ActiveStatus
-                    $Entity.StatusHistory      = $StatusHistory
-                    $Entity.Quantity           = $ActiveQuantity
-                    $Entity.QuantityHistory    = $QuantityHistory
-                    $Entity.GenericNames       = $GenericNames
-                    $Entity.FilePath           = $ActiveFilePath
-                    $Entity.FilePathHistory    = $FilePathHistory
-                    $Entity.NerthusName        = $ActiveNerthusName
-                    $Entity.NerthusNameHistory = $NerthusNameHistory
-                    $Entity.Coordinates        = $ActiveCoordinates
-                    $Entity.CoordinateHistory  = $CoordinateHistory
-                    $Entity.Contains           = $ContainsList
+                    $Entity = New-EntityFromParsed -EntityName $EntityName `
+                        -Names $Names -Aliases $Aliases -Overrides $Overrides -Scalars $Scalars `
+                        -TypeHistory $TypeHistory -OwnerHistory $OwnerHistory `
+                        -GroupHistory $GroupHistory -LocationHistory $LocationHistory `
+                        -DoorHistory $DoorHistory -StatusHistory $StatusHistory `
+                        -QuantityHistory $QuantityHistory -GenericNames $GenericNames `
+                        -ContainsList $ContainsList -FilePathHistory $FilePathHistory `
+                        -NerthusNameHistory $NerthusNameHistory -CoordinateHistory $CoordinateHistory
                     $EntityMap[$EntityKey] = $Entity
                     $Entities.Add($Entity)
                 }

@@ -20,7 +20,7 @@
     renders the structured result (per-entity warnings with severity coloring,
     supply summary by denomination) as a scrollable console report.
 
-    Dependencies: cli-primitives.ps1, cli-fuzzy.ps1, cli-wizard.ps1, cli-display.ps1
+    Dependencies: cli-primitives.ps1, cli-fuzzy.ps1, cli-wizard.ps1
 #>
 
 # ── Currency Transfer Workflow ───────────────────────────────────────────────

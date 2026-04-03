@@ -51,8 +51,9 @@
     - Multiple files or -Directory: returns a List of objects
 #>
 
-# Reconstruct PSCustomObject from C# ScanResult, converting index-based parent
-# references to object references. Same logic as parse-markdownfile.ps1's C# path.
+# ScanResult → PSCustomObject reconstruction (duplicated in parse-markdownfile.ps1:50-100).
+# This copy handles disk cache deserialization. parse-markdownfile.ps1 has a self-contained
+# copy for RunspacePool workers. Any changes here MUST be mirrored there.
 function ConvertFrom-ScanResult {
     param(
         [object]$CsResult,

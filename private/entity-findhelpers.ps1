@@ -42,7 +42,8 @@ $script:SectionHeaderPattern = [regex]::new('^##\s+(.+)$', [System.Text.RegularE
 $script:EntityBulletPattern  = [regex]::new('^\*\s+(.+)$', [System.Text.RegularExpressions.RegexOptions]::Compiled)
 $script:TagPattern           = [regex]::new('^\s+[-\*]\s+@([^:]+):\s*(.*)', [System.Text.RegularExpressions.RegexOptions]::Compiled)
 
-# Mirrors the normalization map in Get-Entity; must stay in sync
+# Canonical section header -> entity type normalization map.
+# Consumed by Get-Entity (section dispatch) and Find-EntitySection (type matching).
 $script:EntityTypeMap = @{
     "npc"              = "NPC"
     "grupy"            = "Grupa"

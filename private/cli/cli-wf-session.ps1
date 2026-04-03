@@ -22,7 +22,7 @@
     check catches typos before they cause PU assignment failures (fail-early
     policy: unresolved names abort the entire PU assignment).
 
-    Dependencies: cli-primitives.ps1, cli-wizard.ps1, cli-display.ps1
+    Dependencies: cli-primitives.ps1, cli-wizard.ps1
 #>
 
 # ── Edit Session Workflow (Diff Review) ──────────────────────────────────────

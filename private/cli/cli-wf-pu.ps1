@@ -30,7 +30,7 @@
     names, malformed values, duplicates, bad-date sessions, and stale history
     entries. Stale entries are informational (do not block the operation).
 
-    Dependencies: cli-primitives.ps1, cli-wizard.ps1, cli-display.ps1
+    Dependencies: cli-primitives.ps1, cli-wizard.ps1
 #>
 
 # ── PU Assignment Workflow ───────────────────────────────────────────────────

@@ -43,6 +43,10 @@ param([string]$FilePath)
 
 $Lines = [System.IO.File]::ReadAllLines($FilePath)
 
+# ScanResult → PSCustomObject reconstruction (duplicated from get-markdown.ps1:ConvertFrom-ScanResult).
+# This copy MUST stay self-contained for RunspacePool workers (no module scope access).
+# Any changes here MUST be mirrored in ConvertFrom-ScanResult.
+#
 # C# path: compiled scanner with mixed struct/class output, then reconstruct object references.
 # Robot.MarkdownScanner compiled centrally in Robot.PowerShell.psm1 — AppDomain-wide, shared by all
 # RunspacePool workers. In test mode (direct script invocation without module import)
