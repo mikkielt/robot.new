@@ -19,3 +19,31 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+
+---
+
+THIRD-PARTY INTELLECTUAL PROPERTY NOTICE
+
+This software is designed to operate on data describing the game Margonem,
+including but not limited to: map names, map graphics, map identifiers,
+spatial relationships between maps, NPC names, NPC graphics, and NPC
+placement systems. All such elements are the intellectual property of
+Garmory sp. z o.o. sp. k. ("Garmory") and are not covered by the MIT
+license above.
+
+The MIT license applies exclusively to the source code in this repository.
+It does not grant any rights to Margonem assets, data, or intellectual
+property.
+
+Use of this software in conjunction with Margonem-related data is permitted
+by Garmory only when:
+
+  (a) the resulting system is provided free of charge, and
+  (b) access is limited to a closed group of users (e.g., participants of
+      a single tabletop/RPG campaign such as Nerthus).
+
+Public distribution, commercial use, or distribution beyond such a closed
+group requires separate written permission from Garmory.
+
+Margonem is a trademark of Garmory sp. z o.o. sp. k. This project is not
+affiliated with, endorsed by, or sponsored by Garmory.
