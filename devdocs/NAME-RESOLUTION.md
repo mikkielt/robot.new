@@ -6,7 +6,7 @@ The name resolution subsystem consists of `Get-NameIndex` (index construction), 
 
 Shared dependency: `private/string-helpers.ps1` provides `Get-LevenshteinDistance` (PowerShell fallback), dot-sourced by `public/resolve/resolve-name.ps1`, `public/get-nameindex.ps1`, `public/reporting/get-namedlocationreport.ps1`, and `public/reporting/get-namedloglocationreport.ps1`.
 
-Compiled C# dependency: `lib/BKTree.cs` provides the `Robot.BKTree` class — a compiled C# BK-tree with integrated case-insensitive Levenshtein distance. Compiled centrally in `Robot.PowerShell.psm1` at module import time. Called on every unresolved token during name resolution across all session processing. Falls back to the legacy PowerShell BK-tree helpers when compilation fails.
+Compiled C# dependency: `lib/BKTree.cs` provides the `Robot.BKTree` class — a compiled C# BK-tree with integrated case-insensitive Levenshtein distance. Compiled centrally in `Robot.PowerShell.psm1` at module import time. Called on every unresolved token during name resolution across all session processing. When compilation fails (e.g. restricted environment), `$BKTree` is set to `$null` and fuzzy resolution is unavailable — there is no PowerShell fallback.
 
 Compiled C# dependency: `lib/DeclensionEngine.cs` provides the `Robot.DeclensionEngine` class — Polish declension engine (nouns and adjectives) for suffix stripping and consonant alternation reversal. Constructed once at module load by `public/resolve/resolve-name.ps1`. Called on every unresolved name during `Resolve-Name` stages 2 and 2b. Falls back to the PowerShell functions `Get-DeclensionStem` and `Get-StemAlternationCandidates` when `Add-Type` fails.
 
@@ -34,8 +34,6 @@ Get-Entity --+                              |
 | Function | Purpose |
 |---|---|
 | `Get-NameIndex` | Main builder - produces `{ Index, StemIndex, BKTree }` |
-| `Add-BKTreeNode` | Recursive BK-tree insertion by edit distance |
-| `Search-BKTree` | Iterative BK-tree traversal with triangle-inequality pruning |
 | `Add-IndexToken` | Inserts a single token with priority-based collision resolution |
 | `Add-NamedObjectTokens` | Indexes all names of a player or entity (full names + word tokens) |
 
@@ -72,11 +70,11 @@ Output structure:
 @{
     Index     = Dictionary[string, PSCustomObject]  # OrdinalIgnoreCase
     StemIndex = Dictionary[string, List[string]]    # OrdinalIgnoreCase
-    BKTree    = [Robot.BKTree] or @{ Key = "..."; Children = @{} }  # C# or hashtable
+    BKTree    = [Robot.BKTree] or $null              # $null when C# type unavailable
 }
 ```
 
-The `BKTree` value is a `Robot.BKTree` instance when the C# type is available, or a recursive PowerShell hashtable as fallback. `Resolve-Name` uses `$BKTree -is [Robot.BKTree]` to dispatch to the correct search method.
+The `BKTree` value is a `Robot.BKTree` instance when the C# type is available, or `$null` otherwise. `Resolve-Name` checks `$BKTree -is [Robot.BKTree]` before invoking fuzzy search; when `$null`, fuzzy resolution is skipped.
 
 Each index entry:
 
@@ -91,9 +89,7 @@ Each index entry:
 
 ## BK-Tree
 
-A [BK-tree](https://en.wikipedia.org/wiki/BK-tree) partitions strings by Levenshtein edit distance, enabling O(log N) approximate matching. Two implementations exist: a compiled C# class (`Robot.BKTree`) and a legacy PowerShell hashtable fallback.
-
-The `Robot.BKTree` class (`lib/BKTree.cs`) is the primary implementation, compiled centrally in `Robot.PowerShell.psm1` at module import time. It provides:
+A [BK-tree](https://en.wikipedia.org/wiki/BK-tree) partitions strings by Levenshtein edit distance, enabling O(log N) approximate matching. The implementation is the compiled C# class `Robot.BKTree` (`lib/BKTree.cs`), compiled centrally in `Robot.PowerShell.psm1` at module import time. It provides:
 
 - Integrated Levenshtein distance — `LevenshteinDistance(s, t, maxDist)` is a static two-row matrix, case-insensitive via `char.ToLowerInvariant`, with early-exit threshold (returns `maxDist + 1` when true distance exceeds threshold).
 - Tree structure — sealed class with `string _key` and `Dictionary<int, BKTree> _children`.
@@ -102,54 +98,13 @@ The `Robot.BKTree` class (`lib/BKTree.cs`) is the primary implementation, compil
 
 On the 4,700+ token index with 16,500+ lookups per session run, the C# implementation eliminates PowerShell interpretation overhead.
 
-The legacy PowerShell fallback is kept for backward compatibility with test code and as a fallback when `Add-Type` fails (e.g., restricted environments). Each node is a hashtable:
-
-```powershell
-@{
-    Key      = "korm"           # Lowercased token
-    Children = @{               # Keyed by edit distance
-        1 = @{ Key = "form"; Children = @{} }
-        2 = @{ Key = "storm"; Children = @{} }
-    }
-}
-```
-
-Insertion (`Add-BKTreeNode`):
-
-```
-FUNCTION Add-BKTreeNode(node, key):
-    distance = Levenshtein(node.Key, key)
-    IF distance == 0 -> RETURN (skip duplicates)
-    IF children[distance] exists -> recurse on that child
-    ELSE -> create new child node at that distance
-```
-
-Search (`Search-BKTree`):
-
-```
-FUNCTION Search-BKTree(tree, query, threshold):
-    results = []
-    stack = [tree]
-    WHILE stack not empty:
-        current = pop()
-        distance = Levenshtein(query, current.Key, maxDistance=threshold)
-        IF distance <= threshold -> add to results
-        LOW = distance - threshold
-        HIGH = distance + threshold
-        FOR each child at childDistance:
-            IF LOW <= childDistance <= HIGH -> push child
-    RETURN results
-```
-
 The triangle inequality `|d(a,c) - d(a,b)| <= d(b,c)` guarantees that children outside `[LOW, HIGH]` cannot satisfy the threshold, pruning ~90% of the tree on each step.
 
 The BK-tree is built lazily in `Get-NameIndex` — only if at least 1 token key exists. Keys are Fisher-Yates shuffled with a deterministic seed (42) before insertion to prevent degenerate tree shape from sorted insertion order, ensuring reproducible tree shape across runs.
 
-Type selection: If `Robot.BKTree` type is available (C# compiled successfully), a `Robot.BKTree` instance is created. Otherwise, falls back to the PowerShell hashtable BK-tree.
+When `Robot.BKTree` is unavailable (C# compilation failed), `Get-NameIndex` sets `$BKTree = $null` and fuzzy resolution falls back to a linear scan.
 
-`Search-BKTree` (legacy) handles a `$null` tree safely (returns empty results). `Resolve-Name` dispatches to the correct search method based on `$BKTree -is [Robot.BKTree]`.
-
-C# type loading: `Robot.BKTree` is compiled centrally in `Robot.PowerShell.psm1` at module import time alongside all other `lib/*.cs` types. The `PSTypeName` guard in `Get-NameIndex` checks availability before creating a `Robot.BKTree` instance vs. the PowerShell hashtable fallback.
+C# type loading: `Robot.BKTree` is compiled centrally in `Robot.PowerShell.psm1` at module import time alongside all other `lib/*.cs` types. The `PSTypeName` guard in `Get-NameIndex` checks availability before creating a `Robot.BKTree` instance.
 
 ## `Robot.DeclensionEngine`
 

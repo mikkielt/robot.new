@@ -1,5 +1,6 @@
 BeforeAll {
-    Import-Module "$PSScriptRoot/../../../Robot.PowerShell.psm1" -Force -WarningAction SilentlyContinue
+    . "$PSScriptRoot/PluginTestHelpers.ps1"
+    Import-RobotModuleForPlugin
     . "$PSScriptRoot/../private/api-handlers-write.ps1"
     . "$PSScriptRoot/../private/api-handlers-events.ps1"
 }
@@ -9,6 +10,10 @@ BeforeAll {
 # ═══════════════════════════════════════════════════════════════════════
 
 Describe 'Invoke-ApiCreateEntity' {
+    BeforeAll {
+        Mock New-Entity { throw [System.InvalidOperationException]::new('simulated: write blocked in tests') }
+    }
+
     Context 'Parameter validation' {
         It 'returns 400 when body is missing' {
             $Ctx = @{ PathParams = @{}; QueryParams = @{}; Body = $null; Method = 'POST'; Path = '/entities' }
@@ -46,14 +51,18 @@ Describe 'Invoke-ApiCreateEntity' {
                 Path        = '/entities'
             }
             $Result = Invoke-ApiCreateEntity -ApiContext $Ctx
-            # Without repo context, New-Entity will fail — that's expected.
-            # We verify the handler didn't reject the input at validation level.
-            $Result.StatusCode | Should -BeIn @(201, 422)
+            # New-Entity is mocked to throw; reaching it means input parsed.
+            $Result.StatusCode | Should -Be 422
+            Should -Invoke New-Entity -Times 1 -Exactly
         }
     }
 }
 
 Describe 'Invoke-ApiUpdateEntity' {
+    BeforeAll {
+        Mock Set-Entity { throw [System.InvalidOperationException]::new('simulated: write blocked in tests') }
+    }
+
     Context 'Parameter validation' {
         It 'returns 400 when body is missing' {
             $Ctx = @{
@@ -93,13 +102,18 @@ Describe 'Invoke-ApiUpdateEntity' {
                 Path        = '/entities/Solmyr'
             }
             $Result = Invoke-ApiUpdateEntity -ApiContext $Ctx
-            # Without repo context Set-Entity fails with 422
-            $Result.StatusCode | Should -BeIn @(200, 422)
+            # Set-Entity is mocked to throw; reaching it means input parsed.
+            $Result.StatusCode | Should -Be 422
+            Should -Invoke Set-Entity -Times 1 -Exactly
         }
     }
 }
 
 Describe 'Invoke-ApiDeleteEntity' {
+    BeforeAll {
+        Mock Remove-Entity { throw [System.InvalidOperationException]::new('simulated: write blocked in tests') }
+    }
+
     Context 'Parameter extraction' {
         It 'extracts name from path params' {
             $Ctx = @{
@@ -110,8 +124,9 @@ Describe 'Invoke-ApiDeleteEntity' {
                 Path        = '/entities/TestEntity'
             }
             $Result = Invoke-ApiDeleteEntity -ApiContext $Ctx
-            # Without repo context Remove-Entity fails
-            $Result.StatusCode | Should -BeIn @(200, 422)
+            # Remove-Entity is mocked to throw; reaching it means input parsed.
+            $Result.StatusCode | Should -Be 422
+            Should -Invoke Remove-Entity -Times 1 -Exactly
         }
 
         It 'accepts optional type and validFrom in body' {
@@ -124,12 +139,17 @@ Describe 'Invoke-ApiDeleteEntity' {
                 Path        = '/entities/TestEntity'
             }
             $Result = Invoke-ApiDeleteEntity -ApiContext $Ctx
-            $Result.StatusCode | Should -BeIn @(200, 422)
+            $Result.StatusCode | Should -Be 422
+            Should -Invoke Remove-Entity -Times 1 -Exactly
         }
     }
 }
 
 Describe 'Invoke-ApiCreateCurrency' {
+    BeforeAll {
+        Mock New-Entity { throw [System.InvalidOperationException]::new('simulated: write blocked in tests') }
+    }
+
     Context 'Parameter validation' {
         It 'returns 400 when body is missing' {
             $Ctx = @{ PathParams = @{}; QueryParams = @{}; Body = $null; Method = 'POST'; Path = '/currency' }
@@ -154,13 +174,18 @@ Describe 'Invoke-ApiCreateCurrency' {
             }
             $Ctx = @{ PathParams = @{}; QueryParams = @{}; Body = $Body; Method = 'POST'; Path = '/currency' }
             $Result = Invoke-ApiCreateCurrency -ApiContext $Ctx
-            # Without repo: New-Entity fails → 422. Handler didn't reject at validation.
-            $Result.StatusCode | Should -BeIn @(201, 422)
+            # New-Entity is mocked to throw; reaching it means input parsed.
+            $Result.StatusCode | Should -Be 422
+            Should -Invoke New-Entity -Times 1 -Exactly
         }
     }
 }
 
 Describe 'Invoke-ApiUpdateCurrency' {
+    BeforeAll {
+        Mock Set-CurrencyEntity { throw [System.InvalidOperationException]::new('simulated: write blocked in tests') }
+    }
+
     Context 'Parameter validation' {
         It 'returns 400 when body is missing' {
             $Ctx = @{
@@ -184,12 +209,17 @@ Describe 'Invoke-ApiUpdateCurrency' {
                 Path        = '/currency/Korony Test'
             }
             $Result = Invoke-ApiUpdateCurrency -ApiContext $Ctx
-            $Result.StatusCode | Should -BeIn @(200, 422)
+            $Result.StatusCode | Should -Be 422
+            Should -Invoke Set-CurrencyEntity -Times 1 -Exactly
         }
     }
 }
 
 Describe 'Invoke-ApiCreatePlayer' {
+    BeforeAll {
+        Mock New-Player { throw [System.InvalidOperationException]::new('simulated: write blocked in tests') }
+    }
+
     Context 'Parameter validation' {
         It 'returns 400 when body is missing' {
             $Ctx = @{ PathParams = @{}; QueryParams = @{}; Body = $null; Method = 'POST'; Path = '/players' }
@@ -214,12 +244,17 @@ Describe 'Invoke-ApiCreatePlayer' {
             }
             $Ctx = @{ PathParams = @{}; QueryParams = @{}; Body = $Body; Method = 'POST'; Path = '/players' }
             $Result = Invoke-ApiCreatePlayer -ApiContext $Ctx
-            $Result.StatusCode | Should -BeIn @(201, 422)
+            $Result.StatusCode | Should -Be 422
+            Should -Invoke New-Player -Times 1 -Exactly
         }
     }
 }
 
 Describe 'Invoke-ApiCreateCharacter' {
+    BeforeAll {
+        Mock New-PlayerCharacter { throw [System.InvalidOperationException]::new('simulated: write blocked in tests') }
+    }
+
     Context 'Parameter validation' {
         It 'returns 400 when body is missing' {
             $Ctx = @{
@@ -260,12 +295,17 @@ Describe 'Invoke-ApiCreateCharacter' {
                 Path        = '/players/TestPlayer/characters'
             }
             $Result = Invoke-ApiCreateCharacter -ApiContext $Ctx
-            $Result.StatusCode | Should -BeIn @(201, 422)
+            $Result.StatusCode | Should -Be 422
+            Should -Invoke New-PlayerCharacter -Times 1 -Exactly
         }
     }
 }
 
 Describe 'Invoke-ApiRebuildGraph' {
+    BeforeAll {
+        Mock Set-SessionGraph { throw [System.InvalidOperationException]::new('simulated: write blocked in tests') }
+    }
+
     Context 'Parameter extraction' {
         It 'accepts empty body for incremental rebuild' {
             $Ctx = @{
@@ -276,8 +316,9 @@ Describe 'Invoke-ApiRebuildGraph' {
                 Path        = '/workflow/session-graph'
             }
             $Result = Invoke-ApiRebuildGraph -ApiContext $Ctx
-            # Without repo context, Set-SessionGraph fails
-            $Result.StatusCode | Should -BeIn @(200, 422)
+            # Set-SessionGraph is mocked to throw.
+            $Result.StatusCode | Should -Be 422
+            Should -Invoke Set-SessionGraph -Times 1 -Exactly
         }
 
         It 'accepts full rebuild flag in body' {
@@ -290,12 +331,17 @@ Describe 'Invoke-ApiRebuildGraph' {
                 Path        = '/workflow/session-graph'
             }
             $Result = Invoke-ApiRebuildGraph -ApiContext $Ctx
-            $Result.StatusCode | Should -BeIn @(200, 422)
+            $Result.StatusCode | Should -Be 422
+            Should -Invoke Set-SessionGraph -Times 1 -Exactly
         }
     }
 }
 
 Describe 'Invoke-ApiRebuildHashes' {
+    BeforeAll {
+        Mock Set-SessionHash { throw [System.InvalidOperationException]::new('simulated: write blocked in tests') }
+    }
+
     Context 'Parameter extraction' {
         It 'accepts empty body for incremental mode' {
             $Ctx = @{
@@ -306,7 +352,8 @@ Describe 'Invoke-ApiRebuildHashes' {
                 Path        = '/workflow/session-hash'
             }
             $Result = Invoke-ApiRebuildHashes -ApiContext $Ctx
-            $Result.StatusCode | Should -BeIn @(200, 422)
+            $Result.StatusCode | Should -Be 422
+            Should -Invoke Set-SessionHash -Times 1 -Exactly
         }
 
         It 'accepts full flag and since parameter' {
@@ -319,7 +366,8 @@ Describe 'Invoke-ApiRebuildHashes' {
                 Path        = '/workflow/session-hash'
             }
             $Result = Invoke-ApiRebuildHashes -ApiContext $Ctx
-            $Result.StatusCode | Should -BeIn @(200, 422)
+            $Result.StatusCode | Should -Be 422
+            Should -Invoke Set-SessionHash -Times 1 -Exactly
         }
     }
 }

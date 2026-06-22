@@ -233,6 +233,85 @@ function Register-AllApiRoutes {
         'Discord webhook delivery history', 200, 'admin:read')
     $HandlerMap['Invoke-ApiGetDeliveryLog'] = $true
 
+    # ── Analytics endpoints (Phase 3a: PU-centric) ─────────────────────
+    $Router.AddCacheableRoute('GET', '/analytics/pu/by-character',
+        'Invoke-ApiAnalyticsPuByCharacter',
+        'PU aggregation per character over a date window', 200, 'session:read',
+        'analytics-pu-character', @('session'))
+    $HandlerMap['Invoke-ApiAnalyticsPuByCharacter'] = $true
+
+    $Router.AddCacheableRoute('GET', '/analytics/pu/by-location',
+        'Invoke-ApiAnalyticsPuByLocation',
+        'PU aggregation per location over a date window', 200, 'session:read',
+        'analytics-pu-location', @('session'))
+    $HandlerMap['Invoke-ApiAnalyticsPuByLocation'] = $true
+
+    $Router.AddCacheableRoute('GET', '/analytics/co-engagement',
+        'Invoke-ApiAnalyticsCoEngagement',
+        'Top character pairs by co-occurrence', 200, 'session:read',
+        'analytics-co-engagement', @('session'))
+    $HandlerMap['Invoke-ApiAnalyticsCoEngagement'] = $true
+
+    $Router.AddRoute('GET', '/analytics/character-territory/:name',
+        'Invoke-ApiAnalyticsCharacterTerritory',
+        'Character location footprint + adjacency density', 200, 'session:read')
+    $HandlerMap['Invoke-ApiAnalyticsCharacterTerritory'] = $true
+
+    $Router.AddRoute('GET', '/analytics/pu/timeline',
+        'Invoke-ApiAnalyticsPuTimeline',
+        'Monthly/weekly PU velocity per character', 200, 'session:read')
+    $HandlerMap['Invoke-ApiAnalyticsPuTimeline'] = $true
+
+    $Router.AddCacheableRoute('GET', '/analytics/pu/by-narrator',
+        'Invoke-ApiAnalyticsPuByNarrator',
+        'PU statistics per narrator', 200, 'session:read',
+        'analytics-pu-narrator', @('session'))
+    $HandlerMap['Invoke-ApiAnalyticsPuByNarrator'] = $true
+
+    # ── Analytics endpoints (Phase 3b: cross-cutting) ──────────────────
+    $Router.AddCacheableRoute('GET', '/analytics/entity-lifecycle',
+        'Invoke-ApiAnalyticsEntityLifecycle',
+        'Status/group/owner/location transitions over time', 200, 'session:read',
+        'analytics-entity-lifecycle', @('entity', 'session'))
+    $HandlerMap['Invoke-ApiAnalyticsEntityLifecycle'] = $true
+
+    $Router.AddCacheableRoute('GET', '/analytics/location-graph/metrics',
+        'Invoke-ApiAnalyticsLocationGraphMetrics',
+        'Graph metrics: degree, components, choke points', 200, 'entity:read',
+        'analytics-location-graph-metrics', @('entity', 'session'))
+    $HandlerMap['Invoke-ApiAnalyticsLocationGraphMetrics'] = $true
+
+    $Router.AddRoute('GET', '/analytics/logs/speaker-leaderboard',
+        'Invoke-ApiAnalyticsLogsSpeakerLeaderboard',
+        'Chat presence leaderboard from logs', 200, 'session:read')
+    $HandlerMap['Invoke-ApiAnalyticsLogsSpeakerLeaderboard'] = $true
+
+    $Router.AddRoute('GET', '/analytics/logs/channel-mix',
+        'Invoke-ApiAnalyticsLogsChannelMix',
+        'ChatLog channel breakdown (secrecy density)', 200, 'session:read')
+    $HandlerMap['Invoke-ApiAnalyticsLogsChannelMix'] = $true
+
+    $Router.AddRoute('GET', '/analytics/logs/coverage',
+        'Invoke-ApiAnalyticsLogsCoverage',
+        'Log fetch coverage / health stats', 200, 'session:read')
+    $HandlerMap['Invoke-ApiAnalyticsLogsCoverage'] = $true
+
+    $Router.AddRoute('GET', '/analytics/resolution/quality',
+        'Invoke-ApiAnalyticsResolutionQuality',
+        'Name index health: ambiguity, stem collisions, stages', 200, 'entity:read')
+    $HandlerMap['Invoke-ApiAnalyticsResolutionQuality'] = $true
+
+    $Router.AddRoute('GET', '/analytics/integrity/trends',
+        'Invoke-ApiAnalyticsIntegrityTrends',
+        'Integrity check trends over time', 200, 'admin:read')
+    $HandlerMap['Invoke-ApiAnalyticsIntegrityTrends'] = $true
+
+    $Router.AddCacheableRoute('GET', '/analytics/metadata/coverage',
+        'Invoke-ApiAnalyticsMetadataCoverage',
+        'Metadata coverage report (IsExterior, slugs, etc.)', 200, 'entity:read',
+        'analytics-metadata-coverage', @('entity'))
+    $HandlerMap['Invoke-ApiAnalyticsMetadataCoverage'] = $true
+
     # ── Write endpoints ────────────────────────────────────────────────
     $Router.AddRoute('POST', '/entities', 'Invoke-ApiCreateEntity', 'Create entity', 201, 'entity:write')
     $HandlerMap['Invoke-ApiCreateEntity'] = $true

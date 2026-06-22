@@ -9,7 +9,8 @@
 #>
 
 BeforeAll {
-    Import-Module "$PSScriptRoot/../../../Robot.PowerShell.psm1" -Force -WarningAction SilentlyContinue
+    . "$PSScriptRoot/PluginTestHelpers.ps1"
+    Import-RobotModuleForPlugin
     . "$PSScriptRoot/../private/api-handlers-auth.ps1"
     . "$PSScriptRoot/../private/api-handlers-read.ps1"
     . "$PSScriptRoot/../private/api-handlers-write.ps1"
@@ -116,10 +117,9 @@ Describe 'Invoke-ApiParseLog' {
         }
 
         $Result = Invoke-ApiParseLog -ApiContext $Ctx
-        $Result.StatusCode | Should -BeIn @(200, 422)
-        if ($Result.StatusCode -eq 200) {
-            $Result.Body | Should -Not -BeNullOrEmpty
-        }
+        # ConvertFrom-LogContent is a pure parser — no repo dependency, always succeeds.
+        $Result.StatusCode | Should -Be 200
+        $Result.Body | Should -Not -BeNullOrEmpty
     }
 }
 
@@ -128,6 +128,11 @@ Describe 'Invoke-ApiParseLog' {
 # ═══════════════════════════════════════════════════════════════════════
 
 Describe 'Invoke-ApiSessionPreview' {
+    BeforeAll {
+        Mock New-Session { return "### 2026-03-15, Preview Test, Solmyr`n" }
+        Mock Resolve-Name { $null }
+    }
+
     It 'returns 400 when body is missing' {
         $Ctx = @{
             PathParams  = @{}
@@ -188,11 +193,11 @@ Describe 'Invoke-ApiSessionPreview' {
         }
 
         $Result = Invoke-ApiSessionPreview -ApiContext $Ctx
-        $Result.StatusCode | Should -BeIn @(200, 422)
-        if ($Result.StatusCode -eq 200) {
-            $Result.Body.markdown | Should -BeLike '*### 2026-03-15*Preview Test*Solmyr*'
-            $Result.Body.warnings | Should -Not -BeNullOrEmpty -Because 'unresolvable locations produce warnings'
-        }
+        # New-Session is mocked to a known stub; Resolve-Name returns $null so
+        # 'Erathia' resolves as unknown and surfaces in warnings.
+        $Result.StatusCode | Should -Be 200
+        $Result.Body.markdown | Should -BeLike '*### 2026-03-15*Preview Test*Solmyr*'
+        $Result.Body.warnings | Should -Not -BeNullOrEmpty -Because 'unresolvable locations produce warnings'
     }
 }
 

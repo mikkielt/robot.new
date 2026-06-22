@@ -3,3 +3,10 @@
 
 .DS_Store
 Thumbs.db
+
+# Test leak sentinels — these paths must never exist in the module dir.
+# If they appear, a test forgot to Mock Get-RepoRoot or bypassed the
+# filesystem firewall in tests/TestHelpers.ps1 /
+# plugins/robot-api/tests/PluginTestHelpers.ps1.
+/entities.md
+/Postaci/

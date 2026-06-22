@@ -399,6 +399,166 @@ namespace Robot {
                 NextCursor = nextCursor
             };
         }
+
+        // ── Generic helpers (non-Entity lists) ─────────────────────────────
+
+        /// Reflection-based field accessor for arbitrary objects.
+        /// Handles IDictionary (case-insensitive key lookup), PSObject.Properties
+        /// (via reflection — avoids SMA compile-time dependency), and plain CLR
+        /// public instance properties. Returns null when the field is absent or
+        /// the value is null. All comparisons are OrdinalIgnoreCase.
+        public static string GetObjectField(object obj, string field) {
+            if (obj == null || string.IsNullOrEmpty(field)) return null;
+
+            // Dictionary path — case-insensitive key search
+            if (obj is IDictionary dict) {
+                foreach (DictionaryEntry e in dict) {
+                    if (string.Equals(e.Key?.ToString(), field,
+                            StringComparison.OrdinalIgnoreCase))
+                        return e.Value?.ToString();
+                }
+                return null;
+            }
+
+            // PSObject path — reflect over .Properties without taking an SMA
+            // compile-time dependency. PSCustomObject from PowerShell exposes
+            // a Properties collection of PSPropertyInfo (Name + Value).
+            var psType = obj.GetType();
+            var propsProp = psType.GetProperty("Properties");
+            if (propsProp != null) {
+                object propsObj = null;
+                try { propsObj = propsProp.GetValue(obj); } catch { }
+                if (propsObj is IEnumerable propsEnum) {
+                    foreach (var p in propsEnum) {
+                        if (p == null) continue;
+                        var pType = p.GetType();
+                        var nameProp = pType.GetProperty("Name");
+                        var valueProp = pType.GetProperty("Value");
+                        if (nameProp == null || valueProp == null) continue;
+                        string name = null;
+                        try { name = nameProp.GetValue(p) as string; } catch { }
+                        if (!string.Equals(name, field,
+                                StringComparison.OrdinalIgnoreCase)) continue;
+                        object val = null;
+                        try { val = valueProp.GetValue(p); } catch { }
+                        return val?.ToString();
+                    }
+                }
+            }
+
+            // Plain CLR property fallback (handles Robot.Entity, struct types,
+            // and any other concrete .NET class).
+            var clrProp = psType.GetProperty(field,
+                System.Reflection.BindingFlags.Public |
+                System.Reflection.BindingFlags.Instance |
+                System.Reflection.BindingFlags.IgnoreCase);
+            if (clrProp != null && clrProp.CanRead) {
+                try { return clrProp.GetValue(obj)?.ToString(); }
+                catch { return null; }
+            }
+            return null;
+        }
+
+        /// Apply filter groups to an arbitrary object list. All groups must
+        /// match (AND); within a group, any condition matches (OR). The
+        /// accessor delegate extracts string field values; when null, falls
+        /// back to GetObjectField.
+        public static List<object> FilterList(
+            IList<object> items, List<FilterGroup> groups,
+            Func<object, string, string> accessor) {
+            if (items == null) return new List<object>();
+            if (groups == null || groups.Count == 0) {
+                var copy = new List<object>(items.Count);
+                for (int i = 0; i < items.Count; i++) copy.Add(items[i]);
+                return copy;
+            }
+            var fn = accessor ?? new Func<object, string, string>(
+                (o, f) => GetObjectField(o, f));
+            var result = new List<object>(items.Count);
+            for (int i = 0; i < items.Count; i++) {
+                var item = items[i];
+                bool allGroupsMatch = true;
+                for (int g = 0; g < groups.Count; g++) {
+                    bool any = false;
+                    var conds = groups[g].Conditions;
+                    for (int c = 0; c < conds.Count; c++) {
+                        var cond = conds[c];
+                        string v = fn(item, cond.Field);
+                        if (EvaluateCondition(cond, v)) { any = true; break; }
+                    }
+                    if (!any) { allGroupsMatch = false; break; }
+                }
+                if (allGroupsMatch) result.Add(item);
+            }
+            return result;
+        }
+
+        /// Sort an arbitrary object list in place by multiple fields. The
+        /// accessor extracts string values; comparison is OrdinalIgnoreCase.
+        public static void SortList(
+            List<object> items, List<SortField> sortFields,
+            Func<object, string, string> accessor) {
+            if (items == null || sortFields == null || sortFields.Count == 0) return;
+            var fn = accessor ?? new Func<object, string, string>(
+                (o, f) => GetObjectField(o, f));
+            items.Sort((a, b) => {
+                for (int i = 0; i < sortFields.Count; i++) {
+                    var sf = sortFields[i];
+                    string va = fn(a, sf.Field) ?? "";
+                    string vb = fn(b, sf.Field) ?? "";
+                    int cmp = string.Compare(va, vb,
+                        StringComparison.OrdinalIgnoreCase);
+                    if (cmp != 0) return sf.Descending ? -cmp : cmp;
+                }
+                return 0;
+            });
+        }
+
+        /// Apply cursor-based pagination to an arbitrary object list. The
+        /// accessor extracts the cursor field value (default "name").
+        public static PageResult<object> PaginateList(
+            List<object> sorted, PageParams page,
+            Func<object, string, string> accessor, string cursorField) {
+            if (sorted == null) sorted = new List<object>();
+            if (string.IsNullOrEmpty(cursorField)) cursorField = "name";
+            var fn = accessor ?? new Func<object, string, string>(
+                (o, f) => GetObjectField(o, f));
+
+            int startIdx = 0;
+            if (page != null && !string.IsNullOrEmpty(page.AfterCursor)) {
+                for (int i = 0; i < sorted.Count; i++) {
+                    string val = fn(sorted[i], cursorField);
+                    if (string.Equals(val, page.AfterCursor,
+                            StringComparison.OrdinalIgnoreCase)) {
+                        startIdx = i + 1; break;
+                    }
+                }
+            }
+
+            int size = page != null ? page.Size : 50;
+            int count = Math.Min(size, sorted.Count - startIdx);
+            if (count <= 0) {
+                return new PageResult<object> {
+                    Items = new List<object>(),
+                    TotalCount = sorted.Count,
+                    HasMore = false,
+                    NextCursor = null
+                };
+            }
+
+            var items = sorted.GetRange(startIdx, count);
+            bool hasMore = (startIdx + count) < sorted.Count;
+            string nextCursor = hasMore
+                ? EncodeCursor(fn(items[items.Count - 1], cursorField))
+                : null;
+
+            return new PageResult<object> {
+                Items = items,
+                TotalCount = sorted.Count,
+                HasMore = hasMore,
+                NextCursor = nextCursor
+            };
+        }
     }
 
     // ── Data types ────────────────────────────────────────────────────────

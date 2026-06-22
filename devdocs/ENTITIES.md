@@ -132,6 +132,18 @@ Merge rules: Same-name entities across files have their histories concatenated. 
 
 All files are loaded in a single `Get-Markdown` call for efficiency.
 
+### Shared Construction Helpers (`private/entity-mergehelpers.ps1`)
+
+The C# fast path (`Robot.EntityRegistryParser`) and the PowerShell fallback path share three helpers for post-dispatch processing.
+
+| Helper | Purpose |
+|---|---|
+| `Resolve-EntityScalars` | Resolves current scalar values from temporal histories (Location, Door, Type, Owner, Group, Status, Quantity, FilePath, NerthusName, Coordinate) using `Get-LastActiveValue` against `$ActiveOn`. Applies default fallbacks (e.g. `Aktywny` for status). |
+| `Merge-EntityHistories` | Merges an incoming parsed-entity record's history lists into an existing `[Robot.Entity]` instance during multi-file merge. Concatenates `LocationHistory`, `DoorHistory`, `TypeHistory`, etc., and re-resolves scalars after the merge. |
+| `New-EntityFromParsed` | Constructs a `[Robot.Entity]` from a parsed-entity record. Initialises history lists, copies metadata, and runs `Resolve-EntityScalars` to populate current values. |
+
+Dependencies: `temporal-helpers.ps1` (`Get-LastActiveValue`, `Get-AllActiveValues`, `Test-TemporalActivity`) — must be dot-sourced before `entity-mergehelpers.ps1`.
+
 ---
 
 ## Entity Type Sections

@@ -1,5 +1,6 @@
 BeforeAll {
-    Import-Module "$PSScriptRoot/../../../Robot.PowerShell.psm1" -Force -WarningAction SilentlyContinue
+    . "$PSScriptRoot/PluginTestHelpers.ps1"
+    Import-RobotModuleForPlugin
 }
 
 Describe 'Robot.ApiServer' {

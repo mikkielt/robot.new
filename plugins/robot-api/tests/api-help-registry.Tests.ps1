@@ -45,9 +45,14 @@ Describe 'Robot.ApiHelpRegistry' {
             $Components | Should -Contain 'cli'
         }
 
-        It 'returns exactly 17 components' {
+        It 'returns exactly 18 components' {
             $Components = [Robot.ApiHelpRegistry]::GetComponents()
-            $Components.Count | Should -Be 17
+            $Components.Count | Should -Be 18
+        }
+
+        It 'includes the analytics component' {
+            $Components = [Robot.ApiHelpRegistry]::GetComponents()
+            $Components | Should -Contain 'analytics'
         }
     }
 

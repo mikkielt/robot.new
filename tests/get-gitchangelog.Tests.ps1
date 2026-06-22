@@ -11,8 +11,9 @@
 BeforeAll {
     . "$PSScriptRoot/TestHelpers.ps1"
     Import-RobotModule
-    # Point Get-RepoRoot to the actual repository
-    $script:ActualRepoRoot = Get-RepoRoot
+    # This test genuinely needs the real repository for git history queries.
+    # Use the pre-firewall capture from TestHelpers.ps1.
+    $script:ActualRepoRoot = $script:OriginalRepoRoot
     Mock Get-RepoRoot { return $script:ActualRepoRoot }
     . (Join-Path $script:ModuleRoot 'public' 'session' 'get-gitchangelog.ps1')
 }

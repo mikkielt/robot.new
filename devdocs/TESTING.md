@@ -322,8 +322,19 @@ Plugin test files live alongside their plugins:
 
 ```
 plugins/robot-api/tests/
++-- PluginTestHelpers.ps1                          # Mirrors TestHelpers.ps1 firewall for plugin tests
 +-- api-help-registry.Tests.ps1                    # ApiHelpRegistry C# type tests
 +-- api-router.Tests.ps1                           # API router endpoint tests
+```
+
+Plugin tests for `robot-api` MUST dot-source `PluginTestHelpers.ps1` and call `Import-RobotModuleForPlugin` instead of `Import-Module` directly, so they inherit the filesystem firewall. Without it, `Get-RepoRoot`'s standalone-checkout fallback returns the module directory and any write call leaks files into the working tree.
+
+```powershell
+BeforeAll {
+    . "$PSScriptRoot/PluginTestHelpers.ps1"
+    Import-RobotModuleForPlugin
+    . "$PSScriptRoot/../private/api-handlers-write.ps1"
+}
 ```
 
 ## Shared Helpers (`TestHelpers.ps1`)
@@ -443,7 +454,20 @@ AfterAll {
 
 ## Mock Patterns
 
-`Get-RepoRoot` is mocked in almost every test file. Read tests return `$script:FixturesRoot` (reads fixtures as if they were the repository). Write tests return `$script:TempRoot` (writes to disposable temp directory).
+`Get-RepoRoot` MUST be mocked in every test file. Read tests return `$script:FixturesRoot` (reads fixtures as if they were the repository). Write tests return `$script:TempRoot` (writes to disposable temp directory).
+
+### Filesystem Firewall
+
+`TestHelpers.ps1` installs a per-process Get-RepoRoot override via `Initialize-TestFilesystemFirewall` (called from `Import-RobotModule`). The override points at a disposable temp directory, so a test that forgets `Mock Get-RepoRoot` writes there instead of the module directory. Explicit `Mock Get-RepoRoot { ... }` still wins because Pester intercepts the cmdlet before its body runs.
+
+Plugin tests follow the parallel `Import-RobotModuleForPlugin` from `plugins/robot-api/tests/PluginTestHelpers.ps1`, which uses the same firewall directory.
+
+The firewall is a safety net, not a substitute for explicit mocks. Tests SHALL still `Mock Get-RepoRoot` to make their dependency on the repo path visible.
+
+### Forbidden Patterns
+
+- `Should -BeIn @(<success>, <failure>)` on a write handler's `StatusCode` — this accepts both intended outcome and accidental success/failure, hiding bugs. Mock the underlying write function (`New-Entity`, `Set-Entity`, etc.) to a known throw and assert the exact `422`, or mock to a stub and assert the exact `2xx`.
+- `Set-RepoRoot -Reset` inside a test without restoring the firewall — disables the safety net for the rest of the process.
 
 Common mocks:
 
@@ -527,8 +551,8 @@ Slug uniqueness and validation tests in `set-mapentity.Tests.ps1` verify `Should
 
 | Metric | Count |
 |---|---|
-| Test files | 110 core + 14 plugin |
-| Test cases (`It` blocks) | ~2,590 |
+| Test files | 111 core + 15 plugin |
+| Test cases (`It` blocks) | ~2,548 |
 | Fixture files | ~95 |
 | Loading patterns | 5 (A: exported, B: internal+dot-source, C: standalone helper, D: parser, E: engine component) |
 

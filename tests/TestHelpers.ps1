@@ -59,6 +59,49 @@ function Remove-TestTempDir {
     $script:TempRoot = $null
 }
 
+# Filesystem firewall — default Get-RepoRoot override
+$script:FilesystemFirewallRoot = $null
+$script:OriginalRepoRoot       = $null
+
+function Initialize-TestFilesystemFirewall {
+    <#
+        .SYNOPSIS
+        Installs a default Get-RepoRoot override pointing at a disposable
+        per-process directory. Any test that forgets to Mock Get-RepoRoot
+        will write here instead of the module directory.
+
+        Explicit Mock Get-RepoRoot calls in test files override this — Pester
+        intercepts the cmdlet before its body runs, so $RepoRootOverride is
+        never consulted when a mock is in scope.
+
+        Captures the pre-firewall Get-RepoRoot result into $script:OriginalRepoRoot
+        for tests that genuinely need access to the real repository (e.g. git
+        history tests in get-gitchangelog.Tests.ps1).
+    #>
+    if ($script:FilesystemFirewallRoot -and [System.IO.Directory]::Exists($script:FilesystemFirewallRoot)) {
+        Set-RepoRoot -Path $script:FilesystemFirewallRoot
+        return
+    }
+    if (-not $script:OriginalRepoRoot) {
+        $script:OriginalRepoRoot = Get-RepoRoot -Optional
+    }
+    $script:FilesystemFirewallRoot = Join-Path ([System.IO.Path]::GetTempPath()) ("robot-test-firewall-" + [System.Diagnostics.Process]::GetCurrentProcess().Id)
+    [void][System.IO.Directory]::CreateDirectory($script:FilesystemFirewallRoot)
+    Set-RepoRoot -Path $script:FilesystemFirewallRoot
+}
+
+function Remove-TestFilesystemFirewall {
+    <#
+        .SYNOPSIS
+        Removes the firewall directory and clears the Get-RepoRoot override.
+    #>
+    if ($script:FilesystemFirewallRoot -and [System.IO.Directory]::Exists($script:FilesystemFirewallRoot)) {
+        [System.IO.Directory]::Delete($script:FilesystemFirewallRoot, $true)
+    }
+    $script:FilesystemFirewallRoot = $null
+    Set-RepoRoot -Reset
+}
+
 function Copy-FixtureToTemp {
     <#
         .SYNOPSIS
@@ -90,9 +133,14 @@ function Copy-FixtureToTemp {
 function Import-RobotModule {
     <#
         .SYNOPSIS
-        Imports the robot module with -Force.
+        Imports the robot module with -Force and installs the filesystem firewall.
+
+        The firewall sets a default Get-RepoRoot override pointing at a disposable
+        temp directory, so tests that forget Mock Get-RepoRoot write there instead
+        of the module directory.
     #>
     Import-Module (Join-Path $script:ModuleRoot 'Robot.PowerShell.psd1') -Force
+    Initialize-TestFilesystemFirewall
 }
 
 function Import-RobotHelpers {

@@ -108,6 +108,116 @@ function Invoke-ApiEntityListQuery {
     }
 }
 
+# ── Helper: build standard list response for arbitrary object lists ────
+
+function Invoke-ApiObjectListQuery {
+    <#
+        .SYNOPSIS
+        Generic list-response helper for non-Entity collections (sessions,
+        players, currency, reports, etc.). Applies the standard RSQL filter
+        / sort / paginate / sparse-fieldset pipeline using
+        Robot.ApiQueryParser's generic methods backed by GetObjectField.
+        .DESCRIPTION
+        Mirrors Invoke-ApiEntityListQuery but accepts [object[]] instead of
+        [Robot.Entity[]]. Cursor field defaults to "name"; callers pass a
+        type-appropriate value (e.g. "Header" for sessions, "EntityName"
+        for currency).
+    #>
+
+    param(
+        [hashtable]$ApiContext,
+        [object[]]$Items,
+        [string]$CursorField = 'name'
+    )
+
+    # Coerce QueryParams into a typed Dictionary[string,string] so
+    # JSON:API-style keys like 'page[size]' (which can't be set as
+    # properties on Dictionary<,> via PowerShell's hashtable-to-dict
+    # conversion) work even when the caller supplied a plain hashtable.
+    $QP = [System.Collections.Generic.Dictionary[string, string]]::new(
+        [System.StringComparer]::OrdinalIgnoreCase)
+    if ($ApiContext.QueryParams) {
+        if ($ApiContext.QueryParams -is [System.Collections.IDictionary]) {
+            foreach ($K in $ApiContext.QueryParams.Keys) {
+                $V = $ApiContext.QueryParams[$K]
+                if ($null -ne $V) { $QP[[string]$K] = [string]$V }
+            }
+        }
+    }
+
+    $Accessor = [Func[object, string, string]] {
+        param($Obj, $Field) [Robot.ApiQueryParser]::GetObjectField($Obj, $Field)
+    }
+
+    $List = [System.Collections.Generic.List[object]]::new(
+        $(if ($null -ne $Items) { $Items.Count } else { 0 }))
+    if ($null -ne $Items) { foreach ($I in $Items) { $List.Add($I) } }
+
+    # RSQL filter
+    if ($QP['filter']) {
+        $Groups = [Robot.ApiQueryParser]::ParseFilter($QP['filter'])
+        $List = [Robot.ApiQueryParser]::FilterList($List, $Groups, $Accessor)
+    }
+
+    # Sort
+    $SortFields = [Robot.ApiQueryParser]::ParseSort($QP['sort'])
+    if ($SortFields.Count -gt 0) {
+        [Robot.ApiQueryParser]::SortList($List, $SortFields, $Accessor)
+    }
+
+    # Pagination
+    $PageParams = [Robot.ApiQueryParser]::ParsePage($QP)
+    $Page = [Robot.ApiQueryParser]::PaginateList(
+        $List, $PageParams, $Accessor, $CursorField)
+
+    # Sparse fieldsets — project to PSCustomObject with only requested keys.
+    # When no fields requested, pass items through unchanged.
+    $FieldSet = [Robot.ApiQueryParser]::ParseFields($QP['fields'])
+    $Out = if ($null -ne $FieldSet) {
+        @($Page.Items).ForEach({
+            $Src = $_
+            $H = [ordered]@{}
+            foreach ($F in $FieldSet) {
+                # Prefer the raw property value over GetObjectField's
+                # ToString() projection so arrays/objects survive intact.
+                $Val = $null
+                if ($Src -is [System.Collections.IDictionary]) {
+                    foreach ($K in $Src.Keys) {
+                        if ([string]::Equals($K, $F, 'OrdinalIgnoreCase')) {
+                            $Val = $Src[$K]; break
+                        }
+                    }
+                } elseif ($Src.PSObject -and $Src.PSObject.Properties[$F]) {
+                    $Val = $Src.PSObject.Properties[$F].Value
+                } else {
+                    $Prop = $Src.GetType().GetProperty($F,
+                        [System.Reflection.BindingFlags]::Public -bor
+                        [System.Reflection.BindingFlags]::Instance -bor
+                        [System.Reflection.BindingFlags]::IgnoreCase)
+                    if ($null -ne $Prop) {
+                        try { $Val = $Prop.GetValue($Src) } catch {}
+                    }
+                }
+                if ($null -ne $Val) { $H[$F] = $Val }
+            }
+            [PSCustomObject]$H
+        })
+    } else {
+        @($Page.Items)
+    }
+
+    return @{
+        StatusCode = 200
+        Body       = @{
+            count      = $Page.TotalCount
+            pageSize   = $PageParams.Size
+            hasMore    = $Page.HasMore
+            nextCursor = $Page.NextCursor
+            items      = $Out
+        }
+    }
+}
+
 # ═══════════════════════════════════════════════════════════════════════
 # ENTITIES
 # ═══════════════════════════════════════════════════════════════════════
@@ -179,7 +289,8 @@ function Invoke-ApiGetEntityHistory {
 
     try {
         $Log = @(Get-ChangeLog @Params)
-        return @{ StatusCode = 200; Body = @{ count = $Log.Count; items = $Log } }
+        return (Invoke-ApiObjectListQuery -ApiContext $ApiContext `
+            -Items $Log -CursorField 'Date')
     } catch {
         return @{ StatusCode = 422; Body = @{ error = $_.Exception.Message } }
     }
@@ -226,7 +337,8 @@ function Invoke-ApiGetEntityState {
 
     try {
         $States = @(Get-EntityState @Params)
-        return @{ StatusCode = 200; Body = @{ count = $States.Count; items = $States } }
+        return (Invoke-ApiObjectListQuery -ApiContext $ApiContext `
+            -Items $States -CursorField 'Name')
     } catch {
         return @{ StatusCode = 422; Body = @{ error = $_.Exception.Message } }
     }
@@ -239,13 +351,15 @@ function Invoke-ApiGetEntityState {
 function Invoke-ApiGetPlayers {
     <#
         .SYNOPSIS
-        Returns all players with character rosters and PU data.
+        Returns players with RSQL filter / sort / pagination / sparse
+        fieldset support.
     #>
 
     param([hashtable]$ApiContext)
 
     $Players = @(Get-Player)
-    return @{ StatusCode = 200; Body = @{ count = $Players.Count; items = $Players } }
+    return (Invoke-ApiObjectListQuery -ApiContext $ApiContext `
+        -Items $Players -CursorField 'Name')
 }
 
 function Invoke-ApiGetPlayer {
@@ -273,7 +387,14 @@ function Invoke-ApiGetPlayer {
 function Invoke-ApiGetSessions {
     <#
         .SYNOPSIS
-        Returns sessions with optional date filtering and format labels.
+        Returns sessions with RSQL filter / sort / pagination / sparse
+        fieldset support plus optional date filtering and format labels.
+        .DESCRIPTION
+        Normalizes array-shaped session fields (PU, Locations, Logs, etc.)
+        so they always serialize as JSON arrays — defending against
+        PowerShell's automatic array unwrapping on single-element results.
+        Pagination is delegated to Invoke-ApiObjectListQuery; cursor field
+        is 'Header' (the unique session identifier).
     #>
 
     param([hashtable]$ApiContext)
@@ -287,7 +408,31 @@ function Invoke-ApiGetSessions {
 
     $Sessions = @(Get-Session @Params)
 
+    # Array fields that PowerShell may unwrap when they have 0 or 1 element.
+    # These must always serialize as JSON arrays for stable client shapes.
+    $ArrayFields = @('PU', 'Locations', 'Logs', 'Changes', 'Transfers',
+        'Intel', 'Mentions', 'DeclaredFiles', 'FilePaths', 'CopyFormats')
+
     foreach ($S in $Sessions) {
+        # WP-3: normalize array fields so single-element / empty cases
+        # serialize as arrays, not bare objects or empty dicts.
+        foreach ($F in $ArrayFields) {
+            $Prop = $S.PSObject.Properties[$F]
+            if ($null -eq $Prop) { continue }
+            $V = $Prop.Value
+            if ($null -eq $V) {
+                $S | Add-Member -NotePropertyName $F `
+                    -NotePropertyValue @() -Force
+            } elseif ($V -is [System.Collections.IDictionary] -and $V.Count -eq 0) {
+                $S | Add-Member -NotePropertyName $F `
+                    -NotePropertyValue @() -Force
+            } elseif (-not ($V -is [System.Collections.IList]) -and
+                      -not ($V -is [System.Array])) {
+                $S | Add-Member -NotePropertyName $F `
+                    -NotePropertyValue @($V) -Force
+            }
+        }
+
         # Flatten NarratorResult (C# object) into a serializable hashtable.
         # ApiSerializer cannot reflect on arbitrary C# classes and falls back
         # to .ToString() which yields "Robot.NarratorResult".
@@ -315,10 +460,8 @@ function Invoke-ApiGetSessions {
         }
     }
 
-    return @{
-        StatusCode = 200
-        Body       = @{ count = $Sessions.Count; items = $Sessions }
-    }
+    return (Invoke-ApiObjectListQuery -ApiContext $ApiContext `
+        -Items $Sessions -CursorField 'Header')
 }
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -425,7 +568,8 @@ function Invoke-ApiGetCurrency {
 
     try {
         $Report = @(Get-CurrencyReport @Params)
-        return @{ StatusCode = 200; Body = @{ count = $Report.Count; items = $Report } }
+        return (Invoke-ApiObjectListQuery -ApiContext $ApiContext `
+            -Items $Report -CursorField 'EntityName')
     } catch {
         return @{ StatusCode = 422; Body = @{ error = $_.Exception.Message } }
     }
@@ -504,7 +648,8 @@ function Invoke-ApiGetTransactions {
 
     try {
         $Ledger = @(Get-TransactionLedger @Params)
-        return @{ StatusCode = 200; Body = @{ count = $Ledger.Count; items = $Ledger } }
+        return (Invoke-ApiObjectListQuery -ApiContext $ApiContext `
+            -Items $Ledger -CursorField 'SessionTitle')
     } catch {
         return @{ StatusCode = 422; Body = @{ error = $_.Exception.Message } }
     }
@@ -887,7 +1032,8 @@ function Invoke-ApiGetDormancy {
 
     try {
         $Report = @(Get-DormancyReport @Params)
-        return @{ StatusCode = 200; Body = @{ count = $Report.Count; items = $Report } }
+        return (Invoke-ApiObjectListQuery -ApiContext $ApiContext `
+            -Items $Report -CursorField 'Name')
     } catch {
         return @{ StatusCode = 422; Body = @{ error = $_.Exception.Message } }
     }
@@ -909,7 +1055,8 @@ function Invoke-ApiGetFrequency {
 
     try {
         $Trend = @(Get-SessionFrequencyTrend @Params)
-        return @{ StatusCode = 200; Body = @{ count = $Trend.Count; items = $Trend } }
+        return (Invoke-ApiObjectListQuery -ApiContext $ApiContext `
+            -Items $Trend -CursorField 'Month')
     } catch {
         return @{ StatusCode = 422; Body = @{ error = $_.Exception.Message } }
     }
@@ -933,7 +1080,8 @@ function Invoke-ApiGetNarrators {
 
     try {
         $Report = @(Get-NarratorReport @Params)
-        return @{ StatusCode = 200; Body = @{ count = $Report.Count; items = $Report } }
+        return (Invoke-ApiObjectListQuery -ApiContext $ApiContext `
+            -Items $Report -CursorField 'Name')
     } catch {
         return @{ StatusCode = 422; Body = @{ error = $_.Exception.Message } }
     }
@@ -992,7 +1140,8 @@ function Invoke-ApiGetPULog {
 
     try {
         $Log = @(Get-PUAssignmentLog @Params)
-        return @{ StatusCode = 200; Body = @{ count = $Log.Count; items = $Log } }
+        return (Invoke-ApiObjectListQuery -ApiContext $ApiContext `
+            -Items $Log -CursorField 'ProcessedAt')
     } catch {
         return @{ StatusCode = 422; Body = @{ error = $_.Exception.Message } }
     }
@@ -1016,7 +1165,8 @@ function Invoke-ApiGetNotifications {
 
     try {
         $Log = @(Get-NotificationLog @Params)
-        return @{ StatusCode = 200; Body = @{ count = $Log.Count; items = $Log } }
+        return (Invoke-ApiObjectListQuery -ApiContext $ApiContext `
+            -Items $Log -CursorField 'Date')
     } catch {
         return @{ StatusCode = 422; Body = @{ error = $_.Exception.Message } }
     }
@@ -1041,7 +1191,8 @@ function Invoke-ApiGetDeliveryLog {
 
     try {
         $Log = @(Get-DiscordDeliveryLog @Params)
-        return @{ StatusCode = 200; Body = @{ count = $Log.Count; deliveryLog = $Log } }
+        return (Invoke-ApiObjectListQuery -ApiContext $ApiContext `
+            -Items $Log -CursorField 'Timestamp')
     } catch {
         return @{ StatusCode = 422; Body = @{ error = $_.Exception.Message } }
     }
@@ -1071,7 +1222,8 @@ function Invoke-ApiGetLocationList {
 
     try {
         $Locations = @(Get-LocationEntity @Params)
-        return @{ StatusCode = 200; Body = @{ count = $Locations.Count; items = $Locations } }
+        return (Invoke-ApiObjectListQuery -ApiContext $ApiContext `
+            -Items $Locations -CursorField 'EntityName')
     } catch {
         return @{ StatusCode = 422; Body = @{ error = $_.Exception.Message } }
     }

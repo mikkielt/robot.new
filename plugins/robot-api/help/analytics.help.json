@@ -1,0 +1,323 @@
+{
+  "component": "analytics",
+  "endpoints": [
+    {
+      "method": "GET",
+      "path": "/analytics/pu/by-character",
+      "handler": "Invoke-ApiAnalyticsPuByCharacter",
+      "scope": "session:read",
+      "pl": {
+        "description": "Agreguje PU zdobyte przez każdą postać w zadanym oknie czasowym z opcjonalnymi filtrami lokacji i narratora. Zwraca sumy, średnie, maksima i rozkład wartości w kubełkach.",
+        "queryParams": [
+          {"name": "minDate", "required": false, "type": "datetime", "format": "YYYY-MM-DD", "description": "Początek okna (domyślnie: 90 dni wstecz od maxDate)."},
+          {"name": "maxDate", "required": false, "type": "datetime", "format": "YYYY-MM-DD", "description": "Koniec okna (domyślnie: dzisiaj)."},
+          {"name": "location", "required": false, "type": "string", "description": "Filtruj sesje, w których wystąpiła ta lokacja (dopasowanie po segmentach ścieżki)."},
+          {"name": "narrator", "required": false, "type": "string", "description": "Filtruj sesje prowadzone przez tego narratora."},
+          {"name": "top", "required": false, "type": "int", "description": "Maksymalna liczba postaci w wyniku (1-500, domyślnie 50)."},
+          {"name": "includeSessions", "required": false, "type": "string", "description": "Wartość 'true' dołącza listę nagłówków sesji per postać."}
+        ]
+      },
+      "en": {
+        "description": "Aggregates PU earned per character over a date window with optional location and narrator filters. Returns totals, averages, max values, and bucket distributions.",
+        "queryParams": [
+          {"name": "minDate", "required": false, "type": "datetime", "format": "YYYY-MM-DD", "description": "Window start (default: 90 days before maxDate)."},
+          {"name": "maxDate", "required": false, "type": "datetime", "format": "YYYY-MM-DD", "description": "Window end (default: today)."},
+          {"name": "location", "required": false, "type": "string", "description": "Filter to sessions whose Locations include this name (path-segment aware)."},
+          {"name": "narrator", "required": false, "type": "string", "description": "Filter to sessions narrated by this name."},
+          {"name": "top", "required": false, "type": "int", "description": "Max characters in response (1-500, default 50)."},
+          {"name": "includeSessions", "required": false, "type": "string", "description": "Set to 'true' to include the session-header list per character."}
+        ]
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/analytics/pu/by-location",
+      "handler": "Invoke-ApiAnalyticsPuByLocation",
+      "scope": "session:read",
+      "pl": {
+        "description": "Agreguje PU per lokacja w oknie czasowym. Ujawnia dwumodalny rozkład: lokacje 'hub' (częste, niskie PU/sesja) vs lokacje 'event' (rzadkie, wysokie PU/sesja).",
+        "queryParams": [
+          {"name": "minDate", "required": false, "type": "datetime", "format": "YYYY-MM-DD"},
+          {"name": "maxDate", "required": false, "type": "datetime", "format": "YYYY-MM-DD"},
+          {"name": "character", "required": false, "type": "string", "description": "Filtruj do sesji z udziałem tej postaci."},
+          {"name": "top", "required": false, "type": "int", "description": "Domyślnie 50, max 500."},
+          {"name": "splitPaths", "required": false, "type": "string", "description": "Domyślnie 'true' - rozdziela 'Rodzic/Dziecko' na osobne lokacje. Ustaw 'false' aby zachować ścieżki."}
+        ]
+      },
+      "en": {
+        "description": "Aggregates PU per location over a date window. Surfaces bimodal distribution: 'hub' locations (frequent, low PU/session) vs 'event' locations (rare, high PU/session).",
+        "queryParams": [
+          {"name": "minDate", "required": false, "type": "datetime", "format": "YYYY-MM-DD"},
+          {"name": "maxDate", "required": false, "type": "datetime", "format": "YYYY-MM-DD"},
+          {"name": "character", "required": false, "type": "string", "description": "Filter to sessions where this character appears in PU entries."},
+          {"name": "top", "required": false, "type": "int", "description": "Default 50, max 500."},
+          {"name": "splitPaths", "required": false, "type": "string", "description": "Default 'true' splits 'Parent/Child' into separate locations. Set 'false' to keep literal paths."}
+        ]
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/analytics/co-engagement",
+      "handler": "Invoke-ApiAnalyticsCoEngagement",
+      "scope": "session:read",
+      "pl": {
+        "description": "Najczęściej współwystępujące pary postaci w sesjach z PU. Ujawnia klastry społeczne bez konieczności znania par z góry.",
+        "queryParams": [
+          {"name": "minDate", "required": false, "type": "datetime", "format": "YYYY-MM-DD"},
+          {"name": "maxDate", "required": false, "type": "datetime", "format": "YYYY-MM-DD"},
+          {"name": "location", "required": false, "type": "string", "description": "Ogranicz do sesji w tej lokacji."},
+          {"name": "entity", "required": false, "type": "string", "description": "Zwróć tylko pary zawierające tę encję."},
+          {"name": "minSessions", "required": false, "type": "int", "description": "Minimalna liczba współwystąpień (domyślnie 2)."},
+          {"name": "top", "required": false, "type": "int", "description": "Domyślnie 50, max 500."},
+          {"name": "includeLocations", "required": false, "type": "string", "description": "'true' dołącza top 3 wspólne lokacje per para."}
+        ]
+      },
+      "en": {
+        "description": "Top character pairs by co-occurrence in PU-earning sessions. Surfaces social clusters without requiring caller to know which pairs to check.",
+        "queryParams": [
+          {"name": "minDate", "required": false, "type": "datetime", "format": "YYYY-MM-DD"},
+          {"name": "maxDate", "required": false, "type": "datetime", "format": "YYYY-MM-DD"},
+          {"name": "location", "required": false, "type": "string", "description": "Restrict to sessions at this location."},
+          {"name": "entity", "required": false, "type": "string", "description": "Return only pairs containing this entity."},
+          {"name": "minSessions", "required": false, "type": "int", "description": "Minimum co-occurrences (default 2)."},
+          {"name": "top", "required": false, "type": "int", "description": "Default 50, max 500."},
+          {"name": "includeLocations", "required": false, "type": "string", "description": "'true' includes top 3 shared locations per pair."}
+        ]
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/analytics/character-territory/:name",
+      "handler": "Invoke-ApiAnalyticsCharacterTerritory",
+      "scope": "session:read",
+      "pl": {
+        "description": "Mapa lokacji odwiedzanych przez postać + gęstość sąsiedztwa względem globalnego grafu lokacji. Ujawnia ścisłe terytoria klastrów.",
+        "queryParams": [
+          {"name": "minDate", "required": false, "type": "datetime", "format": "YYYY-MM-DD", "description": "Domyślnie 180 dni wstecz."},
+          {"name": "maxDate", "required": false, "type": "datetime", "format": "YYYY-MM-DD"}
+        ]
+      },
+      "en": {
+        "description": "Character location footprint + adjacency density vs the global location-graph baseline. Reveals tight territory clusters.",
+        "queryParams": [
+          {"name": "minDate", "required": false, "type": "datetime", "format": "YYYY-MM-DD", "description": "Default 180 days ago."},
+          {"name": "maxDate", "required": false, "type": "datetime", "format": "YYYY-MM-DD"}
+        ]
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/analytics/pu/timeline",
+      "handler": "Invoke-ApiAnalyticsPuTimeline",
+      "scope": "session:read",
+      "pl": {
+        "description": "Miesięczny lub tygodniowy szereg czasowy PU per postać. Wymaga minDate i maxDate.",
+        "queryParams": [
+          {"name": "minDate", "required": true, "type": "datetime", "format": "YYYY-MM-DD"},
+          {"name": "maxDate", "required": true, "type": "datetime", "format": "YYYY-MM-DD"},
+          {"name": "bucket", "required": false, "type": "string", "description": "'month' (domyślnie) lub 'week'."},
+          {"name": "character", "required": false, "type": "string", "description": "Lista postaci oddzielona przecinkami. Bez tego pola: top N po sumie PU."},
+          {"name": "top", "required": false, "type": "int", "description": "Liczba postaci gdy 'character' jest puste (domyślnie 10, max 100)."}
+        ]
+      },
+      "en": {
+        "description": "Monthly or weekly PU velocity per character. Requires minDate and maxDate.",
+        "queryParams": [
+          {"name": "minDate", "required": true, "type": "datetime", "format": "YYYY-MM-DD"},
+          {"name": "maxDate", "required": true, "type": "datetime", "format": "YYYY-MM-DD"},
+          {"name": "bucket", "required": false, "type": "string", "description": "'month' (default) or 'week'."},
+          {"name": "character", "required": false, "type": "string", "description": "Comma-separated list. When absent, returns top-N earners."},
+          {"name": "top", "required": false, "type": "int", "description": "Character count when 'character' is empty (default 10, max 100)."}
+        ]
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/analytics/pu/by-narrator",
+      "handler": "Invoke-ApiAnalyticsPuByNarrator",
+      "scope": "session:read",
+      "pl": {
+        "description": "Statystyki PU per narrator: liczba sesji, suma PU, średnia per sesja i per postać, liczba odrębnych postaci nagrodzonych.",
+        "queryParams": [
+          {"name": "minDate", "required": false, "type": "datetime", "format": "YYYY-MM-DD", "description": "Domyślnie 365 dni wstecz."},
+          {"name": "maxDate", "required": false, "type": "datetime", "format": "YYYY-MM-DD"}
+        ]
+      },
+      "en": {
+        "description": "Per-narrator PU stats: session count, total PU, avg per session and per character, distinct characters awarded.",
+        "queryParams": [
+          {"name": "minDate", "required": false, "type": "datetime", "format": "YYYY-MM-DD", "description": "Default 365 days ago."},
+          {"name": "maxDate", "required": false, "type": "datetime", "format": "YYYY-MM-DD"}
+        ]
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/analytics/entity-lifecycle",
+      "handler": "Invoke-ApiAnalyticsEntityLifecycle",
+      "scope": "session:read",
+      "pl": {
+        "description": "Strumień przejść właściwości encji (status / grupa / właściciel / lokacja itd.) z historii. Pozwala odpowiedzieć: 'które NPC zmieniły frakcję w ostatnich 6 miesiącach?'.",
+        "queryParams": [
+          {"name": "minDate", "required": false, "type": "datetime", "format": "YYYY-MM-DD", "description": "Domyślnie 365 dni wstecz."},
+          {"name": "maxDate", "required": false, "type": "datetime", "format": "YYYY-MM-DD"},
+          {"name": "property", "required": false, "type": "string", "description": "Jedno z: status, group, owner, location, type, nerthusName, quantity (domyślnie 'status')."},
+          {"name": "entityType", "required": false, "type": "string", "description": "Filtruj po typie encji: NPC, Grupa, Lokacja, Postać, Przedmiot."},
+          {"name": "from", "required": false, "type": "string", "description": "Filtruj przejścia, których wartość początkowa to ta wartość."},
+          {"name": "to", "required": false, "type": "string", "description": "Filtruj przejścia, których wartość końcowa to ta wartość."},
+          {"name": "top", "required": false, "type": "int", "description": "Liczba encji w wyniku (domyślnie 100, max 1000)."}
+        ]
+      },
+      "en": {
+        "description": "Stream of property transitions (status / group / owner / location etc.) from entity histories. Answers questions like 'which NPCs changed faction in the last 6 months?'.",
+        "queryParams": [
+          {"name": "minDate", "required": false, "type": "datetime", "format": "YYYY-MM-DD", "description": "Default 365 days ago."},
+          {"name": "maxDate", "required": false, "type": "datetime", "format": "YYYY-MM-DD"},
+          {"name": "property", "required": false, "type": "string", "description": "One of: status, group, owner, location, type, nerthusName, quantity (default 'status')."},
+          {"name": "entityType", "required": false, "type": "string", "description": "Filter by entity type: NPC, Grupa, Lokacja, Postać, Przedmiot."},
+          {"name": "from", "required": false, "type": "string", "description": "Filter transitions where the previous value matches."},
+          {"name": "to", "required": false, "type": "string", "description": "Filter transitions where the new value matches."},
+          {"name": "top", "required": false, "type": "int", "description": "Max entities in response (default 100, max 1000)."}
+        ]
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/analytics/location-graph/metrics",
+      "handler": "Invoke-ApiAnalyticsLocationGraphMetrics",
+      "scope": "entity:read",
+      "pl": {
+        "description": "Metryki teoretyczno-grafowe grafu lokacji: stopień wierzchołków, słabo spójne komponenty, ślepe zaułki, izolowane podgrafy, węzły 'choke point'.",
+        "queryParams": []
+      },
+      "en": {
+        "description": "Graph-theoretic metrics over the location graph: vertex degrees, weakly-connected components, dead ends, isolated subgraphs, choke-point nodes.",
+        "queryParams": []
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/analytics/logs/speaker-leaderboard",
+      "handler": "Invoke-ApiAnalyticsLogsSpeakerLeaderboard",
+      "scope": "session:read",
+      "pl": {
+        "description": "Ranking mówców z parsowanych logów - obecność na czacie niezależnie od PU. Wymaga zbuforowanych logów na dysku (-SkipFetch).",
+        "queryParams": [
+          {"name": "minDate", "required": false, "type": "datetime", "format": "YYYY-MM-DD"},
+          {"name": "maxDate", "required": false, "type": "datetime", "format": "YYYY-MM-DD"},
+          {"name": "entity", "required": false, "type": "string", "description": "Pokaż tylko tę encję (po nazwie kanonicznej lub surowej)."},
+          {"name": "location", "required": false, "type": "string", "description": "Filtruj linie z tej lokacji (LocationSegments)."},
+          {"name": "channel", "required": false, "type": "string", "description": "ChatLog only: Lokalny / Prywatny / Grupowy / Szept."},
+          {"name": "top", "required": false, "type": "int", "description": "Domyślnie 50, max 500."},
+          {"name": "unresolvedOnly", "required": false, "type": "string", "description": "'true' zwraca tylko nierozwiązane nazwy (luki w indeksie nazw)."}
+        ]
+      },
+      "en": {
+        "description": "Chat-presence leaderboard from parsed logs - orthogonal to PU. Requires cached logs on disk (uses -SkipFetch).",
+        "queryParams": [
+          {"name": "minDate", "required": false, "type": "datetime", "format": "YYYY-MM-DD"},
+          {"name": "maxDate", "required": false, "type": "datetime", "format": "YYYY-MM-DD"},
+          {"name": "entity", "required": false, "type": "string", "description": "Restrict to one entity (canonical or raw name)."},
+          {"name": "location", "required": false, "type": "string", "description": "Filter lines emitted at this location (via LocationSegments)."},
+          {"name": "channel", "required": false, "type": "string", "description": "ChatLog only: Lokalny / Prywatny / Grupowy / Szept."},
+          {"name": "top", "required": false, "type": "int", "description": "Default 50, max 500."},
+          {"name": "unresolvedOnly", "required": false, "type": "string", "description": "'true' returns only unresolved names (name-index gap report)."}
+        ]
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/analytics/logs/channel-mix",
+      "handler": "Invoke-ApiAnalyticsLogsChannelMix",
+      "scope": "session:read",
+      "pl": {
+        "description": "Rozkład kanałów ChatLog (Lokalny/Prywatny/Grupowy/Szept) per sesja i zagregowanie. Współczynnik 'Prywatny+Szept'/Total = gęstość tajemnic fabularnych.",
+        "queryParams": [
+          {"name": "minDate", "required": false, "type": "datetime", "format": "YYYY-MM-DD"},
+          {"name": "maxDate", "required": false, "type": "datetime", "format": "YYYY-MM-DD"}
+        ]
+      },
+      "en": {
+        "description": "ChatLog channel breakdown (Lokalny/Prywatny/Grupowy/Szept) per session and aggregate. The (Prywatny+Szept)/Total ratio is a plot-secrecy density proxy.",
+        "queryParams": [
+          {"name": "minDate", "required": false, "type": "datetime", "format": "YYYY-MM-DD"},
+          {"name": "maxDate", "required": false, "type": "datetime", "format": "YYYY-MM-DD"}
+        ]
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/analytics/logs/coverage",
+      "handler": "Invoke-ApiAnalyticsLogsCoverage",
+      "scope": "session:read",
+      "pl": {
+        "description": "Raport pokrycia logami: ile sesji zadeklarowało logi, ile ma je w cache, ile failowało.",
+        "queryParams": [
+          {"name": "minDate", "required": false, "type": "datetime", "format": "YYYY-MM-DD"},
+          {"name": "maxDate", "required": false, "type": "datetime", "format": "YYYY-MM-DD"}
+        ]
+      },
+      "en": {
+        "description": "Log fetch coverage report: how many sessions declared logs, are cached, are fetchable, or have failed markers.",
+        "queryParams": [
+          {"name": "minDate", "required": false, "type": "datetime", "format": "YYYY-MM-DD"},
+          {"name": "maxDate", "required": false, "type": "datetime", "format": "YYYY-MM-DD"}
+        ]
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/analytics/resolution/quality",
+      "handler": "Invoke-ApiAnalyticsResolutionQuality",
+      "scope": "entity:read",
+      "pl": {
+        "description": "Raport zdrowia indeksu nazw: niejednoznaczne tokeny, kolizje stemów, rozkład etapów rozpoznawania, statystyki indeksu.",
+        "queryParams": [
+          {"name": "sampleSize", "required": false, "type": "int", "description": "Liczba ostatnich sesji do próbkowania (10-1000, domyślnie 200)."}
+        ]
+      },
+      "en": {
+        "description": "Name-index health report: ambiguous tokens, stem-index collisions, resolution-stage distribution, index stats.",
+        "queryParams": [
+          {"name": "sampleSize", "required": false, "type": "int", "description": "Recent session sample size (10-1000, default 200)."}
+        ]
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/analytics/integrity/trends",
+      "handler": "Invoke-ApiAnalyticsIntegrityTrends",
+      "scope": "admin:read",
+      "pl": {
+        "description": "Trendy integralności w czasie: manipulacje PU, anomalie formatu, sesje z przyszłą datą - bucketowane miesięcznie lub tygodniowo. Plus hotspoty per plik.",
+        "queryParams": [
+          {"name": "minDate", "required": false, "type": "datetime", "format": "YYYY-MM-DD", "description": "Domyślnie 365 dni wstecz."},
+          {"name": "maxDate", "required": false, "type": "datetime", "format": "YYYY-MM-DD"},
+          {"name": "bucket", "required": false, "type": "string", "description": "'month' (domyślnie) lub 'week'."}
+        ]
+      },
+      "en": {
+        "description": "Integrity trends over time: PU tampering, format anomalies, future-dated sessions - bucketed monthly or weekly. Plus per-file hotspots.",
+        "queryParams": [
+          {"name": "minDate", "required": false, "type": "datetime", "format": "YYYY-MM-DD", "description": "Default 365 days ago."},
+          {"name": "maxDate", "required": false, "type": "datetime", "format": "YYYY-MM-DD"},
+          {"name": "bucket", "required": false, "type": "string", "description": "'month' (default) or 'week'."}
+        ]
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/analytics/metadata/coverage",
+      "handler": "Invoke-ApiAnalyticsMetadataCoverage",
+      "scope": "entity:read",
+      "pl": {
+        "description": "Raport kompletności metadanych: luki w klasyfikacji IsExterior, nakładające się generyczne nazwy, adopcja tagów Overrides, UnresolvedTransfers, pokrycie @nazwa_nerthus/@slug per typ encji.",
+        "queryParams": []
+      },
+      "en": {
+        "description": "Metadata completeness report: IsExterior classification gaps, generic-name overlap, override-tag adoption, UnresolvedTransfers, @nazwa_nerthus/@slug coverage by entity type.",
+        "queryParams": []
+      }
+    }
+  ]
+}
