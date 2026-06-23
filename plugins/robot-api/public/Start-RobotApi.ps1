@@ -171,6 +171,31 @@ function Start-RobotApi {
         Start-Sleep -Milliseconds 500
     }
 
+    # ── Gitignore protective-entries pre-flight (WP-18) ──────────────
+    # Refuse to start if a rule that protects a runtime artifact has
+    # been removed or un-ignored. Fail-loud with the exact remediation.
+    if (Get-Command 'Test-GitignoreIntegrity' -ErrorAction SilentlyContinue) {
+        $Integrity = Test-GitignoreIntegrity
+        if (-not $Integrity.Ok) {
+            $Parts = @()
+            if ($Integrity.Missing.Count -gt 0)   {
+                $Parts += "missing rules: $($Integrity.Missing -join ', ')"
+            }
+            if ($Integrity.Unignored.Count -gt 0) {
+                $Parts += "negative overrides: $($Integrity.Unignored -join ', ')"
+            }
+            $PSCmdlet.ThrowTerminatingError(
+                [System.Management.Automation.ErrorRecord]::new(
+                    [System.InvalidOperationException]::new(
+                        ".gitignore protective entries broken ($($Parts -join '; ')). " +
+                        "Restore the missing rules from templates/gitignore.required before starting the API server."),
+                    'GitignoreIntegrityFailed',
+                    [System.Management.Automation.ErrorCategory]::SecurityError,
+                    $null))
+            return
+        }
+    }
+
     # Build C# engine components
     $Server     = [Robot.ApiServer]::new()
     $Router     = [Robot.ApiRouter]::new()
@@ -202,6 +227,85 @@ function Start-RobotApi {
             return
         }
         Sync-ApiTokenStore -TokenStore $TokenStore -FilePath $TokenFilePath
+    }
+
+    # ── Margonem audit log (WP-16) ──────────────────────────────────────
+    # Path published as a static field so worker runspaces (isolated $script:)
+    # can pick it up via [Robot.ApiServer]::MargonemAuditLogPath.
+    . "$PSScriptRoot/../private/margonem-audit.ps1"
+    if ($Config.MargonemAuditLogFile) {
+        $AuditRel = [string]$Config.MargonemAuditLogFile
+        $AuditPath = if ([System.IO.Path]::IsPathRooted($AuditRel)) {
+            $AuditRel
+        } else {
+            [System.IO.Path]::Combine((Get-RepoRoot), $AuditRel)
+        }
+        Initialize-MargonemAuditLog -Path $AuditPath
+        [Robot.ApiServer]::MargonemAuditLogPath = $AuditPath
+    }
+
+    # ── Session token store (Margonem-minted ephemeral tokens, WP-4/5) ──
+    $SessionStore = [Robot.ApiSessionTokenStore]::new()
+    if ($Config.SessionTokenMaxEntries) {
+        $SessionStore.MaxEntries = [int]$Config.SessionTokenMaxEntries
+    }
+    $Middleware.SessionStore = $SessionStore
+    [Robot.ApiServer]::SessionStore = $SessionStore  # cross-runspace access
+
+    # ── Margonem public key (WP-1/7) ────────────────────────────────────
+    # Resolve path → repo-root/MargonemPublicKeyFile (default
+    # .robot.local/.cache/margonem/signing-key.pem). Load is best-effort
+    # at startup; if it fails, /auth/margonem* return 503 until a
+    # successful /auth/margonem/refresh-key call or a restart.
+    $MargonemKeyPath = $null
+    if ($Config.MargonemPublicKeyFile) {
+        $KeyRel = [string]$Config.MargonemPublicKeyFile
+        if ([System.IO.Path]::IsPathRooted($KeyRel)) {
+            $MargonemKeyPath = $KeyRel
+        } else {
+            $MargonemKeyPath = [System.IO.Path]::Combine((Get-RepoRoot), $KeyRel)
+        }
+    }
+    if ($MargonemKeyPath) {
+        if ([System.IO.File]::Exists($MargonemKeyPath)) {
+            try {
+                [Robot.MargonemPublicKeyCache]::Load($MargonemKeyPath)
+                if (-not $Quiet) {
+                    Write-RobotInfo "[Start-RobotApi] Margonem public key loaded from $MargonemKeyPath"
+                }
+            } catch {
+                Write-RobotWarning "[Start-RobotApi] Failed to load Margonem public key from ${MargonemKeyPath}: $_"
+            }
+        } elseif (-not $Quiet) {
+            Write-RobotWarning "[Start-RobotApi] Margonem public key not found at $MargonemKeyPath — /auth/margonem will return 503 until refreshed"
+        }
+    }
+
+    # ── Open-access hardening (WP-14, Option D) ─────────────────────────
+    # Refuse to start without auth when:
+    #   (a) Margonem is configured (PEM path set, even if missing — signals
+    #       this is a gated deployment), OR
+    #   (b) bound to a non-loopback interface (signals "exposed to others").
+    # Localhost + no auth + no Margonem stays open (dev path preserved).
+    $IsLocalBind = $Config.ListenAddress -in @('localhost', '127.0.0.1', '::1')
+    $HasAuth     = (-not $TokenStore.IsEmpty) -or [bool]$Config.AuthToken
+    $HasMargonem = [bool]$MargonemKeyPath
+    if (-not $HasAuth -and ($HasMargonem -or -not $IsLocalBind)) {
+        $Why = if ($HasMargonem) {
+            'Margonem auth is configured (MargonemPublicKeyFile) but no operator token exists.'
+        } else {
+            "ListenAddress '$($Config.ListenAddress)' is not loopback and no operator token exists."
+        }
+        $PSCmdlet.ThrowTerminatingError(
+            [System.Management.Automation.ErrorRecord]::new(
+                [System.InvalidOperationException]::new(
+                    "$Why Refusing to start in open-access mode. " +
+                    "Run: New-RobotApiToken -Name 'admin' -Scopes 'admin:all' " +
+                    "(or set ROBOT_API_TOKEN env var, or bind ListenAddress to localhost)."),
+                'OpenAccessNotPermitted',
+                [System.Management.Automation.ErrorCategory]::SecurityError,
+                $Config.ListenAddress))
+        return
     }
 
     # Fall back to legacy single AuthToken from config when no multi-token store exists

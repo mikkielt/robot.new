@@ -1,0 +1,15 @@
+# Lines that MUST appear literally in Robot.PowerShell/.gitignore.
+# Enforced by Test-GitignoreIntegrity (private/admin/test-gitignoreintegrity.ps1)
+# at Start-RobotApi time. Comments and blank lines in THIS file are
+# stripped at compare time, so feel free to annotate.
+#
+# Removing a line here without verifying every artifact it protected has
+# moved elsewhere is a SECURITY error — the protective rule will silently
+# stop being enforced.
+
+# Protects the API response cache, Margonem PEM, audit log, and any
+# future cache-located secret artifacts. Required by:
+#   - Robot.MargonemPublicKeyCache (lib/MargonemPublicKeyCache.cs)
+#   - Write-MargonemAuditLog (plugins/robot-api/private/margonem-audit.ps1)
+#   - ApiResponseCache (lib/ApiResponseCache.cs)
+**/.robot.local/.cache/

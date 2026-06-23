@@ -199,6 +199,7 @@ function Start-ApiWorkerPool {
             "$HandlerDir/private/api-handlers-dashboard.ps1"
             "$HandlerDir/private/api-handlers-analytics.ps1"
             "$HandlerDir/private/api-token-helpers.ps1"  # needed by auth handlers
+            "$HandlerDir/private/margonem-audit.ps1"     # WP-16 audit log helper
         )
         foreach ($HF in $HandlerFiles) {
             if ([System.IO.File]::Exists($HF)) {

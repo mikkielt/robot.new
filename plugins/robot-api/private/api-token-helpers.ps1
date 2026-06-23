@@ -130,10 +130,19 @@ function Export-ApiTokenStore {
 function New-CryptoToken {
     <#
         .SYNOPSIS
-        Generates a cryptographically random rbt_-prefixed bearer token string.
+        Generates a cryptographically random prefixed bearer token string.
+
+        .PARAMETER Prefix
+        Token prefix. Defaults to 'rbt_' for persistent operator tokens.
+        Session tokens (Invoke-ApiAuthMargonem) pass 'rbs_' so they are
+        distinguishable in /auth/sessions output, audit logs, and operator
+        log scrubbing. Both share the 44-char base62 body — same entropy,
+        distinct namespace.
     #>
 
-    [CmdletBinding()] param()
+    [CmdletBinding()] param(
+        [string]$Prefix = 'rbt_'
+    )
 
     # Two-pass RNG: 32 bytes primary + 12 bytes supplemental = 44 base62 chars
     $RNG = [System.Security.Cryptography.RandomNumberGenerator]::Create()
@@ -157,7 +166,7 @@ function New-CryptoToken {
         [void]$SB.Append($Chars[[int]$B % 62])
     }
 
-    return "rbt_$($SB.ToString())"  # rbt_ prefix for secret scanning tools
+    return "${Prefix}$($SB.ToString())"  # rbt_ / rbs_ for secret-scanner tooling
 }
 
 function Sync-ApiTokenStore {

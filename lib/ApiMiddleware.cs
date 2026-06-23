@@ -8,10 +8,20 @@ namespace Robot {
     /// Token metadata returned by authentication: display name, granted scopes,
     /// and ISO 8601 creation timestamp. Properties are mutable for PowerShell
     /// property-bag construction in New-RobotApiToken / api-token-helpers.ps1.
+    ///
+    /// Session-token fields (ExpiresAt / PlayerName / MargonemUserId / CreatedAtTicks)
+    /// are null/zero for persistent operator tokens — they only carry values for
+    /// tokens minted by Invoke-ApiAuthMargonem (see ApiSessionTokenStore).
     public sealed class ApiTokenInfo {
         public string Name { get; set; }
         public string[] Scopes { get; set; }
         public string CreatedAt { get; set; }
+
+        // ── Session-token fields (null for persistent tokens) ──────────
+        public DateTimeOffset? ExpiresAt      { get; set; }
+        public string          PlayerName     { get; set; }
+        public long?           MargonemUserId { get; set; }
+        public long            CreatedAtTicks { get; set; } // for FIFO eviction
     }
 
     /// Thread-safe token store for bearer token authentication. Backed by
@@ -102,30 +112,84 @@ namespace Robot {
     public sealed class ApiMiddleware {
         public string AuthToken { get; set; }
         public ApiTokenStore TokenStore { get; set; }
-        public string CorsOrigin { get; set; }
+        public ApiSessionTokenStore SessionStore { get; set; }
         public bool ReadOnly { get; set; }
         public int MaxRequestBody { get; set; } = 65536;    // 64 KB — sufficient for JSON entity payloads
         public int RateLimitPerSecond { get; set; } = 100; // refill rate per IP
         public int RateLimitBurst { get; set; } = 200;     // max burst capacity per IP
 
+        /// Allowed CORS origins. Entries may be exact origins
+        /// ("https://www.margonem.pl"), patterns with a single '*'
+        /// in the host segment ("https://*.margonem.pl"), or the
+        /// literal "*" (allow any; incompatible with credentials).
+        ///
+        /// Populated either directly (Add to the list) or via the
+        /// CorsOrigin setter which splits on ',' for plugin-config
+        /// compatibility.
+        public List<string> CorsOrigins { get; set; } = new List<string>();
+
+        /// Comma-separated string view of CorsOrigins for plugin-config
+        /// compatibility (Start-RobotApi.ps1 reads $Config.CorsOrigin as
+        /// a string from plugin.psd1). Setting this replaces CorsOrigins;
+        /// getting it joins them with ','. Empty/null clears the list.
+        public string CorsOrigin {
+            get { return CorsOrigins == null ? null : string.Join(",", CorsOrigins); }
+            set {
+                CorsOrigins = new List<string>();
+                if (string.IsNullOrWhiteSpace(value)) return;
+                foreach (string raw in value.Split(',')) {
+                    string trimmed = raw.Trim();
+                    if (trimmed.Length > 0) CorsOrigins.Add(trimmed);
+                }
+            }
+        }
+
         private readonly ConcurrentDictionary<string, TokenBucket> _buckets =
+            new ConcurrentDictionary<string, TokenBucket>();
+
+        /// Per-route token buckets keyed by "{routeId}:{clientIp}". Used
+        /// by CheckRouteRateLimit (WP-17). Bucket capacity == perMinute;
+        /// refill rate == perMinute / 60 tokens/sec. Stale eviction is
+        /// handled lazily on access via the existing IsStale check.
+        private readonly ConcurrentDictionary<string, TokenBucket> _routeBuckets =
             new ConcurrentDictionary<string, TokenBucket>();
 
         /// Authenticate request and return token info.
         /// Returns null if authentication fails (caller should 401).
+        ///
+        /// Resolution order:
+        ///   1. Session token store (Margonem-minted) — common path for
+        ///      browser add-on requests after the silent-refresh flow.
+        ///   2. Persistent multi-token store (operator-issued).
+        ///   3. Open-access fallback — preserved ONLY for localhost dev
+        ///      (Start-RobotApi enforces this via Option D startup guards
+        ///      when Margonem auth or non-loopback bind is configured).
         public ApiTokenInfo Authenticate(HttpListenerRequest request) {
-            // Multi-token store (preferred)
-            if (TokenStore != null && !TokenStore.IsEmpty) {
-                string header = request.Headers["Authorization"];
-                if (string.IsNullOrEmpty(header) ||
-                    !header.StartsWith("Bearer ", StringComparison.Ordinal))
-                    return null;
-                return TokenStore.Authenticate(header.Substring(7));
+            string header = request.Headers["Authorization"];
+            string bearer = null;
+            if (!string.IsNullOrEmpty(header)
+                && header.StartsWith("Bearer ", StringComparison.Ordinal)) {
+                bearer = header.Substring(7);
             }
 
-            // Open access (no auth configured)
+            // Session tokens first — interactive (browser add-on) clients
+            if (bearer != null && SessionStore != null && SessionStore.Count > 0) {
+                var sessionInfo = SessionStore.Authenticate(bearer);
+                if (sessionInfo != null) return sessionInfo;
+            }
+
+            // Persistent multi-token store
+            if (TokenStore != null && !TokenStore.IsEmpty) {
+                if (bearer == null) return null;
+                return TokenStore.Authenticate(bearer);
+            }
+
+            // Open access — synthetic identity tagged _open_local so audit
+            // log distinguishes dev requests from real authenticated traffic.
+            // Start-RobotApi (WP-14) prevents this path from ever firing in
+            // production-shaped deployments.
             if (string.IsNullOrEmpty(AuthToken))
-                return new ApiTokenInfo { Name = "_open", Scopes = new[] { "admin:all" } };
+                return new ApiTokenInfo { Name = "_open_local", Scopes = new[] { "admin:all" } };
 
             // AuthToken set but no TokenStore — reject (fail-closed)
             return null;
@@ -147,19 +211,58 @@ namespace Robot {
             return false;
         }
 
-        /// Inject CORS headers if CorsOrigin is configured. Returns true if
-        /// headers were added (caller should handle OPTIONS preflight separately).
+        /// Inject CORS headers if the request Origin matches any configured
+        /// pattern in CorsOrigins. Returns true if headers were added.
+        ///
+        /// Matching:
+        ///   - Literal "*" → echoes "*" (incompatible with credentials)
+        ///   - Exact origin match (case-insensitive) → echoes request Origin
+        ///   - Single-* host wildcard ("https://*.margonem.pl") → echoes
+        ///     request Origin if the wildcard slot contains no '/' and
+        ///     head/tail match. The echoed value (NOT the pattern) keeps
+        ///     credentialed requests working.
         public bool HandleCors(HttpListenerRequest request,
                                 HttpListenerResponse response) {
-            if (string.IsNullOrEmpty(CorsOrigin)) return false;
+            if (CorsOrigins == null || CorsOrigins.Count == 0) return false;
+            string origin = request.Headers["Origin"];
+            if (string.IsNullOrEmpty(origin)) return false;
 
-            response.Headers.Add("Access-Control-Allow-Origin", CorsOrigin);
+            string allow = null;
+            foreach (string pattern in CorsOrigins) {
+                if (pattern == "*") { allow = "*"; break; }
+                if (string.Equals(pattern, origin, StringComparison.OrdinalIgnoreCase)) {
+                    allow = origin; break;
+                }
+                if (MatchesWildcard(pattern, origin)) { allow = origin; break; }
+            }
+            if (allow == null) return false;
+
+            response.Headers.Add("Access-Control-Allow-Origin", allow);
+            if (allow != "*") response.Headers.Add("Vary", "Origin");
             response.Headers.Add("Access-Control-Allow-Methods",
                 "GET, POST, PUT, DELETE, OPTIONS");
             response.Headers.Add("Access-Control-Allow-Headers",
                 "Authorization, Content-Type");
-            response.Headers.Add("Access-Control-Expose-Headers", "ETag, X-Cache");
-            response.Headers.Add("Access-Control-Max-Age", "86400"); // 24 hours — preflight cache
+            response.Headers.Add("Access-Control-Expose-Headers",
+                "ETag, X-Cache, WWW-Authenticate");
+            if (allow != "*") response.Headers.Add("Access-Control-Allow-Credentials", "true");
+            response.Headers.Add("Access-Control-Max-Age", "86400");
+            return true;
+        }
+
+        private static bool MatchesWildcard(string pattern, string origin) {
+            int star = pattern.IndexOf('*');
+            if (star < 0) return false;
+            string head = pattern.Substring(0, star);
+            string tail = pattern.Substring(star + 1);
+            if (!origin.StartsWith(head, StringComparison.OrdinalIgnoreCase)) return false;
+            if (!origin.EndsWith(tail, StringComparison.OrdinalIgnoreCase))   return false;
+            int wildLen = origin.Length - head.Length - tail.Length;
+            if (wildLen < 1) return false;
+            // The wildcard must not span a '/' (don't let *.margonem.pl
+            // match https://evil.pl/.margonem.pl)
+            string wild = origin.Substring(head.Length, wildLen);
+            if (wild.IndexOf('/') >= 0) return false;
             return true;
         }
 
@@ -179,6 +282,26 @@ namespace Robot {
                     _ => new TokenBucket(RateLimitBurst, RateLimitPerSecond));
             }
 
+            return bucket.TryConsume();
+        }
+
+        /// Per-route, per-IP rate limit (WP-17). Bucket key is
+        /// "{routeId}:{clientIp}" so routes have independent budgets.
+        /// Capacity == perMinute; refill rate == perMinute / 60 tokens/sec.
+        /// Returns true to allow, false to 429.
+        public bool CheckRouteRateLimit(string clientIp, string routeId, int perMinute) {
+            if (perMinute <= 0) return true;
+            string key = routeId + ":" + clientIp;
+            double refillPerSec = perMinute / 60.0;
+
+            var bucket = _routeBuckets.GetOrAdd(key,
+                _ => new TokenBucket(perMinute, refillPerSec));
+
+            if (bucket.IsStale) {
+                _routeBuckets.TryRemove(key, out _);
+                bucket = _routeBuckets.GetOrAdd(key,
+                    _ => new TokenBucket(perMinute, refillPerSec));
+            }
             return bucket.TryConsume();
         }
 
@@ -204,10 +327,10 @@ namespace Robot {
             private double _tokens;
             private long _lastRefillTicks;
             private readonly int _capacity;
-            private readonly int _refillRate;
+            private readonly double _refillRate;   // tokens/sec; double for sub-1/sec rates (per-route, WP-17)
             private readonly object _lock = new object();
 
-            public TokenBucket(int capacity, int refillRate) {
+            public TokenBucket(int capacity, double refillRate) {
                 _capacity = capacity;
                 _refillRate = refillRate;
                 _tokens = capacity;

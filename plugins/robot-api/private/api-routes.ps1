@@ -416,5 +416,49 @@ function Register-AllApiRoutes {
         'Current token identity and scopes', 200, $null)
     $HandlerMap['Invoke-ApiGetWhoami'] = $true
 
+    # ── Margonem session auth (WP-6, WP-10..12, WP-19) ─────────────────
+    $Router.AddRoute('POST', '/auth/margonem', 'Invoke-ApiAuthMargonem',
+        'Mint a session token after Margonem signature verification', 201, $null)
+    $HandlerMap['Invoke-ApiAuthMargonem'] = $true
+
+    $Router.AddRoute('GET', '/auth/sessions', 'Invoke-ApiGetAuthSessions',
+        'List currently active session tokens (no raw values)', 200, 'auth:manage')
+    $HandlerMap['Invoke-ApiGetAuthSessions'] = $true
+
+    $Router.AddRoute('DELETE', '/auth/sessions/:player', 'Invoke-ApiRevokePlayerSessions',
+        'Forcibly invalidate all sessions for a player', 200, 'auth:manage')
+    $HandlerMap['Invoke-ApiRevokePlayerSessions'] = $true
+
+    $Router.AddRoute('POST', '/auth/margonem/refresh-key', 'Invoke-ApiRefreshMargonemKey',
+        'Fetch and hot-reload Margonem signing key from upstream', 200, 'auth:manage')
+    $HandlerMap['Invoke-ApiRefreshMargonemKey'] = $true
+
+    $Router.AddRoute('GET', '/auth/margonem/health', 'Invoke-ApiGetMargonemHealth',
+        'Margonem auth subsystem health probe', 200, 'auth:manage')
+    $HandlerMap['Invoke-ApiGetMargonemHealth'] = $true
+
+    $Router.AddRoute('POST', '/auth/margonem/verify', 'Invoke-ApiVerifyMargonem',
+        'Verify a Margonem signed payload (no token mint, no player lookup)', 200, 'auth:manage')
+    $HandlerMap['Invoke-ApiVerifyMargonem'] = $true
+
+    $Router.AddRoute('POST', '/auth/introspect', 'Invoke-ApiIntrospectToken',
+        'Introspect a Robot bearer token (RFC 7662 shape)', 200, 'auth:manage')
+    $HandlerMap['Invoke-ApiIntrospectToken'] = $true
+
+    $Router.AddRoute('GET', '/auth/margonem/info', 'Invoke-ApiGetMargonemInfo',
+        'Public discovery: Margonem auth presence and configuration', 200, $null)
+    $HandlerMap['Invoke-ApiGetMargonemInfo'] = $true
+
+    # Per-endpoint rate limits (WP-17). Tight defaults match real
+    # usage patterns: one Margonem login per hour per browser is the
+    # realistic upper bound, so 10/min/IP for mint leaves four orders
+    # of magnitude of headroom over realistic use while slashing the
+    # abuse surface.
+    $Router.SetRouteRateLimit('POST',   '/auth/margonem',             10)
+    $Router.SetRouteRateLimit('POST',   '/auth/margonem/refresh-key',  2)
+    $Router.SetRouteRateLimit('GET',    '/auth/margonem/health',       6)
+    $Router.SetRouteRateLimit('POST',   '/auth/margonem/verify',      30)
+    $Router.SetRouteRateLimit('GET',    '/auth/margonem/info',        60)
+
     return $HandlerMap
 }

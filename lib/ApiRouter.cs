@@ -72,6 +72,21 @@ namespace Robot {
             _routes.Add(route);
         }
 
+        /// Mutate a previously-registered route to set a per-minute
+        /// rate limit. Looked up by method + pattern. Silently no-op if
+        /// the route is not found (callers should treat that as a
+        /// configuration error caught by tests).
+        public void SetRouteRateLimit(string method, string pattern,
+                                       int perMinute) {
+            foreach (var route in _routes) {
+                if (string.Equals(route.Method, method, StringComparison.OrdinalIgnoreCase)
+                    && string.Equals(route.Pattern, pattern, StringComparison.Ordinal)) {
+                    route.RateLimitPerMinute = perMinute;
+                    return;
+                }
+            }
+        }
+
         /// Register a Server-Sent Events endpoint. SSE routes keep the
         /// HttpListenerResponse open for streaming via ApiSseManager.
         public void AddSseRoute(string pattern, string description,
@@ -185,6 +200,11 @@ namespace Robot {
         // Response cache metadata — null means not cacheable
         public string CacheKey { get; set; }         // sidecar filename stem
         public string[] CacheDomains { get; set; }   // fingerprint domains: "entity", "session", "graph"
+
+        // Per-route rate limit (WP-17). 0 = use only the global limit.
+        // Enforced by ApiMiddleware.CheckRouteRateLimit, called after the
+        // global CheckRateLimit in ApiServer.HandleRequestAsync.
+        public int RateLimitPerMinute { get; set; }
     }
 
     /// Result of matching a request URL against the route table: matched route + captured path params.

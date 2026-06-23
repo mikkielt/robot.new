@@ -106,3 +106,52 @@ function Invoke-ApiEventBroadcast {
         }
     }
 }
+
+function Invoke-MargonemSessionInvalidation {
+    <#
+        .SYNOPSIS
+        Plugin hook handler — blanket-clears the Margonem session token
+        store when Gracze.md is written (WP-15).
+
+        .DESCRIPTION
+        Operator edits to Gracze.md may change @margonemid bindings, mark
+        players as Usunięty, or rename them. Active session tokens still
+        carry the pre-edit identity/scopes for up to 4h. Clearing the
+        whole store on every Gracze.md write costs each currently-
+        authenticated player at most one extra Margonem-validate
+        round-trip on their next request — well worth the simplicity
+        vs. per-player diff-and-invalidate.
+
+        Other entity-file writes are ignored.
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [hashtable]$HookContext
+    )
+
+    . "$PSScriptRoot/margonem-audit.ps1"
+
+    $Path = [string]$HookContext.Path
+    if (-not $Path) { return }
+    $Leaf = [System.IO.Path]::GetFileName($Path)
+    if (-not [string]::Equals($Leaf, 'Gracze.md', 'OrdinalIgnoreCase')) { return }
+
+    if (-not ([System.Management.Automation.PSTypeName]'Robot.ApiServer').Type) {
+        return
+    }
+    $Store = [Robot.ApiServer]::SessionStore
+    if (-not $Store) { return }
+
+    $Removed = $Store.Count
+    if ($Removed -eq 0) { return }
+    $Store.Clear()
+
+    Write-MargonemAuditLog -Event 'sessions-invalidated' -Detail @{
+        outcome    = 'success'
+        reason     = 'gracze-md-write'
+        removed    = $Removed
+        file       = $Leaf
+        httpStatus = 0
+    }
+}

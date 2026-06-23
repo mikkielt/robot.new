@@ -82,6 +82,155 @@
       "en": {
         "description": "Returns the calling token's identity and scopes. Available to any authenticated token regardless of granted scopes."
       }
+    },
+    {
+      "method": "POST",
+      "path": "/auth/margonem",
+      "handler": "Invoke-ApiAuthMargonem",
+      "scope": null,
+      "rateLimitPerMinute": 10,
+      "pl": {
+        "description": "Wymienia podpisany ładunek walidacji Margonem na krótkotrwały token sesji Robota powiązany z odpowiadającym graczem. Weryfikacja: RSA-SHA256/PKCS#1 + sprawdzenie świeżości ts. Mapowanie user_id → Gracz przez Resolve-MargonemUser (właściwość @margonemid).",
+        "bodyFields": [
+          {
+            "name": "payload",
+            "required": true,
+            "type": "string",
+            "description": "Surowy JSON zwrócony przez https://public-api.margonem.pl/account/validate (POST z ciasteczkami gracza)."
+          }
+        ]
+      },
+      "en": {
+        "description": "Exchanges a signed Margonem validation card for a short-lived Robot session token bound to the matching player. Verification: RSA-SHA256/PKCS#1 + ts freshness check. user_id → Gracz mapping via Resolve-MargonemUser (@margonemid property).",
+        "bodyFields": [
+          {
+            "name": "payload",
+            "required": true,
+            "type": "string",
+            "description": "Raw JSON returned by https://public-api.margonem.pl/account/validate (POSTed with the player's cookies)."
+          }
+        ]
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/auth/sessions",
+      "handler": "Invoke-ApiGetAuthSessions",
+      "scope": "auth:manage",
+      "pl": {
+        "description": "Lista aktywnych tokenów sesji (bez surowych wartości tokenów)."
+      },
+      "en": {
+        "description": "List of active session tokens (no raw token values)."
+      }
+    },
+    {
+      "method": "DELETE",
+      "path": "/auth/sessions/:player",
+      "handler": "Invoke-ApiRevokePlayerSessions",
+      "scope": "auth:manage",
+      "pl": {
+        "description": "Wymusza unieważnienie wszystkich tokenów sesji powiązanych z graczem."
+      },
+      "en": {
+        "description": "Forcibly invalidates every session token bound to the named player."
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/auth/margonem/refresh-key",
+      "handler": "Invoke-ApiRefreshMargonemKey",
+      "scope": "auth:manage",
+      "rateLimitPerMinute": 2,
+      "pl": {
+        "description": "Pobiera bieżący klucz publiczny Margonem z CDN, weryfikuje go, atomowo podmienia plik PEM i przeładowuje cache w pamięci. Brak ładunku."
+      },
+      "en": {
+        "description": "Fetches the current Margonem public key from the CDN, validates it, atomically swaps the on-disk PEM, and hot-reloads the in-memory cache. No body required."
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/auth/margonem/health",
+      "handler": "Invoke-ApiGetMargonemHealth",
+      "scope": "auth:manage",
+      "rateLimitPerMinute": 6,
+      "pl": {
+        "description": "Sonda zdrowia podsystemu uwierzytelniania Margonem: stan klucza, dostępność endpointów upstream, dryf zegara względem nagłówka Date. Status: ok | degraded | broken."
+      },
+      "en": {
+        "description": "Margonem auth subsystem health probe: local key state, upstream reachability, server clock drift against the upstream Date header. status: ok | degraded | broken."
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/auth/margonem/verify",
+      "handler": "Invoke-ApiVerifyMargonem",
+      "scope": "auth:manage",
+      "rateLimitPerMinute": 30,
+      "pl": {
+        "description": "Weryfikuje podpisany ładunek Margonem bez tworzenia tokenu i bez wyszukiwania gracza. Zwraca tylko zweryfikowaną tożsamość. Przeznaczone dla zewnętrznych usług korzystających z uwierzytelniania Margonem (np. log-collector).",
+        "bodyFields": [
+          {
+            "name": "payload",
+            "required": true,
+            "type": "string",
+            "description": "Surowy JSON z https://public-api.margonem.pl/account/validate."
+          }
+        ]
+      },
+      "en": {
+        "description": "Verifies a Margonem signed payload without minting a token or looking up a player. Returns only the verified identity. For cross-service consumers that already rely on Margonem auth.",
+        "bodyFields": [
+          {
+            "name": "payload",
+            "required": true,
+            "type": "string",
+            "description": "Raw JSON from https://public-api.margonem.pl/account/validate."
+          }
+        ]
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/auth/introspect",
+      "handler": "Invoke-ApiIntrospectToken",
+      "scope": "auth:manage",
+      "pl": {
+        "description": "Introspekcja tokenu bearer (kształt RFC 7662). Konsultuje zarówno store sesyjny, jak i magazyn tokenów trwałych. Zwraca { active, name, scopes, expiresAt, player, margonemUserId } albo { active: false }.",
+        "bodyFields": [
+          {
+            "name": "token",
+            "required": true,
+            "type": "string",
+            "description": "Token Robota do sprawdzenia (sesyjny rbs_... lub trwały rbt_...)."
+          }
+        ]
+      },
+      "en": {
+        "description": "RFC 7662–shaped token introspection. Consults both the session store and the persistent token store. Returns { active, name, scopes, expiresAt, player, margonemUserId } or { active: false }.",
+        "bodyFields": [
+          {
+            "name": "token",
+            "required": true,
+            "type": "string",
+            "description": "Robot bearer token to inspect (session rbs_... or persistent rbt_...)."
+          }
+        ]
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/auth/margonem/info",
+      "handler": "Invoke-ApiGetMargonemInfo",
+      "scope": null,
+      "rateLimitPerMinute": 60,
+      "pl": {
+        "description": "Publiczna deklaracja konfiguracji Margonem-auth: SHA-256 fingerprint klucza PEM, TTL sesji, okno świeżości, lista obsługiwanych endpointów i format tokenu (prefix, długość, alfabet). Brak autoryzacji — żadne tajne dane nie są ujawniane."
+      },
+      "en": {
+        "description": "Public Margonem-auth configuration discovery: SHA-256 fingerprint of the PEM, session TTL, freshness window, supported endpoint list, and token format (prefix, length, alphabet). No auth required — nothing secret is exposed."
+      }
     }
   ]
 }

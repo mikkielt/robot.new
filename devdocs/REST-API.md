@@ -689,6 +689,58 @@ Test files: `api-router.Tests.ps1` (15 tests — route matching, static route O(
 
 All tests use the `PSTypeName` guard pattern to skip if C# types are not compiled.
 
+## Margonem Session Authentication
+
+Browser add-ons running on a Player's machine can mint a short-lived Robot bearer token without an operator-issued credential.
+
+Flow:
+1. Add-on POSTs to `https://public-api.margonem.pl/account/validate` with the Player's cookies and a `token` postdata field. Margonem returns a signed JSON envelope `{ user_id, token, ts, validatedString, signatureBase64 }`.
+2. Add-on forwards the JSON verbatim to Robot: `POST /api/auth/margonem` body: `{ "payload": "{...}" }`.
+3. Robot reconstructs `validatedString` as `"{user_id}+{token}+{ts}"`, decodes the signature, and verifies against the cached RSA public key (algorithm: **RSA-SHA256, PKCS#1 v1.5 padding** — pinned in `MargonemValidator.cs`). The supplied `validatedString` field is IGNORED — only the components are trusted.
+4. Robot enforces `abs(server_now - ts) <= MargonemFreshnessSeconds` (default 300 s) — defends against replay of stale payloads.
+5. Robot resolves `user_id` to a Player by matching the `@margonemid` integer tag in `Gracze.md`. Missing tag → 404. Ambiguous → 409. Resolution is **status-agnostic** — soft-deleted players still resolve; revocation goes through `DELETE /auth/sessions/:player` or removal of the tag.
+6. Robot mints a session bearer token (`rbs_` + 44-char base62), inserts it into the in-memory `ApiSessionTokenStore` with `ExpiresAt = now + MargonemSessionTtlSeconds` (default 4 h) and the configured `MargonemDefaultScopes`, and returns it.
+
+When the session token expires or is rejected with `401` + header `WWW-Authenticate: Bearer error="invalid_token"`, the add-on SHOULD replay step 1. There is no separate refresh token — the Player's Margonem cookies are the long-lived credential.
+
+Operator endpoints (scope `auth:manage`):
+- `GET /auth/sessions` — list active sessions (no raw tokens)
+- `DELETE /auth/sessions/:player` — forcibly invalidate every session for a player
+- `POST /auth/margonem/refresh-key` — fetch the upstream PEM, validate, atomically swap on disk, hot-reload the cache
+- `GET /auth/margonem/health` — local-key state + upstream reachability + clock-skew probe
+- `POST /auth/margonem/verify` — cross-service: verify a Margonem payload without minting (returns identity only)
+- `POST /auth/introspect` — RFC 7662 introspection: takes a Robot bearer, returns active + identity
+
+Public discovery (no auth):
+- `GET /auth/margonem/info` — PEM SHA-256 fingerprint, TTL, freshness window, endpoint list, token-format prefix (`rbs_`)
+
+Per-route rate limits (per-IP, in addition to the global limiter):
+
+| Route | Per minute |
+|---|---|
+| `POST /auth/margonem` | 10 |
+| `POST /auth/margonem/refresh-key` | 2 |
+| `GET /auth/margonem/health` | 6 |
+| `POST /auth/margonem/verify` | 30 |
+| `GET /auth/margonem/info` | 60 |
+
+Public key management: the PEM lives at the path resolved from `MargonemPublicKeyFile` (default `.robot.local/.cache/margonem/signing-key.pem`), which inherits gitignore protection from the module's existing `**/.robot.local/.cache/` rule. Refresh by calling `POST /auth/margonem/refresh-key` (scope `auth:manage`) — the handler fetches the upstream PEM, validates it parses, atomically swaps the on-disk file, and hot-reloads the cache. The server NEVER fetches the key over the network on the request hot path; only the explicit refresh endpoint does.
+
+Audit log: outcomes are appended as line-delimited JSON to `MargonemAuditLogFile` (default `.robot.local/.cache/margonem/audit.log`). Events: `mint-ok`, `mint-fail`, `verify-ok`, `verify-fail`, `introspect`, `refresh-key`, `sessions-invalidated`. The log NEVER contains the payload, the raw bearer, the signature, or the caller IP — IP collection is deliberately omitted.
+
+## Restart Semantics & Persistence
+
+Session tokens are in-memory only. Every restart of the API server invalidates every active session — this is a deliberate security property: a stolen process dump cannot exfiltrate live bearer tokens that outlive the process. The browser add-on transparently mints a fresh token via the silent-refresh flow on the first failed request after a restart, so the user-visible cost is one extra Margonem-validate round-trip.
+
+Operator-issued persistent tokens live in `api-tokens.psd1` and MUST be gitignored (enforced by `Test-TokenFileGitignored`, additionally defended by the `Test-GitignoreIntegrity` startup check). For stronger at-rest protection, place `.robot.local/` on an OS-encrypted volume (LUKS / FileVault / BitLocker).
+
+Shamir-style unsealing (à la HashiCorp Vault) was considered and deliberately rejected:
+- The Margonem public key is public — nothing to seal.
+- Session tokens already die on restart — sealing the dead is pointless.
+- The only on-disk secret is `api-tokens.psd1`, gitignored and (under the recommended deployment) on encrypted storage.
+- Shamir's operational cost (unseal API, K-of-N key ceremony, sealed-state startup, re-unseal after every crash) is wildly out of scale with the tabletop-RPG-server threat model.
+The right answer for "what if the disk leaks" is OS-level encryption, not a sealed-storage state machine.
+
 ## Related Documents
 
 - [PLUGINS.md](PLUGINS.md) — Plugin system mechanics, manifest schema, hook registry

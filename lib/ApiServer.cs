@@ -76,6 +76,22 @@ namespace Robot {
         /// from -DebugMode parameter.
         public static bool Debug;
 
+        /// Session token store — set by Start-RobotApi.ps1. Same static-field
+        /// pattern as ResponseCache: worker runspaces have isolated $script:
+        /// scopes, so cross-runspace shared state lives on the C# server type.
+        ///
+        /// Consumers: Invoke-ApiAuthMargonem (Add after mint),
+        ///            Invoke-ApiGetAuthSessions (list),
+        ///            Invoke-ApiRevokePlayerSessions (revoke),
+        ///            Invoke-MargonemSessionInvalidation (Gracze.md hook),
+        ///            ApiMiddleware.Authenticate (read).
+        public static ApiSessionTokenStore SessionStore;
+
+        /// Margonem audit log file path — set by Start-RobotApi.ps1. Workers
+        /// read this static field on first audit emit per runspace and cache
+        /// the local Initialize-MargonemAuditLog target. Null disables.
+        public static string MargonemAuditLogPath;
+
         public bool IsRunning => _isRunning;
 
         /// The route table, set during Start(). Exposed so built-in handlers
@@ -181,6 +197,10 @@ namespace Robot {
                 // Auth — returns token info (null = unauthorized)
                 var tokenInfo = _middleware.Authenticate(request);
                 if (tokenInfo == null) {
+                    // RFC 6750 §3 — signal invalid_token so the browser
+                    // add-on knows to replay the Margonem auth flow.
+                    response.Headers.Add("WWW-Authenticate",
+                        "Bearer realm=\"robot\", error=\"invalid_token\"");
                     ApiSerializer.WriteError(response, 401, "Unauthorized");
                     return;
                 }
@@ -212,6 +232,19 @@ namespace Robot {
                     !ApiMiddleware.HasScope(tokenInfo, match.Route.RequiredScope)) {
                     ApiSerializer.WriteError(response, 403, "Forbidden");
                     return;
+                }
+
+                // Per-route rate limit (WP-17) — independent of the global
+                // per-IP token bucket so abuse of a specific endpoint cannot
+                // exhaust a legitimate caller's overall budget.
+                if (match.Route.RateLimitPerMinute > 0) {
+                    if (!_middleware.CheckRouteRateLimit(clientIp,
+                            match.Route.Id, match.Route.RateLimitPerMinute)) {
+                        response.Headers.Add("Retry-After", "60");
+                        ApiSerializer.WriteError(response, 429,
+                            "Rate limit exceeded for " + match.Route.Id);
+                        return;
+                    }
                 }
 
                 // Read-only mode blocks write methods

@@ -64,6 +64,54 @@
             Default     = $false
             Required    = $false
         }
+        MargonemPublicKeyFile = @{
+            Description = 'Path to Margonem account-signing RSA public key PEM (X.509 SPKI). Default lives under .robot.local/.cache/margonem/ which is gitignored module-locally.'
+            EnvVar      = 'ROBOT_MARGONEM_KEY'
+            Default     = '.robot.local/.cache/margonem/signing-key.pem'
+            Required    = $false
+        }
+        MargonemSessionTtlSeconds = @{
+            Description = 'Lifetime of Margonem-minted session tokens (seconds)'
+            EnvVar      = 'ROBOT_MARGONEM_TTL'
+            Default     = 14400
+            Required    = $false
+        }
+        MargonemFreshnessSeconds = @{
+            Description = 'Max abs(server_now - payload_ts) for Margonem signature payloads (seconds)'
+            EnvVar      = 'ROBOT_MARGONEM_FRESHNESS'
+            Default     = 300
+            Required    = $false
+        }
+        MargonemDefaultScopes = @{
+            Description = 'Scopes granted to a freshly-minted Margonem session token'
+            EnvVar      = $null
+            Default     = @('entity:read', 'session:read', 'player:read')
+            Required    = $false
+        }
+        SessionTokenMaxEntries = @{
+            Description = 'Capacity of the in-memory session token store'
+            EnvVar      = $null
+            Default     = 10000
+            Required    = $false
+        }
+        MargonemKeyUrl = @{
+            Description = 'Source URL for POST /auth/margonem/refresh-key (Margonem CDN PEM)'
+            EnvVar      = 'ROBOT_MARGONEM_KEY_URL'
+            Default     = 'http://staticinfo.margonem.pl/.well-known/signing-key.pem'
+            Required    = $false
+        }
+        MargonemValidateUrl = @{
+            Description = 'Probed by GET /auth/margonem/health (Margonem validate endpoint)'
+            EnvVar      = 'ROBOT_MARGONEM_VALIDATE_URL'
+            Default     = 'https://public-api.margonem.pl/account/validate'
+            Required    = $false
+        }
+        MargonemAuditLogFile = @{
+            Description = 'Append-only NDJSON audit log for /auth/margonem outcomes. Inherits .robot.local/.cache/ gitignore protection.'
+            EnvVar      = 'ROBOT_MARGONEM_AUDIT_LOG'
+            Default     = '.robot.local/.cache/margonem/audit.log'
+            Required    = $false
+        }
     }
     Hooks             = @(
         @{
@@ -101,6 +149,12 @@
             Phase     = 'AfterCreate'
             Handler   = 'Invoke-ApiEventBroadcast'
             Priority  = 999
+        }
+        @{
+            Operation = 'Write-EntityFile'
+            Phase     = 'AfterWrite'
+            Handler   = 'Invoke-MargonemSessionInvalidation'
+            Priority  = 990
         }
     )
     Scopes            = @('admin:all', 'auth:manage')
