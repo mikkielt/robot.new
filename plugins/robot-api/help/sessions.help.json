@@ -290,6 +290,46 @@
           }
         ]
       }
+    },
+    {
+      "method": "PUT",
+      "path": "/sessions",
+      "handler": "Invoke-ApiUpdateSession",
+      "scope": "session:write",
+      "pl": {
+        "description": "Aktualizuje istniejącą sesję wskazaną przez { date, file } w ciele żądania. Metadane (locations, pu, logs, changes, intel) są zamieniane w całości — żeby dodać jeden element, klient MUSI wysłać kompletną nową tablicę. Format Gen2/Gen3 → Gen4 wymaga upgradeFormat=true.",
+        "bodyFields": [
+          { "name": "date", "required": true, "type": "string", "format": "date", "description": "Data sesji (YYYY-MM-DD) — identyfikator celu." },
+          { "name": "file", "required": true, "type": "string", "format": "file-path", "description": "Ścieżka pliku sesji względem repo (np. sesje/2026.md) — identyfikator celu." },
+          { "name": "locations", "required": false, "type": "array", "description": "Pełna lista lokacji sesji (full-replace)." },
+          { "name": "pu", "required": false, "type": "array", "description": "Pełna lista wpisów PU (full-replace)." },
+          { "name": "logs", "required": false, "type": "array", "description": "Pełna lista URLi logów (full-replace)." },
+          { "name": "changes", "required": false, "type": "array", "description": "Pełna lista wpisów @zmiany (full-replace)." },
+          { "name": "narrator", "required": false, "type": "array", "description": "Pełna lista narratorów." },
+          { "name": "intel", "required": false, "type": "array", "description": "Pełna lista wpisów wywiadowczych." },
+          { "name": "content", "required": false, "type": "string", "description": "Surowa zawartość Markdown sesji (zastępuje istniejącą)." },
+          { "name": "dateOverride", "required": false, "type": "string", "description": "Override pola @data w treści (np. dla retro-aktów)." },
+          { "name": "upgradeFormat", "required": false, "type": "boolean", "default": false, "description": "Wymagane do konwersji Gen2/Gen3 → Gen4." },
+          { "name": "properties", "required": false, "type": "object", "description": "Dodatkowe właściwości sesji (mają niższy priorytet niż jawne pola)." }
+        ]
+      },
+      "en": {
+        "description": "Updates an existing session identified by { date, file } in the body. Metadata arrays (locations, pu, logs, changes, intel) are full-replace — to add one element the caller MUST send the full intended array. Gen2/Gen3 → Gen4 conversion requires upgradeFormat=true.",
+        "bodyFields": [
+          { "name": "date", "required": true, "type": "string", "format": "date", "description": "Session date (YYYY-MM-DD) — target identifier." },
+          { "name": "file", "required": true, "type": "string", "format": "file-path", "description": "Repo-relative session file path (e.g. sesje/2026.md) — target identifier." },
+          { "name": "locations", "required": false, "type": "array", "description": "Full session locations list (full-replace)." },
+          { "name": "pu", "required": false, "type": "array", "description": "Full PU entry list (full-replace)." },
+          { "name": "logs", "required": false, "type": "array", "description": "Full log URL list (full-replace)." },
+          { "name": "changes", "required": false, "type": "array", "description": "Full @zmiany entry list (full-replace)." },
+          { "name": "narrator", "required": false, "type": "array", "description": "Full narrator list." },
+          { "name": "intel", "required": false, "type": "array", "description": "Full intel entry list." },
+          { "name": "content", "required": false, "type": "string", "description": "Raw session Markdown body (replaces existing)." },
+          { "name": "dateOverride", "required": false, "type": "string", "description": "Overrides the @data field in body (for retroactive edits)." },
+          { "name": "upgradeFormat", "required": false, "type": "boolean", "default": false, "description": "Required for Gen2/Gen3 → Gen4 format conversion." },
+          { "name": "properties", "required": false, "type": "object", "description": "Additional session properties (lower priority than explicit fields)." }
+        ]
+      }
     }
   ]
 }

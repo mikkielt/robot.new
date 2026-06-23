@@ -380,6 +380,59 @@ function Invoke-ApiGetPlayer {
     return @{ StatusCode = 200; Body = $Players[0] }
 }
 
+function Invoke-ApiGetCharacter {
+    <#
+        .SYNOPSIS
+        Returns a single character (by player + character path params) with the
+        merged temporal state. Supports ?includeState=true, ?activeOn=<iso>,
+        ?includeDeleted=true.
+    #>
+
+    param([hashtable]$ApiContext)
+
+    $PlayerName    = $ApiContext.PathParams['name']
+    $CharacterName = $ApiContext.PathParams['character']
+    $QP            = $ApiContext.QueryParams
+
+    $Params = @{
+        PlayerName    = $PlayerName
+        CharacterName = $CharacterName
+    }
+    if ($QP['includeState']   -eq 'true') { $Params.IncludeState   = $true }
+    if ($QP['includeDeleted'] -eq 'true') { $Params.IncludeDeleted = $true }
+    if ($QP['activeOn']) { $Params.ActiveOn = [datetime]::Parse($QP['activeOn']) }
+
+    $Characters = @(Get-PlayerCharacter @Params)
+    if ($Characters.Count -eq 0) {
+        return @{
+            StatusCode = 404
+            Body       = @{ error = "Character not found: $PlayerName / $CharacterName" }
+        }
+    }
+
+    return @{ StatusCode = 200; Body = $Characters[0] }
+}
+
+function Invoke-ApiGetCharacterPuPreview {
+    <#
+        .SYNOPSIS
+        Previews the starting PU pool for a new character on this player using
+        the same formula as the CLI (Floor((Sum(PUTaken) / 2) + 20), excluding
+        soft-deleted characters).
+    #>
+
+    param([hashtable]$ApiContext)
+
+    $PlayerName = $ApiContext.PathParams['name']
+
+    try {
+        $Preview = Get-NewPlayerCharacterPUCount -PlayerName $PlayerName
+        return @{ StatusCode = 200; Body = $Preview }
+    } catch {
+        return @{ StatusCode = 422; Body = @{ error = $_.Exception.Message } }
+    }
+}
+
 # ═══════════════════════════════════════════════════════════════════════
 # SESSIONS
 # ═══════════════════════════════════════════════════════════════════════
@@ -518,6 +571,32 @@ function Invoke-ApiCompareParticipation {
     }
 }
 
+function Invoke-ApiGetNarratorProfile {
+    <#
+        .SYNOPSIS
+        Returns a narrator's session profile: count, date range, unique
+        participant breakdown, average party size, session list. Supports
+        ?minDate=, ?maxDate=, ?minTier= (default 2).
+    #>
+
+    param([hashtable]$ApiContext)
+
+    $Name = $ApiContext.PathParams['name']
+    $QP   = $ApiContext.QueryParams
+
+    $Params = @{ NarratorName = $Name; Quiet = $true }
+    if ($QP['minDate']) { $Params.MinDate = [datetime]::Parse($QP['minDate']) }
+    if ($QP['maxDate']) { $Params.MaxDate = [datetime]::Parse($QP['maxDate']) }
+    if ($QP['minTier']) { $Params.MinTier = [int]$QP['minTier'] }
+
+    try {
+        $NarratorProfile = Get-NarratorSessionProfile @Params
+        return @{ StatusCode = 200; Body = $NarratorProfile }
+    } catch {
+        return @{ StatusCode = 422; Body = @{ error = $_.Exception.Message } }
+    }
+}
+
 function Invoke-ApiGetLeaderboard {
     <#
         .SYNOPSIS
@@ -538,6 +617,66 @@ function Invoke-ApiGetLeaderboard {
     try {
         $Board = @(Get-SessionGraphLeaderboard @Params)
         return @{ StatusCode = 200; Body = @{ count = $Board.Count; items = $Board } }
+    } catch {
+        return @{ StatusCode = 422; Body = @{ error = $_.Exception.Message } }
+    }
+}
+
+# ═══════════════════════════════════════════════════════════════════════
+# ITEMS
+# ═══════════════════════════════════════════════════════════════════════
+
+function Invoke-ApiGetItems {
+    <#
+        .SYNOPSIS
+        Returns Przedmiot entities enriched with owner type (Physical /
+        Virtual / Unknown), location, quantity, denomination, and currency
+        classification. Supports ?owner, ?location, ?name (substring),
+        ?includeInactive, ?includeDeleted, ?includeCurrency, ?activeOn.
+    #>
+
+    param([hashtable]$ApiContext)
+
+    $QP     = $ApiContext.QueryParams
+    $Params = @{ Quiet = $true }
+
+    if ($QP['owner'])    { $Params.Owner    = [string]$QP['owner'] }
+    if ($QP['location']) { $Params.Location = [string]$QP['location'] }
+    if ($QP['name'])     { $Params.Name     = [string]$QP['name'] }
+    if ($QP['includeInactive'] -eq 'true') { $Params.IncludeInactive = $true }
+    if ($QP['includeDeleted']  -eq 'true') { $Params.IncludeDeleted  = $true }
+    if ($QP['includeCurrency'] -eq 'true') { $Params.IncludeCurrency = $true }
+    if ($QP['activeOn']) { $Params.ActiveOn = [datetime]::Parse($QP['activeOn']) }
+
+    try {
+        $Items = @(Get-ItemEntity @Params)
+        return (Invoke-ApiObjectListQuery -ApiContext $ApiContext `
+            -Items $Items -CursorField 'EntityName')
+    } catch {
+        return @{ StatusCode = 422; Body = @{ error = $_.Exception.Message } }
+    }
+}
+
+function Invoke-ApiGetItem {
+    <#
+        .SYNOPSIS
+        Returns a single item entity by path-name (exact, case-insensitive).
+        Get-ItemEntity's Name filter is substring-based, so this handler
+        prunes the result to exact matches and 404s when none remain.
+    #>
+
+    param([hashtable]$ApiContext)
+
+    $Name = $ApiContext.PathParams['name']
+    try {
+        $Candidates = @(Get-ItemEntity -Name $Name -IncludeCurrency -Quiet)
+        $Exact = @($Candidates | Where-Object {
+            [string]::Equals($_.EntityName, $Name, [System.StringComparison]::OrdinalIgnoreCase)
+        })
+        if ($Exact.Count -eq 0) {
+            return @{ StatusCode = 404; Body = @{ error = "Item not found: $Name" } }
+        }
+        return @{ StatusCode = 200; Body = $Exact[0] }
     } catch {
         return @{ StatusCode = 422; Body = @{ error = $_.Exception.Message } }
     }
@@ -655,6 +794,29 @@ function Invoke-ApiGetTransactions {
     }
 }
 
+function Invoke-ApiGetMaterializationReport {
+    <#
+        .SYNOPSIS
+        Returns the physical/virtual currency split report with per-player
+        holdings and orphaned-fund detection. Supports ?activeOn=<iso> for
+        temporal filtering.
+    #>
+
+    param([hashtable]$ApiContext)
+
+    $QP     = $ApiContext.QueryParams
+    $Params = @{ Quiet = $true }
+
+    if ($QP['activeOn']) { $Params.ActiveOn = [datetime]::Parse($QP['activeOn']) }
+
+    try {
+        $Report = Get-MaterializationReport @Params
+        return @{ StatusCode = 200; Body = $Report }
+    } catch {
+        return @{ StatusCode = 422; Body = @{ error = $_.Exception.Message } }
+    }
+}
+
 # ═══════════════════════════════════════════════════════════════════════
 # NAME RESOLUTION
 # ═══════════════════════════════════════════════════════════════════════
@@ -663,13 +825,27 @@ function Invoke-ApiResolveName {
     <#
         .SYNOPSIS
         Resolves a name query to an entity via exact, alias, and fuzzy matching.
+        Supports ?ownerType=Player|NPC|Grupa|Lokacja to scope-gate results,
+        ?topN=N to return up to N fuzzy candidates (Stage 3 only), and
+        ?noFuzzy=true to skip Levenshtein matching entirely.
     #>
 
     param([hashtable]$ApiContext)
 
     $Name = $ApiContext.PathParams['name']
+    $QP   = $ApiContext.QueryParams
 
-    $Result = Resolve-Name -Query $Name
+    $Params = @{ Query = $Name }
+    if ($QP['ownerType']) { $Params.OwnerType = [string]$QP['ownerType'] }
+    if ($QP['topN'])      { $Params.TopN      = [int]$QP['topN'] }
+    if ($QP['noFuzzy'] -eq 'true') { $Params.NoFuzzy = $true }
+
+    try {
+        $Result = Resolve-Name @Params
+    } catch {
+        return @{ StatusCode = 422; Body = @{ error = $_.Exception.Message } }
+    }
+
     if (-not $Result) {
         return @{ StatusCode = 404; Body = @{ error = "Could not resolve: $Name" } }
     }
@@ -991,6 +1167,33 @@ function Invoke-ApiGetNameIndexLookup {
 # ═══════════════════════════════════════════════════════════════════════
 # VALIDATION
 # ═══════════════════════════════════════════════════════════════════════
+
+function Invoke-ApiGetVotingEligibility {
+    <#
+        .SYNOPSIS
+        Returns the voting eligibility list for the recent PU window. Pure
+        computation off pu-sessions.json, no file writes. Supports
+        ?months= (default 6) and ?minPU= (default 3.0).
+    #>
+
+    param([hashtable]$ApiContext)
+
+    $QP     = $ApiContext.QueryParams
+    $Params = @{ Quiet = $true }
+
+    if ($QP['months']) { $Params.Months    = [int]$QP['months'] }
+    if ($QP['minPU'])  { $Params.MinimumPU = [decimal]$QP['minPU'] }
+
+    try {
+        $Eligibility = @(Get-VotingEligibility @Params)
+        return @{
+            StatusCode = 200
+            Body       = @{ count = $Eligibility.Count; items = $Eligibility }
+        }
+    } catch {
+        return @{ StatusCode = 422; Body = @{ error = $_.Exception.Message } }
+    }
+}
 
 function Invoke-ApiValidatePU {
     <#

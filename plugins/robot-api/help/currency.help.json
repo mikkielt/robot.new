@@ -274,6 +274,36 @@
           }
         ]
       }
+    },
+    {
+      "method": "DELETE",
+      "path": "/currency/:name",
+      "handler": "Invoke-ApiDeleteCurrency",
+      "scope": "entity:write",
+      "pl": {
+        "description": "Soft-delete encji walutowej (ustawia @status: Usunięty). Jeśli saldo jest niezerowe, odpowiedź zawiera ostrzeżenie 'warning' obok wyniku 'result'.",
+        "queryParams": [
+          {
+            "name": "validFrom",
+            "required": false,
+            "type": "string",
+            "description": "Miesiąc obowiązywania statusu (YYYY-MM). Domyślnie bieżący miesiąc.",
+            "format": "year-month"
+          }
+        ]
+      },
+      "en": {
+        "description": "Soft-deletes a currency entity (sets @status: Usunięty). When the balance is non-zero the response includes a 'warning' field alongside 'result'.",
+        "queryParams": [
+          {
+            "name": "validFrom",
+            "required": false,
+            "type": "string",
+            "description": "Status validity month (YYYY-MM). Defaults to the current month.",
+            "format": "year-month"
+          }
+        ]
+      }
     }
   ]
 }

@@ -268,6 +268,228 @@
           }
         ]
       }
+    },
+    {
+      "method": "PUT",
+      "path": "/players/:name",
+      "handler": "Invoke-ApiUpdatePlayer",
+      "scope": "player:write",
+      "pl": {
+        "description": "Aktualizuje metadane gracza (MargonemID, webhook PRF, triggery, aliasy, status). Pola pominięte w żądaniu pozostają bez zmian.",
+        "bodyFields": [
+          {
+            "name": "margonemId",
+            "required": false,
+            "type": "string",
+            "description": "Identyfikator konta Margonem gracza."
+          },
+          {
+            "name": "prfWebhook",
+            "required": false,
+            "type": "string",
+            "description": "URL webhooka Discord do powiadomień PRF.",
+            "format": "url"
+          },
+          {
+            "name": "triggers",
+            "required": false,
+            "type": "array",
+            "description": "Wzorce wyzwalaczy powiadomień (zastępują istniejące)."
+          },
+          {
+            "name": "aliases",
+            "required": false,
+            "type": "array",
+            "description": "Aliasy gracza (dodawane do istniejących, deduplikacja w funkcji backendowej)."
+          },
+          {
+            "name": "status",
+            "required": false,
+            "type": "string",
+            "description": "Status gracza.",
+            "enum": ["Aktywny", "Nieaktywny", "Usunięty"]
+          }
+        ]
+      },
+      "en": {
+        "description": "Updates player metadata (MargonemID, PRF webhook, triggers, aliases, status). Fields omitted from the request body are preserved.",
+        "bodyFields": [
+          {
+            "name": "margonemId",
+            "required": false,
+            "type": "string",
+            "description": "Margonem account identifier."
+          },
+          {
+            "name": "prfWebhook",
+            "required": false,
+            "type": "string",
+            "description": "Discord webhook URL for PRF notifications.",
+            "format": "url"
+          },
+          {
+            "name": "triggers",
+            "required": false,
+            "type": "array",
+            "description": "Notification trigger patterns (replaces existing)."
+          },
+          {
+            "name": "aliases",
+            "required": false,
+            "type": "array",
+            "description": "Player aliases (appended to existing, dedup handled by backing function)."
+          },
+          {
+            "name": "status",
+            "required": false,
+            "type": "string",
+            "description": "Player status.",
+            "enum": ["Aktywny", "Nieaktywny", "Usunięty"]
+          }
+        ]
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/players/:name/characters/:character",
+      "handler": "Invoke-ApiGetCharacter",
+      "scope": "player:read",
+      "pl": {
+        "description": "Zwraca pojedynczą postać (wskazaną przez gracza i nazwę postaci) ze scalanym stanem czasowym. Zwraca 404 jeśli postać nie istnieje.",
+        "queryParams": [
+          {
+            "name": "includeState",
+            "required": false,
+            "type": "boolean",
+            "description": "Jeśli true, wzbogaca odpowiedź o stan encji powiązanych z postacią."
+          },
+          {
+            "name": "includeDeleted",
+            "required": false,
+            "type": "boolean",
+            "description": "Jeśli true, zwraca również postacie ze statusem 'Usunięty'."
+          },
+          {
+            "name": "activeOn",
+            "required": false,
+            "type": "string",
+            "description": "Filtruje rozdzielczość pól czasowych do podanej daty (ISO 8601).",
+            "format": "date"
+          }
+        ]
+      },
+      "en": {
+        "description": "Returns a single character (identified by player + character path params) with merged temporal state. Returns 404 if not found.",
+        "queryParams": [
+          {
+            "name": "includeState",
+            "required": false,
+            "type": "boolean",
+            "description": "If true, enriches the response with entity state attached to the character."
+          },
+          {
+            "name": "includeDeleted",
+            "required": false,
+            "type": "boolean",
+            "description": "If true, also returns characters with status 'Usunięty'."
+          },
+          {
+            "name": "activeOn",
+            "required": false,
+            "type": "string",
+            "description": "Filters temporal field resolution to the given date (ISO 8601).",
+            "format": "date"
+          }
+        ]
+      }
+    },
+    {
+      "method": "PUT",
+      "path": "/players/:name/characters/:character",
+      "handler": "Invoke-ApiUpdateCharacter",
+      "scope": "player:write",
+      "pl": {
+        "description": "Aktualizuje postać (PU, reputacja, profil, status). Pola pominięte lub przekazane jako null pozostają bez zmian.",
+        "bodyFields": [
+          { "name": "puExceeded", "required": false, "type": "decimal", "description": "Limit PU przekroczony (nadmiar). Pominięte/null = bez zmian." },
+          { "name": "puStart",    "required": false, "type": "decimal", "description": "Startowe PU postaci. Pominięte/null = bez zmian." },
+          { "name": "puSum",      "required": false, "type": "decimal", "description": "Suma PU (SUMA). Pominięte/null = bez zmian." },
+          { "name": "puTaken",    "required": false, "type": "decimal", "description": "PU zdobyte (ZDOBYTE). Pominięte/null = bez zmian." },
+          { "name": "aliases",    "required": false, "type": "array",    "description": "Aliasy postaci." },
+          { "name": "status",     "required": false, "type": "string",   "description": "Status postaci.", "enum": ["Aktywny", "Nieaktywny", "Usunięty"] },
+          { "name": "filePath",   "required": false, "type": "string",   "description": "Ścieżka pliku postaci." },
+          { "name": "characterSheet",   "required": false, "type": "string", "description": "URL karty postaci.", "format": "url" },
+          { "name": "restrictedTopics", "required": false, "type": "string", "description": "Lista tematów objętych ograniczeniem." },
+          { "name": "condition",        "required": false, "type": "string", "description": "Stan/kondycja postaci." },
+          { "name": "specialItems",     "required": false, "type": "array",  "description": "Lista nazw przedmiotów specjalnych." },
+          { "name": "reputationPositive", "required": false, "type": "array", "description": "Tier reputacji 'Postrzeganie pozytywne' — tablica obiektów { Location, Detail }." },
+          { "name": "reputationNeutral",  "required": false, "type": "array", "description": "Tier reputacji neutralnej." },
+          { "name": "reputationNegative", "required": false, "type": "array", "description": "Tier reputacji negatywnej." },
+          { "name": "additionalNotes",  "required": false, "type": "array",  "description": "Dodatkowe notatki." }
+        ]
+      },
+      "en": {
+        "description": "Updates a character (PU, reputation, profile, status). Fields that are omitted or sent as null are preserved.",
+        "bodyFields": [
+          { "name": "puExceeded", "required": false, "type": "decimal", "description": "Exceeded PU pool. Omitted/null = preserve." },
+          { "name": "puStart",    "required": false, "type": "decimal", "description": "Starting PU. Omitted/null = preserve." },
+          { "name": "puSum",      "required": false, "type": "decimal", "description": "Sum of PU (SUMA). Omitted/null = preserve." },
+          { "name": "puTaken",    "required": false, "type": "decimal", "description": "PU earned (ZDOBYTE). Omitted/null = preserve." },
+          { "name": "aliases",    "required": false, "type": "array",    "description": "Character aliases." },
+          { "name": "status",     "required": false, "type": "string",   "description": "Character status.", "enum": ["Aktywny", "Nieaktywny", "Usunięty"] },
+          { "name": "filePath",   "required": false, "type": "string",   "description": "Character file path." },
+          { "name": "characterSheet",   "required": false, "type": "string", "description": "Character sheet URL.", "format": "url" },
+          { "name": "restrictedTopics", "required": false, "type": "string", "description": "Restricted-topic list." },
+          { "name": "condition",        "required": false, "type": "string", "description": "Character condition/state." },
+          { "name": "specialItems",     "required": false, "type": "array",  "description": "Special item names." },
+          { "name": "reputationPositive", "required": false, "type": "array", "description": "Positive reputation tier — array of { Location, Detail } objects." },
+          { "name": "reputationNeutral",  "required": false, "type": "array", "description": "Neutral reputation tier." },
+          { "name": "reputationNegative", "required": false, "type": "array", "description": "Negative reputation tier." },
+          { "name": "additionalNotes",  "required": false, "type": "array",  "description": "Additional notes." }
+        ]
+      }
+    },
+    {
+      "method": "DELETE",
+      "path": "/players/:name/characters/:character",
+      "handler": "Invoke-ApiDeleteCharacter",
+      "scope": "player:write",
+      "pl": {
+        "description": "Soft-delete postaci — ustawia @status: Usunięty (YYYY-MM:). Nie usuwa wpisu z entities.md ani pliku postaci.",
+        "queryParams": [
+          {
+            "name": "validFrom",
+            "required": false,
+            "type": "string",
+            "description": "Miesiąc obowiązywania statusu (YYYY-MM). Domyślnie bieżący miesiąc.",
+            "format": "year-month"
+          }
+        ]
+      },
+      "en": {
+        "description": "Soft-deletes a character — sets @status: Usunięty (YYYY-MM:). Does not remove the entities.md entry or the character file.",
+        "queryParams": [
+          {
+            "name": "validFrom",
+            "required": false,
+            "type": "string",
+            "description": "Status validity month (YYYY-MM). Defaults to the current month.",
+            "format": "year-month"
+          }
+        ]
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/players/:name/pu-preview",
+      "handler": "Invoke-ApiGetCharacterPuPreview",
+      "scope": "player:read",
+      "pl": {
+        "description": "Pokazuje wstępne PU dla nowej postaci tego gracza według wzoru Floor((Sum(PUTaken) / 2) + 20), z pominięciem postaci 'Usunięty'."
+      },
+      "en": {
+        "description": "Previews starting PU for a new character on this player using the formula Floor((Sum(PUTaken) / 2) + 20), excluding 'Usunięty' characters."
+      }
     }
   ]
 }

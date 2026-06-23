@@ -226,6 +226,24 @@
           }
         ]
       }
+    },
+    {
+      "method": "GET",
+      "path": "/economy/materialization",
+      "handler": "Invoke-ApiGetMaterializationReport",
+      "scope": "entity:read",
+      "pl": {
+        "description": "Raport materializacji waluty — podział fizyczne/wirtualne, posiadanie per gracz, fundusze osierocone (przypisane do Nieaktywny/Usunięty postaci).",
+        "queryParams": [
+          { "name": "activeOn", "required": false, "type": "datetime", "format": "ISO 8601", "description": "Filtruje stan czasowy do podanej daty." }
+        ]
+      },
+      "en": {
+        "description": "Currency materialization report — physical/virtual split, per-player holdings, orphaned funds (currency owned by Nieaktywny/Usunięty characters).",
+        "queryParams": [
+          { "name": "activeOn", "required": false, "type": "datetime", "format": "ISO 8601", "description": "Filters temporal state to the given date." }
+        ]
+      }
     }
   ]
 }

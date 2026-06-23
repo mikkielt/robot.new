@@ -149,6 +149,21 @@ function Register-AllApiRoutes {
         'leaderboard', @('graph'))
     $HandlerMap['Invoke-ApiGetLeaderboard'] = $true
 
+    $Router.AddCacheableRoute('GET', '/session-graph/narrator/:name', 'Invoke-ApiGetNarratorProfile',
+        'Narrator session profile: count, date range, participant breakdown',
+        200, 'session:read', 'narrator-profile', @('session'))
+    $HandlerMap['Invoke-ApiGetNarratorProfile'] = $true
+
+    # --- Items ---
+    $Router.AddCacheableRoute('GET', '/items', 'Invoke-ApiGetItems',
+        'List item entities with owner/location/quantity/currency classification',
+        200, 'entity:read', 'items', @('entity'))
+    $HandlerMap['Invoke-ApiGetItems'] = $true
+
+    $Router.AddRoute('GET', '/items/:name', 'Invoke-ApiGetItem',
+        'Get a single item entity with enrichment', 200, 'entity:read')
+    $HandlerMap['Invoke-ApiGetItem'] = $true
+
     # --- Currency & Economy ---
     $Router.AddRoute('GET', '/currency', 'Invoke-ApiGetCurrency', 'Currency holdings report', 200, 'entity:read')
     $HandlerMap['Invoke-ApiGetCurrency'] = $true
@@ -162,6 +177,11 @@ function Register-AllApiRoutes {
         'Monthly economic trends', 200, 'entity:read',
         'economy-timeline', @('entity', 'session'))
     $HandlerMap['Invoke-ApiGetEconomicTimeline'] = $true
+
+    $Router.AddCacheableRoute('GET', '/economy/materialization', 'Invoke-ApiGetMaterializationReport',
+        'Physical/virtual currency split, per-player holdings, orphaned funds',
+        200, 'entity:read', 'economy-materialization', @('entity', 'session'))
+    $HandlerMap['Invoke-ApiGetMaterializationReport'] = $true
 
     $Router.AddRoute('GET', '/transactions', 'Invoke-ApiGetTransactions',
         'Currency transaction ledger', 200, 'entity:read')
@@ -236,6 +256,11 @@ function Register-AllApiRoutes {
     $Router.AddRoute('GET', '/reports/discord-delivery', 'Invoke-ApiGetDeliveryLog',
         'Discord webhook delivery history', 200, 'admin:read')
     $HandlerMap['Invoke-ApiGetDeliveryLog'] = $true
+
+    # --- PU read ---
+    $Router.AddRoute('GET', '/pu/voting-eligibility', 'Invoke-ApiGetVotingEligibility',
+        'Players above PU threshold over a recent window', 200, 'session:read')
+    $HandlerMap['Invoke-ApiGetVotingEligibility'] = $true
 
     # ── Analytics endpoints (Phase 3a: PU-centric) ─────────────────────
     $Router.AddCacheableRoute('GET', '/analytics/pu/by-character',
@@ -334,12 +359,37 @@ function Register-AllApiRoutes {
         'Update currency amount', 200, 'entity:write')
     $HandlerMap['Invoke-ApiUpdateCurrency'] = $true
 
+    $Router.AddRoute('DELETE', '/currency/:name', 'Invoke-ApiDeleteCurrency',
+        'Soft-delete currency entity (warns on non-zero balance)', 200, 'entity:write')
+    $HandlerMap['Invoke-ApiDeleteCurrency'] = $true
+
     $Router.AddRoute('POST', '/players', 'Invoke-ApiCreatePlayer', 'Create player', 201, 'player:write')
     $HandlerMap['Invoke-ApiCreatePlayer'] = $true
+
+    $Router.AddRoute('PUT', '/players/:name', 'Invoke-ApiUpdatePlayer',
+        'Update player metadata (Margonem ID, webhook, triggers, aliases, status)',
+        200, 'player:write')
+    $HandlerMap['Invoke-ApiUpdatePlayer'] = $true
 
     $Router.AddRoute('POST', '/players/:name/characters', 'Invoke-ApiCreateCharacter',
         'Create player character', 201, 'player:write')
     $HandlerMap['Invoke-ApiCreateCharacter'] = $true
+
+    $Router.AddRoute('GET', '/players/:name/pu-preview', 'Invoke-ApiGetCharacterPuPreview',
+        'Preview starting PU for a new character on this player', 200, 'player:read')
+    $HandlerMap['Invoke-ApiGetCharacterPuPreview'] = $true
+
+    $Router.AddRoute('GET', '/players/:name/characters/:character', 'Invoke-ApiGetCharacter',
+        'Get a single character with merged temporal state', 200, 'player:read')
+    $HandlerMap['Invoke-ApiGetCharacter'] = $true
+
+    $Router.AddRoute('PUT', '/players/:name/characters/:character', 'Invoke-ApiUpdateCharacter',
+        'Update character PU, reputation, profile, status', 200, 'player:write')
+    $HandlerMap['Invoke-ApiUpdateCharacter'] = $true
+
+    $Router.AddRoute('DELETE', '/players/:name/characters/:character', 'Invoke-ApiDeleteCharacter',
+        'Soft-delete a character (sets @status: Usunięty)', 200, 'player:write')
+    $HandlerMap['Invoke-ApiDeleteCharacter'] = $true
 
     $Router.AddRoute('POST', '/workflow/session-graph', 'Invoke-ApiRebuildGraph',
         'Rebuild session graph index', 200, 'admin:write')
@@ -353,9 +403,25 @@ function Register-AllApiRoutes {
         'Force-rebuild the cached name index', 200, 'admin:write')
     $HandlerMap['Invoke-ApiRebuildNameIndex'] = $true
 
+    $Router.AddRoute('POST', '/workflow/log-fetch', 'Invoke-ApiRunLogFetch',
+        'Fetch missing session logs (sequential, with retries)', 200, 'admin:write')
+    $HandlerMap['Invoke-ApiRunLogFetch'] = $true
+
+    $Router.AddRoute('POST', '/workflow/pu-assignment', 'Invoke-ApiRunPuAssignment',
+        'Run monthly PU assignment (fail-early on unresolved names)', 200, 'admin:write')
+    $HandlerMap['Invoke-ApiRunPuAssignment'] = $true
+
+    $Router.SetRouteRateLimit('POST', '/workflow/log-fetch',     5)
+    $Router.SetRouteRateLimit('POST', '/workflow/pu-assignment', 1)
+
     $Router.AddRoute('POST', '/sessions', 'Invoke-ApiCreateSession',
         'Create a new session in target file(s)', 201, 'session:write')
     $HandlerMap['Invoke-ApiCreateSession'] = $true
+
+    $Router.AddRoute('PUT', '/sessions', 'Invoke-ApiUpdateSession',
+        'Update an existing session identified by { date, file } in the body',
+        200, 'session:write')
+    $HandlerMap['Invoke-ApiUpdateSession'] = $true
 
     # --- Locations (write) ---
     $Router.AddRoute('POST', '/locations', 'Invoke-ApiCreateLocation', 'Create location', 201, 'entity:write')

@@ -7,10 +7,20 @@
       "handler": "Invoke-ApiResolveName",
       "scope": "entity:read",
       "pl": {
-        "description": "Rozwiązuje zapytanie nazwy do encji przez dopasowanie dokładne, aliasowe i rozmyte. Parametr ścieżki :name określa szukaną nazwę."
+        "description": "Rozwiązuje zapytanie nazwy do encji przez dopasowanie dokładne, aliasowe i rozmyte. Parametr ścieżki :name określa szukaną nazwę.",
+        "queryParams": [
+          { "name": "ownerType", "required": false, "type": "string", "enum": ["Player", "NPC", "Grupa", "Lokacja"], "description": "Ogranicza dopasowanie do podanego typu właściciela." },
+          { "name": "topN", "required": false, "type": "integer", "default": 1, "description": "Liczba kandydatów do zwrócenia z Etapu 3 (fuzzy). 1-20." },
+          { "name": "noFuzzy", "required": false, "type": "boolean", "default": false, "description": "Jeśli true, pomija Etap 3 (dopasowanie Levenshtein) — eliminuje wyniki rozmyte." }
+        ]
       },
       "en": {
-        "description": "Resolves a name query to an entity via exact, alias, and fuzzy matching. The :name path parameter specifies the lookup query."
+        "description": "Resolves a name query to an entity via exact, alias, and fuzzy matching. The :name path parameter specifies the lookup query.",
+        "queryParams": [
+          { "name": "ownerType", "required": false, "type": "string", "enum": ["Player", "NPC", "Grupa", "Lokacja"], "description": "Restricts matches to the given owner type." },
+          { "name": "topN", "required": false, "type": "integer", "default": 1, "description": "Number of Stage-3 (fuzzy) candidates to return. 1-20." },
+          { "name": "noFuzzy", "required": false, "type": "boolean", "default": false, "description": "If true, skips Stage 3 (Levenshtein matching) — disables fuzzy results." }
+        ]
       }
     },
     {

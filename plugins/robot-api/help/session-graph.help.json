@@ -164,6 +164,28 @@
           }
         ]
       }
+    },
+    {
+      "method": "GET",
+      "path": "/session-graph/narrator/:name",
+      "handler": "Invoke-ApiGetNarratorProfile",
+      "scope": "session:read",
+      "pl": {
+        "description": "Profil narracyjny: liczba sesji, zakres dat, unikalni uczestnicy z podziałem na typy, średnia liczebność drużyny, lista sesji.",
+        "queryParams": [
+          { "name": "minDate", "required": false, "type": "datetime", "format": "YYYY-MM-DD", "description": "Początek zakresu dat (włącznie)." },
+          { "name": "maxDate", "required": false, "type": "datetime", "format": "YYYY-MM-DD", "description": "Koniec zakresu dat (włącznie)." },
+          { "name": "minTier", "required": false, "type": "integer", "default": 2, "description": "Minimalny tier udziału uwzględniony w statystykach (0-2)." }
+        ]
+      },
+      "en": {
+        "description": "Narrator profile: session count, date range, unique participants broken down by type, average party size, session list.",
+        "queryParams": [
+          { "name": "minDate", "required": false, "type": "datetime", "format": "YYYY-MM-DD", "description": "Start of date range (inclusive)." },
+          { "name": "maxDate", "required": false, "type": "datetime", "format": "YYYY-MM-DD", "description": "End of date range (inclusive)." },
+          { "name": "minTier", "required": false, "type": "integer", "default": 2, "description": "Minimum participation tier included in stats (0-2)." }
+        ]
+      }
     }
   ]
 }

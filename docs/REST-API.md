@@ -29,11 +29,15 @@ Locations — browse locations with enriched hierarchy, door connections, child 
 
 Maps — list all game-map entries, create new ones, and update existing maps (slug, dimensions, parent, doors).
 
-Players and characters — player roster with character assignments.
+Players and characters — player roster with character assignments. Individual characters can be inspected with their merged temporal state (active state on a chosen date, optional inclusion of soft-deleted characters). A per-player starting-PU preview reports the pool a brand-new character would receive based on the player's existing PU history.
 
-Sessions — session list and session participation graph, including per-entity session profiles, overlap analysis between entities, and leaderboards. Create new sessions (single or batch) with the same metadata fields available in the CLI.
+Items — browse Przedmiot entities enriched with owner type (physical character holding, virtual NPC/group/player holding, or unknown), location, current quantity, and currency classification. Filters cover owner, location, name substring, active date, and whether to include inactive, soft-deleted, or currency entities. Items use the same paginated list envelope as entities.
 
-Currency and economy — currency holdings, transaction ledger, economic snapshots (supply breakdown, wealth distribution), and monthly economic timelines.
+Sessions — session list and session participation graph, including per-entity session profiles, overlap analysis between two or more entities at once, leaderboards, and per-narrator profiles (session count, date range, unique participants by type, average party size). Create new sessions (single or batch) and update existing sessions in place (identified by date plus file path) with the same metadata fields available in the CLI.
+
+Currency and economy — currency holdings, transaction ledger, economic snapshots (supply breakdown, wealth distribution), monthly economic timelines, and a materialization report that separates physical currency (held by characters) from virtual currency (held by NPCs, groups, or players) and flags orphaned funds attached to inactive or removed characters.
+
+PU — recent-window voting eligibility for players, computed from the PU assignment history. The threshold and lookback window are tunable per request.
 
 Reports — change audit, dormancy, session frequency, narrator statistics, location data, PU processing history, notification logs, and Discord webhook delivery history.
 
@@ -55,7 +59,7 @@ All data uses Polish canonical values for types, statuses, and domain terms. Cli
 
 ## Write Operations
 
-When write access is enabled, the API supports creating new entities (with a name and type), updating entity tags, soft-deleting entities (marking them as Usunięty — they are never physically removed), creating and updating locations and maps (with parent validation, coordinate checks, slug uniqueness, and door connection management), creating players and player characters, creating or updating currency holdings, creating sessions (single or batch), and triggering maintenance workflows such as rebuilding the session graph or updating session content hashes.
+When write access is enabled, the API supports creating new entities (with a name and type), updating entity tags, soft-deleting entities (marking them as Usunięty — they are never physically removed), creating and updating locations and maps (with parent validation, coordinate checks, slug uniqueness, and door connection management), creating players and player characters, updating player metadata (MargonemID, PRF webhook, triggers, aliases, status), updating individual character fields (PU values, reputation tiers, profile, status), soft-deleting characters, creating or updating currency holdings and soft-deleting currency entities (with a warning when a non-zero balance is removed), creating sessions and updating existing sessions in place, and triggering maintenance workflows. Maintenance workflows include rebuilding the session graph, updating session content hashes, force-rebuilding the name index, fetching missing session logs sequentially with retries, and running the monthly PU assignment with fail-early validation and opt-in flags for persisting PU to character files, sending Discord notifications, appending to the PU processing log, and reconciling currency afterwards. The two long-running workflows (log fetch and PU assignment) are rate-limited per client to prevent accidental bulk runs.
 
 Write operations automatically notify connected real-time clients when entities are created or modified.
 

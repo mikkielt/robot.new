@@ -1,0 +1,53 @@
+{
+  "component": "items",
+  "endpoints": [
+    {
+      "method": "GET",
+      "path": "/items",
+      "handler": "Invoke-ApiGetItems",
+      "scope": "entity:read",
+      "pl": {
+        "description": "Zwraca encje typu Przedmiot wzbogacone o właściciela (Physical/Virtual/Unknown), lokację, ilość, status, klasyfikację walutową i denominację.",
+        "queryParams": [
+          { "name": "owner",    "required": false, "type": "string", "description": "Filtruje po polu @należy_do." },
+          { "name": "location", "required": false, "type": "string", "description": "Filtruje po polu @lokacja." },
+          { "name": "name",     "required": false, "type": "string", "description": "Filtr po nazwie (substring, case-insensitive)." },
+          { "name": "includeInactive", "required": false, "type": "boolean", "description": "Jeśli true, dołącza encje 'Nieaktywny'." },
+          { "name": "includeDeleted",  "required": false, "type": "boolean", "description": "Jeśli true, dołącza encje 'Usunięty'." },
+          { "name": "includeCurrency", "required": false, "type": "boolean", "description": "Jeśli true, dołącza encje walutowe (domyślnie wyłączone)." },
+          { "name": "activeOn", "required": false, "type": "string", "format": "date", "description": "Filtruje stan czasowy do podanej daty ISO." },
+          { "name": "filter", "required": false, "type": "string", "description": "Filtr RSQL (wspólny dla list)." },
+          { "name": "sort",   "required": false, "type": "string", "description": "Sortowanie (-pole = malejąco)." },
+          { "name": "page[size]", "required": false, "type": "integer", "description": "Rozmiar strony paginacji." }
+        ]
+      },
+      "en": {
+        "description": "Returns Przedmiot entities enriched with owner type (Physical/Virtual/Unknown), location, quantity, status, currency classification, and denomination.",
+        "queryParams": [
+          { "name": "owner",    "required": false, "type": "string", "description": "Filter by @należy_do." },
+          { "name": "location", "required": false, "type": "string", "description": "Filter by @lokacja." },
+          { "name": "name",     "required": false, "type": "string", "description": "Name filter (substring, case-insensitive)." },
+          { "name": "includeInactive", "required": false, "type": "boolean", "description": "If true, includes Nieaktywny entities." },
+          { "name": "includeDeleted",  "required": false, "type": "boolean", "description": "If true, includes Usunięty entities." },
+          { "name": "includeCurrency", "required": false, "type": "boolean", "description": "If true, includes currency entities (excluded by default)." },
+          { "name": "activeOn", "required": false, "type": "string", "format": "date", "description": "Filters temporal state to the given ISO date." },
+          { "name": "filter", "required": false, "type": "string", "description": "RSQL filter (common list query)." },
+          { "name": "sort",   "required": false, "type": "string", "description": "Sort spec (-field = descending)." },
+          { "name": "page[size]", "required": false, "type": "integer", "description": "Pagination page size." }
+        ]
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/items/:name",
+      "handler": "Invoke-ApiGetItem",
+      "scope": "entity:read",
+      "pl": {
+        "description": "Zwraca pojedynczą encję Przedmiotu (dopasowanie po nazwie dokładnie, case-insensitive). Zwraca 404 jeśli brak."
+      },
+      "en": {
+        "description": "Returns a single Przedmiot entity (exact name match, case-insensitive). Returns 404 if none found."
+      }
+    }
+  ]
+}

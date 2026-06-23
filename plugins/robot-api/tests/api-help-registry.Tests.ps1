@@ -37,6 +37,8 @@ Describe 'Robot.ApiHelpRegistry' {
             $Components | Should -Contain 'workflow'
             $Components | Should -Contain 'auth'
             $Components | Should -Contain 'files'
+            $Components | Should -Contain 'items'
+            $Components | Should -Contain 'pu'
         }
 
         It 'returns non-API components (editor, cli)' {
@@ -45,9 +47,9 @@ Describe 'Robot.ApiHelpRegistry' {
             $Components | Should -Contain 'cli'
         }
 
-        It 'returns exactly 18 components' {
+        It 'returns exactly 20 components' {
             $Components = [Robot.ApiHelpRegistry]::GetComponents()
-            $Components.Count | Should -Be 18
+            $Components.Count | Should -Be 20
         }
 
         It 'includes the analytics component' {
@@ -157,7 +159,7 @@ Describe 'Robot.ApiHelpRegistry' {
         It 'every API component endpoint has both pl and en' {
             $ApiComponents = @('entities', 'sessions', 'players', 'locations', 'maps',
                 'currency', 'economy', 'session-graph', 'reports', 'validate',
-                'resolve', 'parse', 'workflow', 'auth', 'files')
+                'resolve', 'parse', 'workflow', 'auth', 'files', 'items', 'pu')
             foreach ($C in $ApiComponents) {
                 $Result = [Robot.ApiHelpRegistry]::GetHelp($C, $null, $null)
                 $Result | Should -Not -BeNullOrEmpty -Because "$C should return data"

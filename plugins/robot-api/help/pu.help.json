@@ -1,0 +1,25 @@
+{
+  "component": "pu",
+  "endpoints": [
+    {
+      "method": "GET",
+      "path": "/pu/voting-eligibility",
+      "handler": "Invoke-ApiGetVotingEligibility",
+      "scope": "session:read",
+      "pl": {
+        "description": "Zwraca listę graczy z informacją o uprawnieniu do głosowania w oparciu o ostatnie miesiące PU. Czysta funkcja (brak efektów ubocznych).",
+        "queryParams": [
+          { "name": "months", "required": false, "type": "integer", "default": 6, "description": "Liczba miesięcy historii PU (domyślnie 6)." },
+          { "name": "minPU",  "required": false, "type": "decimal", "default": 3.0, "description": "Próg PU do uprawnienia (domyślnie 3.0)." }
+        ]
+      },
+      "en": {
+        "description": "Returns the players' voting-eligibility list based on the recent PU window. Pure computation (no side effects).",
+        "queryParams": [
+          { "name": "months", "required": false, "type": "integer", "default": 6, "description": "Number of months of PU history to consider (default 6)." },
+          { "name": "minPU",  "required": false, "type": "decimal", "default": 3.0, "description": "PU threshold for eligibility (default 3.0)." }
+        ]
+      }
+    }
+  ]
+}

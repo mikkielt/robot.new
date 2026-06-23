@@ -250,6 +250,48 @@ function Invoke-ApiUpdateCurrency {
     }
 }
 
+function Invoke-ApiDeleteCurrency {
+    <#
+        .SYNOPSIS
+        Soft-deletes a currency entity via Remove-CurrencyEntity. When the
+        entity has a non-zero balance, the backing function still proceeds
+        and warns; the handler surfaces that warning in the response body
+        by checking the balance before delegating.
+    #>
+
+    param([hashtable]$ApiContext)
+
+    $Name = $ApiContext.PathParams['name']
+    $QP   = $ApiContext.QueryParams
+
+    $Warning = $null
+    try {
+        $Existing = @(Get-CurrencyEntity -Name $Name -IncludeInactive -ErrorAction SilentlyContinue)
+        if ($Existing.Count -gt 0 -and $Existing[0].Balance -ne 0) {
+            $Warning = "Currency '$Name' still has a non-zero balance ($($Existing[0].Balance)) at deletion."
+        }
+    } catch {
+        # Balance lookup is best-effort; failures should not block delete.
+    }
+
+    $Params = @{ Name = $Name; Confirm = $false; Quiet = $true }
+    if ($QP['validFrom']) { $Params.ValidFrom = [string]$QP['validFrom'] }
+
+    try {
+        $Result = Remove-CurrencyEntity @Params
+        Clear-ParseCaches
+        Invoke-SidecarInvalidation -Domain 'entity'
+        $Body = if ($Warning) {
+            [PSCustomObject]@{ result = $Result; warning = $Warning }
+        } else {
+            $Result
+        }
+        return @{ StatusCode = 200; Body = $Body }
+    } catch {
+        return @{ StatusCode = 422; Body = @{ error = $_.Exception.Message } }
+    }
+}
+
 # ═══════════════════════════════════════════════════════════════════════
 # PLAYERS
 # ═══════════════════════════════════════════════════════════════════════
@@ -295,6 +337,38 @@ function Invoke-ApiCreatePlayer {
     }
 }
 
+function Invoke-ApiUpdatePlayer {
+    <#
+        .SYNOPSIS
+        Updates player metadata (MargonemID, webhook, triggers, aliases, status)
+        via Set-Player. Fields omitted from the body are preserved.
+    #>
+
+    param([hashtable]$ApiContext)
+
+    $Name = $ApiContext.PathParams['name']
+    $B    = $ApiContext.Body
+    if (-not $B) {
+        return @{ StatusCode = 400; Body = @{ error = 'Request body required' } }
+    }
+
+    $Params = @{ Name = $Name; Confirm = $false }
+    if ($B.margonemId) { $Params.MargonemID = [string]$B.margonemId }
+    if ($B.prfWebhook) { $Params.PRFWebhook = [string]$B.prfWebhook }
+    if ($B.triggers)   { $Params.Triggers   = @($B.triggers).ForEach({ [string]$_ }) }
+    if ($B.aliases)    { $Params.Aliases    = @($B.aliases).ForEach({ [string]$_ }) }
+    if ($B.status)     { $Params.Status     = [string]$B.status }
+
+    try {
+        $Result = Set-Player @Params
+        Clear-ParseCaches
+        Invoke-SidecarInvalidation -Domain 'entity'
+        return @{ StatusCode = 200; Body = $Result }
+    } catch {
+        return @{ StatusCode = 422; Body = @{ error = $_.Exception.Message } }
+    }
+}
+
 function Invoke-ApiCreateCharacter {
     <#
         .SYNOPSIS
@@ -334,6 +408,91 @@ function Invoke-ApiCreateCharacter {
         Clear-ParseCaches
         Invoke-SidecarInvalidation -Domain 'entity'
         return @{ StatusCode = 201; Body = $Result }
+    } catch {
+        return @{ StatusCode = 422; Body = @{ error = $_.Exception.Message } }
+    }
+}
+
+function Invoke-ApiUpdateCharacter {
+    <#
+        .SYNOPSIS
+        Updates a character's PU, reputation, profile or status via
+        Set-PlayerCharacter. Nullable decimal PU fields are distinguished
+        from omission so that a body containing `"puExceeded": null` is
+        treated as "clear", not "leave unchanged".
+    #>
+
+    param([hashtable]$ApiContext)
+
+    $PlayerName    = $ApiContext.PathParams['name']
+    $CharacterName = $ApiContext.PathParams['character']
+    $B             = $ApiContext.Body
+    if (-not $B) {
+        return @{ StatusCode = 400; Body = @{ error = 'Request body required' } }
+    }
+
+    $Params = @{
+        PlayerName    = $PlayerName
+        CharacterName = $CharacterName
+        Confirm       = $false
+        Quiet         = $true
+    }
+
+    # PU fields are Nullable[decimal] in Set-PlayerCharacter; null/omitted
+    # bodies both mean "preserve". Pass only when a non-null value is given.
+    if ($null -ne $B.puExceeded) { $Params.PUExceeded = [decimal]$B.puExceeded }
+    if ($null -ne $B.puStart)    { $Params.PUStart    = [decimal]$B.puStart }
+    if ($null -ne $B.puSum)      { $Params.PUSum      = [decimal]$B.puSum }
+    if ($null -ne $B.puTaken)    { $Params.PUTaken    = [decimal]$B.puTaken }
+
+    if ($B.aliases)            { $Params.Aliases          = @($B.aliases).ForEach({ [string]$_ }) }
+    if ($B.status)             { $Params.Status           = [string]$B.status }
+    if ($B.filePath)           { $Params.FilePath         = [string]$B.filePath }
+    if ($B.characterSheet)     { $Params.CharacterSheet   = [string]$B.characterSheet }
+    if ($B.restrictedTopics)   { $Params.RestrictedTopics = [string]$B.restrictedTopics }
+    if ($B.condition)          { $Params.Condition        = [string]$B.condition }
+    if ($B.specialItems)       { $Params.SpecialItems     = @($B.specialItems).ForEach({ [string]$_ }) }
+    if ($B.reputationPositive) { $Params.ReputationPositive = @($B.reputationPositive) }
+    if ($B.reputationNeutral)  { $Params.ReputationNeutral  = @($B.reputationNeutral)  }
+    if ($B.reputationNegative) { $Params.ReputationNegative = @($B.reputationNegative) }
+    if ($B.additionalNotes)    { $Params.AdditionalNotes  = @($B.additionalNotes).ForEach({ [string]$_ }) }
+
+    try {
+        $Result = Set-PlayerCharacter @Params
+        Clear-ParseCaches
+        Invoke-SidecarInvalidation -Domain 'entity'
+        return @{ StatusCode = 200; Body = $Result }
+    } catch {
+        return @{ StatusCode = 422; Body = @{ error = $_.Exception.Message } }
+    }
+}
+
+function Invoke-ApiDeleteCharacter {
+    <#
+        .SYNOPSIS
+        Soft-deletes a character via Remove-PlayerCharacter. Optional
+        ?validFrom=YYYY-MM query parameter sets the deletion month;
+        otherwise the current month is used by the backing function.
+    #>
+
+    param([hashtable]$ApiContext)
+
+    $PlayerName    = $ApiContext.PathParams['name']
+    $CharacterName = $ApiContext.PathParams['character']
+    $QP            = $ApiContext.QueryParams
+
+    $Params = @{
+        PlayerName    = $PlayerName
+        CharacterName = $CharacterName
+        Confirm       = $false
+    }
+    if ($QP['validFrom']) { $Params.ValidFrom = [string]$QP['validFrom'] }
+
+    try {
+        $Result = Remove-PlayerCharacter @Params
+        Clear-ParseCaches
+        Invoke-SidecarInvalidation -Domain 'entity'
+        return @{ StatusCode = 200; Body = $Result }
     } catch {
         return @{ StatusCode = 422; Body = @{ error = $_.Exception.Message } }
     }
@@ -503,6 +662,63 @@ function Invoke-ApiCreateSession {
     }
 }
 
+function Invoke-ApiUpdateSession {
+    <#
+        .SYNOPSIS
+        Updates an existing session via Set-Session. The target session is
+        identified by `date` (YYYY-MM-DD) and `file` (repo-relative path)
+        in the body — these map to Set-Session's `Explicit` parameter set.
+        Optional `locations`, `pu`, `logs`, `changes`, `narrator`, `intel`,
+        `content`, `properties`, `dateOverride`, and `upgradeFormat` are
+        forwarded as-is. Sessions are full-replace on metadata, so callers
+        MUST send the complete intended state for each array field they
+        wish to modify.
+    #>
+
+    param([hashtable]$ApiContext)
+
+    $B = $ApiContext.Body
+    if (-not $B) {
+        return @{ StatusCode = 400; Body = @{ error = 'Request body required' } }
+    }
+    if (-not $B.date -or -not $B.file) {
+        return @{ StatusCode = 400; Body = @{ error = 'date and file are required to identify the session' } }
+    }
+
+    $Params = @{
+        Date    = [datetime]::Parse([string]$B.date)
+        File    = [string]$B.file
+        Confirm = $false
+    }
+
+    if ($B.locations) { $Params.Locations = @($B.locations).ForEach({ [string]$_ }) }
+    if ($B.logs)      { $Params.Logs      = @($B.logs).ForEach({ [string]$_ }) }
+    if ($B.narrator)  { $Params.Narrator  = @($B.narrator).ForEach({ [string]$_ }) }
+    if ($B.pu)        { $Params.PU        = @($B.pu) }
+    if ($B.changes)   { $Params.Changes   = @($B.changes) }
+    if ($B.intel)     { $Params.Intel     = @($B.intel) }
+    if ($B.content)        { $Params.Content      = [string]$B.content }
+    if ($B.dateOverride)   { $Params.DateOverride = [string]$B.dateOverride }
+    if ($B.upgradeFormat -eq $true) { $Params.UpgradeFormat = $true }
+
+    if ($B.properties -and $B.properties -is [System.Management.Automation.PSCustomObject]) {
+        $Props = @{}
+        foreach ($P in $B.properties.PSObject.Properties) { $Props[$P.Name] = $P.Value }
+        $Params.Properties = $Props
+    }
+
+    try {
+        $Result = Set-Session @Params
+        Clear-ParseCaches
+        Invoke-SidecarInvalidation -Domain 'session'
+        Invoke-SidecarInvalidation -Domain 'graph'
+        Invoke-SidecarInvalidation -Domain 'entity'
+        return @{ StatusCode = 200; Body = $Result }
+    } catch {
+        return @{ StatusCode = 422; Body = @{ error = $_.Exception.Message } }
+    }
+}
+
 # ═══════════════════════════════════════════════════════════════════════
 # WORKFLOW
 # ═══════════════════════════════════════════════════════════════════════
@@ -600,6 +816,83 @@ function Invoke-ApiRebuildNameIndex {
                 ambiguousCount = $AmbiguousCount
             }
         }
+    }
+}
+
+function Invoke-ApiRunLogFetch {
+    <#
+        .SYNOPSIS
+        Fetches missing session logs via Invoke-SessionLogFetch. Runs
+        synchronously in the worker — large repos may take minutes. The
+        function deduplicates URLs, honors .failed markers (unless
+        retryFailed=true), and applies exponential backoff on retries.
+    #>
+
+    param([hashtable]$ApiContext)
+
+    $B = $ApiContext.Body
+    $Params = @{ Confirm = $false }
+
+    if ($B) {
+        if ($B.minDate)      { $Params.MinDate      = [datetime]::Parse([string]$B.minDate) }
+        if ($B.maxDate)      { $Params.MaxDate      = [datetime]::Parse([string]$B.maxDate) }
+        if ($null -ne $B.delayMs)      { $Params.DelayMs      = [int]$B.delayMs }
+        if ($null -ne $B.maxRetries)   { $Params.MaxRetries   = [int]$B.maxRetries }
+        if ($null -ne $B.retryDelayMs) { $Params.RetryDelayMs = [int]$B.retryDelayMs }
+        if ($B.retryFailed -eq $true)  { $Params.RetryFailed  = $true }
+        if ($B.logDirectory)           { $Params.LogDirectory = [string]$B.logDirectory }
+    }
+
+    try {
+        $Summary = Invoke-SessionLogFetch @Params
+        Invoke-SidecarInvalidation -Domain 'session'
+        return @{ StatusCode = 200; Body = $Summary }
+    } catch {
+        return @{ StatusCode = 422; Body = @{ error = $_.Exception.Message } }
+    }
+}
+
+function Invoke-ApiRunPuAssignment {
+    <#
+        .SYNOPSIS
+        Runs the monthly PU assignment workflow via
+        Invoke-PlayerCharacterPUAssignment. Fail-early — if any character
+        name does not resolve, no writes happen. Body flags
+        (updatePlayerCharacters, sendToDiscord, appendToLog,
+        reconcileCurrency) are forwarded as switches.
+    #>
+
+    param([hashtable]$ApiContext)
+
+    $B = $ApiContext.Body
+    $Params = @{ Confirm = $false }
+
+    if ($B) {
+        if ($null -ne $B.year)  { $Params.Year  = [int]$B.year }
+        if ($null -ne $B.month) { $Params.Month = [int]$B.month }
+        if ($B.minDate)         { $Params.MinDate = [datetime]::Parse([string]$B.minDate) }
+        if ($B.maxDate)         { $Params.MaxDate = [datetime]::Parse([string]$B.maxDate) }
+        if ($B.playerName)      { $Params.PlayerName = @($B.playerName).ForEach({ [string]$_ }) }
+        if ($B.updatePlayerCharacters -eq $true) { $Params.UpdatePlayerCharacters = $true }
+        if ($B.sendToDiscord           -eq $true) { $Params.SendToDiscord         = $true }
+        if ($B.appendToLog             -eq $true) { $Params.AppendToLog           = $true }
+        if ($B.reconcileCurrency       -eq $true) { $Params.ReconcileCurrency     = $true }
+        if ($B.excludeDirectory) { $Params.ExcludeDirectory = @($B.excludeDirectory).ForEach({ [string]$_ }) }
+    }
+
+    try {
+        $Result = @(Invoke-PlayerCharacterPUAssignment @Params)
+        Clear-ParseCaches
+        # PU assignment may write entities, sessions, and refresh graphs; bump all three.
+        Invoke-SidecarInvalidation -Domain 'entity'
+        Invoke-SidecarInvalidation -Domain 'session'
+        Invoke-SidecarInvalidation -Domain 'graph'
+        return @{
+            StatusCode = 200
+            Body       = @{ count = $Result.Count; items = $Result }
+        }
+    } catch {
+        return @{ StatusCode = 422; Body = @{ error = $_.Exception.Message } }
     }
 }
 

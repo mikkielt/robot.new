@@ -75,8 +75,13 @@ Player endpoints:
 |---|---|---|---|
 | GET | `/players` | `Invoke-ApiGetPlayers` | List all players |
 | GET | `/players/:name` | `Invoke-ApiGetPlayer` | Single player with characters |
+| GET | `/players/:name/pu-preview` | `Invoke-ApiGetCharacterPuPreview` | Starting-PU preview for a new character on this player |
+| GET | `/players/:name/characters/:character` | `Invoke-ApiGetCharacter` | Single character with merged temporal state (`?includeState`, `?activeOn`, `?includeDeleted`) |
 | POST | `/players` | `Invoke-ApiCreatePlayer` | Create player |
+| PUT | `/players/:name` | `Invoke-ApiUpdatePlayer` | Update MargonemID, PRF webhook, triggers, aliases, status (omitted fields preserved) |
 | POST | `/players/:name/characters` | `Invoke-ApiCreateCharacter` | Create player character |
+| PUT | `/players/:name/characters/:character` | `Invoke-ApiUpdateCharacter` | Update PU, reputation, profile, status (PU fields: omitted or null preserves existing) |
+| DELETE | `/players/:name/characters/:character` | `Invoke-ApiDeleteCharacter` | Soft-delete character (`?validFrom=YYYY-MM`) |
 
 Location endpoints:
 
@@ -103,9 +108,11 @@ Session endpoints:
 |---|---|---|---|
 | GET | `/sessions` | `Invoke-ApiGetSessions` | List sessions |
 | POST | `/sessions` | `Invoke-ApiCreateSession` | Create session (single or batch) |
+| PUT | `/sessions` | `Invoke-ApiUpdateSession` | Update existing session identified by body `{date, file}` (metadata arrays are full-replace; Gen2/Gen3 → Gen4 requires `upgradeFormat=true`) |
 | GET | `/session-graph/entity/:name` | `Invoke-ApiGetEntityProfile` | Participation profile |
-| GET | `/session-graph/compare` | `Invoke-ApiCompareParticipation` | Overlap analysis |
+| GET | `/session-graph/compare` | `Invoke-ApiCompareParticipation` | Overlap analysis — `?entities=A,B,C` accepts N entities (comma-split), returns full overlap matrix |
 | GET | `/session-graph/leaderboard` | `Invoke-ApiGetLeaderboard` | Top entities by session count |
+| GET | `/session-graph/narrator/:name` | `Invoke-ApiGetNarratorProfile` | Narrator session profile: count, date range, participant breakdown, average party size (`?minDate`, `?maxDate`, `?minTier`) |
 
 Currency and economy endpoints:
 
@@ -114,15 +121,30 @@ Currency and economy endpoints:
 | GET | `/currency` | `Invoke-ApiGetCurrency` | Currency holdings |
 | GET | `/economy/snapshot` | `Invoke-ApiGetEconomicSnapshot` | Supply, Gini, top holders |
 | GET | `/economy/timeline` | `Invoke-ApiGetEconomicTimeline` | Monthly trends |
+| GET | `/economy/materialization` | `Invoke-ApiGetMaterializationReport` | Physical/virtual currency split, per-player holdings, orphaned funds (`?activeOn`) |
 | GET | `/transactions` | `Invoke-ApiGetTransactions` | Transaction ledger |
 | POST | `/currency` | `Invoke-ApiCreateCurrency` | Create holding |
 | PUT | `/currency/:name` | `Invoke-ApiUpdateCurrency` | Update amount |
+| DELETE | `/currency/:name` | `Invoke-ApiDeleteCurrency` | Soft-delete currency entity (attaches `warning` field when balance is non-zero) |
+
+Items endpoints:
+
+| Method | Path | Handler | Description |
+|---|---|---|---|
+| GET | `/items` | `Invoke-ApiGetItems` | List Przedmiot entities with owner (Physical/Virtual/Unknown), location, quantity, currency classification (`?owner`, `?location`, `?name`, `?includeInactive`, `?includeDeleted`, `?includeCurrency`, `?activeOn`) |
+| GET | `/items/:name` | `Invoke-ApiGetItem` | Single Przedmiot entity (exact name match, case-insensitive); returns 404 when no exact match |
+
+PU endpoints:
+
+| Method | Path | Handler | Description |
+|---|---|---|---|
+| GET | `/pu/voting-eligibility` | `Invoke-ApiGetVotingEligibility` | Players above PU threshold over a recent window (`?months` default 6, `?minPU` default 3.0) — pure computation off `pu-sessions.json` |
 
 Name resolution, validation, report, and workflow endpoints:
 
 | Method | Path | Handler | Description |
 |---|---|---|---|
-| GET | `/resolve/:name` | `Invoke-ApiResolveName` | Resolve name to entity or player |
+| GET | `/resolve/:name` | `Invoke-ApiResolveName` | Resolve name to entity or player (`?ownerType=Player\|NPC\|Grupa\|Lokacja`, `?topN=1-20`, `?noFuzzy=true`) |
 | POST | `/resolve/batch` | `Invoke-ApiResolveBatch` | Batch resolve names with scope-gated enrichment |
 | GET | `/name-index/lookup/:token` | `Invoke-ApiGetNameIndexLookup` | Raw name-index entry (Stage 1 exact, optional Stage 2 stem candidates via `?includeStems=true`) — diagnostic, does not run Stage 3 fuzzy |
 | GET | `/validate/pu` | `Invoke-ApiValidatePU` | PU assignment validation |
@@ -141,6 +163,8 @@ Name resolution, validation, report, and workflow endpoints:
 | POST | `/workflow/session-graph` | `Invoke-ApiRebuildGraph` | Rebuild session graph index |
 | POST | `/workflow/session-hash` | `Invoke-ApiRebuildHashes` | Update session content hashes |
 | POST | `/workflow/name-index` | `Invoke-ApiRebuildNameIndex` | Force-rebuild the cached name index (clears parse caches, returns build stats) |
+| POST | `/workflow/log-fetch` | `Invoke-ApiRunLogFetch` | Fetch missing session logs sequentially with retries and `.failed` markers (rate-limited 5/min/IP); body honors `minDate`, `maxDate`, `delayMs`, `maxRetries`, `retryDelayMs`, `retryFailed`, `logDirectory` |
+| POST | `/workflow/pu-assignment` | `Invoke-ApiRunPuAssignment` | Run monthly PU assignment (rate-limited 1/min/IP); fail-early on unresolved character names; opt-in flags `updatePlayerCharacters`, `sendToDiscord`, `appendToLog`, `reconcileCurrency` |
 
 Analytics endpoints (PU-centric and cross-cutting aggregations over a date window). All accept the standard `filter`/`sort`/`fields`/`page[size]`/`page[after]` query envelope via `ApiQueryParser`. Most are cacheable with `entity`/`session` domain fingerprints; see the Response Cache table.
 
@@ -210,14 +234,14 @@ Scope matching rules (implemented in `ApiMiddleware.HasScope`):
 | Scope | Routes |
 |---|---|
 | _(none)_ | Static: /health, /routes, /metrics, /schema, /help, /help/:component; SSE: /events; GET /dashboard, /auth/whoami |
-| `entity:read` | GET /entities, /entities/:name, /entity-state, /entities/:name/history, /entities/:name/delta, /resolve/:name, /name-index/lookup/:token, /currency, /economy/snapshot, /economy/timeline, /transactions, /locations, /locations/:name, /locations/:name/contents, /maps, /analytics/location-graph/metrics, /analytics/resolution/quality, /analytics/metadata/coverage; POST /resolve/batch |
-| `entity:write` | POST /entities, PUT /entities/:name, DELETE /entities/:name, POST /currency, PUT /currency/:name, POST /locations, PUT /locations/:name, DELETE /locations/:name, POST /maps, PUT /maps/:name |
-| `player:read` | GET /players, /players/:name |
-| `player:write` | POST /players, POST /players/:name/characters |
-| `session:read` | GET /sessions, /session-graph/entity/:name, /session-graph/compare, /session-graph/leaderboard, /files, /files/tree, /analytics/pu/by-character, /analytics/pu/by-location, /analytics/pu/timeline, /analytics/pu/by-narrator, /analytics/co-engagement, /analytics/character-territory/:name, /analytics/entity-lifecycle, /analytics/logs/speaker-leaderboard, /analytics/logs/channel-mix, /analytics/logs/coverage; POST /parse/log, /logs/fetch, /logs/parse, /parse/session-preview |
-| `session:write` | POST /sessions |
+| `entity:read` | GET /entities, /entities/:name, /entity-state, /entities/:name/history, /entities/:name/delta, /resolve/:name, /name-index/lookup/:token, /currency, /economy/snapshot, /economy/timeline, /economy/materialization, /transactions, /items, /items/:name, /locations, /locations/:name, /locations/:name/contents, /maps, /analytics/location-graph/metrics, /analytics/resolution/quality, /analytics/metadata/coverage; POST /resolve/batch |
+| `entity:write` | POST /entities, PUT /entities/:name, DELETE /entities/:name, POST /currency, PUT /currency/:name, DELETE /currency/:name, POST /locations, PUT /locations/:name, DELETE /locations/:name, POST /maps, PUT /maps/:name |
+| `player:read` | GET /players, /players/:name, /players/:name/characters/:character, /players/:name/pu-preview |
+| `player:write` | POST /players, PUT /players/:name, POST /players/:name/characters, PUT /players/:name/characters/:character, DELETE /players/:name/characters/:character |
+| `session:read` | GET /sessions, /session-graph/entity/:name, /session-graph/compare, /session-graph/leaderboard, /session-graph/narrator/:name, /pu/voting-eligibility, /files, /files/tree, /analytics/pu/by-character, /analytics/pu/by-location, /analytics/pu/timeline, /analytics/pu/by-narrator, /analytics/co-engagement, /analytics/character-territory/:name, /analytics/entity-lifecycle, /analytics/logs/speaker-leaderboard, /analytics/logs/channel-mix, /analytics/logs/coverage; POST /parse/log, /logs/fetch, /logs/parse, /parse/session-preview |
+| `session:write` | POST /sessions, PUT /sessions |
 | `admin:read` | GET /validate/\*, /reports/\*, /analytics/integrity/trends |
-| `admin:write` | POST /workflow/\* |
+| `admin:write` | POST /workflow/\* (includes /workflow/log-fetch and /workflow/pu-assignment, both per-IP rate-limited) |
 | `auth:manage` | POST /auth/token, DELETE /auth/token/:name, GET /auth/status |
 
 ## Token Management
@@ -580,8 +604,11 @@ Cacheable routes are registered via `AddCacheableRoute` with a `cacheKey` (sidec
 |---|---|---|
 | `GET /entity-state` | `entity-state` | entity, session |
 | `GET /session-graph/leaderboard` | `leaderboard` | graph |
+| `GET /session-graph/narrator/:name` | `narrator-profile` | session |
 | `GET /economy/snapshot` | `economy-snapshot` | entity, session |
 | `GET /economy/timeline` | `economy-timeline` | entity, session |
+| `GET /economy/materialization` | `economy-materialization` | entity, session |
+| `GET /items` | `items` | entity |
 | `GET /reports/dormancy` | `dormancy` | entity, graph |
 | `GET /reports/frequency` | `frequency` | session |
 | `GET /reports/narrators` | `narrators` | session |
@@ -614,7 +641,7 @@ Invalidation: each write handler calls `Invoke-SidecarInvalidation -Domain <doma
 
 The API exposes self-documenting endpoint help via the `ApiHelpRegistry` and two static routes.
 
-Sidecar files: 17 `*.help.json` files in `plugins/robot-api/help/`, one per component. Each file contains:
+Sidecar files: 20 `*.help.json` files in `plugins/robot-api/help/`, one per component (includes `items.help.json` and `pu.help.json` added with the corresponding endpoint families). Each file contains:
 - `component` — component name (e.g. "entities", "sessions", "cli")
 - Bilingual content blocks under `pl` and `en` keys
 - Three structural variants: `endpoints` array (API components), `zones` object (editor), `categories` object (CLI)
@@ -642,15 +669,15 @@ plugins/robot-api/
 +-- private/
 |   +-- api-routes.ps1               # Route registration (static + dynamic + cacheable)
 |   +-- api-worker.ps1               # RunspacePool worker threads
-|   +-- api-handlers-read.ps1        # 40+ read handlers + Invoke-ApiObjectListQuery + Invoke-ApiParseLogEnriched
-|   +-- api-handlers-write.ps1       # 15 write handlers + 1 cache invalidation helper
+|   +-- api-handlers-read.ps1        # 47+ read handlers + Invoke-ApiObjectListQuery + Invoke-ApiParseLogEnriched
+|   +-- api-handlers-write.ps1       # 22 write handlers + 1 cache invalidation helper
 |   +-- api-handlers-analytics.ps1   # 14 analytics handlers (PU-centric + cross-cutting)
 |   +-- api-handlers-auth.ps1        # Auth token API handlers (4 handlers)
 |   +-- api-handlers-dashboard.ps1   # Dashboard SPA endpoint handler
 |   +-- api-handlers-events.ps1      # SSE broadcast hook handler
 |   +-- api-token-helpers.ps1        # Token file I/O and generation helpers
-+-- help/                            # Sidecar help files (*.help.json) — 18 components
-|   +-- entities.help.json           # (plus analytics, auth, cli, currency, economy, editor, etc.)
++-- help/                            # Sidecar help files (*.help.json) — 20 components
+|   +-- entities.help.json           # (plus analytics, auth, cli, currency, economy, editor, items, pu, etc.)
 +-- cli/
 |   +-- cli-wf-robot-api.ps1         # CLI workflow functions (start/stop/status)
 +-- tests/
@@ -685,7 +712,7 @@ Plugin config (`plugin.psd1`) with environment variable overrides:
 
 ## Testing
 
-Test files: `api-router.Tests.ps1` (15 tests — route matching, static route O(1) lookup, RouteMatch QueryParams property), `api-middleware.Tests.ps1` (25 tests — auth, CORS, rate limiting, scope matching, read-only mode), `api-query.Tests.ps1` (37 tests), `api-dictionary.Tests.ps1` (28 tests), `api-server.Tests.ps1` (20 tests — server lifecycle, concurrent requests, rate limit, shutdown, cache version), `api-handlers.Tests.ps1` (per-handler tests with mock ApiContext), `api-handlers-session.Tests.ps1` (session creation single and batch modes + `/parse/log` + `/logs/parse`), `api-worker.Tests.ps1` (10 tests — worker pool lifecycle, concurrent processing, cache version propagation), `api-token-helpers.Tests.ps1` (9 tests — token file I/O and generation), `api-token-management.Tests.ps1` (6 tests — New/Remove/Get-RobotApiToken), `api-help-registry.Tests.ps1` (17 tests — load/components, language filtering, include filtering, content validation across all 18 help components), `api-pagination-analytics.Tests.ps1` (30 tests — generic list query envelope, RSQL filter/sort/pagination on non-Entity collections, analytics handler smoke tests)
+Test files: `api-router.Tests.ps1` (15 tests — route matching, static route O(1) lookup, RouteMatch QueryParams property), `api-middleware.Tests.ps1` (25 tests — auth, CORS, rate limiting, scope matching, read-only mode), `api-query.Tests.ps1` (37 tests), `api-dictionary.Tests.ps1` (28 tests), `api-server.Tests.ps1` (20 tests — server lifecycle, concurrent requests, rate limit, shutdown, cache version), `api-handlers.Tests.ps1` (per-handler tests with mock ApiContext — covers the entity, currency, player, character, session, items, materialization, narrator-profile, voting-eligibility, workflow log-fetch, workflow pu-assignment, name-resolution parameter-forwarding, and SSE broadcast handlers), `api-handlers-session.Tests.ps1` (session creation single and batch modes + `/parse/log` + `/logs/parse`), `api-worker.Tests.ps1` (10 tests — worker pool lifecycle, concurrent processing, cache version propagation), `api-token-helpers.Tests.ps1` (9 tests — token file I/O and generation), `api-token-management.Tests.ps1` (6 tests — New/Remove/Get-RobotApiToken), `api-help-registry.Tests.ps1` (17 tests — load/components, language filtering, include filtering, content validation across all 20 help components), `api-pagination-analytics.Tests.ps1` (30 tests — generic list query envelope, RSQL filter/sort/pagination on non-Entity collections, analytics handler smoke tests)
 
 All tests use the `PSTypeName` guard pattern to skip if C# types are not compiled.
 

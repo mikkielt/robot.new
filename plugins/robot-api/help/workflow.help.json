@@ -114,6 +114,72 @@
       "en": {
         "description": "Force-rebuilds the cached name index. Clears the in-memory parse caches (Clear-ParseCaches), builds a fresh index, and returns build stats: token count, stem count, ambiguous entry count, and build duration. The endpoint accepts no request body."
       }
+    },
+    {
+      "method": "POST",
+      "path": "/workflow/log-fetch",
+      "handler": "Invoke-ApiRunLogFetch",
+      "scope": "admin:write",
+      "pl": {
+        "description": "Pobiera brakujące logi sesji sekwencyjnie z opóźnieniem i retry. Honoruje markery .failed (chyba że retryFailed=true). Synchroniczny — duże repozytoria mogą trwać minutami. Limit: 5/min/IP.",
+        "bodyFields": [
+          { "name": "minDate", "required": false, "type": "string", "format": "date", "description": "Najwcześniejsza data sesji do uwzględnienia." },
+          { "name": "maxDate", "required": false, "type": "string", "format": "date", "description": "Najpóźniejsza data sesji." },
+          { "name": "delayMs", "required": false, "type": "integer", "default": 500, "description": "Opóźnienie między żądaniami HTTP (ms)." },
+          { "name": "maxRetries", "required": false, "type": "integer", "default": 2, "description": "Maksymalna liczba prób dla błędów retry-able." },
+          { "name": "retryDelayMs", "required": false, "type": "integer", "default": 2000, "description": "Bazowe opóźnienie retry (ms); rośnie wykładniczo." },
+          { "name": "retryFailed", "required": false, "type": "boolean", "default": false, "description": "Jeśli true, próbuje pobrać URL-e z markerami .failed." },
+          { "name": "logDirectory", "required": false, "type": "string", "description": "Niestandardowy katalog logów (domyślnie res/logs/)." }
+        ]
+      },
+      "en": {
+        "description": "Sequentially fetches missing session logs with delay and retry. Honors .failed markers (unless retryFailed=true). Synchronous — large repos may take minutes. Rate limit: 5/min/IP.",
+        "bodyFields": [
+          { "name": "minDate", "required": false, "type": "string", "format": "date", "description": "Earliest session date to include." },
+          { "name": "maxDate", "required": false, "type": "string", "format": "date", "description": "Latest session date." },
+          { "name": "delayMs", "required": false, "type": "integer", "default": 500, "description": "Per-request HTTP delay (ms)." },
+          { "name": "maxRetries", "required": false, "type": "integer", "default": 2, "description": "Maximum retry attempts for retry-able errors." },
+          { "name": "retryDelayMs", "required": false, "type": "integer", "default": 2000, "description": "Base retry delay (ms); grows exponentially." },
+          { "name": "retryFailed", "required": false, "type": "boolean", "default": false, "description": "If true, retries URLs with existing .failed markers." },
+          { "name": "logDirectory", "required": false, "type": "string", "description": "Custom log directory (default res/logs/)." }
+        ]
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/workflow/pu-assignment",
+      "handler": "Invoke-ApiRunPuAssignment",
+      "scope": "admin:write",
+      "pl": {
+        "description": "Uruchamia miesięczne przypisanie PU dla postaci graczy. Fail-early — jeśli jakakolwiek nazwa postaci nie zostanie rozwiązana, żadne zapisy nie zostaną wykonane. Flagi (updatePlayerCharacters, sendToDiscord, appendToLog, reconcileCurrency) są opt-in. Limit: 1/min/IP.",
+        "bodyFields": [
+          { "name": "year", "required": false, "type": "integer", "description": "Rok docelowy (priorytet nad minDate/maxDate)." },
+          { "name": "month", "required": false, "type": "integer", "description": "Miesiąc docelowy (1-12)." },
+          { "name": "minDate", "required": false, "type": "string", "format": "date", "description": "Początek zakresu (gdy year/month nie podano)." },
+          { "name": "maxDate", "required": false, "type": "string", "format": "date", "description": "Koniec zakresu." },
+          { "name": "playerName", "required": false, "type": "array", "description": "Filtr do podanych graczy (zamiast wszystkich)." },
+          { "name": "updatePlayerCharacters", "required": false, "type": "boolean", "default": false, "description": "Zapisuje PU do plików postaci. Wymaga ostrożności — pisze do entities.md." },
+          { "name": "sendToDiscord", "required": false, "type": "boolean", "default": false, "description": "Wysyła powiadomienia do webhooków graczy." },
+          { "name": "appendToLog", "required": false, "type": "boolean", "default": false, "description": "Dopisuje uruchomienie do pu-sessions.json." },
+          { "name": "reconcileCurrency", "required": false, "type": "boolean", "default": false, "description": "Uruchamia Test-CurrencyReconciliation po przypisaniu." },
+          { "name": "excludeDirectory", "required": false, "type": "array", "description": "Katalogi do pominięcia podczas skanowania sesji." }
+        ]
+      },
+      "en": {
+        "description": "Runs monthly PU assignment for player characters. Fail-early — if any character name does not resolve, no writes happen. Flags (updatePlayerCharacters, sendToDiscord, appendToLog, reconcileCurrency) are opt-in. Rate limit: 1/min/IP.",
+        "bodyFields": [
+          { "name": "year", "required": false, "type": "integer", "description": "Target year (overrides minDate/maxDate)." },
+          { "name": "month", "required": false, "type": "integer", "description": "Target month (1-12)." },
+          { "name": "minDate", "required": false, "type": "string", "format": "date", "description": "Range start (if year/month not given)." },
+          { "name": "maxDate", "required": false, "type": "string", "format": "date", "description": "Range end." },
+          { "name": "playerName", "required": false, "type": "array", "description": "Restrict to listed players." },
+          { "name": "updatePlayerCharacters", "required": false, "type": "boolean", "default": false, "description": "Persists PU to character files. Use with care — writes entities.md." },
+          { "name": "sendToDiscord", "required": false, "type": "boolean", "default": false, "description": "Sends notifications to player webhooks." },
+          { "name": "appendToLog", "required": false, "type": "boolean", "default": false, "description": "Appends the run to pu-sessions.json." },
+          { "name": "reconcileCurrency", "required": false, "type": "boolean", "default": false, "description": "Runs Test-CurrencyReconciliation after assignment." },
+          { "name": "excludeDirectory", "required": false, "type": "array", "description": "Directories to exclude from session scan." }
+        ]
+      }
     }
   ]
 }
