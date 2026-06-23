@@ -386,6 +386,10 @@ function Register-AllApiRoutes {
         'Fetch raw log content by URLs (disk cache then HTTP)', 200, 'session:read')
     $HandlerMap['Invoke-ApiFetchLogContent'] = $true
 
+    $Router.AddRoute('POST', '/logs/parse', 'Invoke-ApiParseLogEnriched',
+        'Fetch + parse + resolve logs in one call (urls[] or content)', 200, 'session:read')
+    $HandlerMap['Invoke-ApiParseLogEnriched'] = $true
+
     $Router.AddRoute('POST', '/parse/session-preview', 'Invoke-ApiSessionPreview',
         'Preview session markdown with name resolution', 200, 'session:read')
     $HandlerMap['Invoke-ApiSessionPreview'] = $true

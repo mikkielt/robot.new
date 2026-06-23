@@ -33,6 +33,94 @@
     },
     {
       "method": "POST",
+      "path": "/logs/parse",
+      "handler": "Invoke-ApiParseLogEnriched",
+      "scope": "session:read",
+      "pl": {
+        "description": "Pobiera, parsuje i rozwiązuje logi w jednym wywołaniu. Akceptuje listę URL-i lub surową treść; zwraca strukturę z liniami, segmentami lokacji, mówcami, kanałami oraz wzmiankami o encjach z treści wiadomości.",
+        "bodyFields": [
+          {
+            "name": "urls",
+            "required": false,
+            "type": "array",
+            "description": "Lista URL-i logów (1-50). Wykluczające się z `content`. Każdy URL jest najpierw sprawdzany w cache dyskowym, następnie pobierany przez HTTP.",
+            "examples": [["https://pastebin.com/raw/abc123"]]
+          },
+          {
+            "name": "content",
+            "required": false,
+            "type": "string",
+            "description": "Surowy tekst logu. Wykluczające się z `urls`. Użyteczne, gdy klient ma już zawartość lokalnie.",
+            "examples": ["[13:00] [Lokalny] Ivor: Cześć."]
+          },
+          {
+            "name": "resolve",
+            "required": false,
+            "type": "boolean",
+            "description": "Czy rozwiązać nazwy mówców, lokacji i wzmianek względem indeksu encji (domyślnie true). Ustaw false dla szybszego, surowego parsowania.",
+            "examples": [true]
+          },
+          {
+            "name": "activeOn",
+            "required": false,
+            "type": "string",
+            "format": "date",
+            "description": "Filtr czasowy dla aliasów — wzmianki rozwiązywane tylko jeśli ich alias jest aktywny w tej dacie. Odzwierciedla semantykę POST /resolve/batch.",
+            "examples": ["2025-06-15"]
+          },
+          {
+            "name": "includeMentions",
+            "required": false,
+            "type": "boolean",
+            "description": "Czy ekstraktować wzmianki encji z treści wiadomości (domyślnie true). Ustaw false, aby uzyskać tylko mówców i segmenty lokacji.",
+            "examples": [true]
+          }
+        ]
+      },
+      "en": {
+        "description": "Fetches, parses, and resolves logs in one call. Accepts a URL list or raw content; returns a structure with lines, location segments, speakers, channels, and in-message entity mentions.",
+        "bodyFields": [
+          {
+            "name": "urls",
+            "required": false,
+            "type": "array",
+            "description": "1-50 log URLs. Mutually exclusive with `content`. Each URL is checked against the disk cache first, then fetched via HTTP.",
+            "examples": [["https://pastebin.com/raw/abc123"]]
+          },
+          {
+            "name": "content",
+            "required": false,
+            "type": "string",
+            "description": "Raw log text. Mutually exclusive with `urls`. Useful when the client already has the content locally.",
+            "examples": ["[13:00] [Lokalny] Ivor: Hello."]
+          },
+          {
+            "name": "resolve",
+            "required": false,
+            "type": "boolean",
+            "description": "Whether to resolve speaker, location, and mention names against the entity index (defaults to true). Set false for faster raw parsing.",
+            "examples": [true]
+          },
+          {
+            "name": "activeOn",
+            "required": false,
+            "type": "string",
+            "format": "date",
+            "description": "Temporal alias filter — mentions resolve only when their alias is valid on this date. Mirrors POST /resolve/batch semantics.",
+            "examples": ["2025-06-15"]
+          },
+          {
+            "name": "includeMentions",
+            "required": false,
+            "type": "boolean",
+            "description": "Whether to extract entity mentions from message bodies (defaults to true). Set false to get only speakers and location segments.",
+            "examples": [true]
+          }
+        ]
+      }
+    },
+    {
+      "method": "POST",
       "path": "/logs/fetch",
       "handler": "Invoke-ApiFetchLogContent",
       "scope": "session:read",

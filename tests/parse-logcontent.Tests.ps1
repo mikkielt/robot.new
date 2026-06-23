@@ -513,3 +513,124 @@ Describe 'ConvertFrom-LogContent' {
         }
     }
 }
+
+# ── Resolve-MessageMentions ───────────────────────────────────────────────────
+
+Describe 'Resolve-MessageMentions' {
+    BeforeAll {
+        Import-RobotModule  # Resolve-Name lives in the module, not the dot-sourced file
+
+        # Mock NameIndex matching the real Get-NameIndex return format.
+        # Inner Index is Dictionary[string, object] keyed by lowercase token; each
+        # value carries Owner, OwnerType, Source, Priority, Ambiguous.
+        $SolmyrEntity   = [PSCustomObject]@{ Name = 'Solmyr';   Type = 'NPC' }
+        $HaartEntity    = [PSCustomObject]@{ Name = 'Lord Haart'; Type = 'NPC' }
+        $IvorEntity     = [PSCustomObject]@{ Name = 'Ivor';     Type = 'NPC' }
+        $SteadwickLoc   = [PSCustomObject]@{ Name = 'Steadwick'; Type = 'Lokacja' }
+        $HotelLoc       = [PSCustomObject]@{ Name = 'Alabastrowy Hotel'; Type = 'Lokacja' }
+
+        $InnerIndex = [System.Collections.Generic.Dictionary[string, object]]::new(
+            [System.StringComparer]::OrdinalIgnoreCase)
+        $InnerIndex['solmyr']    = [PSCustomObject]@{ Owner = $SolmyrEntity;   OwnerType = 'NPC';     Source = 'Solmyr';   Priority = 1; Ambiguous = $false }
+        $InnerIndex['lord haart'] = [PSCustomObject]@{ Owner = $HaartEntity;   OwnerType = 'NPC';     Source = 'Lord Haart'; Priority = 1; Ambiguous = $false }
+        $InnerIndex['lord']      = [PSCustomObject]@{ Owner = $HaartEntity;   OwnerType = 'NPC';     Source = 'Lord';     Priority = 2; Ambiguous = $false }
+        $InnerIndex['ivor']      = [PSCustomObject]@{ Owner = $IvorEntity;    OwnerType = 'NPC';     Source = 'Ivor';     Priority = 1; Ambiguous = $false }
+        $InnerIndex['steadwick'] = [PSCustomObject]@{ Owner = $SteadwickLoc;  OwnerType = 'Lokacja'; Source = 'Steadwick'; Priority = 1; Ambiguous = $false }
+        $InnerIndex['alabastrowy hotel'] = [PSCustomObject]@{ Owner = $HotelLoc; OwnerType = 'Lokacja'; Source = 'Alabastrowy Hotel'; Priority = 1; Ambiguous = $false }
+
+        # Stem index for declension matching: "solmyra" stems to "solmyr"
+        $InnerStemIndex = [System.Collections.Generic.Dictionary[string, System.Collections.Generic.List[string]]]::new(
+            [System.StringComparer]::OrdinalIgnoreCase)
+        $List = [System.Collections.Generic.List[string]]::new()
+        $List.Add('solmyr')
+        $InnerStemIndex['solmyr'] = $List
+
+        $script:MentionIndex = @{
+            Index     = $InnerIndex
+            StemIndex = $InnerStemIndex
+            BKTree    = $null
+        }
+    }
+
+    It 'returns empty array for empty text' {
+        $Result = Resolve-MessageMentions -Text '' -Index $script:MentionIndex
+        @($Result).Count | Should -Be 0
+    }
+
+    It 'returns empty array for whitespace-only text' {
+        $Result = Resolve-MessageMentions -Text "   `t  " -Index $script:MentionIndex
+        @($Result).Count | Should -Be 0
+    }
+
+    It 'ignores all-lowercase text (Capitalized filter)' {
+        $Result = Resolve-MessageMentions -Text 'widziałem solmyra w karczmie' -Index $script:MentionIndex
+        @($Result).Count | Should -Be 0
+    }
+
+    It 'matches a single Capitalized proper noun' {
+        $Result = Resolve-MessageMentions -Text 'Tam stał Solmyr.' -Index $script:MentionIndex
+        @($Result).Count | Should -Be 1
+        $Result[0].Resolved | Should -Be 'Solmyr'
+        $Result[0].Raw | Should -Be 'Solmyr'
+    }
+
+    It 'prefers 2-gram over 1-gram (longest-match-wins)' {
+        # "Lord" alone resolves, and "Lord Haart" also resolves — the 2-gram MUST win
+        $Result = Resolve-MessageMentions -Text 'Wszedł Lord Haart bez pukania.' -Index $script:MentionIndex
+        @($Result).Count | Should -Be 1
+        $Result[0].Resolved | Should -Be 'Lord Haart'
+        $Result[0].Raw | Should -Be 'Lord Haart'
+    }
+
+    It 'resolves declension form via Stage 2' {
+        # "Solmyra" is genitive of "Solmyr" — must hit via the stem index
+        $Result = Resolve-MessageMentions -Text 'Widziałem Solmyra w lesie.' -Index $script:MentionIndex
+        @($Result).Count | Should -Be 1
+        $Result[0].Resolved | Should -Be 'Solmyr'
+        $Result[0].Raw | Should -Be 'Solmyra'
+    }
+
+    It 'does not span a 2-gram across a sentence boundary' {
+        # Without the boundary, "Solmyr Lord" → 2-gram lookup; with it, two 1-gram lookups
+        $Result = Resolve-MessageMentions -Text 'Wszedł Solmyr. Lord Haart spał.' -Index $script:MentionIndex
+        @($Result).Count | Should -Be 2
+        $Result[0].Resolved | Should -Be 'Solmyr'
+        $Result[1].Resolved | Should -Be 'Lord Haart'
+    }
+
+    It 'extracts multiple distinct mentions in the same sentence' {
+        $Result = Resolve-MessageMentions -Text 'Solmyr i Ivor opuścili Steadwick.' -Index $script:MentionIndex
+        @($Result).Count | Should -Be 3
+        $Names = @($Result.Resolved | Sort-Object)
+        $Names | Should -Be @('Ivor', 'Solmyr', 'Steadwick')
+    }
+
+    It 'records correct Offset and Length' {
+        $Text = 'Tam stał Solmyr.'
+        $Result = Resolve-MessageMentions -Text $Text -Index $script:MentionIndex
+        $Result[0].Offset | Should -Be ($Text.IndexOf('Solmyr'))
+        $Result[0].Length | Should -Be 'Solmyr'.Length
+    }
+
+    It 'uses the shared cache for repeat resolutions' {
+        $Cache = @{}
+        $Text  = 'Solmyr przyszedł. Solmyr odszedł.'
+        $Result = Resolve-MessageMentions -Text $Text -Index $script:MentionIndex -Cache $Cache
+        @($Result).Count | Should -Be 2
+        # Cache MUST have the resolved entry keyed by query
+        $Cache.Keys.Count | Should -BeGreaterThan 0
+    }
+
+    It 'matches a 2-gram entity with Polish diacritics' {
+        $Result = Resolve-MessageMentions -Text 'Spotkanie w Alabastrowy Hotel jutro.' -Index $script:MentionIndex
+        @($Result).Count | Should -Be 1
+        $Result[0].Resolved | Should -Be 'Alabastrowy Hotel'
+    }
+
+    It 'returns empty for capitalized words that do not resolve (NoFuzzy)' {
+        # "Karczmie" is capitalized but not in the index — fuzzy is disabled so no match
+        $Result = Resolve-MessageMentions -Text 'Wszedł do Karczmie.' -Index $script:MentionIndex
+        @($Result).Count | Should -Be 0
+    }
+}
+

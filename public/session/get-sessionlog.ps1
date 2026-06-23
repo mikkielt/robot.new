@@ -65,7 +65,10 @@ function Get-SessionLog {
         [int]$DelayMs = 500,
 
         [Parameter(HelpMessage = "Read only from disk cache, no HTTP requests")]
-        [switch]$SkipFetch
+        [switch]$SkipFetch,
+
+        [Parameter(HelpMessage = "Skip in-message entity mention extraction (Mentions/MentionsByLine fields)")]
+        [switch]$SkipMentions
     )
 
     begin {
@@ -155,112 +158,13 @@ function Get-SessionLog {
                 if ($null -eq $Content -or $Content.Length -eq 0) { continue }
 
                 $Parsed = ConvertFrom-LogContent -Content $Content
-
-                # Track per-speaker line indices for participation frequency analysis
-                $SpeakerMap = [System.Collections.Generic.Dictionary[string, System.Collections.Generic.List[int]]]::new(
-                    [System.StringComparer]::OrdinalIgnoreCase)
-
-                # Channel tracking (ChatLog format only — Prose has no channel concept)
-                $ChannelMap = [System.Collections.Generic.Dictionary[string, System.Collections.Generic.List[int]]]::new(
-                    [System.StringComparer]::OrdinalIgnoreCase)
-
-                foreach ($Line in $Parsed.Lines) {
-                    if ($null -ne $Line.Speaker -and $Line.Speaker.Length -gt 0) {
-                        if (-not $SpeakerMap.ContainsKey($Line.Speaker)) {
-                            $SpeakerMap[$Line.Speaker] = [System.Collections.Generic.List[int]]::new()
-                        }
-                        $SpeakerMap[$Line.Speaker].Add($Line.Index)
-                    }
-
-                    if ($null -ne $Line.Channel -and $Line.Channel.Length -gt 0) {
-                        if (-not $ChannelMap.ContainsKey($Line.Channel)) {
-                            $ChannelMap[$Line.Channel] = [System.Collections.Generic.List[int]]::new()
-                        }
-                        $ChannelMap[$Line.Channel].Add($Line.Index)
-                    }
-                }
-
-                # 4-stage name resolution: exact > stem > fuzzy > BK-tree
-                $Speakers = [System.Collections.Generic.List[PSCustomObject]]::new()
-                foreach ($Entry in $SpeakerMap.GetEnumerator()) {
-                    $Resolved = $null
-                    $Stage = $null
-
-                    if ($null -ne $Index) {
-                        $ResolveParams = @{ Query = $Entry.Key }
-                        if ($Index.ContainsKey('Index'))     { $ResolveParams['Index']     = $Index['Index'] }
-                        if ($Index.ContainsKey('StemIndex')) { $ResolveParams['StemIndex'] = $Index['StemIndex'] }
-                        if ($Index.ContainsKey('BKTree'))    { $ResolveParams['BKTree']    = $Index['BKTree'] }
-                        if ($null -ne $Cache) { $ResolveParams['Cache'] = $Cache }
-                        $ResolveResult = Resolve-Name @ResolveParams
-                        if ($null -ne $ResolveResult) {
-                            $Resolved = $ResolveResult.Name
-                            $Stage = $ResolveResult.Stage
-                        }
-                    }
-
-                    $Speakers.Add([PSCustomObject]@{
-                        Raw       = $Entry.Key
-                        Resolved  = $Resolved
-                        Stage     = $Stage
-                        Lines     = [int[]]$Entry.Value.ToArray()
-                        LineCount = $Entry.Value.Count
-                    })
-                }
-
-                # Channel aggregation only emitted for ChatLog format
-                $Channels = $null
-                if ($Parsed.Format -eq 'ChatLog' -and $ChannelMap.Count -gt 0) {
-                    $Channels = [System.Collections.Generic.List[PSCustomObject]]::new()
-                    foreach ($Entry in $ChannelMap.GetEnumerator()) {
-                        $Channels.Add([PSCustomObject]@{
-                            Name      = $Entry.Key
-                            Lines     = [int[]]$Entry.Value.ToArray()
-                            LineCount = $Entry.Value.Count
-                        })
-                    }
-                    $Channels = [PSCustomObject[]]$Channels.ToArray()
-                }
-
-                # Resolve location segment headers against entity registry.
-                # LocationSegment is a C# class with Resolved/Stage fields when on the
-                # compiled path; PSCustomObject with Add-Member on the PS fallback path.
-                $LocationSegments = $Parsed.LocationSegments
-                if ($null -ne $Index -and $null -ne $LocationSegments) {
-                    $IsCompiledPath = ([System.Management.Automation.PSTypeName]'Robot.LogParser').Type
-                    for ($i = 0; $i -lt $LocationSegments.Count; $i++) {
-                        $Seg = $LocationSegments[$i]
-                        $ResolveParams = @{ Query = $Seg.Raw }
-                        if ($Index.ContainsKey('Index'))     { $ResolveParams['Index']     = $Index['Index'] }
-                        if ($Index.ContainsKey('StemIndex')) { $ResolveParams['StemIndex'] = $Index['StemIndex'] }
-                        if ($Index.ContainsKey('BKTree'))    { $ResolveParams['BKTree']    = $Index['BKTree'] }
-                        if ($null -ne $Cache) { $ResolveParams['Cache'] = $Cache }
-                        $ResolveResult = Resolve-Name @ResolveParams
-                        if ($IsCompiledPath) {
-                            # C# class: direct field assignment (no boxing issues)
-                            $Seg.Resolved = if ($null -ne $ResolveResult) { $ResolveResult.Name } else { $null }
-                            $Seg.Stage    = if ($null -ne $ResolveResult) { $ResolveResult.Stage } else { $null }
-                        } else {
-                            # PS fallback: PSCustomObject needs Add-Member
-                            if ($null -ne $ResolveResult) {
-                                $Seg | Add-Member -NotePropertyName 'Resolved' -NotePropertyValue $ResolveResult.Name -Force
-                                $Seg | Add-Member -NotePropertyName 'Stage' -NotePropertyValue $ResolveResult.Stage -Force
-                            } else {
-                                $Seg | Add-Member -NotePropertyName 'Resolved' -NotePropertyValue $null -Force
-                                $Seg | Add-Member -NotePropertyName 'Stage' -NotePropertyValue $null -Force
-                            }
-                        }
-                    }
-                }
-
-                $LogObjects.Add([PSCustomObject]@{
-                    Url              = $NormalizedUrl
-                    Format           = $Parsed.Format
-                    Lines            = $Parsed.Lines
-                    LocationSegments = $LocationSegments
-                    Speakers         = [PSCustomObject[]]$Speakers.ToArray()
-                    Channels         = $Channels
-                })
+                $LogObject = New-ResolvedLogObject `
+                    -Url $NormalizedUrl `
+                    -Parsed $Parsed `
+                    -Index $Index `
+                    -Cache $Cache `
+                    -SkipMentions:$SkipMentions
+                $LogObjects.Add($LogObject)
             }
 
             if ($LogObjects.Count -gt 0) {

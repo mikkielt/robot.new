@@ -140,12 +140,32 @@ Name resolution, validation, report, and workflow endpoints:
 | POST | `/workflow/session-graph` | `Invoke-ApiRebuildGraph` | Rebuild session graph index |
 | POST | `/workflow/session-hash` | `Invoke-ApiRebuildHashes` | Update session content hashes |
 
+Analytics endpoints (PU-centric and cross-cutting aggregations over a date window). All accept the standard `filter`/`sort`/`fields`/`page[size]`/`page[after]` query envelope via `ApiQueryParser`. Most are cacheable with `entity`/`session` domain fingerprints; see the Response Cache table.
+
+| Method | Path | Handler | Description |
+|---|---|---|---|
+| GET | `/analytics/pu/by-character` | `Invoke-ApiAnalyticsPuByCharacter` | PU aggregation per character over a date window |
+| GET | `/analytics/pu/by-location` | `Invoke-ApiAnalyticsPuByLocation` | PU aggregation per location over a date window |
+| GET | `/analytics/pu/timeline` | `Invoke-ApiAnalyticsPuTimeline` | Monthly/weekly PU velocity per character |
+| GET | `/analytics/pu/by-narrator` | `Invoke-ApiAnalyticsPuByNarrator` | PU statistics per narrator (count, sum, avg) |
+| GET | `/analytics/co-engagement` | `Invoke-ApiAnalyticsCoEngagement` | Top character pairs by session co-occurrence |
+| GET | `/analytics/character-territory/:name` | `Invoke-ApiAnalyticsCharacterTerritory` | Character location footprint + adjacency density |
+| GET | `/analytics/entity-lifecycle` | `Invoke-ApiAnalyticsEntityLifecycle` | Status/group/owner/location transitions over time |
+| GET | `/analytics/location-graph/metrics` | `Invoke-ApiAnalyticsLocationGraphMetrics` | Graph metrics: degree, components, choke points |
+| GET | `/analytics/logs/speaker-leaderboard` | `Invoke-ApiAnalyticsLogsSpeakerLeaderboard` | Chat presence leaderboard from parsed logs |
+| GET | `/analytics/logs/channel-mix` | `Invoke-ApiAnalyticsLogsChannelMix` | ChatLog channel breakdown (secrecy density) |
+| GET | `/analytics/logs/coverage` | `Invoke-ApiAnalyticsLogsCoverage` | Log fetch coverage / health stats |
+| GET | `/analytics/resolution/quality` | `Invoke-ApiAnalyticsResolutionQuality` | Name index health: ambiguity, stem collisions, stage distribution |
+| GET | `/analytics/integrity/trends` | `Invoke-ApiAnalyticsIntegrityTrends` | Integrity check trends over time |
+| GET | `/analytics/metadata/coverage` | `Invoke-ApiAnalyticsMetadataCoverage` | Metadata coverage report (IsExterior, slugs, etc.) |
+
 Parse, file, and dashboard endpoints:
 
 | Method | Path | Handler | Description |
 |---|---|---|---|
 | POST | `/parse/log` | `Invoke-ApiParseLog` | Parse raw log text into structured data |
 | POST | `/logs/fetch` | `Invoke-ApiFetchLogContent` | Fetch raw log content by URLs (disk cache then HTTP) |
+| POST | `/logs/parse` | `Invoke-ApiParseLogEnriched` | Combined fetch + parse + resolve (urls[] or content) — returns Speakers/Channels/LocationSegments/Mentions in one call |
 | POST | `/parse/session-preview` | `Invoke-ApiSessionPreview` | Preview session markdown with name resolution |
 | GET | `/files` | `Invoke-ApiGetFiles` | List .md file paths for autocomplete |
 | GET | `/files/tree` | `Invoke-ApiGetFilesTree` | Directory tree of .md files for path navigation |
@@ -188,13 +208,13 @@ Scope matching rules (implemented in `ApiMiddleware.HasScope`):
 | Scope | Routes |
 |---|---|
 | _(none)_ | Static: /health, /routes, /metrics, /schema, /help, /help/:component; SSE: /events; GET /dashboard, /auth/whoami |
-| `entity:read` | GET /entities, /entities/:name, /entity-state, /entities/:name/history, /entities/:name/delta, /resolve/:name, /currency, /economy/snapshot, /economy/timeline, /transactions, /locations, /locations/:name, /locations/:name/contents, /maps; POST /resolve/batch |
+| `entity:read` | GET /entities, /entities/:name, /entity-state, /entities/:name/history, /entities/:name/delta, /resolve/:name, /currency, /economy/snapshot, /economy/timeline, /transactions, /locations, /locations/:name, /locations/:name/contents, /maps, /analytics/location-graph/metrics, /analytics/resolution/quality, /analytics/metadata/coverage; POST /resolve/batch |
 | `entity:write` | POST /entities, PUT /entities/:name, DELETE /entities/:name, POST /currency, PUT /currency/:name, POST /locations, PUT /locations/:name, DELETE /locations/:name, POST /maps, PUT /maps/:name |
 | `player:read` | GET /players, /players/:name |
 | `player:write` | POST /players, POST /players/:name/characters |
-| `session:read` | GET /sessions, /session-graph/entity/:name, /session-graph/compare, /session-graph/leaderboard, /files, /files/tree; POST /parse/log, /logs/fetch, /parse/session-preview |
+| `session:read` | GET /sessions, /session-graph/entity/:name, /session-graph/compare, /session-graph/leaderboard, /files, /files/tree, /analytics/pu/by-character, /analytics/pu/by-location, /analytics/pu/timeline, /analytics/pu/by-narrator, /analytics/co-engagement, /analytics/character-territory/:name, /analytics/entity-lifecycle, /analytics/logs/speaker-leaderboard, /analytics/logs/channel-mix, /analytics/logs/coverage; POST /parse/log, /logs/fetch, /logs/parse, /parse/session-preview |
 | `session:write` | POST /sessions |
-| `admin:read` | GET /validate/\*, /reports/\* |
+| `admin:read` | GET /validate/\*, /reports/\*, /analytics/integrity/trends |
 | `admin:write` | POST /workflow/\* |
 | `auth:manage` | POST /auth/token, DELETE /auth/token/:name, GET /auth/status |
 
@@ -403,7 +423,7 @@ Response envelope:
 
 `Robot.ApiSseManager` (`lib/ApiSseManager.cs`) — Thread-safe Server-Sent Events manager using `ConcurrentDictionary<long, SseClient>` keyed by monotonic client ID. Broadcasts events as JSON via `Utf8JsonWriter`. Dead client detection during broadcast (failed writes remove the client). 30-second heartbeat timer sends `: keepalive` comments to detect stale connections.
 
-`Robot.ApiQueryParser` (`lib/ApiQueryParser.cs`) — RSQL filter parser and JSON:API query parameter processor. Parses `filter` (`;` = AND groups, `,` = OR within group), `sort` (`-` prefix = descending), `fields` (sparse fieldsets), `page[size]` / `page[after]` (cursor-based pagination). Entity-specific helpers for field access, filtering, sorting, and pagination. Stateless methods — safe for concurrent RunspacePool use.
+`Robot.ApiQueryParser` (`lib/ApiQueryParser.cs`) — RSQL filter parser and JSON:API query parameter processor. Parses `filter` (`;` = AND groups, `,` = OR within group), `sort` (`-` prefix = descending), `fields` (sparse fieldsets), `page[size]` / `page[after]` (cursor-based pagination). Two helper families: `Entity`-specific (`GetEntityField`, `FilterEntities`, `SortEntities`, `PaginateEntities`) for `/entities` and `Robot.Entity[]` consumers, and **generic** (`GetObjectField`, `FilterList`, `SortList`, `PaginateList`) for arbitrary `object[]` lists. The generic accessor `GetObjectField` reflects over `IDictionary` keys, `PSObject.Properties` (without an SMA compile-time dependency), and plain CLR public instance properties — letting `Invoke-ApiObjectListQuery` apply the standard query envelope to sessions, players, currency holdings, transactions, reports, and analytics outputs without per-handler boilerplate. Filter alias resolution maps known field categories (`type`, `status`, `season`, `format`, `source`, `directive`, `ownerType`, `denomination`, `denomShort`, `tier`) through `ApiNameDictionary.ResolveCanonical` so English labels in queries match Polish canonical values in data. Stateless methods — safe for concurrent RunspacePool use. Data types: `FilterGroup` (AND-joined OR-conditions), `FilterCondition` (field/operator/value/values), `SortField` (field + descending), `PageParams` (Size 1-500, AfterCursor), `PageResult<T>` (Items, TotalCount, HasMore, NextCursor).
 
 `Robot.ApiNameDictionary` (`lib/ApiNameDictionary.cs`) — Static, thread-safe bidirectional mapping between canonical Polish domain terms and English API labels. Covers entity types (7), statuses (3), tags (14), seasons (4), denominations (3+3 short forms), session formats (4), participation sources (5), intel directives (3), and owner types (3). All lookups O(1) via `Dictionary<string, string>` with `OrdinalIgnoreCase`. Zero allocation on the hot path.
 
@@ -441,7 +461,7 @@ Worker initialization (`Start-ApiWorkerPool`):
 
 1. For each of N workers (configurable, default 8): create an isolated `System.Management.Automation.Runspaces.Runspace`
 2. Open the runspace and import the Robot module via `AddScript('Import-Module ...')`
-3. Dot-source handler files: `api-handlers-read.ps1`, `api-handlers-write.ps1`, `api-handlers-auth.ps1`, `api-handlers-dashboard.ps1`, `api-token-helpers.ps1`
+3. Dot-source handler files: `api-handlers-read.ps1`, `api-handlers-write.ps1`, `api-handlers-analytics.ps1`, `api-handlers-auth.ps1`, `api-handlers-dashboard.ps1`, `api-token-helpers.ps1`
 4. Each worker gets its own `PowerShell` instance bound to its runspace
 
 Worker dequeue loop:
@@ -565,6 +585,13 @@ Cacheable routes are registered via `AddCacheableRoute` with a `cacheKey` (sidec
 | `GET /reports/narrators` | `narrators` | session |
 | `GET /reports/location-graph` | `location-graph` | entity, session |
 | `GET /reports/pu-log` | `pu-log` | session |
+| `GET /analytics/pu/by-character` | `analytics-pu-character` | session |
+| `GET /analytics/pu/by-location` | `analytics-pu-location` | session |
+| `GET /analytics/pu/by-narrator` | `analytics-pu-narrator` | session |
+| `GET /analytics/co-engagement` | `analytics-co-engagement` | session |
+| `GET /analytics/entity-lifecycle` | `analytics-entity-lifecycle` | entity, session |
+| `GET /analytics/location-graph/metrics` | `analytics-location-graph-metrics` | entity, session |
+| `GET /analytics/metadata/coverage` | `analytics-metadata-coverage` | entity |
 
 Caching is only active for GET requests with no query string parameters (filtered or paginated requests always go through the worker pool).
 
@@ -613,14 +640,15 @@ plugins/robot-api/
 +-- private/
 |   +-- api-routes.ps1               # Route registration (static + dynamic + cacheable)
 |   +-- api-worker.ps1               # RunspacePool worker threads
-|   +-- api-handlers-read.ps1        # 40 read handlers + 1 helper
+|   +-- api-handlers-read.ps1        # 40+ read handlers + Invoke-ApiObjectListQuery + Invoke-ApiParseLogEnriched
 |   +-- api-handlers-write.ps1       # 15 write handlers + 1 cache invalidation helper
+|   +-- api-handlers-analytics.ps1   # 14 analytics handlers (PU-centric + cross-cutting)
 |   +-- api-handlers-auth.ps1        # Auth token API handlers (4 handlers)
 |   +-- api-handlers-dashboard.ps1   # Dashboard SPA endpoint handler
 |   +-- api-handlers-events.ps1      # SSE broadcast hook handler
 |   +-- api-token-helpers.ps1        # Token file I/O and generation helpers
-+-- help/                            # Sidecar help files (*.help.json) — 17 components
-|   +-- entities.help.json           # (plus auth, cli, currency, economy, editor, etc.)
++-- help/                            # Sidecar help files (*.help.json) — 18 components
+|   +-- entities.help.json           # (plus analytics, auth, cli, currency, economy, editor, etc.)
 +-- cli/
 |   +-- cli-wf-robot-api.ps1         # CLI workflow functions (start/stop/status)
 +-- tests/
@@ -635,6 +663,7 @@ plugins/robot-api/
     +-- api-token-helpers.Tests.ps1
     +-- api-token-management.Tests.ps1
     +-- api-help-registry.Tests.ps1
+    +-- api-pagination-analytics.Tests.ps1
 ```
 
 ## Configuration
@@ -654,7 +683,7 @@ Plugin config (`plugin.psd1`) with environment variable overrides:
 
 ## Testing
 
-Test files: `api-router.Tests.ps1` (15 tests — route matching, static route O(1) lookup, RouteMatch QueryParams property), `api-middleware.Tests.ps1` (25 tests — auth, CORS, rate limiting, scope matching, read-only mode), `api-query.Tests.ps1` (37 tests), `api-dictionary.Tests.ps1` (28 tests), `api-server.Tests.ps1` (20 tests — server lifecycle, concurrent requests, rate limit, shutdown, cache version), `api-handlers.Tests.ps1` (32 tests — per-handler tests with mock ApiContext), `api-handlers-session.Tests.ps1` (15 tests — session creation single and batch modes), `api-worker.Tests.ps1` (10 tests — worker pool lifecycle, concurrent processing, cache version propagation), `api-token-helpers.Tests.ps1` (9 tests — token file I/O and generation), `api-token-management.Tests.ps1` (6 tests — New/Remove/Get-RobotApiToken), `api-help-registry.Tests.ps1` (17 tests — load/components, language filtering, include filtering, content validation across all 17 help components)
+Test files: `api-router.Tests.ps1` (15 tests — route matching, static route O(1) lookup, RouteMatch QueryParams property), `api-middleware.Tests.ps1` (25 tests — auth, CORS, rate limiting, scope matching, read-only mode), `api-query.Tests.ps1` (37 tests), `api-dictionary.Tests.ps1` (28 tests), `api-server.Tests.ps1` (20 tests — server lifecycle, concurrent requests, rate limit, shutdown, cache version), `api-handlers.Tests.ps1` (per-handler tests with mock ApiContext), `api-handlers-session.Tests.ps1` (session creation single and batch modes + `/parse/log` + `/logs/parse`), `api-worker.Tests.ps1` (10 tests — worker pool lifecycle, concurrent processing, cache version propagation), `api-token-helpers.Tests.ps1` (9 tests — token file I/O and generation), `api-token-management.Tests.ps1` (6 tests — New/Remove/Get-RobotApiToken), `api-help-registry.Tests.ps1` (17 tests — load/components, language filtering, include filtering, content validation across all 18 help components), `api-pagination-analytics.Tests.ps1` (30 tests — generic list query envelope, RSQL filter/sort/pagination on non-Entity collections, analytics handler smoke tests)
 
 All tests use the `PSTypeName` guard pattern to skip if C# types are not compiled.
 

@@ -1426,6 +1426,92 @@ function Invoke-ApiParseLog {
     }
 }
 
+function Invoke-ApiParseLogEnriched {
+    <#
+        .SYNOPSIS
+        Combined fetch + parse + resolve. Accepts urls[] OR content; emits one
+        Get-SessionLog-shaped object per input log.
+
+        .DESCRIPTION
+        Single round-trip replacement for /logs/fetch -> /parse/log -> /resolve/batch.
+        New-ResolvedLogObject keeps the inline-content and URL paths in sync with
+        Get-SessionLog's emitted shape (Format, Lines, LocationSegments, Speakers,
+        Channels, Mentions, MentionsByLine).
+    #>
+    [CmdletBinding()] param(
+        [Parameter(Mandatory)] [hashtable]$ApiContext
+    )
+
+    $B = $ApiContext.Body
+    if (-not $B) {
+        return @{ StatusCode = 400; Body = @{ error = 'request body required' } }
+    }
+
+    $HasUrls    = $null -ne $B.urls    -and @($B.urls).Count -gt 0
+    $HasContent = $null -ne $B.content -and -not [string]::IsNullOrWhiteSpace([string]$B.content)
+    if ($HasUrls -and $HasContent) {
+        return @{ StatusCode = 400; Body = @{ error = 'urls and content are mutually exclusive' } }
+    }
+    if (-not $HasUrls -and -not $HasContent) {
+        return @{ StatusCode = 400; Body = @{ error = 'urls or content required' } }
+    }
+    if ($HasUrls -and @($B.urls).Count -gt 50) {
+        return @{ StatusCode = 400; Body = @{ error = 'urls must contain 1-50 entries' } }
+    }
+
+    $DoResolve  = if ($null -ne $B.resolve)         { [bool]$B.resolve }         else { $true }
+    $DoMentions = if ($null -ne $B.includeMentions) { [bool]$B.includeMentions } else { $true }
+
+    # Name index — only when resolution is requested. Mirrors the ActiveOn pattern
+    # from Invoke-ApiResolveBatch so callers can pin the alias filter to a session date.
+    $Index = $null
+    if ($DoResolve) {
+        try {
+            if ($B.activeOn) {
+                $ActiveOn = [datetime]::Parse([string]$B.activeOn)
+                $Idx = Get-NameIndex -Entities (Get-Entity -ActiveOn $ActiveOn -Quiet) -Players (Get-Player)
+            } else {
+                $Idx = Get-NameIndex -Entities (Get-Entity -Quiet) -Players (Get-Player)
+            }
+            $Index = @{ Index = $Idx.Index; StemIndex = $Idx.StemIndex; BKTree = $Idx.BKTree }
+        } catch {
+            return @{ StatusCode = 422; Body = @{ error = "Failed to build name index: $($_.Exception.Message)" } }
+        }
+    }
+    $Cache = @{}
+
+    $Items = [System.Collections.Generic.List[object]]::new()
+
+    if ($HasUrls) {
+        $Synthetic = [PSCustomObject]@{ Logs = @($B.urls) }
+        $LogParams = @{ Session = $Synthetic }
+        if ($DoResolve)        { $LogParams.Index = $Index; $LogParams.Cache = $Cache }
+        if (-not $DoMentions)  { $LogParams.SkipMentions = $true }
+        try {
+            $LogResult = Get-SessionLog @LogParams
+            if ($null -ne $LogResult) {
+                foreach ($Entry in @($LogResult)) {
+                    foreach ($Log in @($Entry.Logs)) { $Items.Add($Log) }
+                }
+            }
+        } catch {
+            return @{ StatusCode = 422; Body = @{ error = $_.Exception.Message } }
+        }
+    } else {
+        try {
+            $Parsed = ConvertFrom-LogContent -Content ([string]$B.content)
+            $BuildParams = @{ Url = 'inline'; Parsed = $Parsed }
+            if ($DoResolve)        { $BuildParams.Index = $Index; $BuildParams.Cache = $Cache }
+            if (-not $DoMentions)  { $BuildParams.SkipMentions = $true }
+            $Items.Add((New-ResolvedLogObject @BuildParams))
+        } catch {
+            return @{ StatusCode = 422; Body = @{ error = $_.Exception.Message } }
+        }
+    }
+
+    return @{ StatusCode = 200; Body = @{ items = [object[]]$Items.ToArray() } }
+}
+
 function Invoke-ApiSessionPreview {
     <#
         .SYNOPSIS

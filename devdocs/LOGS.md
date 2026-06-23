@@ -9,6 +9,8 @@ The session log subsystem comprises `Get-SessionLog` (fetch, parse, cross-refere
 | `Get-SessionLog` | `public/session/get-sessionlog.ps1` | Core pipeline: fetch, parse, cross-reference |
 | `Invoke-SessionLogFetch` | `public/workflow/invoke-sessionlogfetch.ps1` | Mass fetch with error handling |
 | `Get-NamedLogLocationReport` | `public/reporting/get-namedloglocationreport.ps1` | Location resolution analysis |
+| `New-ResolvedLogObject` | `private/parse-logcontent.ps1` | Builds the cross-referenced per-log object (Speakers/Channels/LocationSegments/Mentions) from a parse result. Shared by `Get-SessionLog` and `Invoke-ApiParseLogEnriched`. |
+| `Resolve-MessageMentions` | `private/parse-logcontent.ps1` | Extracts in-message entity mentions via Capitalized n-gram tokenization and `Resolve-Name -NoFuzzy` (Stages 1+2 only). |
 | `Resolve-LogUrlToLocalPath` | `private/session-decomposehelpers.ps1` | URL-to-local-path resolution for cached log files |
 | `Normalize-LogUrl` | `private/log-fetchhelpers.ps1` | Pastebin URL normalization, http->https |
 | `ConvertTo-LogFileName` | `private/log-fetchhelpers.ps1` | URL to filesystem-safe filename |
@@ -175,6 +177,7 @@ Consumers: `Parse-LogContent` (`private/parse-logcontent.ps1`) dispatches to `Ro
 | `LogDirectory` | string | No | Override for `res/logs/` path |
 | `DelayMs` | int | No | Throttle between HTTP requests (default 500ms) |
 | `SkipFetch` | switch | No | Read only from disk, no HTTP requests |
+| `SkipMentions` | switch | No | Skip in-message mention extraction (Mentions/MentionsByLine remain null) |
 
 When `.Logs` contains local file paths (non-HTTP entries such as `res/logs/filename`), they are read directly from disk via `[System.IO.File]::ReadAllText()` without HTTP requests. Mixed URLs and local paths in the same session are fully supported -- URLs go through `Invoke-LogBatchFetch` while local paths are resolved against `Get-RepoRoot`'s `.robot.local/` directory and merged into the fetched content dictionary before parsing.
 
@@ -200,12 +203,26 @@ Per session, emits:
             Channels         = @(           # ChatLog only, $null for Prose
                 @{ Name; Lines = [int[]]; LineCount }
             ) | $null
+            Mentions         = @(           # In-message entity mentions (only when -Index provided)
+                @{ Resolved; Type; Lines = [int[]]; LineCount }
+            ) | $null
+            MentionsByLine   = @{           # Per-line mention lookup keyed by Line.Index
+                LineIndex = @( @{ Raw; Resolved; Stage; Type; Offset; Length } )
+            } | $null
         }
     )
 }
 ```
 
 `Speakers[].Lines` is an array of line indices where this speaker appears. `Speakers[].Resolved` is the canonical entity name (or `$null` if unresolved). `Speakers[].Stage` is the resolution stage (or `$null`). `Channels[].Lines` is an array of line indices in this channel. When `-Index` is provided, `LocationSegments[].Resolved` and `LocationSegments[].Stage` are populated via `Resolve-Name`.
+
+### Message-Body Mention Extraction
+
+When `-Index` is provided and `-SkipMentions` is not set, `Get-SessionLog` runs `Resolve-MessageMentions` over every non-empty `Line.Text`. The tokenizer extracts Capitalized Unicode words (`\p{Lu}[\p{L}\p{M}]*`), splits the text on sentence boundaries (`[.!?]+`) so n-gram windows cannot span unrelated clauses, then attempts 3-gram → 2-gram → 1-gram contiguous lookups (longest-match-wins). Each candidate is resolved via `Resolve-Name -NoFuzzy` — fuzzy matching is intentionally **disabled** inside narrative text because the false-positive rate on Polish prose is unacceptable (`karczmie` would fuzzy-match unrelated tokens). Stages 1 (exact index) and 2 (declension stem) are sufficient.
+
+The aggregated `Mentions[]` array mirrors the `Speakers[]` shape: one entry per distinct resolved entity with the list of line indices where it was mentioned. The parallel `MentionsByLine` hashtable preserves per-line attribution with `Offset` and `Length` so consumers can highlight the matched substring. Mentions live in a parallel hashtable rather than on `Lines[]` because the compiled `Robot.LogParser.LogLine` is a struct and `Add-Member` would not persist across array access.
+
+`New-ResolvedLogObject` (private helper in `parse-logcontent.ps1`) wraps the entire Speakers + Channels + LocationSegments + Mentions build step. Both `Get-SessionLog` and the `POST /logs/parse` API handler (`Invoke-ApiParseLogEnriched`) call it so the URL-fetch path and inline-content path produce byte-identical shapes.
 
 `Get-Session -IncludeLogs` internally calls `Get-SessionLog` and attaches a `LogData` property to each session object that has log URLs. This enables single-pipeline workflows:
 

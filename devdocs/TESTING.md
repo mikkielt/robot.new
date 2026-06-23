@@ -533,6 +533,8 @@ Name index disambiguation tests in `get-nameindex.Tests.ps1` call `Add-IndexToke
 
 Filesystem isolation tests in `repo-filehelpers.Tests.ps1` use `BeforeEach`/`AfterEach` instead of `BeforeAll`/`AfterAll` to create and tear down temp directories per test case, ensuring each `It` block starts with a clean directory tree.
 
+The sentinel test `test-filesystem-isolation.Tests.ps1` snapshots an allowlist of expected top-level entries under `$script:ModuleRoot` and fails if anything else is present at the end of the run. Its filename places it near the end of lexicographical test discovery, so it observes the cumulative state left by every preceding test. New regressions where a test forgets `Mock Get-RepoRoot` or bypasses the firewall in `TestHelpers.ps1` / `PluginTestHelpers.ps1` will fail this sentinel rather than silently leaking files into the working tree.
+
 C# type guard pattern in plugin tests uses `Set-ItResult -Skipped -Because 'Robot.ApiHelpRegistry not compiled'` inside `BeforeAll` to gracefully skip the entire `Describe` block when compiled .NET types are unavailable (e.g., running tests outside the full module load context).
 
 Slug uniqueness and validation tests in `set-mapentity.Tests.ps1` verify `Should -Throw` with wildcard error messages (`*Slug*already exists*`, `*Invalid dimensions format*`) for input validation and cross-entity constraint checks.

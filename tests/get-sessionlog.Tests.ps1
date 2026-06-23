@@ -324,3 +324,121 @@ Describe 'Get-SessionLog' {
         $Results[0].Logs[0].Url | Should -Be $Results[1].Logs[0].Url
     }
 }
+
+# ── Get-SessionLog mention extraction ──────────────────────────────────────────
+
+Describe 'Get-SessionLog mention extraction' {
+    BeforeAll {
+        $script:MentionDir = New-TestTempDir
+
+        # Inline ChatLog fixture: Ivor speaks of Solmyr (and a declension form) in two
+        # separate lines so the aggregation can be verified.
+        $MentionContent = @(
+            ' Domostwo'
+            '[13:00] [Lokalny] Ivor: Widziałem Solmyra w lesie.'
+            '[13:01] [Lokalny] Cuthbert: A Lord Haart? Słyszałem, że przybył.'
+            '[13:02] [Lokalny] Ivor: Solmyr odszedł rano.'
+        ) -join "`n"
+        $script:MentionUrl = 'https://pastebin.com/raw/MentionChat'
+        $MentionFile = ConvertTo-LogFileName -NormalizedUrl $script:MentionUrl
+        [System.IO.File]::WriteAllText(
+            [System.IO.Path]::Combine($script:MentionDir, $MentionFile),
+            $MentionContent)
+
+        $script:MentionSession = [PSCustomObject]@{
+            Title = 'Mention Test'
+            Date  = [datetime]::Parse('2024-07-01')
+            Logs  = @($script:MentionUrl)
+        }
+
+        # Mock index containing only the entities we expect to be mentioned
+        $SolmyrEntity = [PSCustomObject]@{ Name = 'Solmyr';     Type = 'NPC' }
+        $HaartEntity  = [PSCustomObject]@{ Name = 'Lord Haart'; Type = 'NPC' }
+        $IvorEntity   = [PSCustomObject]@{ Name = 'Ivor';       Type = 'NPC' }
+        $CuthEntity   = [PSCustomObject]@{ Name = 'Cuthbert';   Type = 'NPC' }
+        $DomoLoc      = [PSCustomObject]@{ Name = 'Domostwo';   Type = 'Lokacja' }
+
+        $InnerIndex = [System.Collections.Generic.Dictionary[string, object]]::new(
+            [System.StringComparer]::OrdinalIgnoreCase)
+        $InnerIndex['solmyr']     = [PSCustomObject]@{ Owner = $SolmyrEntity; OwnerType = 'NPC';     Source = 'Solmyr';     Priority = 1; Ambiguous = $false }
+        $InnerIndex['lord haart'] = [PSCustomObject]@{ Owner = $HaartEntity;  OwnerType = 'NPC';     Source = 'Lord Haart'; Priority = 1; Ambiguous = $false }
+        $InnerIndex['ivor']       = [PSCustomObject]@{ Owner = $IvorEntity;   OwnerType = 'NPC';     Source = 'Ivor';       Priority = 1; Ambiguous = $false }
+        $InnerIndex['cuthbert']   = [PSCustomObject]@{ Owner = $CuthEntity;   OwnerType = 'NPC';     Source = 'Cuthbert';   Priority = 1; Ambiguous = $false }
+        $InnerIndex['domostwo']   = [PSCustomObject]@{ Owner = $DomoLoc;      OwnerType = 'Lokacja'; Source = 'Domostwo';   Priority = 1; Ambiguous = $false }
+
+        $StemList = [System.Collections.Generic.List[string]]::new()
+        $StemList.Add('solmyr')
+        $InnerStemIndex = [System.Collections.Generic.Dictionary[string, System.Collections.Generic.List[string]]]::new(
+            [System.StringComparer]::OrdinalIgnoreCase)
+        $InnerStemIndex['solmyr'] = $StemList
+
+        $script:MentionIndex = @{
+            Index     = $InnerIndex
+            StemIndex = $InnerStemIndex
+            BKTree    = $null
+        }
+    }
+
+    AfterAll {
+        Remove-TestTempDir
+    }
+
+    It 'omits Mentions/MentionsByLine when -Index is not provided' {
+        $Result = Get-SessionLog -Session $script:MentionSession `
+            -LogDirectory $script:MentionDir -SkipFetch
+        $Log = $Result.Logs[0]
+        $Log.Mentions       | Should -BeNullOrEmpty
+        $Log.MentionsByLine | Should -BeNullOrEmpty
+    }
+
+    It 'populates aggregated Mentions[] when -Index is provided' {
+        $Result = Get-SessionLog -Session $script:MentionSession `
+            -LogDirectory $script:MentionDir -SkipFetch `
+            -Index $script:MentionIndex
+        $Log = $Result.Logs[0]
+        $Log.Mentions | Should -Not -BeNullOrEmpty
+        $Solmyr = $Log.Mentions | Where-Object { $_.Resolved -eq 'Solmyr' }
+        $Solmyr | Should -Not -BeNullOrEmpty
+        # Solmyr appears on two lines (one declension form, one nominative)
+        $Solmyr.LineCount | Should -Be 2
+    }
+
+    It 'records the resolved entity Type in aggregated Mentions' {
+        $Result = Get-SessionLog -Session $script:MentionSession `
+            -LogDirectory $script:MentionDir -SkipFetch `
+            -Index $script:MentionIndex
+        $Solmyr = $Result.Logs[0].Mentions | Where-Object { $_.Resolved -eq 'Solmyr' }
+        $Solmyr.Type | Should -Be 'NPC'
+    }
+
+    It 'builds MentionsByLine keyed by Line.Index' {
+        $Result = Get-SessionLog -Session $script:MentionSession `
+            -LogDirectory $script:MentionDir -SkipFetch `
+            -Index $script:MentionIndex
+        $MByL = $Result.Logs[0].MentionsByLine
+        $MByL | Should -Not -BeNullOrEmpty
+        # At least one line MUST carry a Solmyr mention
+        $SolmyrLines = $MByL.Keys | Where-Object { @($MByL[$_]) | Where-Object { $_.Resolved -eq 'Solmyr' } }
+        @($SolmyrLines).Count | Should -BeGreaterOrEqual 1
+    }
+
+    It 'matches Lord Haart as a 2-gram mention' {
+        $Result = Get-SessionLog -Session $script:MentionSession `
+            -LogDirectory $script:MentionDir -SkipFetch `
+            -Index $script:MentionIndex
+        $Haart = $Result.Logs[0].Mentions | Where-Object { $_.Resolved -eq 'Lord Haart' }
+        $Haart | Should -Not -BeNullOrEmpty
+        $Haart.LineCount | Should -Be 1
+    }
+
+    It 'honors -SkipMentions to suppress extraction while keeping speaker resolution' {
+        $Result = Get-SessionLog -Session $script:MentionSession `
+            -LogDirectory $script:MentionDir -SkipFetch `
+            -Index $script:MentionIndex -SkipMentions
+        $Log = $Result.Logs[0]
+        $Log.Mentions       | Should -BeNullOrEmpty
+        $Log.MentionsByLine | Should -BeNullOrEmpty
+        # Speakers are still aggregated as usual
+        $Log.Speakers | Should -Not -BeNullOrEmpty
+    }
+}
