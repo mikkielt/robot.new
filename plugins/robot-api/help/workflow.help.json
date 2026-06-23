@@ -102,6 +102,18 @@
           }
         ]
       }
+    },
+    {
+      "method": "POST",
+      "path": "/workflow/name-index",
+      "handler": "Invoke-ApiRebuildNameIndex",
+      "scope": "admin:write",
+      "pl": {
+        "description": "Wymusza pełną przebudowę zbuforowanego indeksu nazw. Czyści wewnętrzne cache'e (Clear-ParseCaches), buduje świeży indeks i zwraca statystyki: liczbę tokenów, stemów, niejednoznacznych wpisów i czas budowy. Endpoint nie przyjmuje ciała żądania."
+      },
+      "en": {
+        "description": "Force-rebuilds the cached name index. Clears the in-memory parse caches (Clear-ParseCaches), builds a fresh index, and returns build stats: token count, stem count, ambiguous entry count, and build duration. The endpoint accepts no request body."
+      }
     }
   ]
 }

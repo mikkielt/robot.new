@@ -172,19 +172,32 @@ namespace Robot {
                 return;
             }
 
-            // Plain C# objects (e.g. SessionPU, SessionIntel, SessionTransfer) —
-            // reflect public instance properties so they serialize as JSON objects
+            // Plain C# objects — reflect public instance properties AND fields so
+            // that property-backed types (SessionPU, SessionIntel, SessionTransfer)
+            // and field-backed types (Robot.LogParser.LogLine struct,
+            // Robot.LogParser.LocationSegment class) both serialize as JSON objects
             // instead of falling through to ToString().
-            var publicProps = psType.GetProperties(
-                System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance);
-            if (publicProps.Length > 0) {
+            var bindFlags = System.Reflection.BindingFlags.Public |
+                            System.Reflection.BindingFlags.Instance;
+            var publicProps  = psType.GetProperties(bindFlags);
+            var publicFields = psType.GetFields(bindFlags);
+            if (publicProps.Length > 0 || publicFields.Length > 0) {
                 writer.WriteStartObject();
+                var writtenNames = new HashSet<string>(StringComparer.Ordinal);
                 foreach (var prop in publicProps) {
                     if (!prop.CanRead) continue;
                     object pval = null;
                     try { pval = prop.GetValue(value); } catch { continue; }
                     writer.WritePropertyName(prop.Name);
+                    writtenNames.Add(prop.Name);
                     WriteValue(writer, pval, depth + 1, includeLabels);
+                }
+                foreach (var field in publicFields) {
+                    if (writtenNames.Contains(field.Name)) continue;  // property took precedence
+                    object fval = null;
+                    try { fval = field.GetValue(value); } catch { continue; }
+                    writer.WritePropertyName(field.Name);
+                    WriteValue(writer, fval, depth + 1, includeLabels);
                 }
                 writer.WriteEndObject();
                 return;

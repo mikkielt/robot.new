@@ -1,6 +1,7 @@
 BeforeAll {
     . "$PSScriptRoot/PluginTestHelpers.ps1"
     Import-RobotModuleForPlugin
+    . "$PSScriptRoot/../private/api-handlers-read.ps1"
     . "$PSScriptRoot/../private/api-handlers-write.ps1"
     . "$PSScriptRoot/../private/api-handlers-events.ps1"
 }
@@ -375,6 +376,155 @@ Describe 'Invoke-ApiRebuildHashes' {
 # ═══════════════════════════════════════════════════════════════════════
 # SSE EVENT HANDLER
 # ═══════════════════════════════════════════════════════════════════════
+
+Describe 'Invoke-ApiGetNameIndexLookup' {
+    BeforeAll {
+        # Build a mock name index matching Get-NameIndex's return shape.
+        $SolmyrEntity = [PSCustomObject]@{ Name = 'Solmyr'; Type = 'NPC' }
+        $LordEntity   = [PSCustomObject]@{ Name = 'Lord'; Type = 'NPC' }
+        $HaartEntity  = [PSCustomObject]@{ Name = 'Lord Haart'; Type = 'NPC' }
+
+        $InnerIndex = [System.Collections.Generic.Dictionary[string, object]]::new(
+            [System.StringComparer]::OrdinalIgnoreCase)
+        $InnerIndex['solmyr']     = [PSCustomObject]@{
+            Owner = $SolmyrEntity; OwnerType = 'NPC'; Source = 'Solmyr'; Priority = 1; Ambiguous = $false
+        }
+        # Ambiguous token: two distinct owners share "Lord"
+        $InnerIndex['lord'] = [PSCustomObject]@{
+            Owner = $null; OwnerType = $null; Source = 'Lord'; Priority = 2; Ambiguous = $true
+            Owners = @(
+                [PSCustomObject]@{ Owner = $LordEntity;  Type = 'NPC' }
+                [PSCustomObject]@{ Owner = $HaartEntity; Type = 'NPC' }
+            )
+        }
+
+        $InnerStem = [System.Collections.Generic.Dictionary[string, System.Collections.Generic.List[string]]]::new(
+            [System.StringComparer]::OrdinalIgnoreCase)
+        $StemList = [System.Collections.Generic.List[string]]::new()
+        $StemList.Add('solmyr')
+        $InnerStem['solmyr'] = $StemList
+
+        Mock Get-NameIndex {
+            return [PSCustomObject]@{ Index = $InnerIndex; StemIndex = $InnerStem; BKTree = $null }
+        }
+        Mock Get-Entity { @() }
+        Mock Get-Player { @() }
+        # Get-DeclensionStem is a real function — let it run for the stem path
+    }
+
+    It 'returns 400 when token path parameter is empty' {
+        $Ctx = @{ PathParams = @{ token = '' }; QueryParams = @{}; Body = $null; Method = 'GET'; Path = '/name-index/lookup/' }
+        $Result = Invoke-ApiGetNameIndexLookup -ApiContext $Ctx
+        $Result.StatusCode | Should -Be 400
+        $Result.Body.error | Should -BeLike '*token*required*'
+    }
+
+    It 'returns Stage-1 hit for a known token' {
+        $Ctx = @{ PathParams = @{ token = 'Solmyr' }; QueryParams = @{}; Method = 'GET'; Path = '/name-index/lookup/Solmyr' }
+        $Result = Invoke-ApiGetNameIndexLookup -ApiContext $Ctx
+        $Result.StatusCode | Should -Be 200
+        $Result.Body.token | Should -Be 'Solmyr'
+        $Result.Body.stage1.found | Should -Be $true
+        $Result.Body.stage1.entry.owner.name | Should -Be 'Solmyr'
+        $Result.Body.stage1.entry.ownerType | Should -Be 'NPC'
+        $Result.Body.stage1.entry.ambiguous | Should -Be $false
+        $Result.Body.stage1.entry.priority | Should -Be 1
+    }
+
+    It 'returns Stage-1 miss with found=false for an unknown token' {
+        $Ctx = @{ PathParams = @{ token = 'Nieznany' }; QueryParams = @{}; Method = 'GET'; Path = '/name-index/lookup/Nieznany' }
+        $Result = Invoke-ApiGetNameIndexLookup -ApiContext $Ctx
+        $Result.StatusCode | Should -Be 200
+        $Result.Body.stage1.found | Should -Be $false
+        $Result.Body.stage1.entry | Should -BeNullOrEmpty
+    }
+
+    It 'exposes the typed Owners array for ambiguous entries' {
+        $Ctx = @{ PathParams = @{ token = 'Lord' }; QueryParams = @{}; Method = 'GET'; Path = '/name-index/lookup/Lord' }
+        $Result = Invoke-ApiGetNameIndexLookup -ApiContext $Ctx
+        $Result.StatusCode | Should -Be 200
+        $Result.Body.stage1.entry.ambiguous | Should -Be $true
+        @($Result.Body.stage1.entry.owners).Count | Should -Be 2
+        # Single-owner properties MUST be absent on ambiguous entries
+        $Result.Body.stage1.entry.PSObject.Properties['owner']    | Should -BeNullOrEmpty
+        $Result.Body.stage1.entry.PSObject.Properties['ownerType'] | Should -BeNullOrEmpty
+    }
+
+    It 'includes Stage-2 stem candidates only when ?includeStems=true' {
+        $Ctx = @{ PathParams = @{ token = 'Solmyra' }; QueryParams = @{ includeStems = 'true' }; Method = 'GET'; Path = '/name-index/lookup/Solmyra' }
+        $Result = Invoke-ApiGetNameIndexLookup -ApiContext $Ctx
+        $Result.StatusCode | Should -Be 200
+        $Result.Body.Contains('stage2') | Should -Be $true
+        $Result.Body.stage2.stem | Should -Be 'solmyr'
+        $Result.Body.stage2.candidates | Should -Contain 'solmyr'
+    }
+
+    It 'omits stage2 when includeStems is not set' {
+        $Ctx = @{ PathParams = @{ token = 'Solmyr' }; QueryParams = @{}; Method = 'GET'; Path = '/name-index/lookup/Solmyr' }
+        $Result = Invoke-ApiGetNameIndexLookup -ApiContext $Ctx
+        $Result.Body.Contains('stage2') | Should -Be $false
+    }
+
+    It 'always returns indexStats' {
+        $Ctx = @{ PathParams = @{ token = 'Solmyr' }; QueryParams = @{}; Method = 'GET'; Path = '/name-index/lookup/Solmyr' }
+        $Result = Invoke-ApiGetNameIndexLookup -ApiContext $Ctx
+        $Result.Body.indexStats.tokenCount | Should -BeGreaterThan 0
+        $Result.Body.indexStats.stemCount  | Should -BeGreaterOrEqual 0
+    }
+}
+
+Describe 'Invoke-ApiRebuildNameIndex' {
+    BeforeAll {
+        $InnerIndex = [System.Collections.Generic.Dictionary[string, object]]::new(
+            [System.StringComparer]::OrdinalIgnoreCase)
+        $InnerIndex['solmyr'] = [PSCustomObject]@{
+            Owner = [PSCustomObject]@{ Name = 'Solmyr' }
+            OwnerType = 'NPC'; Source = 'Solmyr'; Priority = 1; Ambiguous = $false
+        }
+        $InnerStem = [System.Collections.Generic.Dictionary[string, System.Collections.Generic.List[string]]]::new(
+            [System.StringComparer]::OrdinalIgnoreCase)
+
+        $script:MockBuiltIndex = [PSCustomObject]@{ Index = $InnerIndex; StemIndex = $InnerStem; BKTree = $null }
+
+        Mock Clear-ParseCaches { }
+        Mock Get-Entity { @() }
+        Mock Get-Player { @() }
+        Mock Get-NameIndex { return $script:MockBuiltIndex }
+    }
+
+    It 'returns 200 with build stats on a successful rebuild' {
+        $Ctx = @{ PathParams = @{}; QueryParams = @{}; Body = $null; Method = 'POST'; Path = '/workflow/name-index' }
+        $Result = Invoke-ApiRebuildNameIndex -ApiContext $Ctx
+        $Result.StatusCode | Should -Be 200
+        $Result.Body.indexStats.tokenCount    | Should -Be 1
+        $Result.Body.indexStats.stemCount     | Should -Be 0
+        $Result.Body.indexStats.ambiguousCount | Should -Be 0
+        $Result.Body.buildMs | Should -BeGreaterOrEqual 0
+        $Result.Body.rebuiltAt | Should -Match '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$'
+    }
+
+    It 'invokes Clear-ParseCaches exactly once per request' {
+        $Ctx = @{ PathParams = @{}; QueryParams = @{}; Body = $null; Method = 'POST'; Path = '/workflow/name-index' }
+        $null = Invoke-ApiRebuildNameIndex -ApiContext $Ctx
+        Should -Invoke Clear-ParseCaches -Times 1
+    }
+
+    It 'returns 422 when Get-Entity throws' {
+        Mock Get-Entity { throw [System.InvalidOperationException]::new('simulated: entity scan failed') }
+        $Ctx = @{ PathParams = @{}; QueryParams = @{}; Body = $null; Method = 'POST'; Path = '/workflow/name-index' }
+        $Result = Invoke-ApiRebuildNameIndex -ApiContext $Ctx
+        $Result.StatusCode | Should -Be 422
+        $Result.Body.error | Should -BeLike '*entity scan failed*'
+    }
+
+    It 'is safe to call repeatedly (idempotent)' {
+        Mock Get-Entity { @() }
+        Mock Get-NameIndex { return $script:MockBuiltIndex }
+        $Ctx = @{ PathParams = @{}; QueryParams = @{}; Body = $null; Method = 'POST'; Path = '/workflow/name-index' }
+        { $null = Invoke-ApiRebuildNameIndex -ApiContext $Ctx } | Should -Not -Throw
+        { $null = Invoke-ApiRebuildNameIndex -ApiContext $Ctx } | Should -Not -Throw
+    }
+}
 
 Describe 'Invoke-ApiEventBroadcast' {
     BeforeAll {

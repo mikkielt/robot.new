@@ -58,6 +58,52 @@
           }
         ]
       }
+    },
+    {
+      "method": "GET",
+      "path": "/name-index/lookup/:token",
+      "handler": "Invoke-ApiGetNameIndexLookup",
+      "scope": "entity:read",
+      "pl": {
+        "description": "Surowy wpis indeksu nazw dla pojedynczego tokenu (Etap 1 — dopasowanie dokładne) oraz, opcjonalnie, kandydaci ze stem-indeksu (Etap 2). Endpoint diagnostyczny: pokazuje stan indeksu bez uruchamiania pełnego rozwiązywania Resolve-Name (bez Etapu 3 — fuzzy/BK-tree).",
+        "queryParams": [
+          {
+            "name": "includeStems",
+            "required": false,
+            "type": "boolean",
+            "description": "Gdy true, dodaje sekcję stage2 z stemem tokenu i kandydatami z StemIndex.",
+            "examples": ["true"]
+          },
+          {
+            "name": "activeOn",
+            "required": false,
+            "type": "string",
+            "format": "date",
+            "description": "Filtr czasowy aliasów — buduje indeks ograniczony do encji aktywnych w podanej dacie.",
+            "examples": ["2025-06-15"]
+          }
+        ]
+      },
+      "en": {
+        "description": "Raw name-index entry for a single token (Stage 1 — exact match) plus optional Stage-2 stem candidates. Diagnostic endpoint: exposes index state without running the full Resolve-Name pipeline (no Stage 3 / fuzzy / BK-tree).",
+        "queryParams": [
+          {
+            "name": "includeStems",
+            "required": false,
+            "type": "boolean",
+            "description": "When true, adds a stage2 section with the token's stem and matching StemIndex candidates.",
+            "examples": ["true"]
+          },
+          {
+            "name": "activeOn",
+            "required": false,
+            "type": "string",
+            "format": "date",
+            "description": "Temporal alias filter — builds the index restricted to entities active on the given date.",
+            "examples": ["2025-06-15"]
+          }
+        ]
+      }
     }
   ]
 }

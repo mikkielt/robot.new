@@ -158,6 +158,11 @@ When no caller-provided `Index` is passed, `Resolve-Name` checks the module-scop
 
 On each standalone call (no `-Index` parameter), `Resolve-Name` computes the current fingerprint via `Get-EntityFilesFingerprint`. If it matches `$script:CachedNameIndexKey`, the cached `$script:CachedNameIndex` is reused directly. A mismatch (or `$null` fingerprint) triggers a full `Get-Entity` + `Get-NameIndex` rebuild, and the result is persisted for subsequent calls within the same module session. This avoids the ~4s rebuild that would otherwise run on every standalone `Resolve-Name` invocation (e.g., from `session-parsehelpers` Intel resolution).
 
+The cache is otherwise module-internal. Two REST endpoints expose its surface to external callers:
+
+- `GET /name-index/lookup/:token` (`Invoke-ApiGetNameIndexLookup`, `entity:read`) — returns the raw Stage-1 entry for a single token (`ambiguous`, `priority`, `source`, `ownerType`, `owner` or `owners` for ambiguous entries). With `?includeStems=true`, also returns the Stage-2 stem and matching `StemIndex` candidates. Read-only; does not run Stage 3 fuzzy. Use this to diagnose why a query resolves the way it does without inspecting module internals.
+- `POST /workflow/name-index` (`Invoke-ApiRebuildNameIndex`, `admin:write`) — calls `Clear-ParseCaches` and forces a fresh `Get-NameIndex` build, returning `rebuiltAt`, `buildMs`, and `indexStats` (`tokenCount`, `stemCount`, `ambiguousCount`). Use this to warm the cache before traffic arrives or after manually editing entity files outside the module's fingerprint observation window.
+
 Parameters:
 
 | Parameter | Type | Description |

@@ -558,6 +558,51 @@ function Invoke-ApiRebuildHashes {
     }
 }
 
+function Invoke-ApiRebuildNameIndex {
+    <#
+        .SYNOPSIS
+        Force-rebuilds the module's cached name index. Returns build duration
+        and index stats. Companion to /workflow/session-graph and
+        /workflow/session-hash.
+    #>
+
+    [CmdletBinding()] param(
+        [Parameter(Mandatory)] [hashtable]$ApiContext
+    )
+
+    $Stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
+    try {
+        # Drop in-memory caches so the rebuild sees fresh entity/player data
+        Clear-ParseCaches
+
+        $Entities = Get-Entity -Quiet
+        $Players  = Get-Player
+        $Idx      = Get-NameIndex -Entities $Entities -Players $Players
+    } catch {
+        return @{ StatusCode = 422; Body = @{ error = "Failed to rebuild name index: $($_.Exception.Message)" } }
+    }
+    $Stopwatch.Stop()
+
+    # Single-pass scan for ambiguous tokens
+    $AmbiguousCount = 0
+    foreach ($KV in $Idx.Index.GetEnumerator()) {
+        if ($KV.Value.Ambiguous) { $AmbiguousCount++ }
+    }
+
+    return @{
+        StatusCode = 200
+        Body = [ordered]@{
+            rebuiltAt  = [datetime]::UtcNow.ToString("yyyy-MM-dd'T'HH:mm:ss")
+            buildMs    = [int]$Stopwatch.ElapsedMilliseconds
+            indexStats = [ordered]@{
+                tokenCount     = $Idx.Index.Count
+                stemCount      = $Idx.StemIndex.Count
+                ambiguousCount = $AmbiguousCount
+            }
+        }
+    }
+}
+
 # ═══════════════════════════════════════════════════════════════════════
 # LOCATIONS
 # ═══════════════════════════════════════════════════════════════════════

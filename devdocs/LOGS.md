@@ -165,6 +165,8 @@ Output types:
 
 `LocationSegment` is a class (not struct) because PowerShell consumers set `Resolved`/`Stage` properties after name resolution in `Get-SessionLog`; value-type boxing would lose mutations on array elements.
 
+Both `LogLine` and `LocationSegment` expose their state as public **fields** (not properties). The REST API's `Robot.ApiSerializer` reflects public fields alongside public properties in its dispatcher, so `POST /logs/parse` emits these types as structured JSON objects rather than CLR type-name strings. Property-name precedence on collision keeps the wire format stable if a property is later added.
+
 Consumers: `Parse-LogContent` (`private/parse-logcontent.ps1`) dispatches to `Robot.LogParser` when the type is available, falls back to the PowerShell parsers otherwise. Also consumed by `Get-SessionLog` (`public/session/get-sessionlog.ps1`).
 
 ## Get-SessionLog — Core Pipeline

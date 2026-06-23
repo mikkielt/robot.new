@@ -124,6 +124,7 @@ Name resolution, validation, report, and workflow endpoints:
 |---|---|---|---|
 | GET | `/resolve/:name` | `Invoke-ApiResolveName` | Resolve name to entity or player |
 | POST | `/resolve/batch` | `Invoke-ApiResolveBatch` | Batch resolve names with scope-gated enrichment |
+| GET | `/name-index/lookup/:token` | `Invoke-ApiGetNameIndexLookup` | Raw name-index entry (Stage 1 exact, optional Stage 2 stem candidates via `?includeStems=true`) — diagnostic, does not run Stage 3 fuzzy |
 | GET | `/validate/pu` | `Invoke-ApiValidatePU` | PU assignment validation |
 | GET | `/validate/currency` | `Invoke-ApiValidateCurrency` | Currency reconciliation |
 | GET | `/validate/sessions` | `Invoke-ApiValidateSessions` | Session integrity |
@@ -139,6 +140,7 @@ Name resolution, validation, report, and workflow endpoints:
 | GET | `/reports/discord-delivery` | `Invoke-ApiGetDeliveryLog` | Discord webhook delivery history |
 | POST | `/workflow/session-graph` | `Invoke-ApiRebuildGraph` | Rebuild session graph index |
 | POST | `/workflow/session-hash` | `Invoke-ApiRebuildHashes` | Update session content hashes |
+| POST | `/workflow/name-index` | `Invoke-ApiRebuildNameIndex` | Force-rebuild the cached name index (clears parse caches, returns build stats) |
 
 Analytics endpoints (PU-centric and cross-cutting aggregations over a date window). All accept the standard `filter`/`sort`/`fields`/`page[size]`/`page[after]` query envelope via `ApiQueryParser`. Most are cacheable with `entity`/`session` domain fingerprints; see the Response Cache table.
 
@@ -208,7 +210,7 @@ Scope matching rules (implemented in `ApiMiddleware.HasScope`):
 | Scope | Routes |
 |---|---|
 | _(none)_ | Static: /health, /routes, /metrics, /schema, /help, /help/:component; SSE: /events; GET /dashboard, /auth/whoami |
-| `entity:read` | GET /entities, /entities/:name, /entity-state, /entities/:name/history, /entities/:name/delta, /resolve/:name, /currency, /economy/snapshot, /economy/timeline, /transactions, /locations, /locations/:name, /locations/:name/contents, /maps, /analytics/location-graph/metrics, /analytics/resolution/quality, /analytics/metadata/coverage; POST /resolve/batch |
+| `entity:read` | GET /entities, /entities/:name, /entity-state, /entities/:name/history, /entities/:name/delta, /resolve/:name, /name-index/lookup/:token, /currency, /economy/snapshot, /economy/timeline, /transactions, /locations, /locations/:name, /locations/:name/contents, /maps, /analytics/location-graph/metrics, /analytics/resolution/quality, /analytics/metadata/coverage; POST /resolve/batch |
 | `entity:write` | POST /entities, PUT /entities/:name, DELETE /entities/:name, POST /currency, PUT /currency/:name, POST /locations, PUT /locations/:name, DELETE /locations/:name, POST /maps, PUT /maps/:name |
 | `player:read` | GET /players, /players/:name |
 | `player:write` | POST /players, POST /players/:name/characters |
@@ -419,7 +421,7 @@ Response envelope:
 
 `Robot.ApiMiddleware` (`lib/ApiMiddleware.cs`) — Authentication (Bearer token with constant-time comparison via XOR accumulator), CORS header injection, per-IP token bucket rate limiting with `ConcurrentDictionary`, body size enforcement, and read-only mode flag. All checks execute in compiled C# with zero PowerShell overhead.
 
-`Robot.ApiSerializer` (`lib/ApiSerializer.cs`) — Direct-to-stream JSON serialization via `System.Text.Json.Utf8JsonWriter`. Type dispatch chain: `Entity` (typed property access, no reflection), `IDictionary` (sorted keys), PSCustomObject/PSObject (reflection via `Properties` enumeration with `BaseObject` unwrap for wrapped primitives), `IList`, primitives (`string`, `int`, `long`, `double`, `decimal`, `bool`, `DateTime`), `IEnumerable`, and `ToString()` fallback. MaxDepth guard (12) prevents stack overflow on circular references. `SerializeToBytes` serializes any object to a UTF-8 byte array using the same dispatch logic as `WriteObject`, used by the response cache to capture sidecar content with byte-level equality between cached and fresh responses.
+`Robot.ApiSerializer` (`lib/ApiSerializer.cs`) — Direct-to-stream JSON serialization via `System.Text.Json.Utf8JsonWriter`. Type dispatch chain: `Entity` (typed property access, no reflection), `IDictionary` (sorted keys), PSCustomObject/PSObject (reflection via `Properties` enumeration with `BaseObject` unwrap for wrapped primitives), `IList`, primitives (`string`, `int`, `long`, `double`, `decimal`, `bool`, `DateTime`), `IEnumerable`, public-property+public-field reflection for plain C# objects (covers property-backed types like `Robot.SessionPU` and field-backed types like `Robot.LogParser.LogLine` and `Robot.LogParser.LocationSegment`; properties take precedence on name collision), and `ToString()` fallback. MaxDepth guard (12) prevents stack overflow on circular references. `SerializeToBytes` serializes any object to a UTF-8 byte array using the same dispatch logic as `WriteObject`, used by the response cache to capture sidecar content with byte-level equality between cached and fresh responses.
 
 `Robot.ApiSseManager` (`lib/ApiSseManager.cs`) — Thread-safe Server-Sent Events manager using `ConcurrentDictionary<long, SseClient>` keyed by monotonic client ID. Broadcasts events as JSON via `Utf8JsonWriter`. Dead client detection during broadcast (failed writes remove the client). 30-second heartbeat timer sends `: keepalive` comments to detect stale connections.
 

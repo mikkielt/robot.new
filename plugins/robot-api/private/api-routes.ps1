@@ -176,6 +176,10 @@ function Register-AllApiRoutes {
         'Resolve multiple names in batch', 200, 'entity:read')
     $HandlerMap['Invoke-ApiResolveBatch'] = $true
 
+    $Router.AddRoute('GET', '/name-index/lookup/:token', 'Invoke-ApiGetNameIndexLookup',
+        'Raw name-index entry for a token (Stage 1 + optional Stage 2 stems)', 200, 'entity:read')
+    $HandlerMap['Invoke-ApiGetNameIndexLookup'] = $true
+
     # --- Validation ---
     $Router.AddRoute('GET', '/validate/pu', 'Invoke-ApiValidatePU', 'PU assignment validation', 200, 'admin:read')
     $HandlerMap['Invoke-ApiValidatePU'] = $true
@@ -344,6 +348,10 @@ function Register-AllApiRoutes {
     $Router.AddRoute('POST', '/workflow/session-hash', 'Invoke-ApiRebuildHashes',
         'Update session content hashes', 200, 'admin:write')
     $HandlerMap['Invoke-ApiRebuildHashes'] = $true
+
+    $Router.AddRoute('POST', '/workflow/name-index', 'Invoke-ApiRebuildNameIndex',
+        'Force-rebuild the cached name index', 200, 'admin:write')
+    $HandlerMap['Invoke-ApiRebuildNameIndex'] = $true
 
     $Router.AddRoute('POST', '/sessions', 'Invoke-ApiCreateSession',
         'Create a new session in target file(s)', 201, 'session:write')

@@ -898,6 +898,96 @@ function Invoke-ApiResolveBatch {
     return @{ StatusCode = 200; Body = @{ results = $Results } }
 }
 
+function Invoke-ApiGetNameIndexLookup {
+    <#
+        .SYNOPSIS
+        Returns the raw Stage-1 name-index entry for a token (and optionally
+        Stage-2 stem candidates). Read-only state introspection — does not
+        invoke Stage-3 fuzzy matching.
+    #>
+    [CmdletBinding()] param(
+        [Parameter(Mandatory)] [hashtable]$ApiContext
+    )
+
+    $Token = [string]$ApiContext.PathParams['token']
+    if ([string]::IsNullOrWhiteSpace($Token)) {
+        return @{ StatusCode = 400; Body = @{ error = 'token path parameter required' } }
+    }
+
+    $QP = $ApiContext.QueryParams
+    $IncludeStems = [string]::Equals([string]$QP['includeStems'], 'true', [System.StringComparison]::OrdinalIgnoreCase)
+
+    try {
+        if ($QP['activeOn']) {
+            $ActiveOn = [datetime]::Parse([string]$QP['activeOn'])
+            $Idx = Get-NameIndex `
+                -Entities (Get-Entity -ActiveOn $ActiveOn -Quiet) `
+                -Players (Get-Player)
+        } else {
+            $Idx = Get-NameIndex -Entities (Get-Entity -Quiet) -Players (Get-Player)
+        }
+    } catch {
+        return @{ StatusCode = 422; Body = @{ error = "Failed to build name index: $($_.Exception.Message)" } }
+    }
+
+    # Stage 1: exact-token entry (case-insensitive via the index comparer)
+    $Stage1 = [ordered]@{ found = $false; entry = $null }
+    if ($Idx.Index.ContainsKey($Token)) {
+        $Existing = $Idx.Index[$Token]
+        $Entry = [ordered]@{
+            ambiguous = [bool]$Existing.Ambiguous
+            priority  = [int]$Existing.Priority
+            source    = $Existing.Source
+        }
+        if ($Existing.Ambiguous) {
+            $OwnerList = [System.Collections.Generic.List[object]]::new()
+            foreach ($O in $Existing.Owners) {
+                $Name = if ($O.Owner -and $O.Owner.Name) { $O.Owner.Name } else { '?' }
+                $OwnerList.Add([ordered]@{
+                    name = $Name
+                    type = $O.Type
+                })
+            }
+            $Entry['owners'] = $OwnerList.ToArray()
+        } else {
+            $OwnerName = if ($Existing.Owner -and $Existing.Owner.Name) { $Existing.Owner.Name } else { '?' }
+            $OwnerType = if ($Existing.Owner -and $Existing.Owner.Type) { $Existing.Owner.Type } else { $Existing.OwnerType }
+            $Entry['ownerType'] = $Existing.OwnerType
+            $Entry['owner']     = [ordered]@{
+                name = $OwnerName
+                type = $OwnerType
+            }
+        }
+        $Stage1 = [ordered]@{ found = $true; entry = $Entry }
+    }
+
+    $Body = [ordered]@{
+        token  = $Token
+        stage1 = $Stage1
+    }
+
+    # Stage 2: optional stem lookup. Only computed when caller opts in to keep
+    # the default response lightweight.
+    if ($IncludeStems) {
+        $Stem = Get-DeclensionStem -Text $Token
+        $Candidates = @()
+        if ($Stem -and $Idx.StemIndex.ContainsKey($Stem)) {
+            $Candidates = @($Idx.StemIndex[$Stem])
+        }
+        $Body['stage2'] = [ordered]@{
+            stem       = $Stem
+            candidates = $Candidates
+        }
+    }
+
+    $Body['indexStats'] = [ordered]@{
+        tokenCount = $Idx.Index.Count
+        stemCount  = $Idx.StemIndex.Count
+    }
+
+    return @{ StatusCode = 200; Body = $Body }
+}
+
 # ═══════════════════════════════════════════════════════════════════════
 # VALIDATION
 # ═══════════════════════════════════════════════════════════════════════
