@@ -1,251 +1,125 @@
-# Migration - Transition to the New Data and Session Management
+# Migration - Schema Evolution
 
 ## Scope
 
-This migration introduces a reliable, structured way to manage player data, character records, and session metadata. It replaces the manual-edit workflow with a system that validates updates, prevents duplicates, tracks processing history, and sends notifications automatically. The goal is less manual correction, fewer missed updates, and a clear audit trail.
+This guide explains how the Coordinator advances the repository's data shape over time. Every schema change ships as a versioned migration. The Coordinator previews the change, applies it, and the system records what ran, when, and by whom. The same flow handles entity-schema changes, session-format changes, state-file changes, and external-data re-imports.
 
-The guide covers how player and character data is now stored and updated, how session records transition to the new structured format, how monthly PU assignments work under the new system, what changes for Narrators, Coordinators, and Players, what the system tracks and verifies automatically, how to handle errors and edge cases, currency tracking (new capability), location name verification during migration, and narrator name verification during migration.
-
-For low-level technical details (file parsers, data structures, internal algorithms), see the technical docs in `devdocs/`. For step-by-step PowerShell commands, see [MIGRACJA-TECH.md](PL/MIGRACJA-TECH.md).
-
-## How Migrations Are Run
-
-The Coordinator runs migrations through one of three control surfaces. All three reach the same engine, so the audit trail and the safety checks are identical regardless of which entry point is used.
-
-The REST API is the primary control plane. The dashboard's Tokens section can mint a token with `migration:read` and `migration:write` scopes. A `migration:admin` scope is required only to forcibly clear a stuck schema lock; a separately-issued `migration:restore` scope is required to roll a repository back to a prior version that already exists in its history. The dashboard surfaces the schema version, pending migrations, and a preview for each one before the Coordinator confirms.
-
-The PowerShell CLI exposes the same operations as cmdlets. `Get-SchemaVersion` shows the current state, `Get-Migration -Pending` lists what remains, `Get-MigrationPreview -Version 0.3.0` shows a dry run, and `Invoke-Migration -Version 0.3.0` or `Invoke-MigrationChain -To 0.3.0` applies the change. The CLI defaults to creating a dedicated git branch (`migration/<slug>-<version>` for a single migration, `migration/<from>-to-<to>` for a chain) so the migration's changes land separately from any in-progress content edits. The REST API defaults to applying in place because automation typically runs in clean working trees.
-
-Long migrations (log download, parity diagnostics, session-format upgrades) are dispatched as background jobs. The dashboard polls the job's progress; the CLI either blocks with a progress bar or returns a job ID with `-AsJob`. The schema lock is held for the entire job and released automatically when it completes or fails.
-
-A migration that comes from inside the module (`Robot.PowerShell/migrations/`) or from a loaded plugin is considered signed and applies normally. A migration that the Coordinator drops into `<repo>/.robot.local/migrations/` is unsigned: the preview surfaces a warning recommending review, and the apply call requires an explicit confirmation flag (`allowUnsigned: true` in the REST body, `-AllowUnsigned` on the cmdlet).
-
-If something goes wrong mid-migration — process killed, host rebooted — the schema lock will still be held by the dead process. The Coordinator can clear it (DELETE /schema/lock or `Reset-MigrationLock -Force`) after confirming no migration is still running on another machine. The framework also detects locks older than the configured TTL (default 60 minutes, overridable in `local.config.psd1`) and surfaces them as "likely stale" in the schema status response.
-
-If a release of the lore repository has to be rolled back via `git revert`, the schema pointer can be brought into sync with the reverted state through `POST /schema/restore` or `Reset-SchemaVersion -To <version>`. The target version must already appear in the schema's history (no scripts run; this is a pointer-only operation that records the downgrade as a `schema-restore:` entry in history).
+The guide covers what a migration is, where they live, how the Coordinator runs them, the safety checks the system enforces, the three branching strategies, recovery from a stuck run, and how to roll the repository back to a prior version. For step-by-step PowerShell commands, see [MIGRACJA-TECH.md](PL/MIGRACJA-TECH.md).
 
 ## Actors and Responsibilities
 
-The Coordinator initiates the one-time data migration from the legacy player file to the new entity store, runs the monthly PU assignment process, reviews diagnostic reports for data quality issues (unresolved names, stale records), upgrades session records to the current format when needed, reviews location name reports and resolves conflicts, maintains player webhook addresses for notifications, and manages the currency system (treasury, reconciliation).
+The Coordinator previews and applies migrations through the dashboard or the CLI, monitors job progress for long-running migrations, clears a stuck lock if a previous run crashed, and rolls the repository back to a prior schema version after a bad release is reverted in git.
 
-The Narrator documents sessions in the current metadata format (locations, logs, PU awards, changes, intel, transfers), ensures character names in PU entries match known characters exactly, records world changes (Zmiany) in sessions so they are automatically applied to entity state, and registers currency transfers between characters via `@Transfer` directives.
+A Plugin Author ships migrations alongside the plugin to register schema changes its own data depends on. The framework orders plugin migrations after the module migration at the same version.
 
-The Player receives PU assignment notifications via Discord, sees updated character records (PU totals, status, reputation) without manual intervention, provides initial currency balances during migration (one-time form), and can request new characters or report issues to the Coordinator.
+Narrators and Players are not involved — migrations operate on the schema, not on narrative content.
 
-## Architecture
+## How a Migration Is Discovered
 
-The new system operates on two data sources simultaneously:
+The system scans three locations on each run and presents the combined list to the Coordinator. Migrations shipped with the module are considered signed and apply normally. Migrations contributed by a loaded plugin are also signed. Migrations the Coordinator drops into `<repo>/.robot.local/migrations/` are unsigned — the preview surfaces a warning, and the apply call requires an explicit confirmation flag.
 
-| Store | File | Access | Role |
-|---|---|---|---|
-| Legacy | `Gracze.md` | Read-only | Historical player database. Never modified by the new system. |
-| Entity registry | `entities.md` | Read + Write | Canonical write target for all CRUD operations. |
+If two locations declare the same version, the operator-local copy wins and the system logs which one was overridden so the Coordinator can decide whether the override is intentional.
 
-When reading data, the system merges both sources in memory — entities from `entities.md` override values from `Gracze.md` where they exist. This means no data is lost during transition, and the switch is gradual.
+## Three Control Surfaces
 
-The file `.robot.local/robot-data.psd1` tells the module where to find `entities.md`. Without it, some commands would default to writing inside the `.robot.powershell` directory instead of the repository root. The migration script creates this manifest automatically during Phase 0.
+All three surfaces reach the same engine. The audit trail and safety checks are identical regardless of which the Coordinator uses.
 
-Session records exist in four format generations, accumulated over the project's history:
+The REST API is the primary control plane. The dashboard's Tokens section mints a token with `migration:read` (preview and inspect) and `migration:write` (apply). A separate `migration:admin` scope is required to forcibly clear a stuck schema lock; a separately-issued `migration:restore` scope is required to roll the repository back to a prior version. The dashboard surfaces the current schema version, the list of pending migrations, and a preview for each one before the Coordinator confirms.
 
-| Period | Format | Characteristics |
-|---|---|---|
-| Before 2022 | Gen1 (plain text) | No structured metadata, log links inline |
-| 2022-2023 | Gen2 (italic locations) | Location line formatted in italic, log links inline |
-| 2024-2025 | Gen3 (structured lists) | Location, logs, PU, and changes as list items |
-| 2026 onward | Gen4 (current format) | All metadata prefixed with `@` markers for unambiguous parsing |
+The PowerShell CLI exposes the same operations as cmdlets. `Get-SchemaVersion` shows the current state, `Get-Migration -Pending` lists what remains, `Get-MigrationPreview -Version 0.3.0` shows a dry run, and `Invoke-Migration -Version 0.3.0` or `Invoke-MigrationChain -To 0.3.0` applies the change.
 
-All four formats remain readable — the system auto-detects and parses each one transparently. No data is lost if older sessions are left in their original format.
+A scripted run uses the same cmdlets non-interactively. The schema lock prevents two runs from racing each other regardless of which surface initiated them.
 
-## Migration Phases
+## The Preview Step
 
-The migration is divided into phases (0-8). Not all require involvement from the entire team.
+The Coordinator always previews before applying. The preview is a dry run: it never writes data and never hits the network unless the manifest declares the migration depends on a network source and the Coordinator explicitly opts in. The preview reports which files would be modified, created, or deleted, entity counts before and after the change, sample diffs for representative items, and any warnings the migration emits.
 
-| Phase | What happens | Who is involved | Duration |
-|---|---|---|---|
-| 0. Przygotowanie i bootstrap | Safety backup, module verification, data manifest, generate entity store | Coordinator | 1-2 days |
-| 1. Baseline integralnosci sesji | Compute and store baseline session content hashes | Coordinator | 1 day |
-| 2. Walidacja i naprawa danych | Verify data parity, fix typos, date errors, missing aliases, extended diagnostics | Coordinator, Narrators | 3-5 days |
-| 3. Import lokalizacji z mapy | Import game-map locations as entities, review overrides | Coordinator | 2-3 days |
-| 4. Pobieranie logow sesji | Download session log files from external URLs to local cache | Coordinator | 1 day |
-| 5. Upgrade formatu sesji | Upgrade active session files to Gen4 format | Coordinator | 1-2 days |
-| 6. Wnioskowanie drzwi z logow | Infer location connections from session log transitions | Coordinator | 1-2 days |
-| 7. Enrollment walut | Collect and register currency balances | Everyone | ~1 week |
-| 8. Przelaczenie (cutover) | Parallel period, verification, official switch to the new system | Coordinator | 2-4 weeks |
+If the migration declares it requires network access (for example, downloading session logs) and the preview was called without the opt-in, the file-list fields come back empty and the preview adds a warning noting that the accurate version requires opting in.
 
-Total estimated time is 4-6 weeks, most of which is the parallel/cutover period.
+## Branching Strategy
 
-Each migration run produces a diagnostic log file in `.robot.local/res/`. This log captures every step, warning, and error with timestamps and detailed repair instructions. The log is overwritten on each run and contains results from the last run only. The Coordinator can review this file after running the migration to see all issues that were encountered and their suggested fixes.
+The Coordinator picks one of three strategies per run. The CLI defaults to `Branch` because Coordinators usually have content edits in progress; the REST API defaults to `InPlace` because automation typically runs in clean working trees.
 
-Migration progress is saved after each step. If a migration run is interrupted (e.g., terminal closed, system crash), the Coordinator can resume from where it left off — no progress is lost. A backup of the previous state is kept automatically, so even if the save itself is interrupted, the prior state is recoverable.
+In-place applies to the working tree directly. The system refuses if `git status` shows any pending changes — the safety rule is that an in-place migration must not mix with content edits that would obscure the migration's diff. The Coordinator stashes or commits first.
 
-## Phase 0 — Przygotowanie i bootstrap
+Branch creates a dedicated git branch named after the migration (`migration/<slug>-<version>` for a single migration, `migration/<from>-to-<to>` for a chain), applies the change there, commits with a structured message recording the schema versions and file count, and leaves the branch checked out for review.
 
-The Coordinator secures the current state before any changes, then generates the entity store from legacy data. This phase combines preparation and bootstrap into a single step.
+Branch-and-merge does the same as Branch and then fast-forward merges back into the original branch on success. The merge is refused if the original branch has diverged in the meantime, so the operator resolves the divergence manually.
 
-The phase proceeds through the following steps. The system verifies a clean git state (no uncommitted changes allowed before migration starts). It creates a safety tag (`pre-migration`) providing a rollback point to the exact pre-migration state. It verifies the PU state file, ensuring the processing history file (`pu-sessions.json`) is preserved and continues to be used. It verifies the submodule (`.robot.powershell` must be registered as a git submodule) and confirms all commands are available. It creates the data manifest (`.robot.local/robot-data.psd1`) ensuring all commands write to the correct `entities.md` location. It converts legacy state files from Markdown to structured JSON format — the PU processing history and Discord delivery log are migrated so that all future state access uses JSON. Finally, it generates the entity store by reading all current player and character data from the existing player database and writing it into `entities.md`. The system creates one new file containing all players, their characters, and associated metadata (PU values, aliases, group memberships). The original player database remains untouched. Additional entity sections (NPC, Group, Location, Item) are added for future use.
+## Long Runs and Background Jobs
 
-## Phase 1 — Baseline integralnosci sesji
+A migration's manifest declares its estimated duration. Anything over ten seconds is dispatched as a background job: the dashboard polls the job's progress, the CLI either blocks with a progress bar or returns a job ID with `-AsJob`. The schema lock is held for the entire job and released automatically when it completes or fails.
 
-A read-only phase that computes and stores baseline SHA-256 content hashes for all session files. These hashes provide tamper detection and change tracking for session content going forward. The baseline is stored in `.robot.local/res/session-hashes/` and serves as the reference point for the session integrity validator.
+A sync apply on a migration estimated to take more than ten seconds is refused with a hint to switch to async. The refusal is deliberate — it prevents an HTTP timeout from leaving the schema lock in an ambiguous state.
 
-## Phase 2 — Walidacja i naprawa danych
+## Signed vs Unsigned
 
-This phase combines data parity validation with diagnostics and data repair. It first verifies the new system correctly reads and merges data from both sources, then iteratively fixes issues surfaced by the stricter validation.
+The signed/unsigned distinction is about provenance, not file format. Migrations shipped with the module or contributed by a loaded plugin go through code review and ship as committed artifacts. Migrations the Coordinator drops into `<repo>/.robot.local/migrations/` may be one-offs that never enter the repository.
 
-Validation checks include verifying that player and character counts match expectations, PU values match the original data (spot-checked), aliases transferred correctly, and players without webhook addresses are identified. A diagnostic tool run surfaces any remaining issues.
+For unsigned migrations, the preview surfaces a warning recommending the Coordinator review `migrate.ps1` before applying, and the apply call requires `allowUnsigned: true` (REST) or `-AllowUnsigned` (cmdlet). Without the flag, the system refuses with an "unsigned migration blocked" error.
 
-The new system is stricter about data validation. Issues that the old system silently ignored now surface as errors. This sub-phase fixes known problems iteratively: unresolved character names (typos in session PU entries, fixed by correcting the name or adding an alias), malformed session dates (dates like `2025-6-15` corrected to `2025-06-15`), duplicate PU entries (same character listed multiple times in one session), characters with PU = BRAK (decision to mark as inactive or supply missing values), and stale history entries (old session headers in the processing log that no longer match existing sessions, informational and non-blocking).
+## Recovering from a Stuck Run
 
-Additionally, a narrator report identifies raw narrator names from session headers that do not resolve to known players, allowing the Coordinator to add normalization mappings.
+If a migration run crashes — process killed, host rebooted, network partition — the schema lock will still be held by the dead process. New runs refuse with "schema locked by ...". The system also tracks how long the lock has been held; if it exceeds the configured time-to-live (60 minutes by default, configurable in `local.config.psd1`), the schema status response reports it as "likely stale" so the Coordinator knows this is not a genuine in-progress run.
 
-The Coordinator runs diagnostics, fixes issues, re-runs diagnostics, and repeats until the diagnostic tool returns OK.
+After confirming no migration is still running on another machine, the Coordinator clears the lock with `DELETE /schema/lock` or `Reset-MigrationLock -Force`.
 
-## Phase 3 — Import lokalizacji z mapy
+If a migration partially completed before crashing, the per-migration checklist records which steps succeeded. The next run picks up where the previous one stopped — no rework, no double-writes.
 
-The Coordinator imports all game-map locations into the entity store. This produces two entity types using a two-pass workflow.
+## Schema Restore After a Git Revert
 
-Mapa entities (concrete game maps) are created first. The system reads the full map registry (~2,704 entries) and creates a Mapa entity for each one. Each Mapa entity records the Margonem map ID, map type (exterior/interior), CDN image URL, and tile dimensions. These are written to a dedicated overflow file (`maps-100-ent.md`) to keep the main `entities.md` manageable.
+If a release of the lore repository has to be rolled back via `git revert`, the schema pointer in `.robot.local/schema.json` will no longer match the reverted code state. The Coordinator brings the pointer back into sync with `POST /schema/restore` or `Reset-SchemaVersion -To <version>`.
 
-Lokacja entities (conceptual locations) are derived next. The system infers parent-child relationships from naming conventions (e.g., "Piekielna Grota p.2" is a child of "Piekielna Grota") and derives deduplicated Lokacja entities from the hierarchy's unique base names. These represent the conceptual places — fewer than the total map count — and are written to `entities.md`.
+The target version must already appear in the schema's history (the system refuses unknown versions). The operation is pointer-only: no migration script runs, no data is rewritten. The downgrade is recorded as a new history entry tagged `schema-restore:` so the audit trail shows when and why the pointer moved backward.
 
-In the Coordinator review (second pass), the system exports a tab-separated override file listing all imported maps. The Coordinator edits this file to add Nerthus-specific names for maps that use different names in the RP setting (applied as `@nazwa_nerthus` on Mapa entities) and to add virtual locations that exist only in the Nerthus setting (created as Lokacja entities). After editing, the Coordinator re-runs the phase to apply the overrides. The phase completes when the Mapa import, Lokacja derivation, and override steps are all done.
+The `migration:restore` scope is held independently of `migration:admin` so the Coordinator can grant downgrade rights to a release engineer without also granting lock-clearing rights.
 
-This phase must run before the session format upgrade (Phase 5) because the location review step in Phase 5 expects Lokacja entities to already exist.
+## Module Load and the Read-Only Gate
 
-## Phase 4 — Pobieranie logow sesji
+The module ships with a supported schema-version range declared in its manifest. When the module loads against a repository, it checks the repository's current schema against the range:
 
-The system downloads all session log files from external URLs (primarily Pastebin) to the local `res/logs/` cache. This ensures the lore repository has a complete archive before any URLs expire. The fetch uses CDN-safe throttling and retry logic. Failed URLs are recorded for manual review.
-
-## Phase 5 — Upgrade formatu sesji
-
-The Coordinator upgrades active session files from Gen1/Gen2/Gen3 to the current Gen4 format. The upgrade changes only metadata structure — narrative text and special blocks (clarifications, effects, rewards) are preserved. Additionally, log URLs that have locally cached files (from Phase 4) are replaced with relative paths (`res/logs/filename`), making the repository self-contained.
-
-| Before | After |
+| Repository state | What happens |
 |---|---|
-| `- Lokalizacje:` | `- @Lokacje:` |
-| `- Logi: URL` | `- @Logi:` + `    - URL` |
-| `- PU:` | `- @PU:` |
-| `*Lokalizacja: A, B*` (Gen2) | `- @Lokacje:` + `    - A` + `    - B` |
+| Schema is within the supported range | Module loads normally. If pending migrations exist, the Coordinator sees a count on stderr. |
+| Schema is below the minimum | Module loads in read-only mode. Every write cmdlet refuses with "schema too old; run migrations to enable writes." The Coordinator runs the pending chain to advance. |
+| Schema is above the maximum | Module refuses to load. An older module against a newer repository is a corruption risk; the Coordinator updates the module before continuing. |
+| Module imported outside a repository | Mode is "unknown"; writes are permitted because no repository is in scope. |
 
-If a particular file fails during upgrade (e.g., a malformed session header), processing continues with the remaining files. A summary of failed files is displayed at the end. Headers with irregular whitespace (e.g., double spaces after `###`) are normalized automatically.
-
-After the format upgrade, narrator names are verified against normalization mappings. Sessions with unresolved narrator names are flagged for review.
-
-A location report analyzes all location names used in active sessions. It compares them against registered Lokacja entities and flags unresolved locations (names that do not match any registered entity, where the Coordinator must either create the missing entity or mark the value as a non-location) and warnings (fuzzy matches, case variants, or hierarchy inconsistencies, shown for awareness but do not block the process).
-
-Non-location exclusions are stored in `.robot.local/res/location-exclusions.txt` and persist across re-runs. The commit step is blocked until all truly unresolved locations are handled.
-
-After the format upgrade and location review, a review file (`all-sessions-to-review.md`) is generated in `.robot.local/res/`. This file contains every session sorted chronologically, with source file paths embedded as HTML comments. The Coordinator can edit session content directly in the review file (fix typos, upgrade old formats, correct metadata), delete session blocks to remove them from source files, or add new session blocks (these are placed in `.robot.local/res/review-additions/` for manual integration).
-
-On subsequent runs of Phase 5, the Coordinator can choose to apply edits from the review file back to source files, regenerate the review file, or refresh hashes after manual source edits. The review workflow is optional — Phase 5 can complete without it.
-
-## Phase 6 — Wnioskowanie drzwi z logow
-
-The system analyzes location transitions from session logs to infer physical connections (`@drzwi` tags) between locations. It builds a location graph, classifies Movement vs Teleport edges based on structural distance, and generates a review file with confidence-weighted candidates. The Coordinator reviews the candidates (accepting, rejecting, or marking for review), and accepted pairs receive bidirectional `@drzwi` tags with temporal annotations.
-
-## Phase 7 — Enrollment walut
-
-The currency system is an entirely new capability. This phase sets up the initial state.
-
-The Coordinator treasury is a group entity (`Skarbiec Koordynatorow`) with initial reserves in three denominations: Korona (gold, 1 Korona = 100 Talarow), Talar (silver, 1 Talar = 100 Kogow), and Kog (copper, base unit).
-
-Player balances are collected via a one-time form sent to players, then registered through commands or a technical initialization session.
-
-Narrator budgets are currency reserves allocated to Narrators for distribution during sessions.
-
-A verification step uses a currency report and reconciliation check to confirm all balances are consistent.
-
-Currency transfers during gameplay are registered by Narrators in sessions via `@Transfer` directives.
-
-## Phase 8 — Przelaczenie (cutover)
-
-This phase combines the parallel period and the official cutover into a single phase.
-
-During the parallel period (2-4 weeks), both the old and new systems run simultaneously. The Coordinator runs PU assignment through both and compares results. PU assignments are compared between systems (results must match), new sessions are written in Gen4 format by Narrators, new characters are created exclusively through the new system, and old sessions remain readable without modification.
-
-All cutover criteria must be met before switching over: at least one full PU cycle with identical results from both systems, all active Narrators using Gen4 format, diagnostics clean, and currency reconciliation without critical warnings.
-
-The cutover steps are the official switch to the new system as the sole operational tool. The Coordinator performs a final PU verification to confirm diagnostics are clean, freezes `Gracze.md` by adding a read-only notice (the file becomes a historical archive), marks the old system as deprecated, runs the first standalone PU assignment through the new system with full effects (entity updates, Discord notifications, history logging), announces to the team, and creates a post-migration tag.
-
-## Inputs Required
-
-For the initial migration, the Coordinator needs access to the existing player database (`Gracze.md`, read-only, never modified) and a working copy of the repository with the `.robot.powershell` module available.
-
-For ongoing operations, the system requires session files with proper headers (`### YYYY-MM-DD, Title, Narrator`) and metadata blocks, player webhook addresses for Discord notifications (optional but recommended), and character names that match registered names or aliases exactly.
-
-## Ongoing Operations
-
-After migration, the following workflows continue on an ongoing basis.
-
-When recording a session, the Narrator documents each session using the current format: session header (date, title, and narrator name), Lokacje (where the session took place), Logi (link(s) to the session transcript), PU (each participating character and their earned PU value), Zmiany (world-state updates applied to entities), Intel (targeted information sent to specific recipients), and Transfer (currency transactions between characters).
-
-For monthly PU assignment, the Coordinator initiates the assignment for the target period (typically the previous one or two months). The system scans sessions in the date range, skipping any already processed. Character names are verified against the player roster — if any name cannot be matched, the process stops immediately with no PU awarded and no notifications sent. The Coordinator must fix the unrecognized names before retrying. PU is calculated for each character: base PU = 1 (universal monthly base) + sum of session PU values, with a monthly cap of 5 PU maximum. Excess PU above the cap is stored in the character's overflow pool. If a character earned less than 5 PU, the overflow pool supplements the difference (up to the cap). When the Coordinator confirms, character PU totals are updated in the entity store, Discord notifications are sent to each player's webhook (grouped by player), and processed session headers are logged in the history file.
-
-When adding a new Player, the Coordinator registers the player with their basic information (Margonem ID, optional webhook address). The system validates that no duplicate player exists. Optionally, a first character can be created at the same time.
-
-When adding a new character, the Coordinator creates a new character for an existing player. Starting PU is calculated automatically based on the player's other characters: half of their total earned PU plus 20, rounded down. New players start at 20 PU. A character file is created from the standard template. The character is registered in the entity store with ownership and starting PU.
-
-When removing a character, the operation is a soft delete — the character is marked as removed with an effective date, and no data is physically deleted. Removed characters stop appearing in standard queries but remain in the system for historical accuracy. This action requires explicit confirmation due to its significance.
+This protects the repository from accidental writes by a module that doesn't understand the current schema, and protects the operator from running migrations they didn't intend to.
 
 ## Expected Outcomes
 
-After migration is complete:
+After a successful migration:
 
-- Single source of truth for mutable data — all updates go to the entity store; the legacy file stays frozen as a read-only archive
-- Backward-compatible reading — queries merge both old and new data transparently, with no information lost
-- Consistent session format — new sessions use the current structured format; older sessions remain readable
-- Automated PU processing — monthly PU assignment is calculated, validated, applied, and notified in one operation with full audit trail
-- Data quality enforcement — unresolved character names block PU assignment; diagnostic tools surface stale records, duplicate entries, and parsing failures
-- Location verification — location names in sessions are checked against the entity registry; conflicts and unresolved names are surfaced during migration
-- Currency tracking — three-denomination currency system with per-entity balances, session-based transfers, and reconciliation
-- Clear audit trail — every PU assignment is logged with timestamps and processed session headers
-
-## Rollback Plan
-
-The migration is designed to be reversible at every stage:
-
-| Level | Scenario | Action |
-|---|---|---|
-| Single operation | One PU assignment gave wrong results | Revert the last commit |
-| Specific phase | A phase introduced bad data | Revert the commit for that phase |
-| Session upgrade | Format upgrade caused issues in a file | Restore the file from the pre-migration tag |
-| Full rollback | Critical failure requiring complete reversal | Reset to the pre-migration tag (destructive, last resort) |
-
-The new system never modifies `Gracze.md`. The old system always has access to its unmodified database. The `pre-migration` git tag provides a complete snapshot of the pre-migration state.
+- The schema pointer in `.robot.local/schema.json` advances to the new version
+- The per-migration record in `.robot.local/res/migration-state.json` records status, timing, checklist state, and source-hash where applicable
+- The per-run log in `.robot.local/res/migration-log.txt` captures every step with timestamps (overwritten on each run)
+- The git history shows either a single migration commit (Branch / BranchAndMerge mode) or in-place changes the Coordinator commits manually
+- The schema history records the previous version with timestamps and the user who applied the change
 
 ## Exceptions and Recovery Actions
 
 | Situation | What happens | Recovery |
 |---|---|---|
-| Unresolved character name in PU | The entire PU assignment stops before any changes are made | Fix the character name in the session file (typo, missing alias) and retry |
-| Session with unparseable date | The session is skipped silently during PU assignment | Run the diagnostic tool to surface these sessions; fix the date format (must be `YYYY-MM-DD`). If the header cannot be changed, add `- @Data: YYYY-MM-DD` to override the date |
-| Duplicate session across files | Sessions with identical headers are automatically merged — PU is counted once, not per copy | No action needed; this is handled automatically |
-| Player has no webhook address | PU is still calculated and applied, but the Discord notification for that player is skipped with a warning | Add the webhook address to the player's record and re-send manually if needed |
-| Stale history entries | The diagnostic tool flags session headers in the processing log that no longer match any session in the repository | Review flagged entries; they may indicate renamed or deleted session files |
-| Character soft-deleted but still referenced | Removed characters are excluded from standard views but still exist in the data | Use the include-deleted option to view them; they can be reactivated by updating their status |
-| Unresolved location name | Phase 5 blocks the commit until the Coordinator resolves or excludes the name | Create a Lokacja entity or mark as non-location |
-| Session upgrade fails on a file | The file is skipped; remaining files continue processing | Check the error message, fix the session header, and re-run |
+| Apply refused with "schema locked" | Another run is in progress or a previous run crashed | If genuinely in progress, wait. Otherwise check the lock age in `/schema/version`; clear with `DELETE /schema/lock` after confirming no concurrent run |
+| Apply refused with "working tree dirty" (InPlace mode) | The Coordinator has pending content edits | Stash or commit, or re-run with `branchMode: Branch` |
+| Apply refused with "unsigned migration blocked" | The migration is operator-local and the apply call did not opt in | Review `migrate.ps1` in the migration directory; re-run with `allowUnsigned: true` |
+| Apply refused with "duration exceeds sync limit" | A sync apply hit a migration estimated to take more than ten seconds | Re-run with `mode: async`; poll `/migrations/jobs/<id>` |
+| Apply refused with "prerequisite not met" | The migration's required predecessor has not run yet | Use `Invoke-MigrationChain -To <version>` to apply the chain |
+| Module loaded in ReadOnly mode | Repository schema is below the module's supported minimum | Run pending migrations to advance the schema |
+| Module refused to load | Repository schema exceeds the module's supported maximum | Update the module |
+| Restore refused with "version-not-in-history" | The target version was never applied to this repository | Pick a version from the response's `available` list |
 
-## Audit Trail / Evidence of Completion
+## Audit Trail
 
-- PU processing log (`.robot.local/res/pu-sessions.json`) — timestamped entries listing which sessions were processed in each run, used to prevent double-counting
-- Entity store changes — all player and character updates are committed to the repository, providing full Git history
-- Discord notifications — each player receives a message confirming awarded PU, current totals, and overflow pool usage
-- Diagnostic reports — the validation tool produces a structured report showing whether all checks passed, with details on any issues found
-- Location report (`.robot.local/res/location-report.txt`) — optional export of all location names with resolution status, variants, and conflicts
-- Migration state (`.robot.local/res/migration-state.json`) — tracks per-phase completion, checklist items, and diagnostic history across runs
+- `.robot.local/schema.json` — current version + history entries (one per applied migration, plus `schema-restore:` entries for downgrades)
+- `.robot.local/res/migration-state.json` — per-migration records: status, timestamps, checklist, source-hash for idempotent re-imports
+- `.robot.local/res/migration-log.txt` — per-run structured log (overwritten each run; rely on git history for cross-run records)
+- Git commit history — when using Branch or BranchAndMerge modes, each migration produces a commit with structured headers (Migration-Id, Schema-From, Schema-To, Files-Modified, Applied-By)
 
 ## Related Documents
 
-- [Glossary](Glossary.md) — Term definitions and Polish equivalents
-- [Sessions](Sessions.md) — Session format reference (Gen4 metadata fields)
-- [PU](PU.md) — Monthly PU assignment process
-- [Players](Players.md) — Player and character lifecycle
-- [World-State](World-State.md) — Entity tracking and temporal scope
-- [Currency](Currency.md) — Currency tracking and transfers
-- [Economy](Economy.md) — Economic analysis and reports
-- [Notifications](Notifications.md) — Intel, targeting, Discord notifications
-- [Auditing](Auditing.md) — Audit and diagnostic capabilities
-- [Troubleshooting](Troubleshooting.md) — Common issues and solutions
-- [MIGRACJA.md](PL/MIGRACJA.md) — Team-facing migration guide (Polish)
-- [MIGRACJA-TECH.md](PL/MIGRACJA-TECH.md) — Step-by-step technical procedures with commands (Polish)
+- [REST-API.md](REST-API.md) — full endpoint reference including the migration endpoints
+- [Glossary](Glossary.md) — term definitions
+- [MIGRACJA.md](PL/MIGRACJA.md) — team-facing migration guide (Polish)
+- [MIGRACJA-TECH.md](PL/MIGRACJA-TECH.md) — step-by-step PowerShell commands (Polish)
