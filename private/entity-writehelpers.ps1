@@ -206,6 +206,9 @@ function Write-EntityFile {
         [string]$NL = "`n"
     )
 
+    # CC-4: write-gate for direct callers that bypass Resolve-EntityTarget.
+    if (Get-Command 'Assert-WriteAllowed' -ErrorAction SilentlyContinue) { Assert-WriteAllowed }
+
     $HasHooks = Get-Command 'Invoke-PluginHook' -ErrorAction SilentlyContinue
 
     if ($HasHooks) {
@@ -280,6 +283,9 @@ function Resolve-EntityTarget {
         [string]$EntityName,
         [hashtable]$InitialTags = @{}
     )
+
+    # CC-4: write-gate funnel for all entity bullet/tag mutations.
+    if (Get-Command 'Assert-WriteAllowed' -ErrorAction SilentlyContinue) { Assert-WriteAllowed }
 
     $FilePath = Invoke-EnsureEntityFile -Path $FilePath
     $File = Read-EntityFile -Path $FilePath

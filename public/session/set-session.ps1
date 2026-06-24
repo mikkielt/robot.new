@@ -97,6 +97,8 @@ function Set-Session {
     )
 
     process {
+        # CC-4: write-gate funnel for session metadata mutations.
+        if (Get-Command 'Assert-WriteAllowed' -ErrorAction SilentlyContinue) { Assert-WriteAllowed }
         if ($script:HasOpCtx) { Clear-OperationContext }
 
         # Pipeline sessions carry all file copies (multi-file sessions);

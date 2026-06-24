@@ -59,6 +59,9 @@ function Add-DiscordDeliveryEntry {
         [string]$Context
     )
 
+    # CC-4: write-gate funnel for discord-delivery state file mutations.
+    if (Get-Command 'Assert-WriteAllowed' -ErrorAction SilentlyContinue) { Assert-WriteAllowed }
+
     $State = ConvertTo-MutableStateObject -Path $Path -DefaultVersion 1 -CollectionKey 'entries'
 
     $Now = [datetime]::Now

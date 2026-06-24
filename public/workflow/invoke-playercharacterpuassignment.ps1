@@ -91,6 +91,9 @@ function Invoke-PlayerCharacterPUAssignment {
         [switch]$Quiet
     )
 
+    # CC-4: write-gate funnel for the PU/state-file workflow.
+    if (Get-Command 'Assert-WriteAllowed' -ErrorAction SilentlyContinue) { Assert-WriteAllowed }
+
     $PrevSuppress = $script:SuppressWarnings
     if ($Quiet) { $script:SuppressWarnings = $true }
     try {

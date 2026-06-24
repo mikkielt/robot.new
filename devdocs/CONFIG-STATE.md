@@ -110,6 +110,45 @@ Functions:
 | `Get-TimezoneOffsetString` | Returns a formatted UTC offset string (e.g. `UTC+02:00`) for the local timezone |
 | `Add-AdminHistoryEntry` | Appends new entries with timestamp |
 
+## Schema Version Pointer
+
+The repository schema version lives in `.robot.local/schema.json`, written atomically via `Save-JsonStateFile` from the migration framework. The module's WP-5 load gate reads this on import to decide the operating mode (Normal, ReadOnly, Refused, Unknown).
+
+| Field | Type | Purpose |
+|---|---|---|
+| `schemaFileVersion` | int | Format version of this file (currently 1) |
+| `current` | string | Current SemVer schema version (e.g. `0.3.0` or `21.3.7+plugin-foo.1`) |
+| `majorName` | string | Informational name tied to MAJOR (e.g. `Yellow Threat`) |
+| `appliedAt` | ISO-8601 UTC | When `current` was last set |
+| `appliedBy` | string | User who applied the current migration |
+| `appliedMigrationId` | string | ID of the migration that produced `current` |
+| `lockedBy` | string \| null | Owner of the active migration lock (`user@host/PID`) |
+| `lockedAt` | ISO-8601 UTC \| null | When the lock was acquired (stale TTL default 60 min, override via `MigrationLockTtlMinutes` in `local.config.psd1`) |
+| `history` | array | Prior `current` entries, appended on each `Set-SchemaVersion` |
+
+`Lock-Schema` fabricates an initial `0.0.0` placeholder on first acquisition for a fresh repo; the placeholder is NOT pushed to history when the first real migration applies (only entries with `appliedMigrationId` are recorded).
+
+## Per-Migration Record File
+
+`Get-MigrationStateFile` reads `.robot.local/res/migration-state.json`. The new shape uses a `migrations` dictionary keyed by migration ID:
+
+```json
+{
+  "schemaFileVersion": 3,
+  "migrations": {
+    "0.1.0-bootstrap-entities": {
+      "status": "Completed",
+      "startedAt": "2026-06-24T14:00:00Z",
+      "completedAt": "2026-06-24T14:00:15Z",
+      "checklist": { "entitiesParsed": true },
+      "sourceHash": "sha256:..."
+    }
+  }
+}
+```
+
+The legacy shape used a `Phases` dict keyed by `"0".."8"` integers. `Get-MigrationStateFile` auto-converts on read via a permanent shim that maps each legacy phase to its framework migration ID (e.g. `"0" → "0.1.0-bootstrap-entities"`, `"5" → "0.6.0-upgrade-session-formats"`). The shim emits a one-shot `Write-RobotInfo` per process suggesting `Save-MigrationStateFile` to make the conversion durable.
+
 State files are JSON files in `.robot.local/res/`:
 
 ```json

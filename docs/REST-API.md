@@ -79,6 +79,22 @@ Clients that include conditional request headers (ETags) receive a short "not mo
 
 External tools can subscribe to a live event stream that pushes notifications whenever an entity is created, an entity's data changes, or a new player character is registered. Dashboards use this to update without polling.
 
+## Schema and Migrations
+
+The API exposes the repository's schema version, the list of discoverable migrations, and the operations required to advance or roll the schema back. A read of `/schema/version` returns the current version, the range the module supports, whether the module is in Normal mode (writes permitted) or Read-Only mode (writes refused until migrations are applied), how many migrations are still pending, and whether a migration is currently holding the schema lock.
+
+A read of `/migrations` lists every migration the module can discover — those shipped with the module, those contributed by loaded plugins, and those the Coordinator has dropped into `<repo>/.robot.local/migrations/`. Each entry carries its version, description, requires-predecessor, affected categories (entity schema, session format, state file, cache, external import), estimated duration, and origin tag. A read of `/migrations/pending` returns just the migrations strictly above the current version, in the order they would apply.
+
+A read of `/migrations/<id>/preview` runs the migration's dry-run report and returns the files that would be modified, created, or deleted; entity counts before and after where applicable; sample diffs; and any warnings the migration emits during preview. Previews are read-only — they do not write data and do not hit the network unless the request explicitly opts in.
+
+A write to `/migrations/apply` runs the migration. The body specifies the target (by migration id, or by version for a chain), whether the apply should block until completion (`mode: sync`) or return a job id immediately (`mode: async`), the branching strategy (apply in place, on a new git branch, or on a branch that fast-forward merges back on success), and whether the Coordinator has reviewed and accepted an operator-local unsigned migration. A sync apply on a migration estimated to take more than ten seconds is refused with a hint to switch to async — this prevents the request from outliving the HTTP timeout. Long applies are tracked as background jobs whose status is read at `/migrations/jobs/<id>`.
+
+If a migration crash leaves the schema lock held by a dead process, the Coordinator can clear it with `DELETE /schema/lock` (requires a token with the `migration:admin` scope). The framework also surfaces locks older than the configured stale-TTL with a "likely stale" flag in the `/schema/version` response, so the Coordinator can distinguish a genuine in-progress migration from a wedged one.
+
+If a release of the repository has to be rolled back (for example, after a bad commit was reverted in git), the schema pointer can be brought into sync with the reverted state via `POST /schema/restore` (requires the separate `migration:restore` scope, which is held independently of `migration:admin` so downgrade rights can be granted without lock-clearing rights). The target version must already appear in the schema's history — the operation is pointer-only; no migration script runs.
+
+Tokens scoped to `migration:read` can preview and inspect; `migration:write` is required to apply; `migration:admin` clears stale locks; `migration:restore` downgrades the pointer.
+
 ## Server Management
 
 The Coordinator starts and stops the API server through the CLI menu. The status view shows uptime, request count, queue depth, and connected real-time clients.

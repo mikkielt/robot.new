@@ -8,6 +8,22 @@ The guide covers how player and character data is now stored and updated, how se
 
 For low-level technical details (file parsers, data structures, internal algorithms), see the technical docs in `devdocs/`. For step-by-step PowerShell commands, see [MIGRACJA-TECH.md](PL/MIGRACJA-TECH.md).
 
+## How Migrations Are Run
+
+The Coordinator runs migrations through one of three control surfaces. All three reach the same engine, so the audit trail and the safety checks are identical regardless of which entry point is used.
+
+The REST API is the primary control plane. The dashboard's Tokens section can mint a token with `migration:read` and `migration:write` scopes. A `migration:admin` scope is required only to forcibly clear a stuck schema lock; a separately-issued `migration:restore` scope is required to roll a repository back to a prior version that already exists in its history. The dashboard surfaces the schema version, pending migrations, and a preview for each one before the Coordinator confirms.
+
+The PowerShell CLI exposes the same operations as cmdlets. `Get-SchemaVersion` shows the current state, `Get-Migration -Pending` lists what remains, `Get-MigrationPreview -Version 0.3.0` shows a dry run, and `Invoke-Migration -Version 0.3.0` or `Invoke-MigrationChain -To 0.3.0` applies the change. The CLI defaults to creating a dedicated git branch (`migration/<slug>-<version>` for a single migration, `migration/<from>-to-<to>` for a chain) so the migration's changes land separately from any in-progress content edits. The REST API defaults to applying in place because automation typically runs in clean working trees.
+
+Long migrations (log download, parity diagnostics, session-format upgrades) are dispatched as background jobs. The dashboard polls the job's progress; the CLI either blocks with a progress bar or returns a job ID with `-AsJob`. The schema lock is held for the entire job and released automatically when it completes or fails.
+
+A migration that comes from inside the module (`Robot.PowerShell/migrations/`) or from a loaded plugin is considered signed and applies normally. A migration that the Coordinator drops into `<repo>/.robot.local/migrations/` is unsigned: the preview surfaces a warning recommending review, and the apply call requires an explicit confirmation flag (`allowUnsigned: true` in the REST body, `-AllowUnsigned` on the cmdlet).
+
+If something goes wrong mid-migration — process killed, host rebooted — the schema lock will still be held by the dead process. The Coordinator can clear it (DELETE /schema/lock or `Reset-MigrationLock -Force`) after confirming no migration is still running on another machine. The framework also detects locks older than the configured TTL (default 60 minutes, overridable in `local.config.psd1`) and surfaces them as "likely stale" in the schema status response.
+
+If a release of the lore repository has to be rolled back via `git revert`, the schema pointer can be brought into sync with the reverted state through `POST /schema/restore` or `Reset-SchemaVersion -To <version>`. The target version must already appear in the schema's history (no scripts run; this is a pointer-only operation that records the downgrade as a `schema-restore:` entry in history).
+
 ## Actors and Responsibilities
 
 The Coordinator initiates the one-time data migration from the legacy player file to the new entity store, runs the monthly PU assignment process, reviews diagnostic reports for data quality issues (unresolved names, stale records), upgrades session records to the current format when needed, reviews location name reports and resolves conflicts, maintains player webhook addresses for notifications, and manages the currency system (treasury, reconciliation).

@@ -1,6 +1,210 @@
 # Migration Guide
 
-The migration from the legacy `.robot.local/robot.ps1` system to the `.robot.powershell` module covers the data model transition, session format upgrade, and operational workflow migration.
+This guide covers two layers:
+
+1. **Versioned Migration Framework** (current) — discovery-based, versioned migrations under `Robot.PowerShell/migrations/` with a repo-side version pointer at `.robot.local/schema.json`. Primary control surface is the REST API; CLI is a consumer.
+2. **Legacy 9-phase pipeline** (decommissioned in v1.0.0) — the original `migration/migrate.ps1` interactive bootstrap. Still present and runnable during the transition; the framework migrations under `migrations/0.X.0-*` wrap each legacy phase for parity.
+
+---
+
+## Versioned Migration Framework
+
+### Architecture
+
+```
+Robot.PowerShell/
+├── migrations/                     shipped framework migrations (Module origin)
+│   ├── 0.0.0-initialize-schema/
+│   ├── 0.1.0-bootstrap-entities/   (wraps legacy Phase 0)
+│   ├── 0.2.0-session-hash-baseline/ (wraps legacy Phase 1)
+│   ├── ...
+│   └── 1.0.0-cutover-yellow-threat/
+├── private/migration/              framework internals (CC-1 dot-sourced)
+│   ├── migration-version.ps1       SemVer pointer + lock
+│   ├── migration-loader.ps1        discovery, AST validation, DAG chain
+│   ├── migration-runtime.ps1       lock + hook + checklist + apply
+│   ├── migration-branch.ps1        InPlace / Branch / BranchAndMerge
+│   ├── migration-cache.ps1         cache fast-path (auto on load)
+│   └── migration-log.ps1           structured per-run log
+└── public/migration/               public surface
+    ├── get-schemaversion.ps1
+    ├── get-migration.ps1
+    ├── get-migrationpreview.ps1
+    ├── invoke-migration.ps1
+    ├── invoke-migrationchain.ps1
+    ├── reset-migrationlock.ps1
+    └── reset-schemaversion.ps1
+
+<lore-repo>/
+└── .robot.local/
+    ├── schema.json                 version pointer (canonical)
+    └── migrations/                 operator-local extension dir (optional)
+```
+
+### Schema version pointer (`.robot.local/schema.json`)
+
+```json
+{
+  "schemaFileVersion": 1,
+  "current": "0.1.0",
+  "majorName": "",
+  "appliedAt": "2026-06-24T14:30:00+00:00",
+  "appliedBy": "anward",
+  "appliedMigrationId": "0.1.0-bootstrap-entities",
+  "lockedBy": null,
+  "lockedAt": null,
+  "history": [ /* prior current entries */ ]
+}
+```
+
+Created on first migration apply. Lock-Schema fabricates an initial 0.0.0 placeholder when none exists; the placeholder is NOT pushed to history (only real applies are recorded).
+
+### Manifest schema (`migration.psd1`)
+
+```powershell
+@{
+    Version              = '21.3.7'              # SemVer; plugins inherit composite (see below)
+    MajorName            = 'Yellow Threat'        # informational; must match per-MAJOR registry
+    Slug                 = 'add-currency-tag'     # kebab-case ≤ 64 chars
+    Description          = 'Adds @waluta tag'
+    Requires             = '21.3.6'               # predecessor (optional for first migration)
+    Author               = 'mikolaj.kielt'
+    AffectsCategories    = @('EntitySchema')      # see enum below
+    EstimatedDurationSec = 30                     # >10 → forces async mode
+    OnlyIfSourceChanged  = $false                 # WP-10 external-import idempotency
+    SourceHashScript     = $null                  # relative .ps1 returning a SHA256
+    RequiresNetwork      = $false                 # WP-4 preview degradation
+    PluginSequence       = 1                      # WP-11 per-plugin ordering (plugin origin only)
+}
+```
+
+Category enum: `EntitySchema | DataRewrite | SessionFormat | StateFile | RepoLayout | Cache | ExternalImport | Fixture`.
+
+### `migrate.ps1` contract
+
+Each migration directory MUST contain a `migrate.ps1` that exports:
+
+- `Get-MigrationPreview -Config <hashtable>` — returns a structured preview (FilesToModify/Create/Delete, EntityCountsBefore/After, SampleDiffs, Warnings, NetworkRequired, SourceUnchanged). MUST be side-effect-free.
+- `Invoke-Migration -Config <hashtable> -ProgressCallback <scriptblock> -Checklist <hashtable>` — performs the migration. Must support `SupportsShouldProcess`.
+
+Optional:
+- `Test-MigrationApplied -Checklist <hashtable>` — return `$true` to skip if the checklist indicates prior completion. Default behavior: treat any truthy checklist value as applied.
+
+Per CC-3 (manifest validation), `migrate.ps1`'s top-level scope is restricted to `FunctionDefinitionAst`, `UsingStatementAst`, or comments. Validation parses the AST without executing the file — top-level commands, assignments, or `Set-Location` are rejected.
+
+### Discovery roots (in order; later overrides earlier with a warning)
+
+| Order | Root | Origin tag |
+|---|---|---|
+| 1 | `<module>/migrations/` | `Module` |
+| 2 | `<lore-repo>/.robot.local/migrations/` | `OperatorLocal` |
+| 3 | `<plugin>/migrations/` for each loaded plugin | `Plugin:<name>` |
+
+### Plugin composite versioning
+
+Plugin migrations targeting module version X are auto-rewritten by the loader to `X+<plugin-name>.<PluginSequence>`. Examples: `21.3.7+plugin-foo.1`, `21.3.7+plugin-foo.2`. `Compare-SchemaVersion` orders these as strictly greater than the bare core but less than the next bare core. Within a single topological layer, the resolver tiebreak is: Origin priority (Module < Plugin:* < OperatorLocal) → version sort key → PluginLoadIndex → PluginSequence → Slug.
+
+### Operator-local migrations (WP-12)
+
+Migrations under `<repo>/.robot.local/migrations/` are tagged `Origin = OperatorLocal`. They produce a `Warnings[]` entry "Unsigned operator-local migration; review migrate.ps1 before applying." on preview, and refuse to apply without `-AllowUnsigned` (or `allowUnsigned: true` in the REST body), throwing `UnsignedMigrationBlocked`.
+
+### Module load gate (WP-5)
+
+`Robot.PowerShell.psd1:PrivateData.SchemaVersionRange = @{ Min = '0.0.0'; Max = '1.99.99' }` controls the gate. On module load:
+
+| Condition | Mode | Effect |
+|---|---|---|
+| Repo schema in `[Min, Max]` | `Normal` | Writes permitted; pending migrations logged as a warning |
+| Repo schema `< Min` | `ReadOnly` | `Assert-WriteAllowed` throws `SchemaTooOld` for all writes |
+| Repo schema `> Max` | `Refused` | Module load aborts (older module + newer repo is a corruption risk) |
+| No repo / schema check failed | `Unknown` | Writes permitted (test harness, CI lint) |
+
+`Get-SchemaState` surfaces the cached state. `Assert-WriteAllowed` is the single funnel called from every top-level public mutating cmdlet; migration runtime passes `-BypassSchemaGate` to permit schema-bump writes.
+
+### Lock and runtime lifecycle
+
+1. Resolve target chain (`Resolve-MigrationChain`).
+2. Acquire schema lock (`Lock-Schema -LockOwner "$user@$host/$PID"`). Refuse if held; warn if stale (TTL default 60 min, override via `local.config.psd1:MigrationLockTtlMinutes`).
+3. For each migration:
+   1. Load/init per-migration record in `<repo>/.robot.local/res/migration-state.json`.
+   2. Fire `Invoke-PluginHook -Operation Migration -Phase BeforeMigration -Context @{ Migration, Record, Config, Phase }`.
+   3. If `OnlyIfSourceChanged` and `SourceHashScript` hash matches recorded value → skip.
+   4. Dot-source `migrate.ps1`; if `Test-MigrationApplied -Checklist $rec.checklist` returns `$true` → skip.
+   5. Call `Invoke-Migration -Config $cfg -ProgressCallback $cb -Checklist $rec.checklist`.
+   6. Drain `OperationContext` accumulators.
+   7. `Set-SchemaVersion -Version $m.Version -MajorName $m.MajorName -MigrationId $m.Id`.
+   8. Fire `AfterMigration` hook.
+4. Release lock in `finally`.
+
+### Branching modes (WP-6)
+
+| Mode | Behavior | CLI default | REST default |
+|---|---|---|---|
+| `InPlace` | Apply to working tree; refuse when tree is dirty. | — | ✓ |
+| `Branch` | Create `migration/<slug>-<version>` or `migration/<from>-to-<to>`, apply, commit, leave checked out. | ✓ | — |
+| `BranchAndMerge` | `Branch` + `--ff-only` merge back into original branch. | opt-in | opt-in |
+
+### REST API (WP-7)
+
+| Method | Path | Scope | Purpose |
+|---|---|---|---|
+| GET | `/schema/version` | `migration:read` | Current version + range + mode + lock state |
+| GET | `/migrations` | `migration:read` | All discoverable migrations |
+| GET | `/migrations/pending` | `migration:read` | Pending only |
+| GET | `/migrations/{id}` | `migration:read` | Single detail |
+| GET | `/migrations/{id}/preview` | `migration:read` | Dry-run JSON |
+| POST | `/migrations/apply` | `migration:write` | Single entry point; `mode: sync\|async` |
+| GET | `/migrations/jobs/{jobId}` | `migration:read` | Job status |
+| DELETE | `/schema/lock` | `migration:admin` | Clear stale lock |
+| POST | `/schema/restore` | `migration:restore` | Pointer-only downgrade |
+
+The existing static `/schema` C# route (domain name dictionary) is preserved; migration endpoints live under `/schema/version`, `/schema/lock`, `/schema/restore` to avoid the collision.
+
+`POST /migrations/apply` body:
+```json
+{
+  "target":        { "id": "0.1.0-bootstrap-entities" }, // OR { "version": "0.3.0" }
+  "mode":          "sync",                                 // sync | async
+  "branchMode":    "InPlace",                              // InPlace | Branch | BranchAndMerge
+  "allowUnsigned": false,
+  "allowNetwork":  false
+}
+```
+
+Sync limit: `mode=sync` with `EstimatedDurationSec > 10` returns **409 Conflict** with `hint: "Re-submit with mode=async"`. Refusal, not 307 redirect — a `curl -L` cannot accidentally flip an explicit sync call into a job.
+
+### Cache format fast path (WP-9)
+
+Migrations whose `AffectsCategories` contains `'Cache'` are auto-applied on module load. No schema lock; no `schema.json` write. Operator-local cache migrations are rejected from the fast path. Failure of any single cache migration falls back to `Clear-ParseCaches` (current cache-version-bump behavior). Record file: `.robot.local/.cache/migrations.json`.
+
+### External-import idempotency (WP-10)
+
+Manifest flag `OnlyIfSourceChanged = $true` + `SourceHashScript = 'source-hash.ps1'`. The script returns a hash (SHA256 string); the runtime compares against the recorded hash and skips when unchanged.
+
+### Test fixture migration mode (WP-14)
+
+`Invoke-FixtureMigrations -FixturePath <dir> [-TargetVersion latest]` (in `tests/TestHelpers.ps1`) swaps `Get-RepoRoot` to the fixture, runs the chain, restores. CI may invoke this to keep `tests/fixtures/<scenario>/` at HEAD.
+
+### Legacy 9-phase mapping
+
+The framework migrations under `migrations/0.X.0-*` wrap each legacy phase to preserve semantic identity. Until v1.0.0 cutover the legacy `migration/migrate.ps1` interactive bootstrap remains runnable.
+
+| Framework Migration | Legacy Phase File | Notes |
+|---|---|---|
+| `0.0.0-initialize-schema` | (new) | Writes initial `schema.json`. |
+| `0.1.0-bootstrap-entities` | `phase0-setup.ps1` | Phase 0. |
+| `0.2.0-session-hash-baseline` | `phase1-session-hashes.ps1` | Phase 1. |
+| `0.3.0-validate-parity` | `phase2-validation.ps1` | Phase 2 (long-running). |
+| `0.4.0-import-locations` | `phase3-location-import.ps1` | Phase 3 (`OnlyIfSourceChanged` via `maps.json` hash). |
+| `0.5.0-download-logs` | `phase4-log-download.ps1` | Phase 4 (`RequiresNetwork`). |
+| `0.6.0-upgrade-session-formats` | `phase5-session-upgrade.ps1` | Phase 5. |
+| `0.7.0-infer-doors` | `phase6-door-inference.ps1` | Phase 6. |
+| `0.8.0-enroll-currency-csv` | `phase7-currency.ps1` (CSV-only) | Phase 7 — interactive entry dropped; CSV must be pre-built. |
+| `1.0.0-cutover-yellow-threat` | `phase8-cutover.ps1` | Phase 8 — marks legacy `Gracze.md` read-only header. |
+
+### Compatibility shim
+
+`migration-state.json` from the legacy `Phases` dict is auto-converted to the new `migrations` dict on read (shim emits a one-shot `Write-RobotInfo` per process: "Legacy migration-state.json shape detected; up-converted in memory. Re-save with Save-MigrationStateFile to make the conversion durable."). The shim is permanent.
 
 ---
 

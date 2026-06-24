@@ -22,9 +22,12 @@
     with [DBNull]::Value as a negative-lookup sentinel.
 
     Hook phases:
-    - BeforeWrite:  can reject by throwing, can mutate data in-place
-    - AfterWrite:   side effects only, errors logged but don't abort
-    - AfterCreate:  side effects only, errors logged but don't abort
+    - BeforeWrite:      can reject by throwing, can mutate data in-place
+    - AfterWrite:       side effects only, errors logged but don't abort
+    - AfterCreate:      side effects only, errors logged but don't abort
+    - BeforeMigration:  can reject by throwing; payload includes the loaded
+                        per-migration record so hooks can inspect prior checklist
+    - AfterMigration:   side effects only; payload reflects post-apply state
 
     RBAC is advisory (not a security boundary). When no role configuration exists,
     all access is permitted. Designed for trusted small-team environments. User
@@ -43,7 +46,7 @@ function Invoke-PluginHook {
         [string]$Operation,
 
         [Parameter(Mandatory)]
-        [ValidateSet('BeforeWrite', 'AfterWrite', 'AfterCreate')]
+        [ValidateSet('BeforeWrite', 'AfterWrite', 'AfterCreate', 'BeforeMigration', 'AfterMigration')]
         [string]$Phase,
 
         [Parameter(Mandatory)]
@@ -87,11 +90,11 @@ function Invoke-PluginHook {
             & $Cmd -HookContext $Context
         }
         catch {
-            if ($Phase -eq 'BeforeWrite') {
-                # Re-throw to abort the write operation
+            if ($Phase -eq 'BeforeWrite' -or $Phase -eq 'BeforeMigration') {
+                # Re-throw to abort the operation
                 throw "Plugin '$($Handler.Plugin)' hook '$FuncName' rejected operation: $_"
             }
-            # AfterWrite/AfterCreate hooks log errors but don't abort
+            # AfterWrite/AfterCreate/AfterMigration hooks log errors but don't abort
             [System.Console]::Error.WriteLine(
                 "[WARN Invoke-PluginHook] Hook '$FuncName' from plugin '$($Handler.Plugin)' failed: $_")
         }

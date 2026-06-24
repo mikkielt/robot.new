@@ -206,6 +206,36 @@ Auth management endpoints:
 | GET | `/auth/status` | `Invoke-ApiGetAuthStatus` | List tokens and count |
 | GET | `/auth/whoami` | `Invoke-ApiGetWhoami` | Current token identity and scopes |
 
+Migration framework endpoints (`/schema/*` namespacing avoids the existing static `/schema` C# route which serves the domain name dictionary):
+
+| Method | Path | Handler | Description |
+|---|---|---|---|
+| GET | `/schema/version` | `Invoke-ApiGetSchemaVersion` | Current version, supported range, mode, pending count, lock state, history |
+| GET | `/migrations` | `Invoke-ApiGetMigrations` | All discoverable migrations (Module, OperatorLocal, Plugin:*) with manifest + validation |
+| GET | `/migrations/pending` | `Invoke-ApiGetPendingMigrations` | Pending migrations in apply order |
+| GET | `/migrations/:id` | `Invoke-ApiGetMigration` | Single migration detail (id, version, or slug) |
+| GET | `/migrations/:id/preview` | `Invoke-ApiGetMigrationPreview` | Dry-run preview; `?allowNetwork=true` permits network probes |
+| POST | `/migrations/apply` | `Invoke-ApiPostMigrationApply` | Apply single migration or chain; body specifies target + `mode: sync\|async` + `branchMode` |
+| GET | `/migrations/jobs/:jobId` | `Invoke-ApiGetMigrationJob` | Background job status (Queued/Running/Completed/Failed) |
+| DELETE | `/schema/lock` | `Invoke-ApiDeleteSchemaLock` | Force-clear a stale schema lock |
+| POST | `/schema/restore` | `Invoke-ApiPostSchemaRestore` | Pointer-only downgrade to a version in history[] |
+
+`POST /migrations/apply` request shape:
+
+```json
+{
+  "target":        { "id": "0.1.0-bootstrap-entities" },
+  "mode":          "sync",
+  "branchMode":    "InPlace",
+  "allowUnsigned": false,
+  "allowNetwork":  false
+}
+```
+
+Sync-vs-async rule: `mode: sync` + `EstimatedDurationSec > 10` returns 409 with `hint: "Re-submit with mode=async"` (refusal, not 307 redirect — a `curl -L` cannot accidentally flip an explicit sync call into a job). `mode: async` returns 202 with `jobId` + `statusUrl`. Schema lock contention returns 409 with the current `lockedBy` / `lockedAt` / `lockStale` fields. Unsigned OperatorLocal migration without `allowUnsigned: true` returns 422 `unsigned-migration-blocked`.
+
+Backed by the migration job system (`api-jobs-migration.ps1`): jobs are kept in an in-memory `ConcurrentDictionary` keyed by GUID; `Start-ApiMigrationJob` uses `Start-ThreadJob` when available and falls back to inline execution otherwise. Job retention is per-process (operators rely on the durable per-run `.robot.local/res/migration-log.txt` for cross-process history).
+
 ## Authentication & Authorization
 
 The API supports three auth modes, resolved in priority order:
@@ -243,6 +273,10 @@ Scope matching rules (implemented in `ApiMiddleware.HasScope`):
 | `admin:read` | GET /validate/\*, /reports/\*, /analytics/integrity/trends |
 | `admin:write` | POST /workflow/\* (includes /workflow/log-fetch and /workflow/pu-assignment, both per-IP rate-limited) |
 | `auth:manage` | POST /auth/token, DELETE /auth/token/:name, GET /auth/status |
+| `migration:read` | GET /schema/version, /migrations, /migrations/pending, /migrations/:id, /migrations/:id/preview, /migrations/jobs/:jobId |
+| `migration:write` | POST /migrations/apply |
+| `migration:admin` | DELETE /schema/lock |
+| `migration:restore` | POST /schema/restore (held separately from `migration:admin` so downgrade rights can be granted independently of lock-clearing rights) |
 
 ## Token Management
 

@@ -43,7 +43,10 @@ Hook Registry (private/plugin-hooks.ps1)
     +-- New-PlayerCharacter ---> AfterCreate
     +-- New-Player ------------> AfterCreate
     +-- Set-CurrencyEntity ----> AfterWrite
+    +-- Migration -------------> BeforeMigration / AfterMigration
 ```
+
+`Invoke-PluginHook` accepts these phases via `[ValidateSet('BeforeWrite','AfterWrite','AfterCreate','BeforeMigration','AfterMigration')]`. `BeforeWrite` and `BeforeMigration` re-throw handler exceptions to abort the operation; `AfterWrite`, `AfterCreate`, and `AfterMigration` log errors but do not abort. The migration runtime fires `BeforeMigration` after loading the per-migration record (so hook payloads can inspect prior checklist state) and fires `AfterMigration` after the schema pointer advances.
 
 Core functions are loaded first. Plugins are discovered, validated, and loaded in dependency order. Plugin public functions are exported alongside core functions via a single `Export-ModuleMember` call at the end of `Robot.PowerShell.psm1`. The hook registry connects plugin handlers to core write operations.
 
@@ -675,6 +678,31 @@ function Import-HomebrewData {
     }
 }
 ```
+
+---
+
+## Plugin Migration Contribution
+
+A plugin MAY ship versioned migrations under `<plugin>/migrations/<version>-<slug>/`. The migration framework discovers them as a third root after `<module>/migrations/` and `<repo>/.robot.local/migrations/`. Each plugin migration is tagged `Origin = 'Plugin:<name>'` and gets a composite version derived from its declared `Version` and `PluginSequence`:
+
+```powershell
+# plugins/foo/migrations/add-foo-tag/migration.psd1
+@{
+    Version             = '21.3.7'         # target module version
+    PluginSequence      = 1                # within this plugin's migrations for that version
+    Slug                = 'add-foo-tag'
+    Requires            = '21.3.7'         # depends on module migration first
+    AffectsCategories   = @('EntitySchema')
+}
+```
+
+The loader's `Get-EffectiveVersion` rewrites this to `21.3.7+foo.1` for catalog storage. `Compare-SchemaVersion` orders composite versions as strictly greater than the bare core at the same major.minor.patch but strictly less than the next bare core (`21.3.7 < 21.3.7+foo.1 < 21.3.8`). `Resolve-MigrationChain` emits ready-set migrations in this tiebreak order:
+
+1. Origin priority: Module (1) < Plugin:* (2) < OperatorLocal (3)
+2. Within Plugin:*: `PluginLoadIndex` from `$script:LoadedPlugins` enumeration
+3. Within a single plugin: ascending `PluginSequence`, then `Slug` ordinal
+
+Plugin migrations apply after their declared `Requires:` predecessor but before the next bare module version. Plugin-contributed migrations share the single `migration:write` REST scope (no per-plugin granularity in v1).
 
 ---
 

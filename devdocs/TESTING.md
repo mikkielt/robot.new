@@ -549,13 +549,32 @@ Slug uniqueness and validation tests in `set-mapentity.Tests.ps1` verify `Should
 6. Use temp dirs for writes: `New-TestTempDir` + `Copy-FixtureToTemp` + `Remove-TestTempDir`
 7. Verify with assertions: use Pester's `Should` syntax
 
+## Migration Framework Test Patterns
+
+Framework tests live in `tests/migration-*.Tests.ps1` and `plugins/robot-api/tests/api-migration*.Tests.ps1`. They follow Pattern B (dot-source the migration helper directly into test scope, since `private/migration/migration-*.ps1` filenames are not Verb-Noun and are loaded by the CC-1 dot-source block in `Robot.PowerShell.psm1` at module scope, not test scope).
+
+Three reusable test idioms:
+
+| Idiom | Where | Purpose |
+|---|---|---|
+| `New-IsolatedRepoRoot` / `Remove-IsolatedRepoRoot` | per-file BeforeAll | Per-test temp directory used as `-RepoRoot` so schema.json writes don't escape the test scope |
+| Catalog cache reset | BeforeEach / AfterEach | `Clear-MigrationCatalogCache` + `Clear-KnownMajorNameCache` before every test that touches the loader |
+| AST-scan coverage assertions | `tests/write-gate-coverage.Tests.ps1` | Parses target files, walks for `Assert-WriteAllowed` `CommandAst`, asserts presence — protects CC-4 against silent regressions |
+
+`Invoke-FixtureMigrations -FixturePath <dir>` in `TestHelpers.ps1` swaps `Get-RepoRoot` to a fixture and runs the chain. Migrations under fixtures MUST use `$Config.RepoRoot` (never hardcoded paths) to work in fixture mode.
+
+The WP-7 REST tests construct a synthetic `$ApiContext` hashtable (`PathParams`, `QueryParams`, `Body`, `TokenScopes`) and invoke handler functions directly instead of going through the full HTTP stack — `Robot.RouteMatch` is a C# type and the handlers are pure functions taking `[hashtable]$ApiContext`.
+
+The WP-8 job tests probe `Start-ThreadJob` availability via `Get-Command`; the inline-fallback path runs the migration synchronously but still records job state, so a tight polling loop with a 5-second deadline reliably catches both code paths.
+
 ## Statistics
 
 | Metric | Count |
 |---|---|
-| Test files | 111 core + 15 plugin |
-| Test cases (`It` blocks) | ~2,548 |
-| Fixture files | ~95 |
+| Test files | 124 core + 16 plugin |
+| Test cases (`It` blocks) | ~2,800 |
+| Migration framework tests | 121 across 14 files (12 core + 2 plugin REST) |
+| Fixture files | ~110 (incl. `tests/fixtures/migrations/` synthetic migration dirs) |
 | Loading patterns | 5 (A: exported, B: internal+dot-source, C: standalone helper, D: parser, E: engine component) |
 
 ## Related Documents

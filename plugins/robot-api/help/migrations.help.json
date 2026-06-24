@@ -1,0 +1,104 @@
+{
+  "component": "migrations",
+  "endpoints": [
+    {
+      "method": "GET",
+      "path": "/schema/version",
+      "handler": "Invoke-ApiGetSchemaVersion",
+      "scope": "migration:read",
+      "en": {
+        "description": "Returns the current schema version, supported range (min/max), module mode (Normal/ReadOnly/Refused/Unknown), pending migration count, and lock state."
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/migrations",
+      "handler": "Invoke-ApiGetMigrations",
+      "scope": "migration:read",
+      "en": {
+        "description": "Lists all discoverable migrations (Module, OperatorLocal, Plugin:*) with manifest details and applied/pending status."
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/migrations/pending",
+      "handler": "Invoke-ApiGetPendingMigrations",
+      "scope": "migration:read",
+      "en": {
+        "description": "Lists migrations strictly above the current schema version, in apply order."
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/migrations/:id",
+      "handler": "Invoke-ApiGetMigration",
+      "scope": "migration:read",
+      "en": {
+        "description": "Returns details for a single migration identified by full id, version, or slug."
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/migrations/:id/preview",
+      "handler": "Invoke-ApiGetMigrationPreview",
+      "scope": "migration:read",
+      "en": {
+        "description": "Dry-run preview: files modified/created/deleted, entity counts before/after, sample diffs. Query: allowNetwork=true to permit network probes for ExternalImport migrations."
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/migrations/apply",
+      "handler": "Invoke-ApiPostMigrationApply",
+      "scope": "migration:write",
+      "en": {
+        "description": "Applies a single migration or chain. Body: { target: { id|version }, mode: sync|async, branchMode: InPlace|Branch|BranchAndMerge, allowUnsigned, allowNetwork }. sync + EstimatedDurationSec>10 returns 409 with hint to use async.",
+        "bodyFields": [
+          { "name": "target", "required": true, "type": "object",
+            "description": "Either { id: '21.3.7-add-currency-tag' } for a single migration or { version: '0.3.0' } for a chain to that version (use 'latest' for highest Module-origin version)." },
+          { "name": "mode", "required": false, "type": "string",
+            "description": "sync (blocking) | async (queue background job)." },
+          { "name": "branchMode", "required": false, "type": "string",
+            "description": "InPlace | Branch | BranchAndMerge. Default InPlace." },
+          { "name": "allowUnsigned", "required": false, "type": "bool",
+            "description": "Required for OperatorLocal-origin migrations." },
+          { "name": "allowNetwork", "required": false, "type": "bool",
+            "description": "Permits network probes during apply (ExternalImport)." }
+        ]
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/migrations/jobs/:jobId",
+      "handler": "Invoke-ApiGetMigrationJob",
+      "scope": "migration:read",
+      "en": {
+        "description": "Background job status: { status: Queued|Running|Completed|Failed, progress, log, result }."
+      }
+    },
+    {
+      "method": "DELETE",
+      "path": "/schema/lock",
+      "handler": "Invoke-ApiDeleteSchemaLock",
+      "scope": "migration:admin",
+      "en": {
+        "description": "Forcibly clears a stale schema lock. Operator must verify no concurrent migration is running."
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/schema/restore",
+      "handler": "Invoke-ApiPostSchemaRestore",
+      "scope": "migration:restore",
+      "en": {
+        "description": "Pointer-only downgrade to a version in history[]. No migration script runs. Records the downgrade as a schema-restore: history entry.",
+        "bodyFields": [
+          { "name": "to", "required": true, "type": "string",
+            "description": "Target version, must exist in history[]." },
+          { "name": "reason", "required": false, "type": "string",
+            "description": "Free-text reason recorded in the history entry." }
+        ]
+      }
+    }
+  ]
+}

@@ -198,6 +198,8 @@ function Start-ApiWorkerPool {
             "$HandlerDir/private/api-handlers-auth.ps1"
             "$HandlerDir/private/api-handlers-dashboard.ps1"
             "$HandlerDir/private/api-handlers-analytics.ps1"
+            "$HandlerDir/private/api-handlers-migration.ps1"  # WP-7 migration framework
+            "$HandlerDir/private/api-jobs-migration.ps1"      # WP-8 migration jobs
             "$HandlerDir/private/api-token-helpers.ps1"  # needed by auth handlers
             "$HandlerDir/private/margonem-audit.ps1"     # WP-16 audit log helper
         )

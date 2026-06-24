@@ -526,5 +526,43 @@ function Register-AllApiRoutes {
     $Router.SetRouteRateLimit('POST',   '/auth/margonem/verify',      30)
     $Router.SetRouteRateLimit('GET',    '/auth/margonem/info',        60)
 
+    # ── Migration framework (WP-7) ────────────────────────────────────
+    # /schema/* avoids conflict with the static /schema (name dictionary).
+    $Router.AddRoute('GET', '/schema/version', 'Invoke-ApiGetSchemaVersion',
+        'Repository schema version, range, mode, lock state', 200, 'migration:read')
+    $HandlerMap['Invoke-ApiGetSchemaVersion'] = $true
+
+    $Router.AddRoute('GET', '/migrations', 'Invoke-ApiGetMigrations',
+        'List discoverable migrations', 200, 'migration:read')
+    $HandlerMap['Invoke-ApiGetMigrations'] = $true
+
+    $Router.AddRoute('GET', '/migrations/pending', 'Invoke-ApiGetPendingMigrations',
+        'List pending migrations in apply order', 200, 'migration:read')
+    $HandlerMap['Invoke-ApiGetPendingMigrations'] = $true
+
+    $Router.AddRoute('GET', '/migrations/:id', 'Invoke-ApiGetMigration',
+        'Single migration detail', 200, 'migration:read')
+    $HandlerMap['Invoke-ApiGetMigration'] = $true
+
+    $Router.AddRoute('GET', '/migrations/:id/preview', 'Invoke-ApiGetMigrationPreview',
+        'Dry-run JSON preview', 200, 'migration:read')
+    $HandlerMap['Invoke-ApiGetMigrationPreview'] = $true
+
+    $Router.AddRoute('POST', '/migrations/apply', 'Invoke-ApiPostMigrationApply',
+        'Apply a single migration or chain (mode=sync|async)', 200, 'migration:write')
+    $HandlerMap['Invoke-ApiPostMigrationApply'] = $true
+
+    $Router.AddRoute('GET', '/migrations/jobs/:jobId', 'Invoke-ApiGetMigrationJob',
+        'Job status / log / accumulated result', 200, 'migration:read')
+    $HandlerMap['Invoke-ApiGetMigrationJob'] = $true
+
+    $Router.AddRoute('DELETE', '/schema/lock', 'Invoke-ApiDeleteSchemaLock',
+        'Forcibly clear a stale schema lock', 200, 'migration:admin')
+    $HandlerMap['Invoke-ApiDeleteSchemaLock'] = $true
+
+    $Router.AddRoute('POST', '/schema/restore', 'Invoke-ApiPostSchemaRestore',
+        'Pointer-only downgrade to a history entry', 200, 'migration:restore')
+    $HandlerMap['Invoke-ApiPostSchemaRestore'] = $true
+
     return $HandlerMap
 }

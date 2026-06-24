@@ -155,6 +155,30 @@ function Import-RobotHelpers {
     . (Join-Path $script:ModuleRoot 'private' $FileName)
 }
 
+function Invoke-FixtureMigrations {
+    <#
+        .SYNOPSIS
+        Runs the migration chain against a fixture directory (WP-14).
+
+        .DESCRIPTION
+        Swaps Get-RepoRoot to point at $FixturePath, runs Invoke-MigrationChain
+        to advance the fixture to TargetVersion (default 'latest'), then
+        restores the original repo root. Migrations under $FixturePath must
+        use $Config.RepoRoot (not hardcoded paths) to work in fixture mode.
+    #>
+    param(
+        [Parameter(Mandatory)] [string]$FixturePath,
+        [string]$TargetVersion = 'latest'
+    )
+    $OriginalRoot = Get-RepoRoot -Optional
+    try {
+        Set-RepoRoot -Path $FixturePath
+        Invoke-MigrationChain -To $TargetVersion -BranchMode InPlace -AllowUnsigned -Confirm:$false
+    } finally {
+        if ($OriginalRoot) { Set-RepoRoot -Path $OriginalRoot } else { Set-RepoRoot -Reset }
+    }
+}
+
 function Write-TestFile {
     <#
         .SYNOPSIS

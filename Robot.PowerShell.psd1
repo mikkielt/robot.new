@@ -47,5 +47,12 @@
             # Tags applied to this module
             Tags = @('Nerthus', 'RPG', 'Git', 'Markdown')
         }
+        # WP-5: repository schema version range supported by this module.
+        # Repos below Min load in ReadOnly mode (writes throw SchemaTooOld until
+        # operators run migrations); repos above Max refuse to load entirely.
+        SchemaVersionRange = @{
+            Min = '0.0.0'
+            Max = '1.99.99'
+        }
     }
 }

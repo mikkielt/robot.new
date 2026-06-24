@@ -424,6 +424,48 @@ Describe 'Invoke-PluginHook' {
         $Stderr = $ErrWriter.ToString()
         $Stderr | Should -BeLike "*Invoke-NonExistentHandlerFunction_XYZZY*not found*"
     }
+
+    # CC-2: BeforeMigration/AfterMigration phases were added in WP-3 for the
+    # migration framework. Validate that the ValidateSet accepts them and
+    # that BeforeMigration aborts (like BeforeWrite) while AfterMigration
+    # only logs.
+    It 'BeforeMigration phase is accepted by ValidateSet' {
+        $script:HookRegistry = @{}
+        { Invoke-PluginHook -Operation 'Migration' -Phase 'BeforeMigration' -Context @{} } | Should -Not -Throw
+    }
+
+    It 'AfterMigration phase is accepted by ValidateSet' {
+        $script:HookRegistry = @{}
+        { Invoke-PluginHook -Operation 'Migration' -Phase 'AfterMigration' -Context @{} } | Should -Not -Throw
+    }
+
+    It 'BeforeMigration re-throws handler exception with plugin context' {
+        function Test-MigrationHookThrower {
+            param([hashtable]$HookContext)
+            throw 'migration vetoed'
+        }
+        $Handlers = [System.Collections.Generic.List[object]]::new()
+        $Handlers.Add([PSCustomObject]@{
+            Plugin = 'ValidatorPlugin'; Handler = 'Test-MigrationHookThrower'; Priority = 100
+        })
+        $script:HookRegistry = @{ 'Migration:BeforeMigration' = $Handlers }
+        { Invoke-PluginHook -Operation 'Migration' -Phase 'BeforeMigration' -Context @{} } |
+            Should -Throw "*ValidatorPlugin*rejected*migration vetoed*"
+    }
+
+    It 'AfterMigration logs error but does not throw' {
+        function Test-AfterMigrationError {
+            param([hashtable]$HookContext)
+            throw 'post-apply observer failed'
+        }
+        $Handlers = [System.Collections.Generic.List[object]]::new()
+        $Handlers.Add([PSCustomObject]@{
+            Plugin = 'LoggerPlugin'; Handler = 'Test-AfterMigrationError'; Priority = 100
+        })
+        $script:HookRegistry = @{ 'Migration:AfterMigration' = $Handlers }
+        { Invoke-PluginHook -Operation 'Migration' -Phase 'AfterMigration' -Context @{} } |
+            Should -Not -Throw
+    }
 }
 
 # ── Test-PluginScope ──────────────────────────────────────────────────────

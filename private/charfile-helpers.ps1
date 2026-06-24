@@ -378,6 +378,9 @@ function Write-CharacterFile {
         [string]$Content
     )
 
+    # CC-4: write-gate funnel for PU / reputation / charfile mutations.
+    if (Get-Command 'Assert-WriteAllowed' -ErrorAction SilentlyContinue) { Assert-WriteAllowed }
+
     $HasHooks = Get-Command 'Invoke-PluginHook' -ErrorAction SilentlyContinue
 
     if ($HasHooks) {

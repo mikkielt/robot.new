@@ -208,6 +208,22 @@ foreach ($FilePath in $FunctionFiles) {
     [void]$ExportedFunctions.Add($FuncName)
 }
 
+# ── Migration Framework Helpers ────────────────────────────────────────
+# Non-Verb-Noun helpers consumed by public/migration/*.ps1 cmdlets. Phase 1
+# auto-loader filters by filename, so these are loaded once here at module-init
+# to keep public cmdlets allocation-free. Mirrors the argument-completers
+# dot-source at the bottom of this file.
+$script:ModuleRoot = $ModuleRoot     # set early so migration helpers can resolve sibling paths
+foreach ($Helper in @('migration-version','migration-loader','migration-runtime',
+                       'migration-branch','migration-cache','migration-log')) {
+    $HelperPath = [System.IO.Path]::Combine($ModuleRoot, 'private', 'migration', "$Helper.ps1")
+    if ([System.IO.File]::Exists($HelperPath)) {
+        try { . $HelperPath } catch {
+            [System.Console]::Error.WriteLine("[WARN Robot.PowerShell.psm1] Failed to load migration helper '$Helper': $_")
+        }
+    }
+}
+
 # ── PHASE 2: Plugin Loading ─────────────────────────────────────────────────
 
 # Module-scoped plugin state — populated during Phase 2, queried by CLI and hooks
@@ -217,7 +233,6 @@ $script:PluginConfigs        = @{}
 $script:PluginMenuItems      = [System.Collections.Generic.List[hashtable]]::new()
 $script:PluginMenuCategories = [System.Collections.Generic.List[string]]::new()
 $script:PluginHelpContent    = @{}
-$script:ModuleRoot           = $ModuleRoot
 
 $PluginsDir = [System.IO.Path]::Combine($ModuleRoot, 'plugins')
 
@@ -389,10 +404,126 @@ if ([System.IO.Directory]::Exists($PluginsDir)) {
     }
 }
 
+# ── PHASE 2.5: Schema Version Gate (WP-5) ──────────────────────────────────
+# Initializes $script:SchemaState based on the repo's .robot.local/schema.json
+# and the SchemaVersionRange declared in the manifest. Sets Mode to:
+#   - Normal:   repo schema falls within the supported range
+#   - ReadOnly: repo schema is below Min — Assert-WriteAllowed throws until
+#               operators run migrations to advance the schema
+#   - Refused:  repo schema is above Max — module load aborts; an older module
+#               must not be allowed to corrupt a newer repo
+#   - Unknown:  repo not detectable (test harness, CI lint, or schema check
+#               failed); writes are permitted because no repo = no writes happen
+#
+# CC-5: sentinel is initialized BEFORE the try so the catch block can safely
+# inspect Mode without referencing an undefined variable.
+
+$ModuleManifestPath = [System.IO.Path]::Combine($ModuleRoot, 'Robot.PowerShell.psd1')
+$ModuleManifestData = $null
+try { $ModuleManifestData = Import-PowerShellDataFile -Path $ModuleManifestPath } catch { }
+$SchemaRange = if ($ModuleManifestData -and $ModuleManifestData.PrivateData -and
+                   $ModuleManifestData.PrivateData.SchemaVersionRange) {
+    $ModuleManifestData.PrivateData.SchemaVersionRange
+} else {
+    @{ Min = '0.0.0'; Max = '99.99.99' }
+}
+
+$script:SchemaState = [PSCustomObject]@{
+    Current      = $null
+    MajorName    = $null
+    SupportedMin = $SchemaRange.Min
+    SupportedMax = $SchemaRange.Max
+    Mode         = 'Unknown'   # Unknown | Normal | ReadOnly | Refused
+    PendingCount = 0
+}
+
+try {
+    # Get-RepoRoot may throw if module is imported outside a repo — that's a
+    # legitimate state (test harness, CI lint). Leave Mode='Unknown' and let
+    # Assert-WriteAllowed permit writes (no repo = caller's problem).
+    [void](Get-RepoRoot)
+
+    if (Get-Command 'Get-SchemaVersion' -ErrorAction SilentlyContinue) {
+        $SchemaCur = Get-SchemaVersion
+        $script:SchemaState.Current      = $SchemaCur.Current
+        $script:SchemaState.MajorName    = $SchemaCur.MajorName
+        if (Get-Command 'Get-Migration' -ErrorAction SilentlyContinue) {
+            try {
+                $Pending = @(Get-Migration -Pending)
+                $script:SchemaState.PendingCount = $Pending.Count
+            } catch {
+                $script:SchemaState.PendingCount = 0
+            }
+        }
+        $script:SchemaState.Mode = 'Normal'
+
+        if ((Compare-SchemaVersion $SchemaCur.Current $SchemaRange.Max) -gt 0) {
+            $script:SchemaState.Mode = 'Refused'
+            throw "Repository schema $($SchemaCur.Current) exceeds module's supported max $($SchemaRange.Max). Upgrade the module."
+        }
+        if ((Compare-SchemaVersion $SchemaCur.Current $SchemaRange.Min) -lt 0) {
+            $script:SchemaState.Mode = 'ReadOnly'
+            Write-RobotWarning ("Repository schema $($SchemaCur.Current) below module's supported min " +
+                "$($SchemaRange.Min). Module loaded in READ-ONLY mode. Run migrations to enable writes.")
+        }
+        elseif ($script:SchemaState.PendingCount -gt 0) {
+            Write-RobotWarning ("$($script:SchemaState.PendingCount) pending migration(s). " +
+                "Writes allowed but apply migrations soon.")
+        }
+    }
+}
+catch {
+    if ($script:SchemaState.Mode -eq 'Refused') { throw }
+    Write-RobotWarning "Schema check failed: $($_.Exception.Message). Module loaded in $($script:SchemaState.Mode) mode."
+}
+
+# WP-9: cache-format fast path. Skipped in Unknown mode (no repo).
+if ($script:SchemaState.Mode -ne 'Unknown' -and
+    (Get-Command 'Invoke-CacheMigrations' -ErrorAction SilentlyContinue)) {
+    try { Invoke-CacheMigrations } catch {
+        Write-RobotWarning "Cache migrations failed during module load: $($_.Exception.Message)"
+    }
+}
+
 # ── PHASE 3: Inline Functions ──────────────────────────────────────────────
 
 # Defined inline because they need direct access to $script: module state
 # (parse caches and plugin registries) that cannot be accessed from separate files.
+
+function Assert-WriteAllowed {
+    <#
+        .SYNOPSIS
+        Throws SchemaTooOld when the module is in ReadOnly schema mode.
+
+        .DESCRIPTION
+        Single funnel called from every top-level public mutating cmdlet (CC-4).
+        Low-level helpers do NOT call this — that would create false positives
+        for migration scripts mutating data during a schema bump. The migration
+        runtime passes -BypassSchemaGate to permit those writes.
+
+        Mode='Unknown' (no repo) and Mode='Normal' both permit writes.
+    #>
+    [CmdletBinding()] param([switch]$BypassSchemaGate)
+    if ($BypassSchemaGate) { return }
+    if ($script:SchemaState -and $script:SchemaState.Mode -eq 'ReadOnly') {
+        $Ex = [System.InvalidOperationException]::new(
+            "Repository schema $($script:SchemaState.Current) is below module minimum " +
+            "$($script:SchemaState.SupportedMin); run migrations to enable writes.")
+        $Err = [System.Management.Automation.ErrorRecord]::new(
+            $Ex, 'SchemaTooOld',
+            [System.Management.Automation.ErrorCategory]::NotEnabled, $null)
+        throw $Err
+    }
+}
+
+function Get-SchemaState {
+    <#
+        .SYNOPSIS
+        Returns the cached schema state object for CLI/REST surfacing.
+    #>
+    [CmdletBinding()] param()
+    return $script:SchemaState
+}
 
 function Clear-ParseCaches {
     <#
@@ -488,6 +619,8 @@ function Get-LoadedPlugins {
 [void]$ExportedFunctions.Add('Get-PluginConfig')
 [void]$ExportedFunctions.Add('Get-LoadedPlugins')
 [void]$ExportedFunctions.Add('Clear-ParseCaches')
+[void]$ExportedFunctions.Add('Assert-WriteAllowed')
+[void]$ExportedFunctions.Add('Get-SchemaState')
 
 # ── Argument Completers ────────────────────────────────────────────────────
 # Tab-completion for -Name parameters on entity/player functions.
