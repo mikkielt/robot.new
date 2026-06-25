@@ -214,8 +214,10 @@ foreach ($FilePath in $FunctionFiles) {
 # to keep public cmdlets allocation-free. Mirrors the argument-completers
 # dot-source at the bottom of this file.
 $script:ModuleRoot = $ModuleRoot     # set early so migration helpers can resolve sibling paths
-foreach ($Helper in @('migration-version','migration-loader','migration-runtime',
-                       'migration-branch','migration-cache','migration-log')) {
+foreach ($Helper in @('migration-version','migration-loader','migration-config',
+                       'migration-artifact','migration-changerecord','migration-commit',
+                       'migration-runtime','migration-branch','migration-cache','migration-log',
+                       'narrator-helpers')) {
     $HelperPath = [System.IO.Path]::Combine($ModuleRoot, 'private', 'migration', "$Helper.ps1")
     if ([System.IO.File]::Exists($HelperPath)) {
         try { . $HelperPath } catch {

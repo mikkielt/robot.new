@@ -44,7 +44,6 @@ $script:MenuOrder = @(
     'Przedmioty'
     'PU'
     'Raporty i Narzędzia'
-    'Migracja'
 )
 
 # ── Menu Registry ────────────────────────────────────────────────────────────
@@ -1308,41 +1307,10 @@ $script:MenuRegistry = @(
     }
 
     # ─── Migracja ─────────────────────────────────────────────────────────────
-    # (Dynamic entries built by cli-wizard-migration.ps1 at runtime)
-
-    @{
-        ID       = 'migration-quick-check'
-        Label    = 'Szybka diagnostyka'
-        Description = 'Ile zostało do zrobienia'
-        Menu     = 'Migracja'
-        Role     = 'K'
-        Mode     = 'Workflow'
-        WorkflowFunction = 'Invoke-MigrationQuickCheck'
-        HelpBrief = 'Szybki podgląd postępu migracji.'
-        HelpFull = @(
-            'Szybka diagnostyka migracji:'
-            '  - Które fazy zostały ukończone'
-            '  - Szacunkowy postęp'
-        )
-        InfoText = @('Szybki podgląd: które fazy migracji zostały ukończone.')
-    }
-
-    @{
-        ID       = 'migration-full-report'
-        Label    = 'Pełny raport'
-        Description = 'Szczegółowy raport postępu'
-        Menu     = 'Migracja'
-        Role     = 'K'
-        Mode     = 'Workflow'
-        WorkflowFunction = 'Invoke-MigrationFullReport'
-        HelpBrief = 'Szczegółowy raport postępu migracji.'
-        HelpFull = @(
-            'Pełny raport migracji:'
-            '  - Wyniki każdej z 7 faz (0-6)'
-            '  - Szczegółowe statystyki i błędy'
-        )
-        InfoText = @('Pełny raport z wynikami każdej fazy migracji.')
-    }
+    # Operators use the framework cmdlets directly (Get-SchemaVersion,
+    # Get-Migration -Pending, Get-MigrationPreview, Invoke-MigrationChain) or
+    # the REST API. The Migracja submenu was removed alongside the
+    # 9-phase pipeline; no static registry entries here.
 )
 
 # ── Registry Indexes (built once, updated by Merge-PluginMenuItems) ─────────

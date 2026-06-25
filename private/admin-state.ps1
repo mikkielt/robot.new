@@ -12,12 +12,12 @@
     - Read-JsonStateFile:        reads JSON state file with backup recovery on corruption
     - Get-AdminHistoryEntries:   reads processed session headers from JSON state file
     - Add-AdminHistoryEntry:     appends new run with timestamp to JSON state file
-    - Convert-PUHistoryToJson:   (moved to migration/phase0-helpers.ps1)
+    - Convert-PUHistoryToJson:   (inlined into migrations/0.1.1-bootstrap-entities/migrate.ps1)
 
     Module-level data:
-    - $script:HistoryEntryPattern:           precompiled regex for legacy Markdown parsing (migration only)
+    - $script:HistoryEntryPattern:           precompiled regex for Markdown parsing (migration only)
     - $script:MultiSpacePattern:             precompiled regex for collapsing multiple whitespace runs
-    - $script:AdminHistoryTimestampPattern:  precompiled regex for legacy timestamp lines (migration only)
+    - $script:AdminHistoryTimestampPattern:  precompiled regex for timestamp lines (migration only)
 
     State file (`.robot.local/res/pu-sessions.json`) uses a structured JSON format:
 

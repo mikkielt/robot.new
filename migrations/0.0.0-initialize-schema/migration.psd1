@@ -7,4 +7,6 @@
     AffectsCategories    = @('StateFile')
     EstimatedDurationSec = 1
     RequiresNetwork      = $false
+    Archetype            = 'Transform'
+    ConfigSchema         = @{}
 }

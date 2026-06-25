@@ -10,6 +10,8 @@ BeforeAll {
     . (Join-Path $script:ModuleRoot 'private' 'plugin-hooks.ps1')
     . (Join-Path $script:ModuleRoot 'private' 'migration' 'migration-version.ps1')
     . (Join-Path $script:ModuleRoot 'private' 'migration' 'migration-loader.ps1')
+    . (Join-Path $script:ModuleRoot 'private' 'migration' 'migration-config.ps1')
+    . (Join-Path $script:ModuleRoot 'private' 'migration' 'migration-artifact.ps1')
     . (Join-Path $script:ModuleRoot 'private' 'migration' 'migration-log.ps1')
     . (Join-Path $script:ModuleRoot 'private' 'migration' 'migration-runtime.ps1')
     . (Join-Path $script:ModuleRoot 'public' 'migration' 'get-schemaversion.ps1')

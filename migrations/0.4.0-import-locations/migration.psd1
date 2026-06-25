@@ -8,4 +8,6 @@
     AffectsCategories    = @('ExternalImport','EntitySchema')
     EstimatedDurationSec = 30
     RequiresNetwork      = $false
+    Archetype            = 'Transform'
+    ConfigSchema         = @{}
 }

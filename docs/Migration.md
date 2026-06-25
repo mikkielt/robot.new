@@ -32,7 +32,9 @@ A scripted run uses the same cmdlets non-interactively. The schema lock prevents
 
 ## The Preview Step
 
-The Coordinator always previews before applying. The preview is a dry run: it never writes data and never hits the network unless the manifest declares the migration depends on a network source and the Coordinator explicitly opts in. The preview reports which files would be modified, created, or deleted, entity counts before and after the change, sample diffs for representative items, and any warnings the migration emits.
+The Coordinator always previews before applying. The preview is a dry run: it never writes data and never hits the network unless the manifest declares the migration depends on a network source and the Coordinator explicitly opts in. The preview reports which files would be modified, created, or deleted, entity counts before and after the change, per-object before/after diffs the dashboard renders side-by-side, and any warnings the migration emits.
+
+The preview is also a form. Each migration declares the inputs it accepts — for example, "regenerate from scratch?" or "commit message" — and the dashboard renders a form populated with the migration's declared defaults. The Coordinator edits the form, re-previews to see the updated diff, and applies. The per-object diffs in the preview can also carry overrides: if a row shows "before: Bagienko / after: Bagna" and the Coordinator wants to keep the existing value, they edit the "after" field of that row before applying. The override travels in the same apply call as the form fields.
 
 If the migration declares it requires network access (for example, downloading session logs) and the preview was called without the opt-in, the file-list fields come back empty and the preview adds a warning noting that the accurate version requires opting in.
 
@@ -85,7 +87,7 @@ The module ships with a supported schema-version range declared in its manifest.
 | Schema is above the maximum | Module refuses to load. An older module against a newer repository is a corruption risk; the Coordinator updates the module before continuing. |
 | Module imported outside a repository | Mode is "unknown"; writes are permitted because no repository is in scope. |
 
-This protects the repository from accidental writes by a module that doesn't understand the current schema, and protects the operator from running migrations they didn't intend to.
+This protects the repository from accidental writes by a module that doesn't understand the current schema, and protects the operator from running migrations they didn't intend to. The module's declared range is what the Coordinator updates when a new migration ships at a version beyond the current `Max` — see [MIGRATION.md "Authoring rule"](../devdocs/MIGRATION.md#authoring-rule) for the developer-side rule.
 
 ## Expected Outcomes
 

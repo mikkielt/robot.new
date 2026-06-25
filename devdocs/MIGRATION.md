@@ -79,10 +79,94 @@ Each migration directory contains a `migration.psd1`:
     SourceHashScript     = $null                  # relative .ps1 returning a SHA256
     RequiresNetwork      = $false                 # preview degradation flag
     PluginSequence       = 1                      # per-plugin ordering (plugin origin)
+    Archetype            = 'Transform'            # Transform | Inspect | Commit (CC-N1)
+    ConfigSchema         = @{                     # operator-supplied form (CC-N2)
+        Force = @{
+            Type        = 'Switch'                # Switch | String | Int | Decimal | Hashtable | Array
+            Default     = $false
+            Required    = $false
+            Description = 'Force re-apply.'
+        }
+    }
+    AllowsGraczeWrite    = $false                 # only freeze-gracze migration sets $true
 }
 ```
 
 Category enum: `EntitySchema | DataRewrite | SessionFormat | StateFile | RepoLayout | Cache | ExternalImport | Fixture`.
+
+## Migration Archetypes (CC-N1)
+
+Every migration belongs to one of three archetypes. Validator rejects manifests missing `Archetype`.
+
+| Archetype | Default for | Reads | Writes | Schema bump | Typical config |
+|---|---|---|---|---|---|
+| **Transform** | most migrations | repo data | repo data files | yes | Config fields drive behavior; preview emits ChangeRecords (CC-N9) for dashboard diff rendering |
+| **Inspect** | expensive analysis only | repo data | `.robot.local/migration-artifacts/<id>/*` only | yes (records inspection ran) | no Config typically; emits artifacts the next Transform sibling consumes |
+| **Commit** | post-Transform groups | git index | git working tree (commit) | yes | Config sets commit message; idempotent (no-op when no diff) |
+
+Inspect is opt-in. Most migrations are Transform with rich preview output (the operator inspects via `Get-MigrationPreview`'s `ChangeRecords[]` and applies). Inspect-archetype is chosen only when the analysis cost is high enough to justify caching results between dashboard sessions.
+
+## ConfigSchema Contract (CC-N2)
+
+Every manifest may declare `ConfigSchema = @{ <FieldName> = @{ Type; Default; Required; Description } }`. The framework:
+
+1. Discovers the schema via `Get-MigrationConfigSchema -Version <v>` and surfaces it at `GET /migrations/<v>/config-schema`.
+2. Validates operator-supplied Config against the schema before applying — types must match, Required fields must be present, unknown fields are rejected.
+3. Merges supplied Config with declared defaults; the migration body reads the merged hashtable under `$Config.Migration`.
+
+`Test-MigrationConfig -Schema <hashtable> -Config <hashtable>` returns `@{ OK; Errors[]; Warnings[] }`. `Resolve-MigrationConfigSchema -Manifest <hashtable>` normalises omitted Type / Required / Description with defaults (`'String'`, `$false`, `''`). `ConvertFromMigrationConfigValue -Type <string> -Value <object>` coerces a single value to the declared type — used by the REST layer when a query string delivers `"true"` for a Switch field.
+
+`Invoke-Migration -Version <v> -Config <hashtable>` and `Invoke-MigrationChain -To <v> -Config <hashtable>` accept Config; chain config is keyed by migration version or full id.
+
+## ChangeRecord Preview Contract (CC-N9)
+
+`Get-MigrationPreview` returns a `ChangeRecords` array alongside the existing flat file lists. Each entry is a structured before/after diff that the dashboard renders side-by-side (left = before, right = after).
+
+```powershell
+[PSCustomObject]@{
+    Id          = 'entities.md:NPC:Janusz-Strzelec'        # stable handle for override targeting
+    ObjectType  = 'EntityBullet'                            # EntityBullet | EntityFile | Session | Charfile | StateFile | FilePath
+    FilePath    = 'entities.md'                             # path that holds the object; or rename's source path
+    NewFilePath = $null                                     # only set on Rename; otherwise $null
+    ChangeKind  = 'Modify'                                  # Create | Modify | Delete | Rename
+    Before      = '* [Janusz Strzelec] @lokacja: Bagienko'  # current text; $null for Create
+    After       = '* [Janusz Strzelec] @lokacja: Bagna'     # proposed text; $null for Delete
+    OverrideKey = 'EntityLocation:Janusz-Strzelec'          # form-field key the operator edits; $null if non-overridable
+    Notes       = @('Suggested by location-name normalization (0.4.0).')
+}
+```
+
+Helpers (private/migration/migration-changerecord.ps1):
+- `New-MigrationChangeRecord -Id -ObjectType -ChangeKind -FilePath [-NewFilePath] [-Before] [-After] [-OverrideKey] [-Notes]` — factory with enum validation.
+- `Test-MigrationChangeRecord -Record <object>` — shape validator.
+- `Test-MigrationChangeRecordSet -Records <object[]>` — collection validator enforcing Id and OverrideKey uniqueness.
+
+Operator overrides flow through `Invoke-Migration -Overrides <hashtable>` (keyed by `OverrideKey`). The framework caches `OverrideKeys` from the most recent preview at `.robot.local/migration-artifacts/<id>/.preview-cache.json` so Apply-time validation rejects keys the migration did not advertise.
+
+## Artifact Handoff (CC-N4)
+
+Inspect-archetype migrations write to `<repo>/.robot.local/migration-artifacts/<source-id>/<artifact-name>.json` via `Set-MigrationArtifact`. Transform-archetype siblings consume via `Get-MigrationArtifact -SourceMigration <id> -Name <name>`. Artifacts are operator-editable between Inspect and Apply runs — REST exposes them at `GET/PUT /migrations/<id>/artifacts/<name>`. Atomic writes via `Save-JsonStateFile` (temp + bak).
+
+`Save-MigrationPreviewCache -MigrationId <id> -ChangeRecords <object[]>` writes `.preview-cache.json` with `MigrationId`, `Generated`, `ChangeRecordCount`, and the `OverrideKeys` array — consumed by WP-A3's Override validation.
+
+## Idempotency Contract (CC-N3)
+
+Every `Invoke-Migration` SHALL be safe to re-run after a successful prior run, after a partial run, and after no run:
+
+1. Re-running an applied migration returns `OK = $true; Skipped = $true; Reason = 'AlreadyApplied'` and writes nothing.
+2. Re-running a partially-applied migration resumes from the per-item checklist — items whose checklist entry is `$true` are skipped, missing items run; the resulting checklist is monotonically true-only.
+3. `Test-MigrationApplied -Checklist <hashtable>` is the canonical idempotency probe.
+
+## Standardized Commit Helper (CC-N5)
+
+Commit-archetype migrations and any Transform migration that wants to commit its writes SHALL call `Invoke-MigrationCommit -Message <string> [-Files <string[]>] [-AllowsGraczeWrite]` (private/migration/migration-commit.ps1). It:
+
+- No-ops if no diff (returns `Skipped = $true; Reason = 'NoDiff'`).
+- Respects framework `BranchMode` implicitly (HEAD is where BranchMode put it).
+- Refuses to add `Gracze.md` unless `-AllowsGraczeWrite` (only `1.0.2-freeze-gracze` opts in).
+- Returns `{ OK; Skipped; Reason; Sha; Message; FilesAdded }`.
+
+Direct `git add` / `git commit` from migration bodies is refused on review.
 
 ## `migrate.ps1` Contract
 
@@ -90,9 +174,9 @@ Each migration directory contains a `migrate.ps1` that defines:
 
 | Function | Required | Purpose |
 |---|---|---|
-| `Get-MigrationPreview -Config <hashtable>` | yes | Returns a structured preview (FilesToModify/Create/Delete, EntityCountsBefore/After, SampleDiffs, Warnings, NetworkRequired, SourceUnchanged). Must be side-effect-free. |
-| `Invoke-Migration -Config <hashtable> -ProgressCallback <scriptblock> -Checklist <hashtable>` | yes | Performs the migration. Must support `SupportsShouldProcess`. |
-| `Test-MigrationApplied -Checklist <hashtable>` | no | Returns `$true` to skip if the checklist indicates prior completion. Default behavior: treat any truthy checklist value as applied. |
+| `Get-MigrationPreview -Config <hashtable>` | yes | Returns a structured preview (FilesToModify/Create/Delete, EntityCountsBefore/After, SampleDiffs, Warnings, NetworkRequired, SourceUnchanged, **ChangeRecords**). Must be side-effect-free. ChangeRecords drive the dashboard's left/right diff (CC-N9). |
+| `Invoke-Migration -Config <hashtable> -ProgressCallback <scriptblock> -Checklist <hashtable>` | yes | Performs the migration. Must support `SupportsShouldProcess`. The runtime injects `$Config.Migration` (merged ConfigSchema values) and `$Config.Overrides` (operator edits keyed by `OverrideKey`); the body reads them to drive behavior. |
+| `Test-MigrationApplied -Checklist <hashtable>` | no | Returns `$true` to skip if the checklist indicates prior completion. Default behavior: treat any truthy checklist value as applied (CC-N3 idempotency contract). |
 | `Invoke-CacheMigration` | no | Cache-category fast-path entry point; invoked by `Invoke-CacheMigrations` on module load instead of `Invoke-Migration`. |
 
 Manifest validation is AST-only: `Test-MigrationManifest` parses `migrate.ps1` via `[System.Management.Automation.Language.Parser]::ParseFile` and walks for the required function definitions without executing the file. Top-level scope is restricted to `FunctionDefinitionAst`, `UsingStatementAst`, or comments — top-level commands, assignments, or `Set-Location` are rejected so a malformed migration cannot execute writes during validation.
@@ -135,6 +219,10 @@ Migrations under `<repo>/.robot.local/migrations/` are tagged `Origin = Operator
 | No repo / schema check failed | `Unknown` | Writes permitted (test harness, CI lint) |
 
 `Get-SchemaState` surfaces the cached state. `Assert-WriteAllowed` is the single funnel called from every top-level public mutating cmdlet; the migration runtime passes `-BypassSchemaGate` so its own writes are permitted during a schema bump.
+
+### Authoring rule
+
+Schema version (`.robot.local/schema.json:current`) and module version (`Robot.PowerShell.psd1:ModuleVersion`) are orthogonal — the only coupling between them is the `SchemaVersionRange` gate above. A migration whose effective version exceeds the current `Max` SHALL bump `Max` in the same change; otherwise the module that ships the new migration will refuse to load on a repo that just ran it (`Mode = Refused`). Bumping `Min` is reserved for the deliberate retirement of code paths that handle older schemas — operators on the old schema land in `Mode = ReadOnly` and MUST run the chain before writes are permitted again. Plugin migrations follow the same rule against the plugin's own version range; the framework auto-rewrites their effective version to `X+<plugin-name>.<PluginSequence>` so they never exceed the host module's `Max` independently.
 
 ## Lock Acquisition
 
@@ -209,14 +297,33 @@ Full endpoint table and scope mapping in [REST-API.md](REST-API.md). Summary:
 | Method | Path | Scope |
 |---|---|---|
 | GET | `/schema/version` | `migration:read` |
-| GET | `/migrations`, `/migrations/pending`, `/migrations/:id`, `/migrations/:id/preview`, `/migrations/jobs/:jobId` | `migration:read` |
-| POST | `/migrations/apply` | `migration:write` |
+| GET | `/migrations`, `/migrations/pending`, `/migrations/:id`, `/migrations/jobs/:jobId` | `migration:read` |
+| GET | `/migrations/:id/preview` (form-ready: ConfigSchema + ChangeRecords + merged config) | `migration:read` |
+| GET | `/migrations/:id/config-schema` | `migration:read` |
+| GET | `/migrations/:id/artifacts/:name` | `migration:read` |
+| PUT | `/migrations/:id/artifacts/:name` (operator-edit) | `migration:write` |
+| POST | `/migrations/apply` (accepts `config` + `overrides`) | `migration:write` |
 | DELETE | `/schema/lock` | `migration:admin` |
 | POST | `/schema/restore` | `migration:restore` |
 
 The migration endpoints live under `/schema/version`, `/schema/lock`, `/schema/restore` because the static `/schema` C# route is owned by the domain name dictionary.
 
-`POST /migrations/apply` takes:
+### Form-driven dashboard flow
+
+The dashboard pipeline:
+
+```
+GET /migrations/<v>/preview?config=<base64-json>
+  → { preview: {...}, config: { schema, supplied, merged }, changeRecords: [...] }
+operator edits form (a Config field or a ChangeRecord OverrideKey)
+POST /migrations/apply
+  body: { target: {...}, config: {...}, overrides: { <OverrideKey>: <value>, ... } }
+  → MigrationRunResult { OK, MigrationId, Skipped, FilesWritten, Warnings, Errors }
+```
+
+Apply validates `config` against the migration's ConfigSchema (rejects unknown fields, missing Required, type mismatches → 400 `config-invalid`). Apply validates `overrides` against the OverrideKeys captured by the last preview (cached at `.preview-cache.json`); unknown keys return 400 `override-unknown`.
+
+`POST /migrations/apply` body:
 
 ```json
 {
@@ -224,9 +331,13 @@ The migration endpoints live under `/schema/version`, `/schema/lock`, `/schema/r
   "mode":          "sync",
   "branchMode":    "InPlace",
   "allowUnsigned": false,
-  "allowNetwork":  false
+  "allowNetwork":  false,
+  "config":        { "RegenerateEntities": false, "AutoAddMissingSections": true },
+  "overrides":     { "EntityLocation:Janusz-Strzelec": "Bagienko" }
 }
 ```
+
+For chain apply (`target.version`), `config` and `overrides` are keyed by migration id (or version) and partitioned across the chain.
 
 `mode: sync` with `EstimatedDurationSec > 10` returns 409 with `hint: "Re-submit with mode=async"` — refusal, not a 307 redirect, so a `curl -L` cannot accidentally flip an explicit sync call into a job. `mode: async` returns 202 with `jobId` + `statusUrl`. Schema lock contention returns 409 with `lockedBy`, `lockedAt`, `lockStale`. Unsigned operator-local without `allowUnsigned: true` returns 422 `unsigned-migration-blocked`.
 

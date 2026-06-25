@@ -227,11 +227,20 @@ function Invoke-MigrationInternal {
 
         Returns MigrationRunResult { OK, MigrationId, Skipped, Reason, Duration,
         FilesWritten, OperationResult, Warnings, Errors }.
+
+        Per CC-N2 (ConfigSchema) and CC-N9 (Overrides), this function validates
+        operator-supplied -MigrationConfig against the migration's declared
+        ConfigSchema before invoking the body, and validates -MigrationOverrides
+        against the OverrideKeys captured by the last Get-MigrationPreview run
+        (cached at .preview-cache.json). The migration body receives the merged
+        Config under $Config.Migration and Overrides under $Config.Overrides.
     #>
     [CmdletBinding(SupportsShouldProcess)]
     param(
         [Parameter(Mandatory)] [object]$Migration,
         [Parameter(Mandatory)] [hashtable]$Config,
+        [hashtable]$MigrationConfig,
+        [hashtable]$MigrationOverrides,
         [scriptblock]$ProgressCallback,
         [switch]$AllowUnsigned,
         [string]$RepoRoot
@@ -252,6 +261,47 @@ function Invoke-MigrationInternal {
             [System.Management.Automation.ErrorCategory]::SecurityError, $Migration)
         $PSCmdlet.ThrowTerminatingError($Err)
     }
+
+    # ── CC-N2: ConfigSchema validation + defaults merge ──────────────────
+    $Schema = Resolve-MigrationConfigSchema -Manifest $Migration.Manifest
+    $ConfigCheck = Test-MigrationConfig -Schema $Schema -Config $MigrationConfig
+    if (-not $ConfigCheck.OK) {
+        $Ex = [System.InvalidOperationException]::new(
+            "Migration '$Id' Config failed validation:`n - " + ($ConfigCheck.Errors -join "`n - "))
+        $Err = [System.Management.Automation.ErrorRecord]::new(
+            $Ex, 'MigrationConfigInvalid',
+            [System.Management.Automation.ErrorCategory]::InvalidArgument, $MigrationConfig)
+        $PSCmdlet.ThrowTerminatingError($Err)
+    }
+    $MergedConfig = Merge-MigrationConfigDefaults -Schema $Schema -Supplied $MigrationConfig
+
+    # ── CC-N9: Overrides key validation against last preview cache ───────
+    $MergedOverrides = if ($MigrationOverrides) { $MigrationOverrides } else { @{} }
+    if ($MergedOverrides.Count -gt 0) {
+        $Cache = Read-MigrationArtifactFile -MigrationId $Id -Name '.preview-cache' -RepoRoot $RepoRoot
+        if ($Cache -and $Cache.OverrideKeys) {
+            $KnownKeys = [System.Collections.Generic.HashSet[string]]::new(
+                [System.StringComparer]::OrdinalIgnoreCase)
+            foreach ($K in $Cache.OverrideKeys) { [void]$KnownKeys.Add([string]$K) }
+            foreach ($K in @($MergedOverrides.Keys)) {
+                if (-not $KnownKeys.Contains([string]$K)) {
+                    $Ex = [System.InvalidOperationException]::new(
+                        "Migration '$Id' Override key '$K' is not declared by the last preview. " +
+                        "Run Get-MigrationPreview first or pass -Force in the REST apply payload.")
+                    $Err = [System.Management.Automation.ErrorRecord]::new(
+                        $Ex, 'MigrationOverrideUnknown',
+                        [System.Management.Automation.ErrorCategory]::InvalidArgument, $K)
+                    $PSCmdlet.ThrowTerminatingError($Err)
+                }
+            }
+        }
+    }
+
+    # Inject the merged Migration config and Overrides into the infrastructure
+    # Config hashtable so the migration body's Invoke-Migration can read them
+    # via $Config.Migration / $Config.Overrides without changing its signature.
+    $Config['Migration'] = $MergedConfig
+    $Config['Overrides'] = $MergedOverrides
 
     # Step 3.1 — load/init record before firing hooks (per validation finding #13)
     $Record = Get-MigrationRecord -MigrationId $Id -RepoRoot $RepoRoot

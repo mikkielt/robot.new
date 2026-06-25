@@ -20,8 +20,6 @@
     - Invoke-SessionLeaderboardWorkflow:     session participation ranking with tier breakdown
     - Invoke-DormancyReportWorkflow:         dormant entity detection with configurable threshold
     - Invoke-EntityDeltaWorkflow:            entity property diff between two dates
-    - Invoke-MigrationQuickCheck:            migration quick diagnostics (loads migration-shared.ps1)
-    - Invoke-MigrationFullReport:            migration full report (loads migration-shared.ps1)
 
     Intel preview: collects @Intel entries from sessions with optional date
     filter, flattens them into a session/target/message table for review.
@@ -334,49 +332,6 @@ function Invoke-LogLocationReportWorkflow {
 
     Write-Host ''
     Write-CLILine -Text 'Naciśnij dowolny klawisz...' -Color $DisabledColor
-    [void][System.Console]::ReadKey($true)
-}
-
-# ── Migration Diagnostics ────────────────────────────────────────────────────
-
-function Invoke-MigrationQuickCheck {
-    param([object]$State, [hashtable]$Entry)
-
-    # Attempt runtime load of migration helpers (may not be present in all deployments)
-    $SharedPath = [System.IO.Path]::Combine($script:ModuleRoot, 'migration', 'migration-shared.ps1')
-    if ([System.IO.File]::Exists($SharedPath)) {
-        . $SharedPath
-        if (Get-Command 'Invoke-QuickDiagnostics' -ErrorAction SilentlyContinue) {
-            Invoke-QuickDiagnostics
-            Write-Host ''
-            Write-CLILine -Text 'Naciśnij dowolny klawisz...' -Color (Get-CLIColor -Role 'Disabled')
-            [void][System.Console]::ReadKey($true)
-            return
-        }
-    }
-
-    Write-CLILine -Text 'Diagnostyka migracji nie jest dostępna.' -Color (Get-CLIColor -Role 'Disabled')
-    Write-CLILine -Text 'Naciśnij dowolny klawisz...' -Color (Get-CLIColor -Role 'Disabled')
-    [void][System.Console]::ReadKey($true)
-}
-
-function Invoke-MigrationFullReport {
-    param([object]$State, [hashtable]$Entry)
-
-    $SharedPath = [System.IO.Path]::Combine($script:ModuleRoot, 'migration', 'migration-shared.ps1')
-    if ([System.IO.File]::Exists($SharedPath)) {
-        . $SharedPath
-        if (Get-Command 'Invoke-FullReport' -ErrorAction SilentlyContinue) {
-            Invoke-FullReport
-            Write-Host ''
-            Write-CLILine -Text 'Naciśnij dowolny klawisz...' -Color (Get-CLIColor -Role 'Disabled')
-            [void][System.Console]::ReadKey($true)
-            return
-        }
-    }
-
-    Write-CLILine -Text 'Raport migracji nie jest dostępny.' -Color (Get-CLIColor -Role 'Disabled')
-    Write-CLILine -Text 'Naciśnij dowolny klawisz...' -Color (Get-CLIColor -Role 'Disabled')
     [void][System.Console]::ReadKey($true)
 }
 

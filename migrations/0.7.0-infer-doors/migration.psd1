@@ -8,4 +8,6 @@
     AffectsCategories    = @('DataRewrite')
     EstimatedDurationSec = 45
     RequiresNetwork      = $false
+    Archetype            = 'Transform'
+    ConfigSchema         = @{}
 }

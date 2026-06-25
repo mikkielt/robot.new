@@ -91,10 +91,6 @@ function Invoke-RobotCLI {
         }
     }
 
-    # Layer 7: Migration integration (replaces routing stubs with real phase handlers)
-    $MigPath = [System.IO.Path]::Combine($CLIRoot, 'cli-wizard-migration.ps1')
-    if ([System.IO.File]::Exists($MigPath)) { . $MigPath }
-
     # ISE and non-interactive terminals lack [Console]::KeyAvailable
     try {
         $null = [System.Console]::KeyAvailable

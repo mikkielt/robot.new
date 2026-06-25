@@ -31,12 +31,22 @@ function Invoke-Migration {
         .PARAMETER AsJob
         Dispatch via the background job system instead of blocking.
 
+        .PARAMETER Config
+        Operator-supplied configuration matching the migration's ConfigSchema.
+        Validated and merged with declared defaults before the migration body runs.
+
+        .PARAMETER Overrides
+        Per-ChangeRecord operator edits keyed by OverrideKey (CC-N9). Validated
+        against the last preview cache; reject unknown keys.
+
         .PARAMETER RepoRoot
         Override repo root for testing.
     #>
     [CmdletBinding(SupportsShouldProcess)]
     param(
         [Parameter(Mandatory)] [string]$Version,
+        [hashtable]$Config,
+        [hashtable]$Overrides,
         [ValidateSet('InPlace','Branch','BranchAndMerge')] [string]$BranchMode = 'InPlace',
         [switch]$AllowUnsigned,
         [switch]$AsJob,
@@ -95,13 +105,14 @@ function Invoke-Migration {
     Lock-Schema -LockOwner $LockOwner -RepoRoot $RepoRoot
     try {
         $ResolvedRoot = if ($RepoRoot) { $RepoRoot } else { Get-RepoRoot }
-        $Config = @{
+        $RuntimeConfig = @{
             RepoRoot = $ResolvedRoot
             ResDir   = [System.IO.Path]::Combine($ResolvedRoot, '.robot.local', 'res')
         }
-        Initialize-MigrationLog -RepoRoot $Config.RepoRoot
+        Initialize-MigrationLog -RepoRoot $RuntimeConfig.RepoRoot
 
-        $Result = Invoke-MigrationInternal -Migration $Target -Config $Config `
+        $Result = Invoke-MigrationInternal -Migration $Target -Config $RuntimeConfig `
+            -MigrationConfig $Config -MigrationOverrides $Overrides `
             -AllowUnsigned:$AllowUnsigned -RepoRoot $RepoRoot
 
         Flush-MigrationLog

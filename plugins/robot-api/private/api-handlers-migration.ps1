@@ -103,9 +103,106 @@ function Invoke-ApiGetMigrationPreview {
         $AllowNet = $true
     }
     try {
-        return Get-MigrationPreview -Version $M.Version -AllowNetworkInPreview:$AllowNet
+        $Preview = Get-MigrationPreview -Version $M.Version -AllowNetworkInPreview:$AllowNet
+
+        # CC-N2 / CC-N9: enrich response with form-ready ConfigSchema + supplied
+        # Config echo + ChangeRecords slot. Dashboard renders left/right diff from
+        # ChangeRecords and a form from Fields. Operator submits both via apply.
+        $Schema = Resolve-MigrationConfigSchema -Manifest $M.Manifest
+        $SuppliedConfig = @{}
+        if ($ApiContext.QueryParams -and $ApiContext.QueryParams['config']) {
+            try {
+                $Raw = $ApiContext.QueryParams['config']
+                $Decoded = [System.Convert]::FromBase64String($Raw)
+                $Json = [System.Text.Encoding]::UTF8.GetString($Decoded)
+                $Parsed = $Json | ConvertFrom-Json -AsHashtable
+                if ($Parsed -is [hashtable]) { $SuppliedConfig = $Parsed }
+            } catch {
+                return @{ status = 400; body = @{ error = 'invalid-config-query'; message = $_.Exception.Message } }
+            }
+        }
+        $Merged = Merge-MigrationConfigDefaults -Schema $Schema -Supplied $SuppliedConfig
+
+        # ChangeRecords accessor: preview may omit it (transitional placeholder)
+        $ChangeRecords = @()
+        $ChangeProperty = $Preview.PSObject.Properties['ChangeRecords']
+        if ($ChangeProperty) { $ChangeRecords = @($ChangeProperty.Value) }
+
+        # Cache OverrideKeys so Apply can validate the operator's edits.
+        if ($ChangeRecords.Count -gt 0) {
+            try {
+                Save-MigrationPreviewCache -MigrationId $M.Id -ChangeRecords $ChangeRecords | Out-Null
+            } catch { }
+        }
+
+        return [PSCustomObject]@{
+            preview = $Preview
+            config  = @{
+                schema   = $Schema
+                supplied = $SuppliedConfig
+                merged   = $Merged
+            }
+            changeRecords = @($ChangeRecords)
+        }
     } catch {
         return @{ status = 500; body = @{ error = 'preview-failed'; message = $_.Exception.Message } }
+    }
+}
+
+function Invoke-ApiGetMigrationConfigSchema {
+    param([hashtable]$ApiContext)
+    $Id = $ApiContext.PathParams['id']
+    $M = Resolve-MigrationFromRoute -IdOrVersion $Id
+    if (-not $M) {
+        return @{ status = 404; body = @{ error = 'migration-not-found'; id = $Id } }
+    }
+    try {
+        $Schema = Get-MigrationConfigSchema -Version $M.Version
+        return $Schema
+    } catch {
+        return @{ status = 500; body = @{ error = 'config-schema-failed'; message = $_.Exception.Message } }
+    }
+}
+
+function Invoke-ApiGetMigrationArtifact {
+    param([hashtable]$ApiContext)
+    $Id   = $ApiContext.PathParams['id']
+    $Name = $ApiContext.PathParams['name']
+    $M = Resolve-MigrationFromRoute -IdOrVersion $Id
+    if (-not $M) {
+        return @{ status = 404; body = @{ error = 'migration-not-found'; id = $Id } }
+    }
+    try {
+        $Artifact = Get-MigrationArtifact -SourceMigration $M.Id -Name $Name
+        return $Artifact
+    } catch {
+        if ($_.FullyQualifiedErrorId -like '*MigrationArtifactNotFound*') {
+            return @{ status = 404; body = @{ error = 'artifact-not-found'; id = $M.Id; name = $Name } }
+        }
+        return @{ status = 500; body = @{ error = 'artifact-read-failed'; message = $_.Exception.Message } }
+    }
+}
+
+function Invoke-ApiPutMigrationArtifact {
+    param([hashtable]$ApiContext)
+    $Id   = $ApiContext.PathParams['id']
+    $Name = $ApiContext.PathParams['name']
+    $M = Resolve-MigrationFromRoute -IdOrVersion $Id
+    if (-not $M) {
+        return @{ status = 404; body = @{ error = 'migration-not-found'; id = $Id } }
+    }
+    $Body = $null
+    try { $Body = Read-ApiJsonBody $ApiContext.Body } catch {
+        return @{ status = 400; body = @{ error = 'invalid-json'; message = $_.Exception.Message } }
+    }
+    if ($null -eq $Body) {
+        return @{ status = 400; body = @{ error = 'empty-body' } }
+    }
+    try {
+        $Result = Set-MigrationArtifact -SourceMigration $M.Id -Name $Name -Value $Body -Confirm:$false
+        return $Result
+    } catch {
+        return @{ status = 500; body = @{ error = 'artifact-write-failed'; message = $_.Exception.Message } }
     }
 }
 
@@ -126,6 +223,18 @@ function Invoke-ApiPostMigrationApply {
     $BranchMode    = if ($Body.branchMode) { $Body.branchMode } else { 'InPlace' }
     $AllowUnsigned = [bool]$Body.allowUnsigned
     $AllowNetwork  = [bool]$Body.allowNetwork
+
+    # CC-N2 / CC-N9: Config + Overrides channels accepted alongside target.
+    # Both keyed by migration id (or version) for chain-apply partitioning,
+    # or flat for single-migration apply.
+    $ConfigParam = $null
+    if ($Body.config) {
+        $ConfigParam = ConvertTo-MigrationApiHashtable -Value $Body.config
+    }
+    $OverridesParam = $null
+    if ($Body.overrides) {
+        $OverridesParam = ConvertTo-MigrationApiHashtable -Value $Body.overrides
+    }
 
     $M = $null
     if ($TargetId) {
@@ -165,11 +274,26 @@ function Invoke-ApiPostMigrationApply {
 
     try {
         if ($TargetId) {
-            return Invoke-Migration -Version $M.Version -BranchMode $BranchMode `
-                -AllowUnsigned:$AllowUnsigned -Confirm:$false
+            # Single-migration apply: Config / Overrides are flat hashtables.
+            $InvokeArgs = @{
+                Version       = $M.Version
+                BranchMode    = $BranchMode
+                AllowUnsigned = $AllowUnsigned
+                Confirm       = $false
+            }
+            if ($ConfigParam)    { $InvokeArgs['Config']    = $ConfigParam }
+            if ($OverridesParam) { $InvokeArgs['Overrides'] = $OverridesParam }
+            return Invoke-Migration @InvokeArgs
         }
-        return Invoke-MigrationChain -To $TargetVersion -BranchMode $BranchMode `
-            -AllowUnsigned:$AllowUnsigned -Confirm:$false
+        $ChainArgs = @{
+            To            = $TargetVersion
+            BranchMode    = $BranchMode
+            AllowUnsigned = $AllowUnsigned
+            Confirm       = $false
+        }
+        if ($ConfigParam)    { $ChainArgs['Config']    = $ConfigParam }
+        if ($OverridesParam) { $ChainArgs['Overrides'] = $OverridesParam }
+        return Invoke-MigrationChain @ChainArgs
     } catch {
         $Eid = $_.FullyQualifiedErrorId
         if ($Eid -like '*UnsignedMigrationBlocked*') {
@@ -181,8 +305,46 @@ function Invoke-ApiPostMigrationApply {
         if ($Eid -like '*WorkingTreeDirty*') {
             return @{ status = 409; body = @{ error = 'working-tree-dirty' } }
         }
+        if ($Eid -like '*MigrationConfigInvalid*') {
+            return @{ status = 400; body = @{ error = 'config-invalid'; message = $_.Exception.Message } }
+        }
+        if ($Eid -like '*MigrationOverrideUnknown*') {
+            return @{ status = 400; body = @{ error = 'override-unknown'; message = $_.Exception.Message } }
+        }
         return @{ status = 500; body = @{ error = 'apply-failed'; message = $_.Exception.Message } }
     }
+}
+
+function ConvertTo-MigrationApiHashtable {
+    <#
+        Coerces JSON-decoded objects (PSCustomObject from ConvertFrom-Json) into
+        nested hashtables so the framework's Resolve-MigrationConfigSchema and
+        Test-MigrationConfig can iterate keys via .Contains() and indexer access.
+    #>
+    param([Parameter(Mandatory)] $Value)
+
+    if ($null -eq $Value) { return $null }
+    if ($Value -is [hashtable]) {
+        # Already hashtable — but coerce nested PSCustomObject values too.
+        $H = @{}
+        foreach ($K in $Value.Keys) {
+            $H[$K] = ConvertTo-MigrationApiHashtable -Value $Value[$K]
+        }
+        return $H
+    }
+    if ($Value -is [System.Management.Automation.PSCustomObject]) {
+        $H = @{}
+        foreach ($Prop in $Value.PSObject.Properties) {
+            $H[$Prop.Name] = ConvertTo-MigrationApiHashtable -Value $Prop.Value
+        }
+        return $H
+    }
+    if ($Value -is [System.Collections.IEnumerable] -and $Value -isnot [string]) {
+        $List = [System.Collections.Generic.List[object]]::new()
+        foreach ($Item in $Value) { [void]$List.Add((ConvertTo-MigrationApiHashtable -Value $Item)) }
+        return $List.ToArray()
+    }
+    return $Value
 }
 
 function Invoke-ApiDeleteSchemaLock {

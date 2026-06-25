@@ -158,7 +158,7 @@ The state file uses a structured JSON format (version 1):
 
 `Add-DiscordDeliveryEntry` delegates JSON state initialization and mutability conversion to `ConvertTo-MutableStateObject` (from `admin-state.ps1`) with collection key `entries` and default version `1`. It then appends a new entry and writes back via `Save-JsonStateFile`. Timezone formatting uses `Get-TimezoneOffsetString` (also from `admin-state.ps1`). Depends on `ConvertTo-MutableStateObject`, `Get-TimezoneOffsetString`, `Save-JsonStateFile`, and `Read-JsonStateFile` from `admin-state.ps1`.
 
-The legacy Markdown entry format (`- YYYY-MM-dd HH:mm:ss (timezone) [OK|FAIL] Operation -> Recipient (HTTP NNN)`) is no longer written. Migration Phase 0 converts the legacy `discord-delivery.md` to `discord-delivery.json` via `Convert-DiscordDeliveryToJson` in `migration/phase0-helpers.ps1`.
+The Markdown entry format (`- YYYY-MM-dd HH:mm:ss (timezone) [OK|FAIL] Operation -> Recipient (HTTP NNN)`) is no longer written. Migration `0.1.1-bootstrap-entities` converts the Markdown `discord-delivery.md` to `discord-delivery.json` via the inlined `ConvertFromDiscordDeliveryMarkdown` function in `migrations/0.1.1-bootstrap-entities/migrate.ps1`.
 
 Callers that persist delivery results:
 

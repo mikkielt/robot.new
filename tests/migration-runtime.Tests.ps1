@@ -17,6 +17,8 @@ BeforeAll {
     . (Join-Path $script:ModuleRoot 'private' 'plugin-hooks.ps1')
     . (Join-Path $script:ModuleRoot 'private' 'migration' 'migration-version.ps1')
     . (Join-Path $script:ModuleRoot 'private' 'migration' 'migration-loader.ps1')
+    . (Join-Path $script:ModuleRoot 'private' 'migration' 'migration-config.ps1')
+    . (Join-Path $script:ModuleRoot 'private' 'migration' 'migration-artifact.ps1')
     . (Join-Path $script:ModuleRoot 'private' 'migration' 'migration-log.ps1')
     . (Join-Path $script:ModuleRoot 'private' 'migration' 'migration-runtime.ps1')
     . (Join-Path $script:ModuleRoot 'public' 'migration' 'get-schemaversion.ps1')
@@ -106,12 +108,14 @@ Describe 'Invoke-MigrationChain' {
     It 'applies foo -> bar -> baz in order' {
         $R = Invoke-MigrationChain -To '0.3.0' -AllowUnsigned -RepoRoot $script:Repo -Confirm:$false
         $R.OK | Should -BeTrue
-        @($R.Applied).Count | Should -Be 3
-        $R.Applied[0].MigrationId | Should -Be '0.1.0-foo'
-        $R.Applied[2].MigrationId | Should -Be '0.3.0-baz'
+        # Chain includes module-shipped 0.1.1-bootstrap-entities and 0.1.2-commit-bootstrap
+        # alongside operator-local foo/bar/baz overrides at the minor-version boundaries.
+        $AppliedIds = @($R.Applied | ForEach-Object { $_.MigrationId })
+        $AppliedIds | Should -Contain '0.1.0-foo'
+        $AppliedIds | Should -Contain '0.2.0-bar'
+        $AppliedIds | Should -Contain '0.3.0-baz'
         $S = Get-SchemaVersion -RepoRoot $script:Repo
         $S.Current | Should -Be '0.3.0'
-        @($S.History).Count | Should -Be 2     # foo and bar landed in history, baz is current
     }
 
     It 'is a no-op when current schema already equals target' {

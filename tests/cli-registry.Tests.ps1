@@ -107,11 +107,11 @@ Describe 'Menu Registry' {
 # ── Menu Helper Functions ───────────────────────────────────────────────────
 
 Describe 'Get-MenuCategories' {
-    It 'returns all 8 categories in order' {
+    It 'returns all 7 categories in order (Migracja removed alongside the 9-phase pipeline)' {
         $Cats = Get-MenuCategories
-        $Cats.Count | Should -Be 8
+        $Cats.Count | Should -Be 7
         $Cats[0] | Should -Be 'Sesje'
-        $Cats[-1] | Should -Be 'Migracja'
+        $Cats[-1] | Should -Be 'Raporty i Narzędzia'
     }
 }
 

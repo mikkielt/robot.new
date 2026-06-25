@@ -91,7 +91,7 @@ This notation is not widely used. When present, the function splits each locatio
 }
 ```
 
-Breaking change: callers that previously iterated the return value directly must now access `.Locations`. Updated callers: `migration/phase5-session-upgrade.ps1` uses `$LocationReportResult.Locations`; CLI registry `location-report` entry uses `DataTransform = { param($R) $R.Locations }` for backward-compatible table display.
+Breaking change: callers that previously iterated the return value directly must now access `.Locations`. The session-upgrade migration at `migrations/0.6.0-upgrade-session-formats/` (currently a bridge stub awaiting the Phase H decomposition) consumes `$LocationReportResult.Locations`; the CLI registry `location-report` entry uses `DataTransform = { param($R) $R.Locations }` for backward-compatible table display.
 
 Route edge schema:
 

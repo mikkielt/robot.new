@@ -197,12 +197,24 @@ tests/
 |   # API
 +-- export-staticapi.Tests.ps1
 |
-|   # Plugins & migration
+|   # Plugins & migration framework
 +-- plugin-system.Tests.ps1
-+-- narrator-normalization.Tests.ps1
-+-- migration-phase4-log-download.Tests.ps1
-+-- migration-phase5-location-import.Tests.ps1
-+-- migration-phase6-door-inference.Tests.ps1
++-- narrator-helpers.Tests.ps1
++-- migration-version.Tests.ps1
++-- migration-loader.Tests.ps1
++-- migration-runtime.Tests.ps1
++-- migration-preview.Tests.ps1
++-- migration-branch.Tests.ps1
++-- migration-cache.Tests.ps1
++-- migration-config.Tests.ps1
++-- migration-config-overrides.Tests.ps1
++-- migration-artifact.Tests.ps1
++-- migration-changerecord.Tests.ps1
++-- migration-commit.Tests.ps1
++-- migration-fixture-mode.Tests.ps1
++-- migration-operator-local.Tests.ps1
++-- migration-external-import.Tests.ps1
++-- migration-plugin-namespace.Tests.ps1
 |
 +-- fixtures/
     |   # Player database
@@ -571,9 +583,9 @@ The WP-8 job tests probe `Start-ThreadJob` availability via `Get-Command`; the i
 
 | Metric | Count |
 |---|---|
-| Test files | 124 core + 16 plugin |
+| Test files | 137 core + 16 plugin (13 new migration test files; 4 phase tests deleted) |
 | Test cases (`It` blocks) | ~2,800 |
-| Migration framework tests | 121 across 14 files (12 core + 2 plugin REST) |
+| Migration framework tests | ~204 across 18 files (17 core including config / artifact / changerecord / commit / config-overrides / narrator-helpers + 1 plugin REST) |
 | Fixture files | ~110 (incl. `tests/fixtures/migrations/` synthetic migration dirs) |
 | Loading patterns | 5 (A: exported, B: internal+dot-source, C: standalone helper, D: parser, E: engine component) |
 

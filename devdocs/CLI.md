@@ -78,17 +78,16 @@ Invoke-RobotCLI (public/cli/invoke-robotcli.ps1)
     |                                     session leaderboard, migration reports
     |
     +-- Layer 6.5: Plugin CLI workflows   (dot-source plugin cli/*.ps1)
-    |       Per loaded plugin: dot-source all .ps1 files from plugins/<name>/cli/
-    |       robot-api:              cli-wf-robot-api.ps1
-    |       robot-dashboard:        cli-wf-robot-dashboard.ps1
-    |       margoworld-datasource:  cli-wf-margoworld.ps1
-    |       nerthusaddon-integration: cli-wf-nerthusaddon.ps1
-    |
-    +-- Layer 7: cli-wizard-migration.ps1 (overrides stubs from L5)
-            Get-MigrationMenuItems, Invoke-MigrationPhaseAction
+            Per loaded plugin: dot-source all .ps1 files from plugins/<name>/cli/
+            robot-api:              cli-wf-robot-api.ps1
+            robot-dashboard:        cli-wf-robot-dashboard.ps1
+            margoworld-datasource:  cli-wf-margoworld.ps1
+            nerthusaddon-integration: cli-wf-nerthusaddon.ps1
 ```
 
 All files are dot-sourced on demand when `Invoke-RobotCLI` is called (not at module import). They share `$script:` scope so variables and functions defined in earlier layers are accessible in later layers. Engine files are chain-loaded from within `cli-primitives.ps1` (Layer 1) in dependency order; this means the engine is available to all subsequent layers without a separate loading step in the entry point.
+
+Layer 7 (`cli-wizard-migration.ps1`) was removed alongside the 9-phase migration pipeline. Operators run migrations through the framework cmdlets (`Get-SchemaVersion`, `Get-Migration -Pending`, `Get-MigrationPreview`, `Invoke-MigrationChain`) or the REST API.
 
 ---
 
@@ -128,10 +127,9 @@ Private CLI files in `private/cli/` (18 files, routing, workflows):
 | `cli-wf-economy.ps1` | ~240 | 6 | `Invoke-EconomicSnapshotWorkflow`, `Invoke-EconomicTimelineWorkflow`, `Invoke-MaterializationReportWorkflow` |
 | `cli-wf-pu.ps1` | ~340 | 6 | `Invoke-PUAssignmentWorkflow`, `Invoke-PrePUDiagnostics`, `Invoke-PUDiagnosticsDisplay` |
 | `cli-wf-discord.ps1` | ~130 | 6 | `Invoke-DiscordPUNotificationWorkflow`, `Invoke-DiscordAnnouncementWorkflow` |
-| `cli-wf-reporting.ps1` | ~750 | 6 | `Invoke-IntelPreviewWorkflow`, `Invoke-NameSearchWorkflow`, `Invoke-FetchLogsWorkflow`, `Invoke-LogLocationReportWorkflow`, `Invoke-LocationGraphWorkflow`, `Invoke-CompareParticipationWorkflow`, `Invoke-SessionLeaderboardWorkflow`, `Invoke-SessionGraphWorkflow`, `Invoke-MigrationQuickCheck`, `Invoke-MigrationFullReport` |
-| `cli-wizard-migration.ps1` | ~165 | 7 | `Get-MigrationMenuItems`, `Invoke-MigrationPhaseAction` |
+| `cli-wf-reporting.ps1` | ~700 | 6 | `Invoke-IntelPreviewWorkflow`, `Invoke-NameSearchWorkflow`, `Invoke-FetchLogsWorkflow`, `Invoke-LogLocationReportWorkflow`, `Invoke-LocationGraphWorkflow`, `Invoke-CompareParticipationWorkflow`, `Invoke-SessionLeaderboardWorkflow`, `Invoke-SessionGraphWorkflow` |
 
-Entry point: `public/cli/invoke-robotcli.ps1` exports `Invoke-RobotCLI`. It dot-sources CLI files in layer order: `cli-primitives.ps1` (Layer 1, which chain-loads all 9 engine files), then `cli-fuzzy.ps1`, `cli-help.ps1` (Layer 2), `cli-wizard.ps1` (Layer 3, which chain-loads `cli-wizard-steps.ps1` and `cli-wizard-preview.ps1`), `cli-registry.ps1` (Layer 4), `cli-routing.ps1` (Layer 5). It then calls `Merge-PluginMenuItems` (Layer 5.5), dot-sources the 8 workflow files (Layer 6) and plugin `cli/*.ps1` files (Layer 6.5), and finally `cli-wizard-migration.ps1` (Layer 7). After loading, it validates terminal compatibility (`[Console]::KeyAvailable`), detects theme, pre-loads entity/player/name index data, runs health checks into `HealthCache`, and enters the main menu loop via `Show-MainMenu`.
+Entry point: `public/cli/invoke-robotcli.ps1` exports `Invoke-RobotCLI`. It dot-sources CLI files in layer order: `cli-primitives.ps1` (Layer 1, which chain-loads all 9 engine files), then `cli-fuzzy.ps1`, `cli-help.ps1` (Layer 2), `cli-wizard.ps1` (Layer 3, which chain-loads `cli-wizard-steps.ps1` and `cli-wizard-preview.ps1`), `cli-registry.ps1` (Layer 4), `cli-routing.ps1` (Layer 5). It then calls `Merge-PluginMenuItems` (Layer 5.5) and dot-sources the workflow files (Layer 6) and plugin `cli/*.ps1` files (Layer 6.5). After loading, it validates terminal compatibility (`[Console]::KeyAvailable`), detects theme, pre-loads entity/player/name index data, runs health checks into `HealthCache`, and enters the main menu loop via `Show-MainMenu`.
 
 Tests:
 
@@ -152,7 +150,7 @@ Tests:
 
 ## TUI Engine Architecture
 
-The TUI engine provides a retained-mode rendering system with virtual buffers, diff-based screen updates, and a unified input loop. It replaces the immediate-mode rendering of the legacy primitives (`Show-ArrowMenu`, `Show-ResultTable`, etc.) for all core CLI paths.
+The TUI engine provides a retained-mode rendering system with virtual buffers, diff-based screen updates, and a unified input loop. It replaces the immediate-mode rendering of the prior primitives (`Show-ArrowMenu`, `Show-ResultTable`, etc.) for all core CLI paths.
 
 Every engine-driven view follows the same lifecycle:
 
@@ -325,7 +323,7 @@ Active primitives (`cli-primitives.ps1`):
 | `Write-CLILine` | `-Text [string]`, `-Color [string]`, `-NoNewline [switch]` | Consistent indented `Write-Host` wrapper (prepends 2-space indent). Used between engine lifecycle calls for status messages. |
 | `Initialize-WorkflowScreen` | `-Title [string] (Mandatory)`, `-NoSeparator [switch]` | Clears terminal, renders title in Accent color, optional horizontal separator, blank line. Returns a hashtable of all standard CLI colors (`Accent`, `Disabled`, `Info`, `Warning`, `Success`, `Error`) for caller use. Used by workflow functions to set up a clean screen before non-engine rendering. |
 
-Legacy primitives (`cli-menus.ps1`, `cli-display.ps1`) were removed. All CLI paths use engine components.
+The prior immediate-mode primitives (`cli-menus.ps1`, `cli-display.ps1`) were removed. All CLI paths use engine components.
 
 ---
 
@@ -697,16 +695,7 @@ All three branches propagate `__quit__` if the handler returns it. `Invoke-MenuA
 5. Apply `ColumnResolvers` for computed columns
 6. Loop: `New-ResultTableComponent` -> engine lifecycle -> select row -> `DetailFunction` or `Invoke-EngineDetailCard` -> back
 
-`Show-MainMenu` renders top-level categories via `New-MenuListComponent` + engine lifecycle. `Show-SubMenu` renders items within a category the same way. Both support the full command palette (`/h`, `/s`, `/r`, `/b`, `/q`). The Migracja category dynamically prepends migration phase items from `Get-MigrationMenuItems`.
-
-`cli-routing.ps1` defines stub functions `Get-MigrationMenuItems` (returns empty) and `Invoke-MigrationPhaseAction` (shows "not loaded" message). These are overridden by `cli-wizard-migration.ps1` (Layer 7) when migration files are available.
-
-`cli-wizard-migration.ps1` bridges the CLI menu with the migration subsystem:
-
-| Function | Parameters | Description |
-|---|---|---|
-| `Get-MigrationMenuItems` | `-State [object]` | Returns dynamic menu items with status badges from `$script:PhaseRegistry` + `Get-MigrationState`/`Get-PhaseStatus`. Falls back to hardcoded phases 0-6 if no registry. Returns a "not available" disabled item when migration files are missing. |
-| `Invoke-MigrationPhaseAction` | `-PhaseID [string]`, `-State [object]` | Extracts phase number from ID (`migration-phase-N`), looks up the phase function in the registry, renders phase header, and executes the phase function. Clears the engine-rendered screen before switching to console-mode output. |
+`Show-MainMenu` renders top-level categories via `New-MenuListComponent` + engine lifecycle. `Show-SubMenu` renders items within a category the same way. Both support the full command palette (`/h`, `/s`, `/r`, `/b`, `/q`). The CLI exposes seven categories — Sesje, Gracze i Postacie, Encje, Waluta, Przedmioty, PU, Raporty i Narzędzia. The Migracja category was removed alongside the 9-phase pipeline; operators run migrations via the framework cmdlets or the REST API.
 
 ---
 
@@ -852,7 +841,6 @@ Migration phase tests are conditionally skipped when migration files are not ava
 | Progress step fails | `Complete-ProgressStep -Failed` marks step as Error; subsequent steps can still proceed. `State.Failed` is set to `$true` but does not prevent further step execution |
 | Empty progress Steps list | `Update-ProgressStep` and `Complete-ProgressStep` are no-ops when `Steps.Count -eq 0` (guard against calls before `Start-ProgressStep`) |
 | Health checks skipped | `HealthCache.Skipped = $true`; dashboard shows "pominieto" notice; user can trigger checks via Enter in dashboard |
-| Migration files missing | `Get-MigrationMenuItems` returns disabled "not available" item; `Invoke-MigrationPhaseAction` shows error and waits for keypress |
 
 ---
 

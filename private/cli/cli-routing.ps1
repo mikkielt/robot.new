@@ -36,12 +36,10 @@
     - Invoke-EngineCommand:        standard command handler for /h, /s, /r palette commands
     - Invoke-EngineFuzzySearch:    engine-driven fuzzy picker using MenuListComponent with Resolve-Name fallback
     - Invoke-EngineDetailCard:     engine-driven detail card for a single data row
-    - Show-SubMenu:                engine-driven items within a category (with Migracja phase injection)
+    - Show-SubMenu:                engine-driven items within a category
     - Show-MainMenu:               engine-driven top-level category loop with refresh option
     - Refresh-NavState:            reloads entities, players, name index, and entity type index
     - Refresh-HealthChecks:        runs PU, currency, session integrity, and graph health checks
-    - Get-MigrationMenuItems:      stub (overridden by cli-wizard-migration.ps1)
-    - Invoke-MigrationPhaseAction: stub (overridden by cli-wizard-migration.ps1)
 #>
 
 # ── Menu Helper Functions ────────────────────────────────────────────────────
@@ -697,17 +695,6 @@ function Show-SubMenu {
     while ($true) {
         $Items = Get-MenuItems -Category $Category
 
-        # Migracja category injects dynamic phase items before static registry entries
-        if ($Category -eq 'Migracja') {
-            $MigrationItems = Get-MigrationMenuItems -State $State
-            if ($MigrationItems -and $MigrationItems.Count -gt 0) {
-                $AllItems = [System.Collections.Generic.List[PSCustomObject]]::new()
-                foreach ($MI in $MigrationItems) { [void]$AllItems.Add($MI) }
-                foreach ($SI in $Items) { [void]$AllItems.Add($SI) }
-                $Items = $AllItems
-            }
-        }
-
         $HelpEntry = $script:HelpContent[$Category]
         $HelpBody = if ($HelpEntry) { $HelpEntry.Body } else { $null }
         $HelpTitle = if ($HelpEntry) { $HelpEntry.Title } else { $null }
@@ -744,12 +731,6 @@ function Show-SubMenu {
         if ($Selected -eq '__quit__') {
             [void]$State.BreadcrumbStack.Pop()
             return '__quit__'
-        }
-
-        # Migration phase IDs use a prefix convention to distinguish from registry IDs
-        if ($Selected -is [string] -and $Selected.StartsWith('migration-phase-')) {
-            Invoke-MigrationPhaseAction -PhaseID $Selected -State $State
-            continue
         }
 
         $ActionResult = Invoke-MenuAction -ItemID $Selected -State $State
@@ -837,14 +818,6 @@ function Show-MainMenu {
             return
         }
     }
-}
-
-# ── Migration Menu Items (stub - overridden by cli-wizard-migration.ps1) ────
-
-function Get-MigrationMenuItems {
-    param([object]$State)
-    # Stub: replaced at runtime by cli-wizard-migration.ps1 when the migration module is loaded
-    return @()
 }
 
 # ── Refresh-NavState ─────────────────────────────────────────────────────────
@@ -944,10 +917,3 @@ function Refresh-HealthChecks {
     Complete-ProgressGroup -State $Progress
 }
 
-function Invoke-MigrationPhaseAction {
-    param([string]$PhaseID, [object]$State)
-    [System.Console]::Clear()
-    Write-CLILine -Text 'Migracja nie jest załadowana.' -Color (Get-CLIColor -Role 'Disabled')
-    Write-CLILine -Text 'Naciśnij dowolny klawisz...' -Color (Get-CLIColor -Role 'Disabled')
-    [void][System.Console]::ReadKey($true)
-}

@@ -18,8 +18,13 @@ BeforeAll {
     . (Join-Path $script:ModuleRoot 'private' 'plugin-hooks.ps1')
     . (Join-Path $script:ModuleRoot 'private' 'migration' 'migration-version.ps1')
     . (Join-Path $script:ModuleRoot 'private' 'migration' 'migration-loader.ps1')
+    . (Join-Path $script:ModuleRoot 'private' 'migration' 'migration-config.ps1')
+    . (Join-Path $script:ModuleRoot 'private' 'migration' 'migration-artifact.ps1')
     . (Join-Path $script:ModuleRoot 'private' 'migration' 'migration-log.ps1')
     . (Join-Path $script:ModuleRoot 'private' 'migration' 'migration-runtime.ps1')
+    . (Join-Path $script:ModuleRoot 'public' 'migration' 'get-migrationconfigschema.ps1')
+    . (Join-Path $script:ModuleRoot 'public' 'migration' 'get-migrationartifact.ps1')
+    . (Join-Path $script:ModuleRoot 'public' 'migration' 'set-migrationartifact.ps1')
     . (Join-Path $script:ModuleRoot 'public' 'migration' 'get-schemaversion.ps1')
     . (Join-Path $script:ModuleRoot 'public' 'migration' 'get-migration.ps1')
     . (Join-Path $script:ModuleRoot 'public' 'migration' 'get-migrationpreview.ps1')
@@ -57,11 +62,13 @@ BeforeAll {
 }
 
 Describe 'Route registration in api-routes.ps1' {
-    It 'registers all 9 migration endpoints' {
+    It 'registers all 12 migration endpoints' {
         $Lines = [System.IO.File]::ReadAllText((Join-Path $script:PluginRoot 'private' 'api-routes.ps1'))
         $Expected = @(
             "'/schema/version'", "'/migrations'", "'/migrations/pending'",
             "'/migrations/:id'", "'/migrations/:id/preview'",
+            "'/migrations/:id/config-schema'",
+            "'/migrations/:id/artifacts/:name'",
             "'/migrations/apply'", "'/migrations/jobs/:jobId'",
             "'/schema/lock'", "'/schema/restore'"
         )
@@ -225,6 +232,77 @@ Describe 'Invoke-ApiDeleteSchemaLock and Invoke-ApiPostSchemaRestore' {
     It 'POST /schema/restore 400 when body missing to' {
         $R = Invoke-ApiPostSchemaRestore -ApiContext (New-ApiContext -Body '{}')
         $R.status | Should -Be 400
+    }
+}
+
+Describe 'WP-A4 — Config-aware preview, ConfigSchema, artifacts' {
+    BeforeEach {
+        Clear-MigrationCatalogCache
+        $script:Repo = New-IsolatedRepoRoot
+        $LocalDir = Join-Path $script:Repo '.robot.local' 'migrations'
+        [void][System.IO.Directory]::CreateDirectory($LocalDir)
+        Copy-Item (Join-Path $script:FixtureMigRoot '0.1.0-foo') $LocalDir -Recurse
+        Set-RepoRoot -Path $script:Repo
+    }
+    AfterEach {
+        Remove-IsolatedRepoRoot -Path $script:Repo
+        Set-RepoRoot -Reset
+        Initialize-TestFilesystemFirewall
+        Clear-MigrationCatalogCache
+    }
+
+    It 'GET /migrations/:id/config-schema returns ConfigSchema shape' {
+        $M = New-ApiContext -PathParams @{ id = '0.1.0-foo' }
+        $R = Invoke-ApiGetMigrationConfigSchema -ApiContext $M
+        $R.Version | Should -Be '0.1.0'
+        $R.PSObject.Properties['Fields'] | Should -Not -BeNullOrEmpty
+    }
+
+    It 'GET /migrations/:id/config-schema 404 on unknown id' {
+        $M = New-ApiContext -PathParams @{ id = '99.99.99-ghost' }
+        $R = Invoke-ApiGetMigrationConfigSchema -ApiContext $M
+        $R.status | Should -Be 404
+    }
+
+    It 'GET /migrations/:id/preview returns config + changeRecords slot' {
+        $M = New-ApiContext -PathParams @{ id = '0.1.0-foo' }
+        $R = Invoke-ApiGetMigrationPreview -ApiContext $M
+        $R.preview | Should -Not -BeNullOrEmpty
+        $R.config | Should -Not -BeNullOrEmpty
+        $R.config.ContainsKey('schema') | Should -BeTrue
+        $R.config.ContainsKey('merged') | Should -BeTrue
+        $R.config.ContainsKey('supplied') | Should -BeTrue
+        $R.PSObject.Properties['changeRecords'] | Should -Not -BeNullOrEmpty
+    }
+
+    It 'PUT /migrations/:id/artifacts/:name writes an artifact' {
+        $Body = '{"items":[{"name":"foo"}]}'
+        $M = New-ApiContext -PathParams @{ id = '0.1.0-foo'; name = 'test' } -Body $Body
+        $R = Invoke-ApiPutMigrationArtifact -ApiContext $M
+        $R.Name | Should -Be 'test'
+        $R.Path | Should -Exist
+    }
+
+    It 'GET /migrations/:id/artifacts/:name reads back what PUT wrote' {
+        $Body = '{"hello":"world"}'
+        $M = New-ApiContext -PathParams @{ id = '0.1.0-foo'; name = 'sample' } -Body $Body
+        Invoke-ApiPutMigrationArtifact -ApiContext $M | Out-Null
+        $M2 = New-ApiContext -PathParams @{ id = '0.1.0-foo'; name = 'sample' }
+        $R = Invoke-ApiGetMigrationArtifact -ApiContext $M2
+        $R.hello | Should -Be 'world'
+    }
+
+    It 'GET /migrations/:id/artifacts/:name 404 when artifact is absent' {
+        $M = New-ApiContext -PathParams @{ id = '0.1.0-foo'; name = 'never-written' }
+        $R = Invoke-ApiGetMigrationArtifact -ApiContext $M
+        $R.status | Should -Be 404
+    }
+
+    It 'POST /migrations/apply forwards config through' {
+        $Body = '{"target":{"id":"0.1.0-foo"},"mode":"sync","allowUnsigned":true,"config":{}}'
+        $M = New-ApiContext -Body $Body
+        $R = Invoke-ApiPostMigrationApply -ApiContext $M
+        $R.OK | Should -BeTrue
     }
 }
 

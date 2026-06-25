@@ -3,10 +3,11 @@
     Structured per-run logging for the migration framework.
 
     .DESCRIPTION
-    Generalized from migration/migration-ui.ps1's log helpers — the original
+    Generalized from the prior migration-ui.ps1 log helpers — the original
     keyed entries by integer phase number; this version keys by migration ID
-    (e.g. "21.3.7-add-currency-tag"). The Polish CLI UI helpers stay in the
-    legacy file until WP-13 retires it; here we only own structured plumbing.
+    (e.g. "21.3.7-add-currency-tag"). The Polish CLI UI helpers were retired
+    alongside that directory; the framework speaks structured records and
+    the dashboard / CLI render them.
 
     Helpers:
     - Initialize-MigrationLog: opens a fresh log file under .robot.local/res/
@@ -17,9 +18,8 @@
     - $script:MigrationLogPath:  absolute path of the active log file
     - $script:MigrationLogLines: in-memory buffer flushed by Flush-MigrationLog
 
-    Log file is overwritten on each Initialize, mirroring the legacy contract:
-    the file always reflects the most recent run. For long-term retention,
-    operators rely on git history.
+    Log file is overwritten on each Initialize: the file always reflects the
+    most recent run. For long-term retention, operators rely on git history.
 #>
 
 $script:MigrationLogPath  = $null

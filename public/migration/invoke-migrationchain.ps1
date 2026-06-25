@@ -18,11 +18,22 @@ function Invoke-MigrationChain {
         .PARAMETER To
         Effective version to advance to. 'latest' picks the highest Module-origin
         migration.
+
+        .PARAMETER Config
+        Hashtable keyed by migration version (or 'Version-Slug' id) with the
+        Config payload for that migration. Migrations whose key is absent
+        receive an empty Config (defaults only).
+
+        .PARAMETER Overrides
+        Hashtable keyed by migration version (or 'Version-Slug' id) with the
+        per-ChangeRecord Override payload (CC-N9) for that migration.
     #>
     [CmdletBinding(SupportsShouldProcess)]
     param(
         [string]$From,
         [Parameter(Mandatory)] [string]$To,
+        [hashtable]$Config,
+        [hashtable]$Overrides,
         [ValidateSet('InPlace','Branch','BranchAndMerge')] [string]$BranchMode = 'InPlace',
         [switch]$AllowUnsigned,
         [switch]$AsJob,
@@ -67,15 +78,29 @@ function Invoke-MigrationChain {
     $Failed = $null
     try {
         $ResolvedRoot = if ($RepoRoot) { $RepoRoot } else { Get-RepoRoot }
-        $Config = @{
+        $RuntimeConfig = @{
             RepoRoot = $ResolvedRoot
             ResDir   = [System.IO.Path]::Combine($ResolvedRoot, '.robot.local', 'res')
         }
-        Initialize-MigrationLog -RepoRoot $Config.RepoRoot
+        Initialize-MigrationLog -RepoRoot $RuntimeConfig.RepoRoot
 
         foreach ($M in $Chain) {
+            # Partition operator-supplied Config/Overrides across the chain by
+            # migration version or full id. Migrations whose key is absent
+            # apply with defaults only.
+            $PerMigConfig = $null
+            $PerMigOverrides = $null
+            if ($Config) {
+                if ($Config.ContainsKey($M.Version)) { $PerMigConfig = $Config[$M.Version] }
+                elseif ($Config.ContainsKey($M.Id)) { $PerMigConfig = $Config[$M.Id] }
+            }
+            if ($Overrides) {
+                if ($Overrides.ContainsKey($M.Version)) { $PerMigOverrides = $Overrides[$M.Version] }
+                elseif ($Overrides.ContainsKey($M.Id)) { $PerMigOverrides = $Overrides[$M.Id] }
+            }
             try {
-                $R = Invoke-MigrationInternal -Migration $M -Config $Config `
+                $R = Invoke-MigrationInternal -Migration $M -Config $RuntimeConfig `
+                    -MigrationConfig $PerMigConfig -MigrationOverrides $PerMigOverrides `
                     -AllowUnsigned:$AllowUnsigned -RepoRoot $RepoRoot
                 if ($R.Skipped) {
                     [void]$Skipped.Add($R)

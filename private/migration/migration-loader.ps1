@@ -373,6 +373,30 @@ function Test-MigrationManifest {
         }
     }
 
+    # CC-N1: Archetype is optional during the framework rollout
+    # (WP-A6 backfills existing manifests). When present, must be one of
+    # the three archetype enum values.
+    if ($Manifest.ContainsKey('Archetype')) {
+        $Archetype = [string]$Manifest['Archetype']
+        if ($Archetype -notin @('Transform', 'Inspect', 'Commit')) {
+            [void]$Errors.Add("Archetype '$Archetype' is not one of: Transform, Inspect, Commit.")
+        }
+    }
+
+    # CC-N2: ConfigSchema is optional during the transition; when present,
+    # Resolve-MigrationConfigSchema validates field shapes (throws on
+    # malformed Type / non-hashtable field bodies). Failure becomes a
+    # validation error rather than an unhandled throw so the catalog stays
+    # loadable with bad migrations marked invalid.
+    if ($Manifest.ContainsKey('ConfigSchema')) {
+        try {
+            [void](Resolve-MigrationConfigSchema -Manifest $Manifest)
+        }
+        catch {
+            [void]$Errors.Add("ConfigSchema validation failed: $($_.Exception.Message)")
+        }
+    }
+
     # ── migrate.ps1 existence + AST validation ────────────────────────────
     $ScriptPath = [System.IO.Path]::Combine($Path, 'migrate.ps1')
     if (-not [System.IO.File]::Exists($ScriptPath)) {

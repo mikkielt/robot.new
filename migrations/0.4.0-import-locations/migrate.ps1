@@ -1,17 +1,33 @@
+<#
+    .SYNOPSIS
+    0.4.0-import-locations: bridge stub — placeholder until phase decomposition lands.
+
+    .DESCRIPTION
+    Placeholder body that returns Skipped=$true to advance the schema pointer
+    without invoking the placeholder for Phase 3 (location import) phase code. The corresponding
+    phase decomposition (Inspect/Transform/Commit micro-migrations) will replace
+    this body in a follow-up session per the implementation plan.
+
+    This stub exists so the Robot.PowerShell/migration/ directory can be
+    deleted (WP-N1) without breaking the chain. Operators running the chain to
+    later versions see this migration as Skipped='PipelineRetired'.
+#>
+
 function Get-MigrationPreview {
     [CmdletBinding()] param([Parameter(Mandatory)][hashtable]$Config)
     return [PSCustomObject]@{
         Migration            = '0.4.0-import-locations'
-        EstimatedDurationSec = 30
+        EstimatedDurationSec = 1
         FilesToModify        = @()
         FilesToCreate        = @()
         FilesToDelete        = @()
         EntityCountsBefore   = @{}
         EntityCountsAfter    = @{}
         SampleDiffs          = @()
-        Warnings             = @('Preview is structural — exact file list determined at apply time.')
+        Warnings             = @('Phase decomposition pending; this migration is a placeholder.')
         NetworkRequired      = $false
         SourceUnchanged      = $false
+        ChangeRecords        = @()
     }
 }
 
@@ -22,15 +38,15 @@ function Invoke-Migration {
         [scriptblock]$ProgressCallback,
         [hashtable]$Checklist
     )
-    # Delegate to the legacy Phase 3 implementation for semantic-identity parity.
-    $LegacyDir = [System.IO.Path]::Combine($Config.RepoRoot, '.robot.powershell', 'migration')
-    if (-not [System.IO.Directory]::Exists($LegacyDir)) {
-        $LegacyDir = [System.IO.Path]::Combine($PSScriptRoot, '..', '..', 'migration')
+    return [PSCustomObject]@{
+        OK = $true
+        FilesWritten = @()
+        Skipped = $true
+        Reason = 'PipelineRetired'
     }
-    . (Join-Path $LegacyDir 'migration-shared.ps1')
-    . (Join-Path $LegacyDir 'migration-state.ps1')
-    . (Join-Path $LegacyDir 'migration-ui.ps1')
-    . (Join-Path $LegacyDir 'phase3-location-import.ps1')
-    Invoke-MigrationPhase3
-    return [PSCustomObject]@{ OK = $true; FilesWritten = @() }
+}
+
+function Test-MigrationApplied {
+    [CmdletBinding()] param([hashtable]$Checklist)
+    return $false
 }

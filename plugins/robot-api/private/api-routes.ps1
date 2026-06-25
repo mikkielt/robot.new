@@ -545,11 +545,23 @@ function Register-AllApiRoutes {
     $HandlerMap['Invoke-ApiGetMigration'] = $true
 
     $Router.AddRoute('GET', '/migrations/:id/preview', 'Invoke-ApiGetMigrationPreview',
-        'Dry-run JSON preview', 200, 'migration:read')
+        'Form-ready preview: ConfigSchema + ChangeRecords + merged config', 200, 'migration:read')
     $HandlerMap['Invoke-ApiGetMigrationPreview'] = $true
 
+    $Router.AddRoute('GET', '/migrations/:id/config-schema', 'Invoke-ApiGetMigrationConfigSchema',
+        'ConfigSchema declaration for a migration', 200, 'migration:read')
+    $HandlerMap['Invoke-ApiGetMigrationConfigSchema'] = $true
+
+    $Router.AddRoute('GET', '/migrations/:id/artifacts/:name', 'Invoke-ApiGetMigrationArtifact',
+        'Read a migration artifact JSON', 200, 'migration:read')
+    $HandlerMap['Invoke-ApiGetMigrationArtifact'] = $true
+
+    $Router.AddRoute('PUT', '/migrations/:id/artifacts/:name', 'Invoke-ApiPutMigrationArtifact',
+        'Write (operator-edit) a migration artifact JSON', 200, 'migration:write')
+    $HandlerMap['Invoke-ApiPutMigrationArtifact'] = $true
+
     $Router.AddRoute('POST', '/migrations/apply', 'Invoke-ApiPostMigrationApply',
-        'Apply a single migration or chain (mode=sync|async)', 200, 'migration:write')
+        'Apply a single migration or chain (mode=sync|async; accepts config + overrides)', 200, 'migration:write')
     $HandlerMap['Invoke-ApiPostMigrationApply'] = $true
 
     $Router.AddRoute('GET', '/migrations/jobs/:jobId', 'Invoke-ApiGetMigrationJob',

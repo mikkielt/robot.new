@@ -8,4 +8,6 @@
     AffectsCategories    = @('RepoLayout')
     EstimatedDurationSec = 5
     RequiresNetwork      = $false
+    Archetype            = 'Transform'
+    ConfigSchema         = @{}
 }

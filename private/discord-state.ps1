@@ -10,12 +10,12 @@
     Helpers:
     - Add-DiscordDeliveryEntry:         appends delivery record to JSON state file
     - Get-DiscordDeliveryEntries:       parses JSON state file into structured objects
-    - Convert-DiscordDeliveryToJson:    (moved to migration/phase0-helpers.ps1)
+    - Convert-DiscordDeliveryToJson:    (inlined into migrations/0.1.1-bootstrap-entities/migrate.ps1)
 
     Module-level data:
-    - $script:DiscordDeliveryPattern:        precompiled regex for legacy Markdown parsing (migration only)
-    - $script:DiscordDeliveryContextPattern:  precompiled regex for legacy context sub-lines (migration only)
-    - $script:DiscordDeliveryErrorPattern:    precompiled regex for legacy error sub-lines (migration only)
+    - $script:DiscordDeliveryPattern:        precompiled regex for Markdown parsing (migration only)
+    - $script:DiscordDeliveryContextPattern:  precompiled regex for context sub-lines (migration only)
+    - $script:DiscordDeliveryErrorPattern:    precompiled regex for error sub-lines (migration only)
 
     State file (`.robot.local/res/discord-delivery.json`) uses a structured JSON format:
 

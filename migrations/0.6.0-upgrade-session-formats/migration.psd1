@@ -8,4 +8,6 @@
     AffectsCategories    = @('SessionFormat')
     EstimatedDurationSec = 60
     RequiresNetwork      = $false
+    Archetype            = 'Transform'
+    ConfigSchema         = @{}
 }
